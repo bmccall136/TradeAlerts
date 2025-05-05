@@ -1,0 +1,94 @@
+ * Serving Flask app 'dashboard'
+ * Debug mode: on
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on http://127.0.0.1:5000
+Press CTRL+C to quit
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 784-069-940
+127.0.0.1 - - [24/Apr/2025 11:27:52] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [24/Apr/2025 11:27:52] "GET /favicon.ico HTTP/1.1" 404 -
+ * Detected change in 'C:\\TradeAlerts\\scanner.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 784-069-940
+127.0.0.1 - - [24/Apr/2025 11:33:23] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [24/Apr/2025 11:33:43] "GET / HTTP/1.1" 200 -
+2025-04-24 14:35:47,424 - Starting Flask app
+2025-04-24 14:35:47,494 - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2025-04-24 14:35:47,494 - [33mPress CTRL+C to quit[0m
+2025-04-24 14:35:47,496 -  * Restarting with stat
+2025-04-24 14:35:47,912 - Starting Flask app
+2025-04-24 14:35:47,938 -  * Debugger is active!
+2025-04-24 14:35:47,944 -  * Debugger PIN: 784-069-940
+2025-04-24 14:39:04,690 -  * Detected change in 'C:\\TradeAlerts\\dashboard.py', reloading
+2025-04-24 14:39:04,737 -  * Restarting with stat
+2025-04-24 14:39:05,241 - INFO - Dashboard started
+2025-04-24 14:39:05,280 - WARNING -  * Debugger is active!
+2025-04-24 14:39:05,287 - INFO -  * Debugger PIN: 784-069-940
+2025-04-24 14:39:18,492 - INFO - Dashboard started
+2025-04-24 14:39:18,586 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2025-04-24 14:39:18,586 - INFO - [33mPress CTRL+C to quit[0m
+2025-04-24 14:39:18,588 - INFO -  * Restarting with stat
+2025-04-24 14:39:19,174 - INFO - Dashboard started
+2025-04-24 14:39:19,210 - WARNING -  * Debugger is active!
+2025-04-24 14:39:19,214 - INFO -  * Debugger PIN: 784-069-940
+2025-04-24 14:39:19,269 - INFO - 127.0.0.1 - - [24/Apr/2025 14:39:19] "[35m[1mGET / HTTP/1.1[0m" 500 -
+2025-04-24 14:39:19,663 - INFO - 127.0.0.1 - - [24/Apr/2025 14:39:19] "GET /?__debugger__=yes&cmd=resource&f=style.css HTTP/1.1" 200 -
+2025-04-24 14:39:19,672 - INFO - 127.0.0.1 - - [24/Apr/2025 14:39:19] "[36mGET /?__debugger__=yes&cmd=resource&f=debugger.js HTTP/1.1[0m" 304 -
+2025-04-24 14:39:19,744 - INFO - 127.0.0.1 - - [24/Apr/2025 14:39:19] "GET /?__debugger__=yes&cmd=resource&f=console.png&s=YXmzZKLPTQcPJdBtXfeS HTTP/1.1" 200 -
+2025-04-24 14:42:22,531 - INFO -  * Detected change in 'C:\\TradeAlerts\\dashboard.py', reloading
+2025-04-24 14:42:22,602 - INFO -  * Restarting with stat
+2025-04-24 14:42:23,137 - INFO - Dashboard started
+2025-04-24 14:42:23,180 - WARNING -  * Debugger is active!
+2025-04-24 14:42:23,188 - INFO -  * Debugger PIN: 784-069-940
+2025-04-24 14:42:31,456 - INFO - Dashboard started
+2025-04-24 14:42:31,514 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2025-04-24 14:42:31,514 - INFO - [33mPress CTRL+C to quit[0m
+2025-04-24 14:42:31,516 - INFO -  * Restarting with stat
+2025-04-24 14:42:31,996 - INFO - Dashboard started
+2025-04-24 14:42:32,033 - WARNING -  * Debugger is active!
+2025-04-24 14:42:32,038 - INFO -  * Debugger PIN: 784-069-940
+2025-04-24 14:42:32,093 - INFO - 127.0.0.1 - - [24/Apr/2025 14:42:32] "[35m[1mGET / HTTP/1.1[0m" 500 -
+2025-04-24 14:42:32,486 - INFO - 127.0.0.1 - - [24/Apr/2025 14:42:32] "GET /?__debugger__=yes&cmd=resource&f=style.css HTTP/1.1" 200 -
+2025-04-24 14:42:32,493 - INFO - 127.0.0.1 - - [24/Apr/2025 14:42:32] "[36mGET /?__debugger__=yes&cmd=resource&f=debugger.js HTTP/1.1[0m" 304 -
+2025-04-24 14:42:32,549 - INFO - 127.0.0.1 - - [24/Apr/2025 14:42:32] "GET /?__debugger__=yes&cmd=resource&f=console.png&s=Y1g07m3hKgVEhpMFc0Fj HTTP/1.1" 200 -
+2025-04-24 14:49:19,482 - INFO -  * Detected change in 'C:\\TradeAlerts\\dashboard.py', reloading
+2025-04-24 14:49:19,582 - INFO -  * Restarting with stat
+2025-04-24 14:49:20,174 - INFO - Dashboard started
+2025-04-24 14:49:20,205 - WARNING -  * Debugger is active!
+2025-04-24 14:49:20,210 - INFO -  * Debugger PIN: 784-069-940
+2025-04-24 14:49:40,085 - INFO - Dashboard started
+2025-04-24 14:49:40,173 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2025-04-24 14:49:40,173 - INFO - [33mPress CTRL+C to quit[0m
+2025-04-24 14:49:40,174 - INFO -  * Restarting with stat
+2025-04-24 14:49:40,732 - INFO - Dashboard started
+2025-04-24 14:49:40,770 - WARNING -  * Debugger is active!
+2025-04-24 14:49:40,776 - INFO -  * Debugger PIN: 784-069-940
+2025-04-24 14:49:40,829 - INFO - 127.0.0.1 - - [24/Apr/2025 14:49:40] "[35m[1mGET / HTTP/1.1[0m" 500 -
+2025-04-24 14:49:41,254 - INFO - 127.0.0.1 - - [24/Apr/2025 14:49:41] "GET /?__debugger__=yes&cmd=resource&f=style.css HTTP/1.1" 200 -
+2025-04-24 14:49:41,264 - INFO - 127.0.0.1 - - [24/Apr/2025 14:49:41] "[36mGET /?__debugger__=yes&cmd=resource&f=debugger.js HTTP/1.1[0m" 304 -
+2025-04-24 14:49:41,291 - INFO - 127.0.0.1 - - [24/Apr/2025 14:49:41] "GET /?__debugger__=yes&cmd=resource&f=console.png&s=T1s1p4fxiSIAeyKD8sOU HTTP/1.1" 200 -
+2025-04-24 14:52:35,024 - INFO -  * Detected change in 'C:\\TradeAlerts\\dashboard.py', reloading
+2025-04-24 14:52:35,082 - INFO -  * Restarting with stat
+2025-04-24 14:52:35,623 - INFO - Dashboard started
+2025-04-24 14:52:35,659 - WARNING -  * Debugger is active!
+2025-04-24 14:52:35,665 - INFO -  * Debugger PIN: 784-069-940
+2025-04-24 14:52:45,562 - INFO - Dashboard started
+2025-04-24 14:52:45,624 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2025-04-24 14:52:45,624 - INFO - [33mPress CTRL+C to quit[0m
+2025-04-24 14:52:45,625 - INFO -  * Restarting with stat
+2025-04-24 14:52:46,155 - INFO - Dashboard started
+2025-04-24 14:52:46,191 - WARNING -  * Debugger is active!
+2025-04-24 14:52:46,199 - INFO -  * Debugger PIN: 784-069-940
+2025-04-24 14:52:46,251 - INFO - 127.0.0.1 - - [24/Apr/2025 14:52:46] "[35m[1mGET / HTTP/1.1[0m" 500 -
+2025-04-24 14:52:46,669 - INFO - 127.0.0.1 - - [24/Apr/2025 14:52:46] "[36mGET /?__debugger__=yes&cmd=resource&f=style.css HTTP/1.1[0m" 304 -
+2025-04-24 14:52:46,671 - INFO - 127.0.0.1 - - [24/Apr/2025 14:52:46] "[36mGET /?__debugger__=yes&cmd=resource&f=debugger.js HTTP/1.1[0m" 304 -
+2025-04-24 14:52:46,705 - INFO - 127.0.0.1 - - [24/Apr/2025 14:52:46] "GET /?__debugger__=yes&cmd=resource&f=console.png&s=gsJ75QF9kBmz7umycajj HTTP/1.1" 200 -
+2025-04-24 14:54:13,280 - INFO -  * Detected change in 'C:\\TradeAlerts\\dashboard.py', reloading
+2025-04-24 14:54:13,344 - INFO -  * Restarting with stat

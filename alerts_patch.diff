@@ -1,0 +1,19 @@
+--- alerts.html	(original)
++++ alerts.html	(patched)
+@@ <!-- Filters -->
+-  <div class="filters mb-4">
++  <div class="filter-bar">
++    <button id="clearFiltered">Clear All</button>
++    <span>Filter:</span>
+     <a href="{{ url_for('index') }}" class="btn-filter {{ not filter and 'active' or '' }}">All</a>
+@@
+-      <td class="sparkline-cell">{{ a.sparkline }}</td>
++      <td class="sparkline-cell" data-spark="{{ a.sparkline }}"></td>
+@@
++      <td>
++        <input type="number" min="0" step="any" class="qty-input" placeholder="Qty">
++        <button class="btn-simulate" data-symbol="{{ a.symbol }}">Sim</button>
++      </td>
+@@
+-    <script src="{{ url_for('static', filename='script.js') }}"></script>
++    <script src="{{ url_for('static', filename='script.js') }}"></script>

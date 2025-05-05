@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Trade Alerts</title>
+  <link rel="stylesheet" href="{{ url_for('static_assets.serve_asset', filename='style.css') }}">
+</head>
+<body>
+  {% block page_header %}
+<header class="main-header">
+    <h1>🚀 Trade Alerts ({{ filter|capitalize if filter else 'All' }}) 🚀</h1>
+    <div class="status">
+      <span>Yahoo Finance Intraday: <strong class="status-text market">Loading...</strong></span>
+      <span>E*TRADE API: <strong class="status-text etrade">Loading...</strong></span>
+      <a href="{{ url_for('status.reconnect_api') }}">Reconnect API</a>
+    </div>
+  </header>
+
+  <nav class="filter-nav">
+    <button id="clearFiltered" class="btn-clear-all">Clear All</button>
+    <span>Filter:</span>
+    {% for key,label in [
+      ('all','All'),
+      ('prime','Prime 💎'),
+      ('sharpshooter','Sharpshooter 🎯'),
+      ('opportunist','Opportunist 👍'),
+      ('sell','Sell 🔥')] %}
+      <button data-type="{{ key }}"
+              class="btn-filter {{ 'active' if filter==key or (not filter and key=='all') else '' }}">
+        {{ label }}
+      </button>
+    {% endfor %}
+    <a href="{{ url_for('simulation.sim_dashboard') }}" class="btn-simulation">Simulation</a>
+  </nav>
+{% endblock %}
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="{{ url_for('static_assets.serve_asset', filename='js/script.js') }}"></script>
+</body>
+</html>

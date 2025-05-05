@@ -1,0 +1,50 @@
+--- style.css	(original)
++++ style.css	(patched)
+@@ (end of file)
++/* --- Filter bar styling --- */
++.filter-bar {
++  display: flex;
++  align-items: center;
++  gap: 0.5rem;
++  background: #181818;
++  padding: 0.5rem;
++}
++.filter-bar button,
++.filter-bar span {
++  font-size: 0.875rem;
++  color: #ddd;
++}
++.filter-bar button#clearFiltered {
++  background: #555;
++  border: none;
++  padding: 0.3rem 0.6rem;
++  border-radius: 3px;
++  cursor: pointer;
++}
++.filter-bar button#clearFiltered:hover {
++  background: #777;
++}
++
++/* Ensure sparkline cells center their content */
++.sparkline-cell {
++  text-align: center;
++  white-space: nowrap;
++}
++
++/* Simulate button & quantity input */
++.qty-input {
++  width: 4rem;
++  padding: 0.2rem;
++  margin-right: 0.3rem;
++}
++.btn-simulate {
++  background: #4caf50;
++  color: #fff;
++  border: none;
++  padding: 0.3rem 0.6rem;
++  border-radius: 3px;
++  cursor: pointer;
++}
++.btn-simulate:hover {
++  background: #43a047;
++}

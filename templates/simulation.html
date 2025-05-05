@@ -1,0 +1,68 @@
+{% extends "layout-sim.html" %}
+
+{% block content %}
+  <h2 class="sim-header">🚀 Simulation Dashboard 🚀</h2>
+  <div class="sim-controls">
+    <button id="reset-sim" class="btn-reset">Reset Simulation</button>
+    <a href="/" class="back-link">← Back to Alerts</a>
+  </div>
+
+  <table class="holdings">
+    <thead>
+      <tr>
+        <th>Symbol</th>
+        <th>Actions</th>
+        <th>Last Price $</th>
+        <th>Change $</th>
+        <th>Change %</th>
+        <th>Qty #</th>
+        <th>Price Paid $</th>
+        <th>Day’s Gain $</th>
+        <th>Total Gain $</th>
+        <th>Total Gain %</th>
+        <th>Value $</th>
+        <th>Clear</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for h in simulation.holdings %}
+      <tr>
+        <td>{{ h.symbol or '' }}</td>
+        <td><button class="btn-action">🔄</button></td>
+        <td>${{ (h.last_price|default(0))|round(2, 'common') }}</td>
+        <td class="{{ 'gain' if (h.change_dollar|default(0))>=0 else 'loss' }}">
+          ${{ (h.change_dollar|default(0))|round(2, 'common') }}
+        </td>
+        <td class="{{ 'gain' if (h.change_pct|default(0))>=0 else 'loss' }}">
+          {{ (h.change_pct|default(0))|round(2, 'common') }}%
+        </td>
+        <td>{{ h.quantity|default(0) }}</td>
+        <td>${{ (h.avg_price|default(0))|round(2, 'common') }}</td>
+        <td class="{{ 'gain' if (h.day_gain|default(0))>=0 else 'loss' }}">
+          ${{ (h.day_gain|default(0))|round(2, 'common') }}
+        </td>
+        <td class="{{ 'gain' if (h.total_gain|default(0))>=0 else 'loss' }}">
+          ${{ (h.total_gain|default(0))|round(2, 'common') }}
+        </td>
+        <td class="{{ 'gain' if (h.total_gain_pct|default(0))>=0 else 'loss' }}">
+          {{ (h.total_gain_pct|default(0))|round(2, 'common') }}%
+        </td>
+        <td>${{ (h.value|default(0))|round(2, 'common') }}</td>
+        <td>
+          <form action="/holdings/{{ h.symbol }}/clear" method="post">
+            <button type="submit" class="btn-clear">Clear</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="12">No holdings</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <script>
+    document.getElementById('reset-sim').addEventListener('click', function() {
+      fetch('/reset', { method: 'POST' }).then(() => location.reload());
+    });
+  </script>
+{% endblock %}

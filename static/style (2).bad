@@ -1,0 +1,9 @@
+
+
+/* === Darker Alerts Table Rows === */
+table.alerts tbody tr:nth-of-type(odd) td {
+  background-color: #0d0d0d !important;
+}
+table.alerts tbody tr:nth-of-type(even) td {
+  background-color: #161723 !important;
+}

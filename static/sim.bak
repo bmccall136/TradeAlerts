@@ -1,0 +1,67 @@
+
+/* Simulation-specific Styles */
+.sim-header {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+.sim-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.btn-reset {
+  background: #2a2a3a;
+  color: #e0e0e0;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.back-link {
+  color: #bb86fc;
+  text-decoration: none;
+}
+.back-link:hover {
+  text-decoration: underline;
+}
+.sim-summary {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 1.5rem;
+}
+.sim-summary div {
+  font-size: 1.1rem;
+}
+table.holdings, table.trades {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 2rem;
+}
+table.holdings th, table.holdings td, table.trades th, table.trades td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid #333;
+}
+table.holdings thead, table.trades thead {
+  background: #1f1f1f;
+}
+table.holdings tr:nth-child(even), table.trades tr:nth-child(even) {
+  background: #1a1a1a;
+}
+table.holdings tr:hover, table.trades tr:hover {
+  background: #2a2a2a;
+}
+.btn-clear {
+  background: #3a3a3a;
+  color: #e0e0e0;
+  border: none;
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.btn-clear:hover {
+  background: #505050;
+}
+.gain { color: #28a745; }
+.loss { color: #dc3545; }

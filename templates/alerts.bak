@@ -1,0 +1,37 @@
+{% extends "layout.html" %}
+{% block content %}
+<table class="alerts">
+  <thead>
+    <tr>
+      <th>Symbol</th><th>Name</th><th>Signal</th><th>Confidence</th><th>Price</th><th>Timestamp</th>
+      <th>Sparkline</th><th>Triggers</th><th>VWAP</th><th>Simulate</th><th>Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for a in alerts %}
+    <tr>
+      <td>{{ a.symbol }}</td>
+      <td>{{ a.name }}</td>
+      <td>
+        {% if a.type=='prime' %}<span class="signal-prime">Prime 💎</span>
+        {% elif a.type=='sharpshooter' %}<span class="signal-sharpshooter">Sharpshooter 🎯</span>
+        {% elif a.type=='opportunist' %}<span class="signal-opportunist">Opportunist 👍</span>
+        {% else %}<span class="signal-sell">Sell 🔥</span>{% endif %}
+      </td>
+      <td>{{ a.confidence }}%</td>
+      <td>${{ '%.2f'|format(a.price) }}</td>
+      <td>{{ a.timestamp }}</td>
+      <td class="sparkline-cell" data-spark="{{ a.sparkline }}"></td>
+      <td>{{ a.triggers|join(', ') }}</td>
+      <td>${{ '%.2f'|format(a.vwap) }}</td>
+      <td>
+        <input type="number" class="qty-input" placeholder="Qty">
+        <button class="btn-simulate" data-symbol="{{ a.symbol }}">Buy</button>
+      </td>
+      <td><button class="btn-clear" data-id="{{ a.id }}">Clear</button></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+  <script src="{{ url_for('static_assets.serve_asset', filename='js/script.js') }}"></script>
+{% endblock %}

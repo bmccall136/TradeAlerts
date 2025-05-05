@@ -1,0 +1,984 @@
+2025-04-20 20:03:30,334 ERROR: $BRK.B: possibly delisted; no price data found  (period=1y) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 20:03:31,079 ERROR: $BRK.B: possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 20:03:31,080 ERROR: Attempt 1 - Error fetching info for BRK.B: 'currentTradingPeriod'
+2025-04-20 20:03:34,504 ERROR: $BRK.B: possibly delisted; no price data found  (period=1y) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 20:03:35,596 ERROR: $BRK.B: possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 20:03:35,597 ERROR: Attempt 2 - Error fetching info for BRK.B: 'currentTradingPeriod'
+2025-04-20 20:11:16,031 ERROR: $BRK.B: possibly delisted; no price data found  (period=1y) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 20:11:16,705 ERROR: $BRK.B: possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 20:11:16,706 ERROR: Attempt 1 - Error fetching info for BRK.B: 'currentTradingPeriod'
+2025-04-20 20:11:20,005 ERROR: $BRK.B: possibly delisted; no price data found  (period=1y) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 20:11:20,734 ERROR: $BRK.B: possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 20:11:20,735 ERROR: Attempt 2 - Error fetching info for BRK.B: 'currentTradingPeriod'
+2025-04-20 20:11:30,246 ERROR: Failed to post alert for BBY: HTTPConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /trade-alert (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x000001E4CE37F790>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+2025-04-20 20:15:12,779 ERROR: $BRK.B: possibly delisted; no price data found  (period=1y) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 20:15:13,492 ERROR: $BRK.B: possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 20:15:13,493 ERROR: Attempt 1 - Error fetching info for BRK.B: 'currentTradingPeriod'
+2025-04-20 20:15:16,322 ERROR: $BRK.B: possibly delisted; no price data found  (period=1y) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 20:15:16,971 ERROR: $BRK.B: possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 20:15:16,972 ERROR: Attempt 2 - Error fetching info for BRK.B: 'currentTradingPeriod'
+2025-04-20 20:22:44,714 ERROR: $BRK.B: possibly delisted; no price data found  (period=1y) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 20:22:45,398 ERROR: $BRK.B: possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 20:22:45,399 ERROR: Attempt 1 - Error fetching info for BRK.B: 'currentTradingPeriod'
+2025-04-20 20:22:48,148 ERROR: $BRK.B: possibly delisted; no price data found  (period=1y) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 20:22:48,882 ERROR: $BRK.B: possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 20:22:48,883 ERROR: Attempt 2 - Error fetching info for BRK.B: 'currentTradingPeriod'
+2025-04-20 20:23:39,770 ERROR: $BF.B: possibly delisted; no price data found  (period=1y)
+2025-04-20 20:23:39,838 ERROR: $BF.B: possibly delisted; no price data found  (period=5d)
+2025-04-20 20:23:39,839 ERROR: Error analyzing BF.B: '>' not supported between instances of 'NoneType' and 'int'
+2025-04-20 20:25:26,322 ERROR: Failed to post alert for CINF: HTTPConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /trade-alert (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000020F70D5E030>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+2025-04-20 20:48:59,298 ERROR: Failed to post alert for APO: HTTPConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /trade-alert (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x00000192DBDCF130>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+2025-04-20 20:49:04,872 ERROR: Failed to post alert for AAPL: HTTPConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /trade-alert (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x00000192DBDCEE00>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+2025-04-20 20:49:10,512 ERROR: Failed to post alert for AMAT: HTTPConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /trade-alert (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x00000192DBDCEE00>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+2025-04-20 20:49:15,943 ERROR: Failed to post alert for APTV: HTTPConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /trade-alert (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x00000192DBDCE360>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+2025-04-20 20:49:21,563 ERROR: Failed to post alert for ACGL: HTTPConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /trade-alert (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x00000192DBDCE470>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+2025-04-20 20:51:57,063 ERROR: Failed to post alert for ACN: ('Connection aborted.', ConnectionResetError(10054, 'An existing connection was forcibly closed by the remote host', None, 10054, None))
+2025-04-20 20:54:01,396 ERROR: Failed to post alert for ADBE: HTTPConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /trade-alert (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x000001F0623D70B0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+2025-04-20 20:54:55,791 ERROR: Failed to post alert for ABBV: ('Connection aborted.', ConnectionResetError(10054, 'An existing connection was forcibly closed by the remote host', None, 10054, None))
+2025-04-20 20:58:15,121 ERROR: Failed to post alert for ABNB: HTTPConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /trade-alert (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000020C4706EE00>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+2025-04-20 21:03:32,272 ERROR: $BRK.B: possibly delisted; no price data found  (period=1y) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 21:03:33,015 ERROR: $BRK.B: possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 21:03:33,016 ERROR: Attempt 1 - Error fetching info for BRK.B: 'currentTradingPeriod'
+2025-04-20 21:03:36,152 ERROR: $BRK.B: possibly delisted; no price data found  (period=1y) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 21:03:36,785 ERROR: $BRK.B: possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 21:03:36,786 ERROR: Attempt 2 - Error fetching info for BRK.B: 'currentTradingPeriod'
+2025-04-20 21:04:27,991 ERROR: $BF.B: possibly delisted; no price data found  (period=1y)
+2025-04-20 21:04:28,044 ERROR: $BF.B: possibly delisted; no price data found  (period=5d)
+2025-04-20 21:04:28,046 ERROR: Error analyzing BF.B: '>' not supported between instances of 'NoneType' and 'int'
+2025-04-20 21:10:29,851 ERROR: Failed to post alert for LNT: HTTPConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /trade-alert (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x00000201163AE690>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+2025-04-20 21:17:18,341 ERROR: $BRK.B: possibly delisted; no price data found  (period=1y) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 21:17:18,993 ERROR: $BRK.B: possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 21:17:18,994 ERROR: Attempt 1 - Error fetching info for BRK.B: 'currentTradingPeriod'
+2025-04-20 21:17:21,782 ERROR: $BRK.B: possibly delisted; no price data found  (period=1y) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 21:17:22,761 ERROR: $BRK.B: possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")
+2025-04-20 21:17:22,762 ERROR: Attempt 2 - Error fetching info for BRK.B: 'currentTradingPeriod'
+2025-04-20 21:18:14,424 ERROR: $BF.B: possibly delisted; no price data found  (period=1y)
+2025-04-20 21:18:14,485 ERROR: $BF.B: possibly delisted; no price data found  (period=5d)
+2025-04-20 21:18:14,487 ERROR: Error analyzing BF.B: '>' not supported between instances of 'NoneType' and 'int'
+2025-04-20 21:18:37,663 ERROR: Error analyzing MMM: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:18:38,904 ERROR: Error analyzing AOS: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:18:40,156 ERROR: Error analyzing ABT: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:18:41,461 ERROR: Error analyzing ABBV: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:18:42,606 ERROR: Error analyzing ACN: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:18:43,748 ERROR: Error analyzing ADBE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:18:44,926 ERROR: Error analyzing AMD: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:18:46,277 ERROR: Error analyzing AES: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:18:47,433 ERROR: Error analyzing AFL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:18:48,574 ERROR: Error analyzing A: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:18:49,752 ERROR: Error analyzing APD: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:18:50,895 ERROR: Error analyzing ABNB: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:18:52,096 ERROR: Error analyzing AKAM: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:18:53,260 ERROR: Error analyzing ALB: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:18:54,406 ERROR: Error analyzing ARE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:18:55,540 ERROR: Error analyzing ALGN: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:18:56,686 ERROR: Error analyzing ALLE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:18:57,855 ERROR: Error analyzing LNT: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:18:59,018 ERROR: Error analyzing ALL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:19:00,157 ERROR: Error analyzing GOOGL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:19:01,274 ERROR: Error analyzing GOOG: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:19:02,557 ERROR: Error analyzing MO: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:19:03,684 ERROR: Error analyzing AMZN: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:19:49,554 ERROR: Error analyzing MMM: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:19:50,721 ERROR: Error analyzing AOS: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:19:51,899 ERROR: Error analyzing ABT: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:19:53,132 ERROR: Error analyzing ABBV: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:19:54,319 ERROR: Error analyzing ACN: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:19:55,449 ERROR: Error analyzing ADBE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:19:56,625 ERROR: Error analyzing AMD: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:19:57,818 ERROR: Error analyzing AES: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:19:59,004 ERROR: Error analyzing AFL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:20:00,159 ERROR: Error analyzing A: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:20:01,426 ERROR: Error analyzing APD: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:20:02,566 ERROR: Error analyzing ABNB: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:20:03,688 ERROR: Error analyzing AKAM: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:20:04,875 ERROR: Error analyzing ALB: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:20:06,042 ERROR: Error analyzing ARE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:20:07,151 ERROR: Error analyzing ALGN: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:20:08,288 ERROR: Error analyzing ALLE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:20:09,465 ERROR: Error analyzing LNT: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:20:10,645 ERROR: Error analyzing ALL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:21:10,363 ERROR: Error analyzing MMM: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:21:11,554 ERROR: Error analyzing AOS: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:21:12,811 ERROR: Error analyzing ABT: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:21:13,957 ERROR: Error analyzing ABBV: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:21:15,148 ERROR: Error analyzing ACN: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:21:16,285 ERROR: Error analyzing ADBE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:21:17,477 ERROR: Error analyzing AMD: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:21:18,639 ERROR: Error analyzing AES: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:21:19,834 ERROR: Error analyzing AFL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:21:20,982 ERROR: Error analyzing A: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:21:22,171 ERROR: Error analyzing APD: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:21:23,290 ERROR: Error analyzing ABNB: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:21:24,416 ERROR: Error analyzing AKAM: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:21:25,565 ERROR: Error analyzing ALB: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:21:26,727 ERROR: Error analyzing ARE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:21:27,848 ERROR: Error analyzing ALGN: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:21:28,990 ERROR: Error analyzing ALLE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:21:30,166 ERROR: Error analyzing LNT: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:21:31,330 ERROR: Error analyzing ALL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:21:32,454 ERROR: Error analyzing GOOGL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:22:54,352 ERROR: Error analyzing MMM: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:22:55,521 ERROR: Error analyzing AOS: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:22:56,703 ERROR: Error analyzing ABT: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:22:57,859 ERROR: Error analyzing ABBV: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:22:59,064 ERROR: Error analyzing ACN: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:00,204 ERROR: Error analyzing ADBE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:01,395 ERROR: Error analyzing AMD: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:02,688 ERROR: Error analyzing AES: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:03,866 ERROR: Error analyzing AFL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:05,161 ERROR: Error analyzing A: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:06,353 ERROR: Error analyzing APD: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:07,526 ERROR: Error analyzing ABNB: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:08,652 ERROR: Error analyzing AKAM: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:09,789 ERROR: Error analyzing ALB: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:10,932 ERROR: Error analyzing ARE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:12,052 ERROR: Error analyzing ALGN: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:13,208 ERROR: Error analyzing ALLE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:14,382 ERROR: Error analyzing LNT: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:15,588 ERROR: Error analyzing ALL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:16,704 ERROR: Error analyzing GOOGL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:17,824 ERROR: Error analyzing GOOG: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:19,167 ERROR: Error analyzing MO: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:20,330 ERROR: Error analyzing AMZN: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:21,475 ERROR: Error analyzing AMCR: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:22,660 ERROR: Error analyzing AEE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:23,890 ERROR: Error analyzing AEP: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:23:25,165 ERROR: Error analyzing AXP: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:13,991 ERROR: Error analyzing MMM: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:15,176 ERROR: Error analyzing AOS: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:16,441 ERROR: Error analyzing ABT: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:17,576 ERROR: Error analyzing ABBV: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:18,723 ERROR: Error analyzing ACN: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:19,877 ERROR: Error analyzing ADBE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:21,037 ERROR: Error analyzing AMD: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:22,213 ERROR: Error analyzing AES: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:23,469 ERROR: Error analyzing AFL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:24,712 ERROR: Error analyzing A: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:25,928 ERROR: Error analyzing APD: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:27,043 ERROR: Error analyzing ABNB: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:28,158 ERROR: Error analyzing AKAM: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:29,325 ERROR: Error analyzing ALB: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:30,484 ERROR: Error analyzing ARE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:31,588 ERROR: Error analyzing ALGN: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:32,711 ERROR: Error analyzing ALLE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:33,902 ERROR: Error analyzing LNT: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:35,067 ERROR: Error analyzing ALL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:36,206 ERROR: Error analyzing GOOGL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:37,331 ERROR: Error analyzing GOOG: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:38,627 ERROR: Error analyzing MO: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:39,756 ERROR: Error analyzing AMZN: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:40,888 ERROR: Error analyzing AMCR: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:42,113 ERROR: Error analyzing AEE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:43,328 ERROR: Error analyzing AEP: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:44,515 ERROR: Error analyzing AXP: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:45,680 ERROR: Error analyzing AIG: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:46,922 ERROR: Error analyzing AMT: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:48,076 ERROR: Error analyzing AWK: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:49,203 ERROR: Error analyzing AMP: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:50,397 ERROR: Error analyzing AME: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:51,540 ERROR: Error analyzing AMGN: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:52,714 ERROR: Error analyzing APH: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:53,842 ERROR: Error analyzing ADI: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:54,973 ERROR: Error analyzing ANSS: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:56,131 ERROR: Error analyzing AON: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:57,315 ERROR: Error analyzing APA: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:58,507 ERROR: Error analyzing APO: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:24:59,667 ERROR: Error analyzing AAPL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:00,808 ERROR: Error analyzing AMAT: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:01,922 ERROR: Error analyzing APTV: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:03,056 ERROR: Error analyzing ACGL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:04,330 ERROR: Error analyzing ADM: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:05,465 ERROR: Error analyzing ANET: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:06,787 ERROR: Error analyzing AJG: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:08,019 ERROR: Error analyzing AIZ: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:09,268 ERROR: Error analyzing T: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:10,547 ERROR: Error analyzing ATO: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:11,736 ERROR: Error analyzing ADSK: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:13,045 ERROR: Error analyzing ADP: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:14,188 ERROR: Error analyzing AZO: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:15,347 ERROR: Error analyzing AVB: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:16,663 ERROR: Error analyzing AVY: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:17,803 ERROR: Error analyzing AXON: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:18,979 ERROR: Error analyzing BKR: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:31,185 ERROR: Error analyzing MMM: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:32,372 ERROR: Error analyzing AOS: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:33,629 ERROR: Error analyzing ABT: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:34,782 ERROR: Error analyzing ABBV: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:35,950 ERROR: Error analyzing ACN: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:37,114 ERROR: Error analyzing ADBE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:38,287 ERROR: Error analyzing AMD: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:39,450 ERROR: Error analyzing AES: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:40,698 ERROR: Error analyzing AFL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:41,848 ERROR: Error analyzing A: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:43,048 ERROR: Error analyzing APD: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:44,178 ERROR: Error analyzing ABNB: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:45,273 ERROR: Error analyzing AKAM: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:46,449 ERROR: Error analyzing ALB: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:47,729 ERROR: Error analyzing ARE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:48,855 ERROR: Error analyzing ALGN: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:49,993 ERROR: Error analyzing ALLE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:51,271 ERROR: Error analyzing LNT: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:52,438 ERROR: Error analyzing ALL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:53,578 ERROR: Error analyzing GOOGL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:54,732 ERROR: Error analyzing GOOG: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:56,036 ERROR: Error analyzing MO: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:57,139 ERROR: Error analyzing AMZN: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:58,272 ERROR: Error analyzing AMCR: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:25:59,461 ERROR: Error analyzing AEE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:00,701 ERROR: Error analyzing AEP: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:01,904 ERROR: Error analyzing AXP: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:03,113 ERROR: Error analyzing AIG: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:04,265 ERROR: Error analyzing AMT: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:05,402 ERROR: Error analyzing AWK: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:06,696 ERROR: Error analyzing AMP: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:07,904 ERROR: Error analyzing AME: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:09,037 ERROR: Error analyzing AMGN: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:10,202 ERROR: Error analyzing APH: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:11,343 ERROR: Error analyzing ADI: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:12,457 ERROR: Error analyzing ANSS: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:13,739 ERROR: Error analyzing AON: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:14,996 ERROR: Error analyzing APA: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:16,169 ERROR: Error analyzing APO: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:17,450 ERROR: Error analyzing AAPL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:18,598 ERROR: Error analyzing AMAT: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:19,710 ERROR: Error analyzing APTV: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:20,811 ERROR: Error analyzing ACGL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:22,140 ERROR: Error analyzing ADM: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:23,252 ERROR: Error analyzing ANET: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:24,400 ERROR: Error analyzing AJG: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:25,534 ERROR: Error analyzing AIZ: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:26,761 ERROR: Error analyzing T: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:27,960 ERROR: Error analyzing ATO: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:29,090 ERROR: Error analyzing ADSK: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:30,349 ERROR: Error analyzing ADP: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:31,469 ERROR: Error analyzing AZO: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:32,641 ERROR: Error analyzing AVB: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:33,930 ERROR: Error analyzing AVY: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:35,047 ERROR: Error analyzing AXON: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:36,217 ERROR: Error analyzing BKR: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:37,383 ERROR: Error analyzing BALL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:38,550 ERROR: Error analyzing BAC: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:39,734 ERROR: Error analyzing BAX: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:40,997 ERROR: Error analyzing BDX: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:43,879 ERROR: 
+1 Failed download:
+2025-04-20 21:26:43,879 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 21:26:45,030 ERROR: Error analyzing BBY: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:46,320 ERROR: Error analyzing TECH: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:47,436 ERROR: Error analyzing BIIB: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:48,594 ERROR: Error analyzing BLK: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:49,734 ERROR: Error analyzing BX: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:50,903 ERROR: Error analyzing BK: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:52,151 ERROR: Error analyzing BA: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:53,269 ERROR: Error analyzing BKNG: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:54,382 ERROR: Error analyzing BSX: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:55,745 ERROR: Error analyzing BMY: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:56,990 ERROR: Error analyzing AVGO: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:58,191 ERROR: Error analyzing BR: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:26:59,367 ERROR: Error analyzing BRO: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:00,436 ERROR: 
+1 Failed download:
+2025-04-20 21:27:00,436 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-20 21:27:01,557 ERROR: Error analyzing BLDR: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:02,705 ERROR: Error analyzing BG: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:03,870 ERROR: Error analyzing BXP: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:05,040 ERROR: Error analyzing CHRW: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:06,153 ERROR: Error analyzing CDNS: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:07,411 ERROR: Error analyzing CZR: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:08,629 ERROR: Error analyzing CPT: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:09,797 ERROR: Error analyzing CPB: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:10,940 ERROR: Error analyzing COF: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:12,123 ERROR: Error analyzing CAH: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:13,250 ERROR: Error analyzing KMX: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:14,408 ERROR: Error analyzing CCL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:15,545 ERROR: Error analyzing CARR: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:16,851 ERROR: Error analyzing CAT: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:17,997 ERROR: Error analyzing CBOE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:19,118 ERROR: Error analyzing CBRE: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:20,423 ERROR: Error analyzing CDW: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:21,568 ERROR: Error analyzing COR: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:22,705 ERROR: Error analyzing CNC: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:24,009 ERROR: Error analyzing CNP: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:25,176 ERROR: Error analyzing CF: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:26,297 ERROR: Error analyzing CRL: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:27,485 ERROR: Error analyzing SCHW: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:28,620 ERROR: Error analyzing CHTR: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:29,941 ERROR: Error analyzing CVX: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:31,065 ERROR: Error analyzing CMG: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:32,215 ERROR: Error analyzing CB: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:33,411 ERROR: Error analyzing CHD: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:34,588 ERROR: Error analyzing CI: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:35,765 ERROR: Error analyzing CINF: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:36,912 ERROR: Error analyzing CTAS: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:38,046 ERROR: Error analyzing CSCO: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:39,252 ERROR: Error analyzing C: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:40,390 ERROR: Error analyzing CFG: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:41,625 ERROR: Error analyzing CLX: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:42,785 ERROR: Error analyzing CME: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:44,078 ERROR: Error analyzing CMS: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:45,413 ERROR: Error analyzing KO: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:57,086 ERROR: Error analyzing MMM: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:58,268 ERROR: Error analyzing AOS: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:27:59,480 ERROR: Error analyzing ABT: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:28:00,612 ERROR: Error analyzing ABBV: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:28:01,758 ERROR: Error analyzing ACN: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2025-04-20 21:33:09,599 ERROR: 
+1 Failed download:
+2025-04-20 21:33:09,600 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 21:33:25,748 ERROR: 
+1 Failed download:
+2025-04-20 21:33:25,748 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-20 21:40:58,953 ERROR: 
+1 Failed download:
+2025-04-20 21:40:58,954 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 21:41:15,457 ERROR: 
+1 Failed download:
+2025-04-20 21:41:15,458 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-20 21:43:19,923 ERROR: 
+1 Failed download:
+2025-04-20 21:43:19,923 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 21:43:36,013 ERROR: 
+1 Failed download:
+2025-04-20 21:43:36,014 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-20 21:45:15,027 ERROR: 
+1 Failed download:
+2025-04-20 21:45:15,027 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 21:45:31,183 ERROR: 
+1 Failed download:
+2025-04-20 21:45:31,183 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-20 21:47:20,319 ERROR: 
+1 Failed download:
+2025-04-20 21:47:20,320 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 21:47:36,549 ERROR: 
+1 Failed download:
+2025-04-20 21:47:36,549 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-20 21:51:06,571 ERROR: 
+1 Failed download:
+2025-04-20 21:51:06,572 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 21:51:23,372 ERROR: 
+1 Failed download:
+2025-04-20 21:51:23,373 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-20 21:58:55,111 ERROR: 
+1 Failed download:
+2025-04-20 21:58:55,112 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 21:59:11,789 ERROR: 
+1 Failed download:
+2025-04-20 21:59:11,790 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-20 22:01:09,057 ERROR: 
+1 Failed download:
+2025-04-20 22:01:09,058 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 22:01:25,579 ERROR: 
+1 Failed download:
+2025-04-20 22:01:25,579 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-20 22:02:50,336 ERROR: 
+1 Failed download:
+2025-04-20 22:02:50,336 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 22:02:50,541 ERROR: 
+1 Failed download:
+2025-04-20 22:02:50,541 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 22:03:06,498 ERROR: 
+1 Failed download:
+2025-04-20 22:03:06,499 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-20 22:03:06,803 ERROR: 
+1 Failed download:
+2025-04-20 22:03:06,803 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-20 22:08:36,900 ERROR: 
+1 Failed download:
+2025-04-20 22:08:36,901 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 22:08:53,254 ERROR: 
+1 Failed download:
+2025-04-20 22:08:53,254 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-20 22:18:31,249 ERROR: 
+1 Failed download:
+2025-04-20 22:18:31,249 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 22:18:47,694 ERROR: 
+1 Failed download:
+2025-04-20 22:18:47,695 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-20 22:28:26,263 ERROR: 
+1 Failed download:
+2025-04-20 22:28:26,263 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 22:28:42,712 ERROR: 
+1 Failed download:
+2025-04-20 22:28:42,712 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-20 22:44:19,591 ERROR: 
+1 Failed download:
+2025-04-20 22:44:19,591 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 22:44:37,193 ERROR: 
+1 Failed download:
+2025-04-20 22:44:37,194 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-20 22:54:52,111 ERROR: 
+1 Failed download:
+2025-04-20 22:54:52,111 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 22:55:08,439 ERROR: 
+1 Failed download:
+2025-04-20 22:55:08,440 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-20 23:04:41,579 ERROR: 
+1 Failed download:
+2025-04-20 23:04:41,580 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 23:04:57,897 ERROR: 
+1 Failed download:
+2025-04-20 23:04:57,898 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-20 23:14:30,958 ERROR: 
+1 Failed download:
+2025-04-20 23:14:30,959 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 23:14:47,130 ERROR: 
+1 Failed download:
+2025-04-20 23:14:47,130 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-20 23:24:19,264 ERROR: 
+1 Failed download:
+2025-04-20 23:24:19,265 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 23:24:35,474 ERROR: 
+1 Failed download:
+2025-04-20 23:24:35,475 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-20 23:34:08,243 ERROR: 
+1 Failed download:
+2025-04-20 23:34:08,243 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 23:34:24,341 ERROR: 
+1 Failed download:
+2025-04-20 23:34:24,341 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-20 23:43:55,824 ERROR: 
+1 Failed download:
+2025-04-20 23:43:55,825 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 23:44:12,228 ERROR: 
+1 Failed download:
+2025-04-20 23:44:12,228 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-20 23:53:44,350 ERROR: 
+1 Failed download:
+2025-04-20 23:53:44,351 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-20 23:54:00,580 ERROR: 
+1 Failed download:
+2025-04-20 23:54:00,581 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 00:03:31,711 ERROR: 
+1 Failed download:
+2025-04-21 00:03:31,712 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 00:03:47,909 ERROR: 
+1 Failed download:
+2025-04-21 00:03:47,910 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 00:13:16,857 ERROR: 
+1 Failed download:
+2025-04-21 00:13:16,857 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 00:13:33,039 ERROR: 
+1 Failed download:
+2025-04-21 00:13:33,040 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 00:23:04,723 ERROR: 
+1 Failed download:
+2025-04-21 00:23:04,724 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 00:23:20,733 ERROR: 
+1 Failed download:
+2025-04-21 00:23:20,734 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 00:32:52,173 ERROR: 
+1 Failed download:
+2025-04-21 00:32:52,174 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 00:33:08,533 ERROR: 
+1 Failed download:
+2025-04-21 00:33:08,534 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 00:42:39,766 ERROR: 
+1 Failed download:
+2025-04-21 00:42:39,767 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 00:42:55,905 ERROR: 
+1 Failed download:
+2025-04-21 00:42:55,905 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 00:52:27,019 ERROR: 
+1 Failed download:
+2025-04-21 00:52:27,020 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 00:52:43,322 ERROR: 
+1 Failed download:
+2025-04-21 00:52:43,323 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 01:02:13,458 ERROR: 
+1 Failed download:
+2025-04-21 01:02:13,458 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 01:02:29,625 ERROR: 
+1 Failed download:
+2025-04-21 01:02:29,625 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 01:12:00,121 ERROR: 
+1 Failed download:
+2025-04-21 01:12:00,122 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 01:12:16,378 ERROR: 
+1 Failed download:
+2025-04-21 01:12:16,378 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 01:21:47,433 ERROR: 
+1 Failed download:
+2025-04-21 01:21:47,433 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 01:22:03,675 ERROR: 
+1 Failed download:
+2025-04-21 01:22:03,676 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 01:31:34,842 ERROR: 
+1 Failed download:
+2025-04-21 01:31:34,843 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 01:31:50,945 ERROR: 
+1 Failed download:
+2025-04-21 01:31:50,945 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 01:41:21,291 ERROR: 
+1 Failed download:
+2025-04-21 01:41:21,291 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 01:41:37,446 ERROR: 
+1 Failed download:
+2025-04-21 01:41:37,446 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 01:51:08,814 ERROR: 
+1 Failed download:
+2025-04-21 01:51:08,814 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 01:51:24,904 ERROR: 
+1 Failed download:
+2025-04-21 01:51:24,905 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 02:00:54,522 ERROR: 
+1 Failed download:
+2025-04-21 02:00:54,523 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 02:01:10,577 ERROR: 
+1 Failed download:
+2025-04-21 02:01:10,577 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 02:10:40,721 ERROR: 
+1 Failed download:
+2025-04-21 02:10:40,722 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 02:10:57,079 ERROR: 
+1 Failed download:
+2025-04-21 02:10:57,079 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 02:20:27,730 ERROR: 
+1 Failed download:
+2025-04-21 02:20:27,731 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 02:20:43,963 ERROR: 
+1 Failed download:
+2025-04-21 02:20:43,963 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 02:30:14,125 ERROR: 
+1 Failed download:
+2025-04-21 02:30:14,126 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 02:30:30,256 ERROR: 
+1 Failed download:
+2025-04-21 02:30:30,256 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 02:39:59,845 ERROR: 
+1 Failed download:
+2025-04-21 02:39:59,845 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 02:40:15,999 ERROR: 
+1 Failed download:
+2025-04-21 02:40:16,000 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 02:49:45,172 ERROR: 
+1 Failed download:
+2025-04-21 02:49:45,173 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 02:50:01,524 ERROR: 
+1 Failed download:
+2025-04-21 02:50:01,524 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 02:59:30,712 ERROR: 
+1 Failed download:
+2025-04-21 02:59:30,712 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 02:59:46,895 ERROR: 
+1 Failed download:
+2025-04-21 02:59:46,896 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 03:09:17,446 ERROR: 
+1 Failed download:
+2025-04-21 03:09:17,446 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 03:09:33,448 ERROR: 
+1 Failed download:
+2025-04-21 03:09:33,448 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 03:19:04,512 ERROR: 
+1 Failed download:
+2025-04-21 03:19:04,513 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 03:19:20,629 ERROR: 
+1 Failed download:
+2025-04-21 03:19:20,629 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 03:28:50,518 ERROR: 
+1 Failed download:
+2025-04-21 03:28:50,519 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 03:29:06,752 ERROR: 
+1 Failed download:
+2025-04-21 03:29:06,752 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 03:38:35,965 ERROR: 
+1 Failed download:
+2025-04-21 03:38:35,965 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 03:38:52,148 ERROR: 
+1 Failed download:
+2025-04-21 03:38:52,148 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 03:48:22,173 ERROR: 
+1 Failed download:
+2025-04-21 03:48:22,173 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 03:48:38,465 ERROR: 
+1 Failed download:
+2025-04-21 03:48:38,466 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 03:58:08,621 ERROR: 
+1 Failed download:
+2025-04-21 03:58:08,622 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 03:58:24,988 ERROR: 
+1 Failed download:
+2025-04-21 03:58:24,989 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 04:07:54,443 ERROR: 
+1 Failed download:
+2025-04-21 04:07:54,444 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 04:08:10,565 ERROR: 
+1 Failed download:
+2025-04-21 04:08:10,565 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 04:17:40,464 ERROR: 
+1 Failed download:
+2025-04-21 04:17:40,465 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 04:17:56,640 ERROR: 
+1 Failed download:
+2025-04-21 04:17:56,641 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 04:27:27,706 ERROR: 
+1 Failed download:
+2025-04-21 04:27:27,706 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 04:27:43,817 ERROR: 
+1 Failed download:
+2025-04-21 04:27:43,817 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 04:37:13,739 ERROR: 
+1 Failed download:
+2025-04-21 04:37:13,740 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 04:37:29,824 ERROR: 
+1 Failed download:
+2025-04-21 04:37:29,825 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 04:47:01,358 ERROR: 
+1 Failed download:
+2025-04-21 04:47:01,358 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 04:47:17,526 ERROR: 
+1 Failed download:
+2025-04-21 04:47:17,527 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 04:56:48,260 ERROR: 
+1 Failed download:
+2025-04-21 04:56:48,260 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 04:57:04,310 ERROR: 
+1 Failed download:
+2025-04-21 04:57:04,311 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 05:06:34,777 ERROR: 
+1 Failed download:
+2025-04-21 05:06:34,778 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 05:06:50,969 ERROR: 
+1 Failed download:
+2025-04-21 05:06:50,969 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 05:16:21,519 ERROR: 
+1 Failed download:
+2025-04-21 05:16:21,519 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 05:16:37,807 ERROR: 
+1 Failed download:
+2025-04-21 05:16:37,807 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 05:26:08,839 ERROR: 
+1 Failed download:
+2025-04-21 05:26:08,839 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 05:26:25,164 ERROR: 
+1 Failed download:
+2025-04-21 05:26:25,165 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 05:35:55,781 ERROR: 
+1 Failed download:
+2025-04-21 05:35:55,781 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 05:36:11,833 ERROR: 
+1 Failed download:
+2025-04-21 05:36:11,834 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 05:45:42,865 ERROR: 
+1 Failed download:
+2025-04-21 05:45:42,865 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 05:45:59,115 ERROR: 
+1 Failed download:
+2025-04-21 05:45:59,116 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 05:55:30,820 ERROR: 
+1 Failed download:
+2025-04-21 05:55:30,820 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 05:55:47,124 ERROR: 
+1 Failed download:
+2025-04-21 05:55:47,124 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 06:05:19,593 ERROR: 
+1 Failed download:
+2025-04-21 06:05:19,594 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 06:05:35,965 ERROR: 
+1 Failed download:
+2025-04-21 06:05:35,966 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 06:15:09,664 ERROR: 
+1 Failed download:
+2025-04-21 06:15:09,665 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 06:15:25,794 ERROR: 
+1 Failed download:
+2025-04-21 06:15:25,795 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 06:24:58,417 ERROR: 
+1 Failed download:
+2025-04-21 06:24:58,418 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 06:25:14,865 ERROR: 
+1 Failed download:
+2025-04-21 06:25:14,865 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 06:34:46,203 ERROR: 
+1 Failed download:
+2025-04-21 06:34:46,203 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 06:35:02,330 ERROR: 
+1 Failed download:
+2025-04-21 06:35:02,331 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 06:44:35,400 ERROR: 
+1 Failed download:
+2025-04-21 06:44:35,400 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 06:44:51,730 ERROR: 
+1 Failed download:
+2025-04-21 06:44:51,730 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 06:54:24,171 ERROR: 
+1 Failed download:
+2025-04-21 06:54:24,172 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 06:54:40,446 ERROR: 
+1 Failed download:
+2025-04-21 06:54:40,446 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 07:04:13,518 ERROR: 
+1 Failed download:
+2025-04-21 07:04:13,519 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 07:04:29,914 ERROR: 
+1 Failed download:
+2025-04-21 07:04:29,914 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 07:14:02,721 ERROR: 
+1 Failed download:
+2025-04-21 07:14:02,721 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 07:14:18,921 ERROR: 
+1 Failed download:
+2025-04-21 07:14:18,921 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 07:23:53,442 ERROR: 
+1 Failed download:
+2025-04-21 07:23:53,442 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 07:24:09,626 ERROR: 
+1 Failed download:
+2025-04-21 07:24:09,626 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 07:33:44,183 ERROR: 
+1 Failed download:
+2025-04-21 07:33:44,184 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 07:34:00,250 ERROR: 
+1 Failed download:
+2025-04-21 07:34:00,250 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 07:43:34,933 ERROR: 
+1 Failed download:
+2025-04-21 07:43:34,934 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 07:43:51,147 ERROR: 
+1 Failed download:
+2025-04-21 07:43:51,148 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 07:53:26,818 ERROR: 
+1 Failed download:
+2025-04-21 07:53:26,818 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 07:53:43,093 ERROR: 
+1 Failed download:
+2025-04-21 07:53:43,093 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 08:03:15,599 ERROR: 
+1 Failed download:
+2025-04-21 08:03:15,600 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 08:03:31,759 ERROR: 
+1 Failed download:
+2025-04-21 08:03:31,759 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 08:13:03,758 ERROR: 
+1 Failed download:
+2025-04-21 08:13:03,759 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 08:13:19,866 ERROR: 
+1 Failed download:
+2025-04-21 08:13:19,867 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 08:22:52,761 ERROR: 
+1 Failed download:
+2025-04-21 08:22:52,762 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 08:23:09,076 ERROR: 
+1 Failed download:
+2025-04-21 08:23:09,077 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 08:32:41,215 ERROR: 
+1 Failed download:
+2025-04-21 08:32:41,216 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 08:32:57,528 ERROR: 
+1 Failed download:
+2025-04-21 08:32:57,529 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 08:42:30,108 ERROR: 
+1 Failed download:
+2025-04-21 08:42:30,108 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 08:42:46,254 ERROR: 
+1 Failed download:
+2025-04-21 08:42:46,254 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 08:52:21,542 ERROR: 
+1 Failed download:
+2025-04-21 08:52:21,543 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 08:52:37,917 ERROR: 
+1 Failed download:
+2025-04-21 08:52:37,917 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 09:02:10,859 ERROR: 
+1 Failed download:
+2025-04-21 09:02:10,860 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 09:02:27,004 ERROR: 
+1 Failed download:
+2025-04-21 09:02:27,004 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 09:12:03,003 ERROR: 
+1 Failed download:
+2025-04-21 09:12:03,004 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 09:12:19,224 ERROR: 
+1 Failed download:
+2025-04-21 09:12:19,224 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 09:21:52,302 ERROR: 
+1 Failed download:
+2025-04-21 09:21:52,303 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 09:22:08,806 ERROR: 
+1 Failed download:
+2025-04-21 09:22:08,806 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 09:31:46,228 ERROR: 
+1 Failed download:
+2025-04-21 09:31:46,229 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 09:32:02,493 ERROR: 
+1 Failed download:
+2025-04-21 09:32:02,494 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 09:41:42,247 ERROR: 
+1 Failed download:
+2025-04-21 09:41:42,248 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 09:41:58,397 ERROR: 
+1 Failed download:
+2025-04-21 09:41:58,398 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 09:51:39,393 ERROR: 
+1 Failed download:
+2025-04-21 09:51:39,393 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 09:51:55,692 ERROR: 
+1 Failed download:
+2025-04-21 09:51:55,693 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 10:01:34,220 ERROR: 
+1 Failed download:
+2025-04-21 10:01:34,221 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 10:01:50,702 ERROR: 
+1 Failed download:
+2025-04-21 10:01:50,702 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 10:11:29,693 ERROR: 
+1 Failed download:
+2025-04-21 10:11:29,693 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 10:11:46,183 ERROR: 
+1 Failed download:
+2025-04-21 10:11:46,183 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 10:21:25,727 ERROR: 
+1 Failed download:
+2025-04-21 10:21:25,727 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 10:21:42,179 ERROR: 
+1 Failed download:
+2025-04-21 10:21:42,179 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 10:31:21,861 ERROR: 
+1 Failed download:
+2025-04-21 10:31:21,862 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 10:31:38,209 ERROR: 
+1 Failed download:
+2025-04-21 10:31:38,210 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 10:41:17,043 ERROR: 
+1 Failed download:
+2025-04-21 10:41:17,044 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 10:41:33,084 ERROR: 
+1 Failed download:
+2025-04-21 10:41:33,084 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 10:51:11,911 ERROR: 
+1 Failed download:
+2025-04-21 10:51:11,912 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 10:51:28,186 ERROR: 
+1 Failed download:
+2025-04-21 10:51:28,186 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 11:01:07,792 ERROR: 
+1 Failed download:
+2025-04-21 11:01:07,792 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 11:01:23,885 ERROR: 
+1 Failed download:
+2025-04-21 11:01:23,885 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 11:11:07,975 ERROR: 
+1 Failed download:
+2025-04-21 11:11:07,975 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 11:11:24,171 ERROR: 
+1 Failed download:
+2025-04-21 11:11:24,172 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 11:21:03,662 ERROR: 
+1 Failed download:
+2025-04-21 11:21:03,662 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 11:21:19,758 ERROR: 
+1 Failed download:
+2025-04-21 11:21:19,758 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 11:30:55,957 ERROR: 
+1 Failed download:
+2025-04-21 11:30:55,958 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 11:31:12,516 ERROR: 
+1 Failed download:
+2025-04-21 11:31:12,516 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 11:40:50,743 ERROR: 
+1 Failed download:
+2025-04-21 11:40:50,743 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 11:41:07,255 ERROR: 
+1 Failed download:
+2025-04-21 11:41:07,255 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 11:50:51,472 ERROR: 
+1 Failed download:
+2025-04-21 11:50:51,473 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 11:51:07,782 ERROR: 
+1 Failed download:
+2025-04-21 11:51:07,783 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 12:00:49,375 ERROR: 
+1 Failed download:
+2025-04-21 12:00:49,375 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 12:01:14,214 ERROR: 
+1 Failed download:
+2025-04-21 12:01:14,215 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 12:10:56,289 ERROR: 
+1 Failed download:
+2025-04-21 12:10:56,289 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 12:11:12,626 ERROR: 
+1 Failed download:
+2025-04-21 12:11:12,627 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 12:21:01,994 ERROR: 
+1 Failed download:
+2025-04-21 12:21:01,994 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 12:21:18,113 ERROR: 
+1 Failed download:
+2025-04-21 12:21:18,113 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 12:30:54,057 ERROR: 
+1 Failed download:
+2025-04-21 12:30:54,057 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 12:31:10,384 ERROR: 
+1 Failed download:
+2025-04-21 12:31:10,384 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 12:40:46,944 ERROR: 
+1 Failed download:
+2025-04-21 12:40:46,944 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 12:41:03,114 ERROR: 
+1 Failed download:
+2025-04-21 12:41:03,115 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 12:50:38,645 ERROR: 
+1 Failed download:
+2025-04-21 12:50:38,645 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 12:50:54,935 ERROR: 
+1 Failed download:
+2025-04-21 12:50:54,936 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 13:00:29,815 ERROR: 
+1 Failed download:
+2025-04-21 13:00:29,816 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 13:00:46,139 ERROR: 
+1 Failed download:
+2025-04-21 13:00:46,140 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 13:10:21,020 ERROR: 
+1 Failed download:
+2025-04-21 13:10:21,021 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 13:10:37,323 ERROR: 
+1 Failed download:
+2025-04-21 13:10:37,323 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 13:20:12,258 ERROR: 
+1 Failed download:
+2025-04-21 13:20:12,258 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 13:20:28,655 ERROR: 
+1 Failed download:
+2025-04-21 13:20:28,655 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 13:30:09,382 ERROR: 
+1 Failed download:
+2025-04-21 13:30:09,383 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 13:30:25,703 ERROR: 
+1 Failed download:
+2025-04-21 13:30:25,703 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 13:40:01,323 ERROR: 
+1 Failed download:
+2025-04-21 13:40:01,324 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 13:40:17,591 ERROR: 
+1 Failed download:
+2025-04-21 13:40:17,591 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 13:49:54,104 ERROR: 
+1 Failed download:
+2025-04-21 13:49:54,105 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 13:50:10,455 ERROR: 
+1 Failed download:
+2025-04-21 13:50:10,455 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 13:59:47,914 ERROR: 
+1 Failed download:
+2025-04-21 13:59:47,914 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 14:00:04,315 ERROR: 
+1 Failed download:
+2025-04-21 14:00:04,315 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 14:09:43,722 ERROR: 
+1 Failed download:
+2025-04-21 14:09:43,722 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 14:09:59,700 ERROR: 
+1 Failed download:
+2025-04-21 14:09:59,701 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 14:19:40,334 ERROR: 
+1 Failed download:
+2025-04-21 14:19:40,335 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 14:19:56,626 ERROR: 
+1 Failed download:
+2025-04-21 14:19:56,627 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
+2025-04-21 14:29:33,876 ERROR: 
+1 Failed download:
+2025-04-21 14:29:33,876 ERROR: ['BRK.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo) (Yahoo error = "No data found, symbol may be delisted")')
+2025-04-21 14:29:50,342 ERROR: 
+1 Failed download:
+2025-04-21 14:29:50,342 ERROR: ['BF.B']: YFPricesMissingError('possibly delisted; no price data found  (period=3mo)')
