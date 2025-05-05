@@ -1,0 +1,43 @@
+/* Simulation-only Styles (E*TRADE-style) */
+.sim-header {
+  text-align: center;
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+.sim-controls {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+/* Table container centering */
+table.holdings {
+  margin: 0 auto 2rem;
+  width: 95%;
+  border-collapse: collapse;
+}
+table.holdings thead th {
+  background: #2a2a3a;
+  color: #e0e0e0;
+  font-weight: bold;
+  padding: 0.6rem 1rem;
+  border: none;
+}
+table.holdings td,
+table.holdings th {
+  padding: 0.4rem 0.8rem;
+}
+table.holdings td {
+  border-bottom: 1px solid #333;
+}
+/* Align numeric columns right (from third column onward) */
+table.holdings td:nth-child(n+3) {
+  text-align: right;
+}
+/* Hover effect */
+table.holdings tr:hover {
+  background: #333;
+}
+/* Gain/Loss coloring */
+.gain { color: #28a745; }
+.loss { color: #dc3545; }

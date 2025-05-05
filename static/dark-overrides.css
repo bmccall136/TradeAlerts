@@ -1,0 +1,13 @@
+/* static/dark-overrides.css */
+/* Overrides loaded after style.css to darken table rows */
+
+.table.table-dark tbody tr:nth-of-type(odd) td {
+  background-color: #0d0d0d !important;
+}
+.table.table-dark tbody tr:nth-of-type(even) td {
+  background-color: #14141a !important;
+}
+.table.table-dark thead th {
+  background-color: #070707 !important;
+  color: #ffffff !important;
+}

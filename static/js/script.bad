@@ -1,0 +1,64 @@
+// static/js/script.js
+
+document.addEventListener('DOMContentLoaded', function() {
+  // Buy button handler
+  document.querySelectorAll('.btn-simulate').forEach(function(button) {
+    button.addEventListener('click', function() {
+      var symbol = button.getAttribute('data-symbol');
+      var row = button.closest('tr');
+      var qtyInput = row.querySelector('.qty-input');
+      var quantity = parseFloat(qtyInput.value);
+      if (isNaN(quantity) || quantity <= 0) {
+        alert('Please enter a valid quantity for ' + symbol);
+        return;
+      }
+      var priceText = row.querySelector('td:nth-child(5)').textContent.trim().replace(/[^0-9\.\-]/g, '');
+      var price = parseFloat(priceText);
+      var timestamp = row.querySelector('td:nth-child(6)').textContent.trim();
+
+      fetch('/simulation/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          timestamp: timestamp,
+          symbol: symbol,
+          action: 'BUY',
+          quantity: quantity,
+          price: price
+        })
+      }).then(function(response) {
+        if (response.ok) {
+          location.reload();
+        } else {
+          response.text().then(function(text) {
+            alert('Simulation failed: ' + text);
+          });
+        }
+      }).catch(function(err) {
+        console.error('Error simulating trade:', err);
+        alert('Error simulating trade. See console for details.');
+      });
+    });
+  });
+
+  // Clear button handler
+  document.querySelectorAll('.btn-clear').forEach(function(button) {
+    button.addEventListener('click', function() {
+      var alertId = button.getAttribute('data-id');
+      fetch('/alerts/clear/' + alertId, {
+        method: 'POST'
+      }).then(function(response) {
+        if (response.ok) {
+          location.reload();
+        } else {
+          response.text().then(function(text) {
+            alert('Clear failed: ' + text);
+          });
+        }
+      }).catch(function(err) {
+        console.error('Error clearing alert:', err);
+        alert('Error clearing alert. See console for details.');
+      });
+    });
+  });
+});

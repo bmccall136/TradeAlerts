@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Simulation Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static_assets.serve_asset', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static_assets.serve_asset', filename='sim.css') }}">
+  <script src="{{ url_for('static_assets.serve_asset', filename='script.js') }}" defer></script>
+</head>
+<body>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

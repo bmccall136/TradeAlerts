@@ -1,0 +1,11 @@
+ * Serving Flask app 'dashboard_autoclean'
+ * Debug mode: on
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on http://127.0.0.1:5000
+Press CTRL+C to quit
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 784-069-940
+127.0.0.1 - - [24/Apr/2025 10:48:34] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [24/Apr/2025 10:48:34] "GET /favicon.ico HTTP/1.1" 404 -
+^C
