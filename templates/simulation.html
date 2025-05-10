@@ -1,68 +1,64 @@
-{% extends "layout-sim.html" %}
+{% extends "layout.html" %}
 
 {% block content %}
-  <h2 class="sim-header">🚀 Simulation Dashboard 🚀</h2>
-  <div class="sim-controls">
-    <button id="reset-sim" class="btn-reset">Reset Simulation</button>
-    <a href="/" class="back-link">← Back to Alerts</a>
-  </div>
+<h1 style="text-align:center; color:#f8f8f2;">📈 Simulation Dashboard</h1>
 
-  <table class="holdings">
-    <thead>
-      <tr>
-        <th>Symbol</th>
-        <th>Actions</th>
-        <th>Last Price $</th>
-        <th>Change $</th>
-        <th>Change %</th>
-        <th>Qty #</th>
-        <th>Price Paid $</th>
-        <th>Day’s Gain $</th>
-        <th>Total Gain $</th>
-        <th>Total Gain %</th>
-        <th>Value $</th>
-        <th>Clear</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for h in simulation.holdings %}
-      <tr>
-        <td>{{ h.symbol or '' }}</td>
-        <td><button class="btn-action">🔄</button></td>
-        <td>${{ (h.last_price|default(0))|round(2, 'common') }}</td>
-        <td class="{{ 'gain' if (h.change_dollar|default(0))>=0 else 'loss' }}">
-          ${{ (h.change_dollar|default(0))|round(2, 'common') }}
-        </td>
-        <td class="{{ 'gain' if (h.change_pct|default(0))>=0 else 'loss' }}">
-          {{ (h.change_pct|default(0))|round(2, 'common') }}%
-        </td>
-        <td>{{ h.quantity|default(0) }}</td>
-        <td>${{ (h.avg_price|default(0))|round(2, 'common') }}</td>
-        <td class="{{ 'gain' if (h.day_gain|default(0))>=0 else 'loss' }}">
-          ${{ (h.day_gain|default(0))|round(2, 'common') }}
-        </td>
-        <td class="{{ 'gain' if (h.total_gain|default(0))>=0 else 'loss' }}">
-          ${{ (h.total_gain|default(0))|round(2, 'common') }}
-        </td>
-        <td class="{{ 'gain' if (h.total_gain_pct|default(0))>=0 else 'loss' }}">
-          {{ (h.total_gain_pct|default(0))|round(2, 'common') }}%
-        </td>
-        <td>${{ (h.value|default(0))|round(2, 'common') }}</td>
-        <td>
-          <form action="/holdings/{{ h.symbol }}/clear" method="post">
-            <button type="submit" class="btn-clear">Clear</button>
-          </form>
-        </td>
-      </tr>
-      {% else %}
-      <tr><td colspan="12">No holdings</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<div class="stats" style="display:flex; justify-content:center; gap:20px; margin-bottom:20px; color:#f8f8f2;">
+  <div>Cash: ${{ simulation.cash }}</div>
+  <div>Open Value: ${{ simulation.open }}</div>
+  <div>Realized P&L: ${{ simulation.realized }}</div>
+</div>
 
-  <script>
-    document.getElementById('reset-sim').addEventListener('click', function() {
-      fetch('/reset', { method: 'POST' }).then(() => location.reload());
-    });
-  </script>
+<div style="text-align:center; margin-bottom:20px;">
+  <form action="{{ url_for('sim_reset') }}" method="post" style="display:inline;">
+    <button type="submit" class="btn clear">Reset</button>
+  </form>
+</div>
+
+<table class="alerts" style="width:100%; border-collapse:collapse; color:#f8f8f2;">
+  <thead>
+    <tr>
+      <th>Symbol</th><th>Quantity</th><th>Avg Price</th><th>Current Price</th>
+      <th>Current Value</th><th>P/L</th><th>% P/L</th><th>Clear</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for h in simulation.holdings %}
+    <tr>
+      <td>{{ h.symbol }}</td>
+      <td>{{ h.quantity }}</td>
+      <td>${{ '%.2f'|format(h.avg_price) }}</td>
+      <td>${{ '%.2f'|format(h.current_price) }}</td>
+      <td>${{ '%.2f'|format(h.current_value) }}</td>
+      <td>${{ '%.2f'|format(h.profit_loss) }}</td>
+      <td>{{ '%.2f'|format(h.profit_pct) }}%</td>
+      <td>
+        <form action="{{ url_for('clear_holding', symbol=h.symbol) }}" method="post" style="display:inline;">
+          <button type="submit" class="btn btn-clear">X</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2 style="text-align:center; margin-top:30px; color:#f8f8f2;">Trades</h2>
+<table class="alerts" style="width:100%; border-collapse:collapse; color:#f8f8f2;">
+  <thead>
+    <tr>
+      <th>Timestamp</th><th>Symbol</th><th>Action</th><th>Quantity</th><th>Price</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in simulation.trades %}
+    <tr>
+      <td>{{ t.timestamp }}</td>
+      <td>{{ t.symbol }}</td>
+      <td>{{ t.action }}</td>
+      <td>{{ t.quantity }}</td>
+      <td>${{ '%.2f'|format(t.price) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
 {% endblock %}

@@ -1,10 +1,41 @@
 {% extends "layout.html" %}
+
 {% block content %}
-<table class="alerts">
+<h1 style="text-align:center;">🚀 Trade Alerts ({{ current_filter|capitalize }}) 🚀</h1>
+
+<div class="filter-nav" style="text-align:center; margin-bottom:15px; background-color:#1e1e2f; padding:10px 0;">
+  <form action="/" method="get" style="display:inline;">
+    <input type="hidden" name="filter" value="all"/>
+    <button type="submit" class="btn filter-btn {% if current_filter=='all' %}active{% endif %}">All</button>
+  </form>
+  <form action="/" method="get" style="display:inline;">
+    <input type="hidden" name="filter" value="prime"/>
+    <button type="submit" class="btn filter-btn {% if current_filter=='prime' %}active{% endif %}">Prime 💎</button>
+  </form>
+  <form action="/" method="get" style="display:inline;">
+    <input type="hidden" name="filter" value="sharpshooter"/>
+    <button type="submit" class="btn filter-btn {% if current_filter=='sharpshooter' %}active{% endif %}">Sharpshooter 🎯</button>
+  </form>
+  <form action="/" method="get" style="display:inline;">
+    <input type="hidden" name="filter" value="opportunist"/>
+    <button type="submit" class="btn filter-btn {% if current_filter=='opportunist' %}active{% endif %}">Opportunist 👍</button>
+  </form>
+  <form action="/" method="get" style="display:inline;">
+    <input type="hidden" name="filter" value="sell"/>
+    <button type="submit" class="btn filter-btn {% if current_filter=='sell' %}active{% endif %}">Sell 🔥</button>
+  </form>
+  <form action="/alerts/clear" method="post" style="display:inline;">
+    <input type="hidden" name="filter" value="{{ current_filter }}"/>
+    <button type="submit" class="btn filter-btn">Clear</button>
+  </form>
+  <a href="/simulation" class="btn">Simulation</a>
+</div>
+
+<table class="alerts" style="width:100%; border-collapse:collapse;">
   <thead>
     <tr>
       <th>Symbol</th><th>Name</th><th>Signal</th><th>Confidence</th><th>Price</th><th>Timestamp</th>
-      <th>Sparkline</th><th>Triggers</th><th>VWAP</th><th>Simulate</th><th>Action</th>
+      <th>Sparkline</th><th>Triggers</th><th>VWAP</th><th>Action</th>
     </tr>
   </thead>
   <tbody>
@@ -12,26 +43,37 @@
     <tr>
       <td>{{ a.symbol }}</td>
       <td>{{ a.name }}</td>
-      <td>
-        {% if a.type=='prime' %}<span class="signal-prime">Prime 💎</span>
-        {% elif a.type=='sharpshooter' %}<span class="signal-sharpshooter">Sharpshooter 🎯</span>
-        {% elif a.type=='opportunist' %}<span class="signal-opportunist">Opportunist 👍</span>
-        {% else %}<span class="signal-sell">Sell 🔥</span>{% endif %}
+      <td style="white-space: nowrap;">
+        {% set sig = a.signal.lower() %}
+        {% if sig == 'prime' %}
+          💎 Prime
+        {% elif sig == 'sharpshooter' %}
+          🎯 Sharpshooter
+        {% elif sig == 'opportunist' %}
+          👍 Opportunist
+        {% elif sig == 'sell' %}
+          🔥 Sell
+        {% else %}
+          {{ a.signal }}
+        {% endif %}
       </td>
-      <td>{{ a.confidence }}%</td>
-      <td>${{ '%.2f'|format(a.price) }}</td>
+      <td>{{ a.confidence|round(0) }}%</td>
+      <td>${{ '%.2f'|format(a.price|float) }}</td>
       <td>{{ a.timestamp }}</td>
-      <td class="sparkline-cell" data-spark="{{ a.sparkline }}"></td>
-      <td>{{ a.triggers|join(', ') }}</td>
-      <td>${{ '%.2f'|format(a.vwap) }}</td>
+      <td><img src="/sparkline/{{ a.id }}.svg" alt="sparkline"/></td>
+      <td>{{ a.triggers|join(' | ') }}</td>
+      <td>${{ '%.2f'|format(a.vwap|float) }}</td>
       <td>
-        <input type="number" class="qty-input" placeholder="Qty">
-        <button class="btn-simulate" data-symbol="{{ a.symbol }}">Buy</button>
+        <form action="/alerts/{{ a.id }}/{{ (a.buy_sell or 'buy')|lower }}" method="post" style="display:inline;">
+          {% if a.buy_sell == 'SELL' %}
+            <button type="submit" class="btn btn-danger">Sell</button>
+          {% else %}
+            <button type="submit" class="btn btn-success">Buy</button>
+          {% endif %}
+        </form>
       </td>
-      <td><button class="btn-clear" data-id="{{ a.id }}">Clear</button></td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
-  <script src="{{ url_for('static_assets.serve_asset', filename='js/script.js') }}"></script>
 {% endblock %}

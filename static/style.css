@@ -1,132 +1,67 @@
-
-/* === Base & Full-width Container === */
+/* Dark-mode global */
 body {
-  background-color: #0d0e17;
-  color: #e0e0e0;
+  background-color: #1e1e2f;
+  color: #f8f8f2;
+  margin: 0;
   font-family: sans-serif;
-  margin: 0;
-  padding: 0;
-}
-.container {
-  width: 100%;
-  padding: 0 16px;
 }
 
-/* === Header === */
-.main-header {
-  background-color: #1a1c2a;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px 0;
-  position: relative;
-}
-.main-header h1 {
-  margin: 0;
-  font-size: 1.8rem;
-}
-.status {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  text-align: right;
-}
-.status .status-text.market { color: #ff4d4d; }
-.status .status-text.etrade { color: #4dff4d; }
-.status a {
-  color: #8888ff;
-  margin-top: 4px;
-  text-decoration: none;
-  font-size: 0.9rem;
-}
-.status a:hover {
-  text-decoration: underline;
+/* Navbar removed, main content styling */
+main {
+  padding: 20px;
 }
 
-/* === Filter Bar === */
+/* Filter nav styling */
 .filter-nav {
-  background-color: #161723;
-  padding: 8px;
-  text-align: center;
-}
-.filter-nav button,
-.btn-clear-all {
-  background-color: #2b2d3c;
-  border: none;
-  color: #e0e0e0;
-  padding: 6px 12px;
-  margin: 4px 6px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.9rem;
-}
-.filter-nav button.active {
-  background-color: #3c3f5e;
+  background-color: #1e1e2f;
+  padding: 10px 0;
 }
 
-/* === Table - full width === */
+/* Buttons */
+.btn {
+  background-color: #2b2b3c;
+  color: #f8f8f2;
+  border: 1px solid #44475a;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  margin: 0 5px;
+}
+.btn:hover {
+  background-color: #44475a;
+}
+.btn.active, .btn.filter-btn.active {
+  background-color: #6272a4;
+}
+.btn.clear {
+  background-color: #ff5555;
+}
+.btn.clear:hover {
+  background-color: #ff6e6e;
+}
+.btn-simulate, .btn-buy {
+  background-color: #50fa7b;
+  color: #000;
+  border-color: #50fa7b;
+}
+.btn-simulate:hover {
+  background-color: #8aff9e;
+}
+
+/* Table styling */
 table.alerts {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 12px;
+}
+table.alerts th, table.alerts td {
+  padding: 8px;
+  border-bottom: 1px solid #44475a;
 }
 table.alerts th {
-  background-color: #1e1f2f;
-  padding: 8px;
   text-align: left;
+  background-color: #2b2b3c;
 }
-table.alerts td {
-  padding: 8px;
-  border-bottom: 1px solid #2b2d3c;
-}
-
-/* === Sparkline === */
-.sparkline-cell {
-  width: 100px;
-}
-
-/* === Inputs & Buttons === */
-/* Make qty and buy inline */
-td .qty-input {
-  background-color: #2b2d3c !important;
-  color: #e0e0e0 !important;
-  border: 1px solid #444;
-  border-radius: 4px;
-  padding: 4px;
-  width: 60px;
-  display: inline-block;
-  vertical-align: middle;
-  margin-right: 8px;
-}
-td .btn-simulate {
-  background-color: #3c8c1b;
-  color: #fff;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  display: inline-block;
-  vertical-align: middle;
-}
-
-/* Clear button */
-.btn-clear, .btn-clear-all {
-  background-color: #444;
-  color: #fff;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-/* === Signal Badges - white text === */
-.signal-prime,
-.signal-sharpshooter,
-.signal-opportunist,
-.signal-sell {
-  color: #fff !important;
-  font-weight: bold;
+table.alerts tbody tr:nth-child(even) {
+  background-color: #262636;
 }

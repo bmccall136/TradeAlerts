@@ -1,8 +1,8 @@
-import requests
+import yfinance as yf
 from config import Config
+import requests
 
 ETRADE_BASE_URL = Config.ETRADE_BASE_URL
-YAHOO_BASE_URL  = Config.YAHOO_BASE_URL
 
 def fetch_etrade_quote(symbol):
     """
@@ -17,11 +17,20 @@ def fetch_etrade_quote(symbol):
 
 def fetch_yahoo_intraday(symbol, interval='5m', range_='1d'):
     """
-    Fetch intraday price data from Yahoo Finance.
-    interval: '1m','2m','5m', etc.
-    range_: '1d','5d', etc.
+    Fetch intraday price data from Yahoo Finance using the yfinance library.
+    Returns a dict with last_price, timestamps, and prices arrays.
     """
-    params = {'symbol': symbol, 'interval': interval, 'range': range_}
-    response = requests.get(YAHOO_BASE_URL, params=params)
-    response.raise_for_status()
-    return response.json()
+    ticker = yf.Ticker(symbol)
+    # period should match range_ (e.g., '1d', '5d'), interval like '5m'
+    hist = ticker.history(period=range_, interval=interval)
+    if hist.empty:
+        return {'last_price': None, 'timestamps': [], 'prices': []}
+    # Convert pandas objects to serializable types
+    timestamps = [ts.to_pydatetime() for ts in hist.index]
+    prices = hist['Close'].tolist()
+    last_price = float(prices[-1])
+    return {
+        'last_price': last_price,
+        'timestamps': timestamps,
+        'prices': prices
+    }

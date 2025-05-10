@@ -1,4 +1,3 @@
-
 document.addEventListener('DOMContentLoaded', () => {
   const API_ALERTS = '/api/alerts';
   const API_STATUS = '/api/status';
@@ -19,30 +18,23 @@ document.addEventListener('DOMContentLoaded', () => {
       .catch(console.error);
   }
 
-  // -- Sparkline helper --
-  function sparkline(dataString) {
-    const arr = dataString.split(',').map(Number).filter(n => !isNaN(n));
-    if (!arr.length) return '';
-    const w = 60, h = 20, min = Math.min(...arr), max = Math.max(...arr) - min || 1;
-    const pts = arr.map((v, i) => {
-      const x = i * (w / (arr.length - 1));
-      const y = h - ((v - min) / max) * h;
-      return `${x},${y}`;
-    }).join(' ');
-    return `<svg width="${w}" height="${h}"><polyline fill="none" stroke="#4eaaff" stroke-width="1" points="${pts}"/></svg>`;
-  }
-
-  // -- Signal badge helper --
+  // -- Signal badge helper (explicit cases) --
   function badge(type) {
-    switch (type) {
-      case 'prime': return '<span class="signal-prime">Prime 💎</span>';
-      case 'sharpshooter': return '<span class="signal-sharpshooter">Sharpshooter 🎯</span>';
-      case 'opportunist': return '<span class="signal-opportunist">Opportunist 👍</span>';
-      default: return '<span class="signal-sell">Sell 🔥</span>';
+    switch ((type || '').toLowerCase()) {
+      case 'prime':
+        return '<span class="signal-prime">💎 Prime</span>';
+      case 'sharpshooter':
+        return '<span class="signal-sharpshooter">🎯 Sharpshooter</span>';
+      case 'opportunist':
+        return '<span class="signal-opportunist">👍 Opportunist</span>';
+      case 'sell':
+        return '<span class="signal-sell">🔥 Sell</span>';
+      default:
+        return '<span class="signal-unknown">?</span>';
     }
   }
 
-  // -- Load alerts into table --
+  // -- Load alerts into table with external sparkline SVGs --
   function loadAlerts() {
     fetch(API_ALERTS)
       .then(r => r.json())
@@ -57,15 +49,15 @@ document.addEventListener('DOMContentLoaded', () => {
               <td>${a.symbol}</td>
               <td>${a.name}</td>
               <td>${badge(a.type)}</td>
-              <td>${a.confidence}%</td>
+              <td>${Math.round(a.confidence)}%</td>
               <td>$${parseFloat(a.price).toFixed(2)}</td>
               <td>${a.timestamp}</td>
-              <td class="sparkline-cell">${sparkline(a.sparkline)}</td>
-              <td>${a.triggers.split(',').join(', ')}</td>
+              <td class="sparkline-cell"><img src="/sparkline/${a.id}.svg" alt="sparkline"/></td>
+              <td>${a.triggers.split(',').join(' | ')}</td>
               <td>$${parseFloat(a.vwap).toFixed(2)}</td>
               <td>
                 <input type="number" class="qty-input" placeholder="Qty">
-                <button class="btn-simulate">Buy</button>
+                <button class="btn-simulate" data-symbol="${a.symbol}">Buy</button>
               </td>
               <td><button class="btn-clear" data-id="${a.id}">Clear</button></td>`;
             tbody.appendChild(tr);
@@ -82,29 +74,15 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // -- Filter buttons --
-  document.querySelectorAll('.btn-filter').forEach(btn => {
+  document.querySelectorAll('.filter-btn').forEach(btn => {
     btn.onclick = () => {
-      currentFilter = btn.dataset.type;
-      document.querySelectorAll('.btn-filter')
+      const type = btn.textContent.split(' ')[0].toLowerCase();
+      currentFilter = type === 'all' ? 'all' : type;
+      document.querySelectorAll('.filter-btn')
         .forEach(b => b.classList.toggle('active', b === btn));
       loadAlerts();
     };
   });
-
-  // -- Clear filtered alerts --
-  document.getElementById('clearFiltered').onclick = () => {
-    fetch('/api/alerts/clear_filtered', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filter: currentFilter })
-    })
-    .then(() => {
-      currentFilter = 'all';
-      document.querySelectorAll('.btn-filter')
-        .forEach(b => b.classList.toggle('active', b.dataset.type === 'all'));
-      loadAlerts();
-    });
-  };
 
   // -- Initial load & polling --
   loadStatus();
@@ -112,48 +90,3 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(loadStatus, 15000);
   setInterval(loadAlerts, 10000);
 });
-
-
-  // -- Simulation: wire Buy buttons --
-  document.body.addEventListener('click', async (e) => {
-    if (e.target.matches('.btn-simulate')) {
-      const btn = e.target;
-      const row = btn.closest('tr');
-      const symbol = btn.dataset.symbol;
-      const qtyInput = row.querySelector('.qty-input');
-      const quantity = parseFloat(qtyInput.value) || 0;
-      // Price is 5th cell (td:nth-child(5))
-      const priceText = row.querySelector('td:nth-child(5)').textContent.replace(/[^0-9.\-]/g, '');
-      const price = parseFloat(priceText) || 0;
-      // Format timestamp as "YYYY-MM-DD HH:MM:SS"
-      const now = new Date();
-      const timestamp = now.toISOString().slice(0,19).replace('T',' ');
-      // POST to simulation endpoint
-      await fetch('/simulation/simulate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol, action: 'BUY', quantity, price, timestamp })
-      });
-      // Redirect to simulation to view updated trades
-      window.location.href = '/simulation/';
-    }
-  });
-
-  // -- Simulation: wire Clear-trade buttons --
-  document.body.addEventListener('click', async (e) => {
-    if (e.target.matches('.btn-clear-trade')) {
-      const btn = e.target;
-      const tradeId = btn.dataset.id;
-      await fetch(`/simulation/trades/${tradeId}/clear`, { method: 'POST' });
-      window.location.reload();
-    }
-  });
-
-  // -- Simulation: wire Clear-holding buttons --
-  document.body.addEventListener('click', async (e) => {
-    if (e.target.matches('.btn-clear-holding')) {
-      const symbol = e.target.dataset.symbol;
-      await fetch(`/simulation/holdings/${symbol}/clear`, { method: 'POST' });
-      window.location.reload();
-    }
-  });
