@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 import sqlite3
 import time
+from services.alert_service import insert_alert
 
 api = Blueprint('api', __name__, url_prefix='/api')
 DB_PATH = 'alerts_clean.db'
@@ -12,15 +13,19 @@ def fetch_alerts():
     conn.close()
     alerts = []
     for r in rows:
-        # handle missing 'type' column gracefully
         alert = dict(r)
-        alert.setdefault('type', 'sell')
         alerts.append(alert)
     return alerts
 
 @api.route('/alerts', methods=['GET'])
 def get_alerts():
     return jsonify(fetch_alerts())
+
+@api.route('/alerts', methods=['POST'])
+def create_alert():
+    data = request.get_json(force=True)
+    insert_alert(data)
+    return ('', 201)
 
 @api.route('/status', methods=['GET'])
 def get_status():

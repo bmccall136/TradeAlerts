@@ -1,1 +1,1 @@
-# services package for TradeAlerts
+# Init for services package

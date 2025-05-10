@@ -1,0 +1,75 @@
+document.addEventListener('DOMContentLoaded', () => {
+  const API_ALERTS = '/api/alerts';
+  const API_STATUS = '/api/status';
+  let currentFilter = 'all';
+
+  // Status updater
+  function loadStatus() {
+    fetch(API_STATUS)
+      .then(r => r.json())
+      .then(st => {
+        document.querySelector('.status-text.market').textContent = st.yahoo === 'open' ? 'Open' : 'Closed';
+        document.querySelector('.status-text.etrade').textContent = st.etrade === 'ok' ? 'Connected' : 'Disconnected';
+      });
+  }
+
+  // Load alerts
+  function loadAlerts() {
+    fetch(API_ALERTS)
+      .then(r => r.json())
+      .then(data => {
+        const tbody = document.querySelector('.alerts tbody');
+        tbody.innerHTML = '';
+        data
+          .filter(a => currentFilter === 'all' || a.type === currentFilter)
+          .forEach(a => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = \`
+              <td>\${a.symbol}</td>
+              <td>\${a.name}</td>
+              <td>\${a.signal}</td>
+              <td>\${a.confidence}%</td>
+              <td>\$ \${a.price.toFixed(2)}</td>
+              <td>\${a.timestamp}</td>
+              <td class="sparkline-cell" data-spark="\${a.sparkline.join(',')}"></td>
+              <td>\${a.triggers.join(', ')}</td>
+              <td>\$ \${a.vwap.toFixed(2)}</td>
+              <td>
+                <button class="btn-simulate" data-symbol="\${a.symbol}" data-price="\${a.price}">Buy</button>
+                <button class="btn-clear-alert" data-id="\${a.id}">Clear</button>
+              </td>\`;
+            tbody.appendChild(tr);
+          });
+
+        document.querySelectorAll('.btn-clear-alert').forEach(btn => {
+          btn.addEventListener('click', () => {
+            fetch(\`/alerts/\${btn.dataset.id}/clear\`, { method: 'POST' })
+              .then(loadAlerts);
+          });
+        });
+
+        document.querySelectorAll('.btn-simulate').forEach(btn => {
+          btn.addEventListener('click', () => {
+            fetch('/simulation/simulate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ symbol: btn.dataset.symbol, quantity: 1, price: parseFloat(btn.dataset.price) })
+            }).then(() => window.location = '/simulation/');
+          });
+        });
+      });
+  }
+
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentFilter = btn.dataset.filter;
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b === btn));
+      loadAlerts();
+    });
+  });
+
+  loadStatus();
+  loadAlerts();
+  setInterval(loadStatus, 15000);
+  setInterval(loadAlerts, 15000);
+});
