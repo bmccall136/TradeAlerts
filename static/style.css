@@ -1,67 +1,76 @@
-/* Dark-mode global */
 body {
-  background-color: #1e1e2f;
-  color: #f8f8f2;
-  margin: 0;
-  font-family: sans-serif;
+  background-color: #000;
+  color: #fff;
 }
-
-/* Navbar removed, main content styling */
-main {
-  padding: 20px;
+.site-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background: #111;
 }
-
-/* Filter nav styling */
-.filter-nav {
-  background-color: #1e1e2f;
-  padding: 10px 0;
-}
-
-/* Buttons */
-.btn {
-  background-color: #2b2b3c;
-  color: #f8f8f2;
-  border: 1px solid #44475a;
-  border-radius: 4px;
-  padding: 4px 10px;
-  font-size: 0.9rem;
-  cursor: pointer;
-  margin: 0 5px;
-}
-.btn:hover {
-  background-color: #44475a;
-}
-.btn.active, .btn.filter-btn.active {
-  background-color: #6272a4;
-}
-.btn.clear {
-  background-color: #ff5555;
-}
-.btn.clear:hover {
-  background-color: #ff6e6e;
-}
-.btn-simulate, .btn-buy {
-  background-color: #50fa7b;
-  color: #000;
-  border-color: #50fa7b;
-}
-.btn-simulate:hover {
-  background-color: #8aff9e;
-}
-
-/* Table styling */
-table.alerts {
+.status-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
   width: 100%;
-  border-collapse: collapse;
 }
-table.alerts th, table.alerts td {
-  padding: 8px;
-  border-bottom: 1px solid #44475a;
+.status-row {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
 }
-table.alerts th {
-  text-align: left;
-  background-color: #2b2b3c;
+.header-center {
+  margin-top: 0.5rem;
+  text-align: center;
 }
-table.alerts tbody tr:nth-child(even) {
-  background-color: #262636;
+.site-title {
+  margin: 0;
+  color: #fff;
+}
+.status-link {
+  color: #0af;
+  text-decoration: underline;
+}
+.filter-bar .btn {
+  margin: 0 0.25rem;
+}
+.table {
+  background: #000 !important;
+}
+.table th, .table td {
+  border-color: #333 !important;
+  vertical-align: middle;
+}
+.thead-dark th {
+  background-color: #222 !important;
+}
+.btn-outline-light {
+  color: #fff;
+  border-color: #fff;
+}
+.btn-outline-light.active,
+.btn-outline-light:hover {
+  background-color: #fff;
+  color: #000;
+}
+.badge-success {
+  background-color: #28a745;
+}
+.badge-primary {
+  background-color: #007bff;
+}
+
+/* Remove white box around filters */
+.filter-bar {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Keep filter buttons dark on hover/active */
+.btn-outline-light.active,
+.btn-outline-light:hover {
+  background-color: transparent !important;
+  color: #fff !important;
 }
