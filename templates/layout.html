@@ -1,18 +1,36 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>{% block title %}Trade Alerts{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  {% block head %}{% endblock %}
-</head>
-<body>
-  <nav class="navbar">
-    <!-- Top-left nav links removed -->
-  </nav>
-  <main>
-    {% block content %}{% endblock %}
-  </main>
-  {% block scripts %}{% endblock %}
-</body>
+  <head>
+    <meta charset="utf-8">
+    <title>TradeAlerts</title>
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/css/bootstrap.min.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="status-container">
+        <div class="status-row">
+          {% block status_left %}{% endblock %}
+        </div>
+        <div class="status-row">
+          {% block status_right %}{% endblock %}
+        </div>
+      </div>
+      <div class="header-center">
+        <h1 class="site-title">
+          🚀 Trade Alerts ({{ current_filter|capitalize }}) 🚀
+        </h1>
+      </div>
+    </header>
+
+    <main class="container-fluid">
+      {% block content %}{% endblock %}
+    </main>
+
+    <!-- only load from the js subfolder -->
+    <script src="{{ url_for('static', filename='js/api-client.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+  </body>
 </html>
