@@ -1,8 +1,14 @@
 from flask import Flask, render_template, request, redirect, url_for, jsonify, Response
+from etrade_auth import get_etrade_session
 from services.alert_service import get_alerts, insert_alert, clear_alert, clear_alerts_by_filter
-from services.chart_service import get_sparkline_svg  # make sure this module exists
+from services.chart_service import get_sparkline_svg
+
+from api import api as api_bp
 
 app = Flask(__name__)
+# Register API blueprint to handle POST /api/alerts
+app.register_blueprint(api_bp)
+
 
 @app.route('/')
 def root():
@@ -28,31 +34,21 @@ def clear_one(alert_id):
     return redirect(url_for('alerts_index',
                             filter=request.args.get('filter', 'all')))
 
-@app.route('/api/alerts', methods=['GET'])
-def api_get_alerts():
-    """Return current alerts as JSON for the UI’s polling script."""
-    current_filter = request.args.get('filter', 'all')
-    alerts_list = get_alerts(current_filter)
-    return jsonify(alerts_list)
+# Removed dashboard's GET-only /api/alerts in favor of api blueprint
 
-@app.route('/api/alerts', methods=['POST'])
-def api_alerts():
-    data = request.get_json(force=True)
-    insert_alert(data)
-    return ('', 201)
+@app.route('/api/status', methods=['GET'])
+def api_status():
+    """Return connectivity/status info for the UI badges."""
+    return jsonify({
+        "yahoo": "open",
+        "etrade": "ok"
+    })
 
 @app.route('/sparkline/<int:alert_id>.svg')
 def sparkline_svg(alert_id):
-    """
-    Generate and return the sparkline SVG for a given alert.
-    Expects services.chart_service.get_sparkline_svg to return
-    an SVG string (or None if not found).
-    """
+    """Generate and return the sparkline SVG for a given alert."""
     svg = get_sparkline_svg(alert_id)
-    if svg:
-        return Response(svg, mimetype='image/svg+xml')
-    else:
-        return ('', 404)
+    return Response(svg, mimetype='image/svg+xml') if svg else ('', 404)
 
 if __name__ == '__main__':
     app.config['TEMPLATES_AUTO_RELOAD'] = True
