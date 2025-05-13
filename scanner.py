@@ -15,7 +15,9 @@ logging.basicConfig(
 )
 
 # Load config from .env
-load_dotenv('.env')
+
+# Symbols file, default to sp500.txt
+SYMBOLS_FILE = os.getenv('SP500_FILE', 'sp500.txt')
 SYMBOLS_FILE  = os.getenv('SYMBOLS_FILE', 'sp500.txt')
 SCAN_INTERVAL = int(os.getenv('SCAN_INTERVAL', '300'))
 API_URL       = os.getenv('API_URL', 'http://localhost:5000/api/alerts')

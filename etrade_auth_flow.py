@@ -5,7 +5,7 @@ import webbrowser
 from requests_oauthlib import OAuth1Session
 from dotenv import load_dotenv
 
-load_dotenv("etrade.env")
+load_dotenv(".env")
 
 CONSUMER_KEY = os.getenv("ETRADE_API_KEY")
 CONSUMER_SECRET = os.getenv("ETRADE_API_SECRET")

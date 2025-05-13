@@ -119,6 +119,3 @@ def clear_alerts_by_filter(filter_signal: str = 'all') -> None:
         c.execute("DELETE FROM alerts")
     conn.commit()
     conn.close()
-
-# Alias for backward compatibility with api.py
-get_all_alerts = get_alerts
