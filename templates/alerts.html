@@ -1,8 +1,12 @@
 {% extends "layout.html" %}
 
 {% block status_left %}
-  <span class="badge badge-success">Yahoo Finance Intraday: Open</span>
-  <span class="badge badge-success">E*TRADE API: Connected</span>
+  <span class="badge badge-success status-text market">
+    Yahoo Finance Intraday: Open
+  </span>
+  <span class="badge badge-success status-text etrade">
+    E*TRADE API: Connected
+  </span>
   <a href="#" class="status-link">Reconnect API</a>
 {% endblock %}
 
@@ -14,32 +18,57 @@
 {% block content %}
   <div class="filter-bar my-3 text-center">
     <form method="post" action="{{ url_for('clear_filtered') }}" class="d-inline">
-      <button type="submit" class="btn btn-outline-light">Clear All</button>
       <input type="hidden" name="filter" value="{{ current_filter }}">
+      <button type="submit" class="btn btn-outline-light btn-sm" {% raw %}{% if not alerts %}disabled{% endif %}{% endraw %}>
+        Clear All
+      </button>
     </form>
-    <span class="mx-2">Filter:</span>
-    <a href="{{ url_for('alerts_index', filter='all') }}" class="btn btn-sm btn-light{% if current_filter=='all' %} active{% endif %}">All</a>
-    <a href="{{ url_for('alerts_index', filter='prime') }}" class="btn btn-sm btn-light{% if current_filter=='prime' %} active{% endif %}">Prime 💎</a>
-    <a href="{{ url_for('alerts_index', filter='sharpshooter') }}" class="btn btn-sm btn-light{% if current_filter=='sharpshooter' %} active{% endif %}">Sharpshooter 🎯</a>
-    <a href="{{ url_for('alerts_index', filter='sell') }}" class="btn btn-sm btn-light{% if current_filter=='sell' %} active{% endif %}">Sell 🔥</a>
-    <a href="{{ url_for('alerts_index', filter='simulation') }}" class="btn btn-sm btn-light{% if current_filter=='simulation' %} active{% endif %}">Simulation</a>
+    &nbsp;
+    <span>Filter:</span>
+    {% for f,label in [
+         ('all','All'),
+         ('prime','Prime 💎'),
+         ('sharpshooter','Sharpshooter 🎯'),
+         ('sell','Sell 🔥'),
+         ('simulation','Simulation')
+       ] %}
+      <a href="{{ url_for('alerts_index', filter=f) }}"
+         class="btn btn-outline-light btn-sm {% raw %}{% if current_filter==f %}active{% endif %}{% endraw %}">
+        {{ label }}
+      </a>
+    {% endfor %}
   </div>
 
   <div class="table-responsive">
-    <table class="table table-dark table-striped table-bordered">
+    <table class="table table-dark table-striped table-bordered alerts">
       <thead class="thead-dark">
         <tr>
-          <th>Symbol</th><th>Name</th><th>Signal</th><th>Conf.</th><th>Price</th><th>Spark</th><th>VWAP</th><th>Action</th>
+          <th>Symbol</th>
+          <th>Name</th>
+          <th>Signal</th>
+          <th>Conf.</th>
+          <th>Price</th>
+          <th>Timestamp</th>
+          <th>Spark</th>
+          <th>VWAP</th>
+          <th>Action</th>
         </tr>
       </thead>
-      <tbody id="alerts-body">
+      <tbody>
         {% for a in alerts %}
         <tr>
           <td>{{ a.symbol }}</td>
           <td>{{ a.name }}</td>
-          <td>{{ a.signal or '' }}</td>
-          <td>{{ '%.1f%%'|format(a.confidence) }}</td>
+          <td>{{ a.signal }}</td>
+          <td>{{ '%.1f'|format(a.confidence) }}%</td>
           <td>${{ '%.2f'|format(a.price) }}</td>
+          <td>
+            {% if a.timestamp %}
+              {{ a.timestamp[:19] }}
+            {% else %}
+              --
+            {% endif %}
+          </td>
           <td><!-- sparkline injected by JS --></td>
           <td>${{ '%.2f'|format(a.vwap) }}</td>
           <td>
