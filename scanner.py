@@ -1,68 +1,124 @@
+#!/usr/bin/env python3
 import os
 import time
 import requests
 import yfinance as yf
-import pandas as pd
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from datetime import datetime
+from services.market_service import fetch_etrade_price
+
+load_dotenv('.env')
+
+# Setup logging to file and console
 import logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
-# — Logging configuration —
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s %(levelname)s %(message)s",
-    datefmt="%H:%M:%S"
-)
+# File handler
+fh = logging.FileHandler('scanner.log')
+fh.setLevel(logging.INFO)
+fh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
+logger.addHandler(fh)
 
-# Load config from .env
+# Console handler
+ch = logging.StreamHandler()
+ch.setLevel(logging.INFO)
+ch.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
+logger.addHandler(ch)
 
-# Symbols file, default to sp500.txt
-SYMBOLS_FILE = os.getenv('SP500_FILE', 'sp500.txt')
-SYMBOLS_FILE  = os.getenv('SYMBOLS_FILE', 'sp500.txt')
-SCAN_INTERVAL = int(os.getenv('SCAN_INTERVAL', '300'))
-API_URL       = os.getenv('API_URL', 'http://localhost:5000/api/alerts')
+# Configuration
+SYMBOLS_FILE     = 'sp500_symbols.txt'
+ALERT_ENDPOINT   = 'http://127.0.0.1:5000/api/alerts'
+SCAN_INTERVAL    = 60    # seconds between full scans
+ALERT_COOLDOWN   = timedelta(minutes=30)
 
-# Load tickers list
-try:
-    with open(SYMBOLS_FILE) as f:
-        symbols = [s.strip().replace('.', '-') for s in f if s.strip()]
-    logging.info(f"Loaded {len(symbols)} symbols from {SYMBOLS_FILE}")
-except FileNotFoundError:
-    logging.warning(f"Missing {SYMBOLS_FILE}, using sample list")
-    symbols = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META']
+def load_symbols(path=SYMBOLS_FILE):
+    with open(path) as f:
+        return [line.strip().upper() for line in f if line.strip()]
 
-# Indicator functions ...
-# (Keep your existing compute_buy_triggers, compute_sell_trigger,
-#  calculate_rsi, calculate_macd, calculate_vwap, calculate_atr, etc.)
+def is_market_open():
+    now = datetime.now()
+    # Mon–Fri, 9:30–16:00
+    return not (
+        now.weekday() >= 5 or
+        now.hour < 9 or
+        (now.hour == 9 and now.minute < 30) or
+        now.hour >= 16
+    )
+
+def fetch_intraday(symbol):
+    """Fetch 5 days of 5‑minute intraday data for a single symbol."""
+    try:
+        df = yf.download(
+            tickers=symbol,
+            period='5d',
+            interval='5m',
+            progress=False,
+            threads=False
+        )
+        df = df.dropna(how='all')
+        return df if not df.empty else None
+    except Exception as e:
+        print(f"[{symbol}] Intraday download error: {e}")
+        return None
+
+def send_alert(payload):
+    try:
+        resp = requests.post(ALERT_ENDPOINT, json=payload, timeout=5)
+        resp.raise_for_status()
+        logging.info(f"ALERT SENT {payload['symbol']} {payload['signal']} @ {payload['price']}")
+    except Exception as e:
+        print(f"Failed to send alert for {payload['symbol']}: {e}")
 
 def main():
-    logging.info("— Fullmode Scanner Started (unlimited alerts) —")
+    symbols     = load_symbols()
+    last_alerts = {}
+    print(f"--- Scanner Started: {len(symbols)} symbols ---")
+
     while True:
-        now = datetime.now().strftime("%H:%M:%S")
-        for sym in symbols:
-            # Fetch and compute logic...
-            # Build payload with your alert data
-            payload = {
-                "symbol": sym,
-                "name": sym,
-                # "signal": signal_type,
-                # "confidence": confidence_score,
-                # "price": current_price,
-                # "sparkline": sparkline_data,
-                # "vwap": vwap_value,
-            }
-            # Log outgoing payload
-            logging.debug(f"Sending payload for {sym}: {payload}")
+        if not is_market_open():
+            ts = datetime.now().strftime('%H:%M:%S')
+            print(f"[{ts}] Market closed, sleeping 900s.")
+            time.sleep(900)
+            continue
+
+        now = datetime.now()
+        print(f"[{now.strftime('%H:%M:%S')}] Scanning {len(symbols)} symbols...")
+
+        for symbol in symbols:
+            # enforce cooldown
+            if symbol in last_alerts and (now - last_alerts[symbol]) < ALERT_COOLDOWN:
+                continue
+
+            df = fetch_intraday(symbol)
+            if df is None:
+                continue
+
+            latest_close = df['Close'].iloc[-1]
+            avg_close = df['Close'].mean()
+            cond = latest_close > avg_close
+            if (hasattr(cond, 'any') and not cond.any()) or (not hasattr(cond, 'any') and not cond):
+                continue
+
+            # fetch E*TRADE price
             try:
-                r = requests.post(API_URL, json=payload, timeout=10)
-                # Log response status and body
-                logging.debug(f"Response for {sym}: {r.status_code} {r.text}")
-                r.raise_for_status()
-                logging.info(f"[{now}] Alert posted: {sym}")
+                price = fetch_etrade_price(symbol)
+                logging.info(f"{symbol} E*TRADE price returned: {price}")
             except Exception as e:
-                logging.error(f"[{now}] Failed posting {sym}: {e}")
-            time.sleep(1)
-        logging.debug(f"Sleeping for {SCAN_INTERVAL} seconds…")
+                print(f"[{symbol}] E*TRADE error: {e}")
+                continue
+
+            payload = {
+                'symbol':    symbol,
+                'signal':    'OPPORTUNIST',
+                'price':     round(price, 2),
+                'timestamp': now.strftime('%Y-%m-%d %H:%M:%S'),
+            }
+            send_alert(payload)
+            last_alerts[symbol] = now
+
+        ts_end = datetime.now().strftime('%H:%M:%S')
+        print(f"[{ts_end}] Scan complete, sleeping {SCAN_INTERVAL}s.")
         time.sleep(SCAN_INTERVAL)
 
 if __name__ == '__main__':
