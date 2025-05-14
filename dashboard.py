@@ -1,14 +1,14 @@
 from flask import Flask, render_template, request, redirect, url_for, Response
 import sqlite3
 
-from services.alert_service import get_alerts, insert_alert, clear_alert, clear_alerts_by_filter, init_db
+from services.alert_service import get_alerts, clear_alert, clear_alerts_by_filter, init_db
 from services.chart_service import get_sparkline_svg
 from api import api as api_bp
 
 app = Flask(__name__)
 
-# Register API blueprint (it already has its own '/api' prefix)
-app.register_blueprint(api_bp)
+# Mount API under /api
+app.register_blueprint(api_bp, url_prefix='/api')
 
 # Enable WAL and busy_timeout, then initialize table schema
 conn = sqlite3.connect('alerts.db', timeout=10)
@@ -45,5 +45,4 @@ def sparkline_svg(alert_id):
 
 if __name__ == '__main__':
     app.config['TEMPLATES_AUTO_RELOAD'] = True
-    # Debug print of routes omitted
     app.run(debug=True)

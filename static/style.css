@@ -78,4 +78,20 @@ body {
 /* Force main background to match body */
 main.container-fluid {
   background-color: #000 !important;
+/* Dark style for the Qty inputs */
+.alerts input.qty-input {
+  background-color: #000 !important;
+  color: #fff   !important;
+  border: 1px solid #444;
+  padding: 0.25em 0.5em;
 }
+
+/* Spin‑buttons (WebKit) */
+.alerts input.qty-input::-webkit-inner-spin-button,
+.alerts input.qty-input::-webkit-outer-spin-button {
+  background: #000 !important;
+}
+
+/* Firefox (hides default arrow) */
+.alerts input.qty-input::-moz-appearance: textfield;
+

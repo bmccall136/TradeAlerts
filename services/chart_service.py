@@ -1,16 +1,68 @@
-import os
+import sqlite3
 
-def get_sparkline_svg(alert_id):
+DB_PATH = 'alerts.db'
+
+
+def compute_vwap_for_symbol(symbol, limit=20):
     """
-    Retrieve the sparkline SVG content for a given alert ID.
-    Falls back to an empty SVG if not found.
+    Compute the simple average of the last `limit` prices for the given symbol.
+    Returns None if no data.
     """
-    # Assume SVGs are stored in 'static/sparkline/{id}.svg' relative to app root
-    base_dir = os.path.dirname(os.path.dirname(__file__))
-    svg_path = os.path.join(base_dir, 'static', 'sparkline', f'{alert_id}.svg')
-    try:
-        with open(svg_path, 'r', encoding='utf-8') as svg_file:
-            return svg_file.read()
-    except FileNotFoundError:
-        # Return an empty 1x20 placeholder SVG
-        return '<svg width="100" height="20" xmlns="http://www.w3.org/2000/svg"></svg>'
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT price FROM alerts WHERE symbol = ? ORDER BY timestamp DESC LIMIT ?",
+        (symbol, limit)
+    )
+    rows = cur.fetchall()
+    conn.close()
+    prices = [r['price'] for r in rows]
+    if not prices:
+        return None
+    return sum(prices) / len(prices)
+
+
+def get_sparkline_svg(alert_id, limit=20, width=100, height=30):
+    """
+    Generate an inline sparkline SVG for the last `limit` prices of the symbol
+    associated with a given alert_id. Returns empty string if insufficient data.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    # Fetch symbol for this alert
+    cur.execute("SELECT symbol FROM alerts WHERE id = ?", (alert_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return ''
+    symbol = row['symbol']
+    # Fetch latest prices
+    cur.execute(
+        "SELECT price FROM alerts WHERE symbol = ? ORDER BY timestamp DESC LIMIT ?",
+        (symbol, limit)
+    )
+    price_rows = cur.fetchall()
+    conn.close()
+
+    prices = [r['price'] for r in price_rows]
+    if len(prices) < 2:
+        return ''
+    prices = prices[::-1]
+    min_p, max_p = min(prices), max(prices)
+    span = max_p - min_p or 1.0
+    step = width / (len(prices) - 1)
+    pts = []
+    for i, p in enumerate(prices):
+        x = i * step
+        y = height - ((p - min_p) / span) * height
+        pts.append(f"{x:.1f},{y:.1f}")
+    polyline = ' '.join(pts)
+
+    svg = (
+        f'<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">'
+        f'<polyline fill="none" stroke="#0f0" stroke-width="1" points="{polyline}"/>'
+        '</svg>'
+    )
+    return svg
