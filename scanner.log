@@ -8295,3 +8295,532 @@
 1 Failed download:
 2025-05-14 15:49:58,947 ERROR ['CTXS']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
 2025-05-14 15:50:00,230 INFO Scan complete, sleeping 60s.
+2025-05-14 15:50:55,934 INFO --- Scanner Started: 350 symbols ---
+2025-05-14 15:50:55,935 INFO Scanning 350 symbols...
+2025-05-14 15:50:56,829 INFO AAPL E*TRADE price returned: 212.00999450683594
+2025-05-14 15:50:56,835 ERROR Failed to send alert for AAPL: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:50:57,301 INFO MSFT E*TRADE price returned: 452.44000244140625
+2025-05-14 15:50:57,306 ERROR Failed to send alert for MSFT: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:50:57,709 INFO GOOGL E*TRADE price returned: 165.2449951171875
+2025-05-14 15:50:57,715 ERROR Failed to send alert for GOOGL: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:50:58,130 INFO AMZN E*TRADE price returned: 209.89320373535156
+2025-05-14 15:50:58,137 ERROR Failed to send alert for AMZN: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:50:58,593 INFO META E*TRADE price returned: 659.0599975585938
+2025-05-14 15:50:58,598 ERROR Failed to send alert for META: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:50:59,192 INFO TSLA E*TRADE price returned: 347.1231994628906
+2025-05-14 15:50:59,197 ERROR Failed to send alert for TSLA: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:50:59,840 INFO JPM E*TRADE price returned: 266.3800048828125
+2025-05-14 15:50:59,847 ERROR Failed to send alert for JPM: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:00,387 INFO V E*TRADE price returned: 356.4849853515625
+2025-05-14 15:51:00,414 ERROR Failed to send alert for V: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:01,147 INFO MA E*TRADE price returned: 573.5449829101562
+2025-05-14 15:51:01,153 ERROR Failed to send alert for MA: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:01,610 INFO NVDA E*TRADE price returned: 135.01499938964844
+2025-05-14 15:51:01,619 ERROR Failed to send alert for NVDA: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:02,032 INFO HD E*TRADE price returned: 372.6700134277344
+2025-05-14 15:51:02,037 ERROR Failed to send alert for HD: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:02,502 INFO DIS E*TRADE price returned: 112.80000305175781
+2025-05-14 15:51:02,507 ERROR Failed to send alert for DIS: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:02,965 INFO PYPL E*TRADE price returned: 72.74919891357422
+2025-05-14 15:51:02,973 ERROR Failed to send alert for PYPL: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:03,437 INFO BAC E*TRADE price returned: 44.8650016784668
+2025-05-14 15:51:03,443 ERROR Failed to send alert for BAC: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:04,065 INFO ADBE E*TRADE price returned: 399.4200134277344
+2025-05-14 15:51:04,071 ERROR Failed to send alert for ADBE: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:04,741 INFO NFLX E*TRADE price returned: 1145.20751953125
+2025-05-14 15:51:04,746 ERROR Failed to send alert for NFLX: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:06,360 INFO CSCO E*TRADE price returned: 61.2599983215332
+2025-05-14 15:51:06,383 ERROR Failed to send alert for CSCO: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:06,871 INFO CRM E*TRADE price returned: 289.9700012207031
+2025-05-14 15:51:06,876 ERROR Failed to send alert for CRM: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:07,312 INFO XOM E*TRADE price returned: 108.7300033569336
+2025-05-14 15:51:07,319 ERROR Failed to send alert for XOM: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:08,304 INFO WFC E*TRADE price returned: 76.3499984741211
+2025-05-14 15:51:08,308 ERROR Failed to send alert for WFC: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:08,706 INFO ACN E*TRADE price returned: 321.260009765625
+2025-05-14 15:51:08,710 ERROR Failed to send alert for ACN: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:09,120 INFO CVX E*TRADE price returned: 141.63999938964844
+2025-05-14 15:51:09,136 ERROR Failed to send alert for CVX: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:09,889 INFO AVGO E*TRADE price returned: 231.7100067138672
+2025-05-14 15:51:09,894 ERROR Failed to send alert for AVGO: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:10,601 INFO NKE E*TRADE price returned: 61.80500030517578
+2025-05-14 15:51:10,605 ERROR Failed to send alert for NKE: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:11,540 INFO NEE E*TRADE price returned: 72.3416976928711
+2025-05-14 15:51:11,545 ERROR Failed to send alert for NEE: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:11,981 INFO TXN E*TRADE price returned: 187.05999755859375
+2025-05-14 15:51:11,986 ERROR Failed to send alert for TXN: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:12,505 INFO UNP E*TRADE price returned: 228.61000061035156
+2025-05-14 15:51:12,509 ERROR Failed to send alert for UNP: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:13,094 INFO QCOM E*TRADE price returned: 152.65040588378906
+2025-05-14 15:51:13,102 ERROR Failed to send alert for QCOM: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:13,830 INFO HON E*TRADE price returned: 217.6300048828125
+2025-05-14 15:51:13,835 ERROR Failed to send alert for HON: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:14,225 INFO IBM E*TRADE price returned: 258.5
+2025-05-14 15:51:14,230 ERROR Failed to send alert for IBM: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:14,671 INFO ORCL E*TRADE price returned: 162.86500549316406
+2025-05-14 15:51:14,744 ERROR Failed to send alert for ORCL: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:15,278 INFO UPS E*TRADE price returned: 99.69999694824219
+2025-05-14 15:51:15,285 ERROR Failed to send alert for UPS: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:15,874 INFO LOW E*TRADE price returned: 228.47999572753906
+2025-05-14 15:51:15,879 ERROR Failed to send alert for LOW: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:16,355 INFO SBUX E*TRADE price returned: 86.97000122070312
+2025-05-14 15:51:16,361 ERROR Failed to send alert for SBUX: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:16,953 INFO RTX E*TRADE price returned: 131.0399932861328
+2025-05-14 15:51:16,960 ERROR Failed to send alert for RTX: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:17,617 INFO MMM E*TRADE price returned: 148.2899932861328
+2025-05-14 15:51:17,626 ERROR Failed to send alert for MMM: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:18,083 INFO ISRG E*TRADE price returned: 564.47998046875
+2025-05-14 15:51:18,089 ERROR Failed to send alert for ISRG: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:18,512 INFO GE E*TRADE price returned: 222.86000061035156
+2025-05-14 15:51:18,521 ERROR Failed to send alert for GE: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:19,158 INFO BLK E*TRADE price returned: 967.385009765625
+2025-05-14 15:51:19,163 ERROR Failed to send alert for BLK: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:19,635 INFO BA E*TRADE price returned: 204.9499969482422
+2025-05-14 15:51:19,639 ERROR Failed to send alert for BA: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:20,041 INFO CAT E*TRADE price returned: 350.2200012207031
+2025-05-14 15:51:20,047 ERROR Failed to send alert for CAT: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:20,432 INFO NOW E*TRADE price returned: 1029.1949462890625
+2025-05-14 15:51:20,455 ERROR Failed to send alert for NOW: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:20,837 INFO LRCX E*TRADE price returned: 84.81999969482422
+2025-05-14 15:51:20,848 ERROR Failed to send alert for LRCX: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:21,688 INFO ADI E*TRADE price returned: 226.38999938964844
+2025-05-14 15:51:21,708 ERROR Failed to send alert for ADI: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:23,772 INFO SYK E*TRADE price returned: 386.8699951171875
+2025-05-14 15:51:23,780 ERROR Failed to send alert for SYK: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:24,302 INFO TJX E*TRADE price returned: 131.48500061035156
+2025-05-14 15:51:24,306 ERROR Failed to send alert for TJX: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:24,771 INFO AXP E*TRADE price returned: 300.75
+2025-05-14 15:51:24,778 ERROR Failed to send alert for AXP: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:25,156 INFO EL E*TRADE price returned: 64.0999984741211
+2025-05-14 15:51:25,162 ERROR Failed to send alert for EL: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:25,530 INFO ADP E*TRADE price returned: 309.69000244140625
+2025-05-14 15:51:25,536 ERROR Failed to send alert for ADP: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:25,977 INFO USB E*TRADE price returned: 44.310001373291016
+2025-05-14 15:51:25,985 ERROR Failed to send alert for USB: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:26,856 INFO C E*TRADE price returned: 75.38999938964844
+2025-05-14 15:51:26,865 ERROR Failed to send alert for C: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:27,515 INFO DE E*TRADE price returned: 497.8500061035156
+2025-05-14 15:51:27,521 ERROR Failed to send alert for DE: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:27,952 INFO SCHW E*TRADE price returned: 87.23999786376953
+2025-05-14 15:51:27,958 ERROR Failed to send alert for SCHW: 404 Client Error: NOT FOUND for url: http://127.0.0.1:5000/api/alerts
+2025-05-14 15:51:28,486 INFO GM E*TRADE price returned: 50.34000015258789
+2025-05-14 15:51:28,941 INFO ALERT SENT GM OPPORTUNIST @ 50.34
+2025-05-14 15:51:29,555 INFO EW E*TRADE price returned: 76.76000213623047
+2025-05-14 15:51:29,577 INFO ALERT SENT EW OPPORTUNIST @ 76.76
+2025-05-14 15:51:30,258 INFO PNC E*TRADE price returned: 178.44500732421875
+2025-05-14 15:51:30,283 INFO ALERT SENT PNC OPPORTUNIST @ 178.45
+2025-05-14 15:51:30,962 INFO BKNG E*TRADE price returned: 5203.66015625
+2025-05-14 15:51:30,985 INFO ALERT SENT BKNG OPPORTUNIST @ 5203.66
+2025-05-14 15:51:33,000 INFO NSC E*TRADE price returned: 241.24000549316406
+2025-05-14 15:51:33,022 INFO ALERT SENT NSC OPPORTUNIST @ 241.24
+2025-05-14 15:51:33,939 INFO REGN E*TRADE price returned: 573.7899780273438
+2025-05-14 15:51:33,967 INFO ALERT SENT REGN OPPORTUNIST @ 573.79
+2025-05-14 15:51:34,366 INFO FDX E*TRADE price returned: 231.75999450683594
+2025-05-14 15:51:34,388 INFO ALERT SENT FDX OPPORTUNIST @ 231.76
+2025-05-14 15:51:35,220 INFO ETN E*TRADE price returned: 329.7099914550781
+2025-05-14 15:51:35,243 INFO ALERT SENT ETN OPPORTUNIST @ 329.71
+2025-05-14 15:51:36,040 INFO TFC E*TRADE price returned: 41.29999923706055
+2025-05-14 15:51:36,064 INFO ALERT SENT TFC OPPORTUNIST @ 41.3
+2025-05-14 15:51:39,501 ERROR 
+1 Failed download:
+2025-05-14 15:51:39,501 ERROR ['FISV']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:51:39,946 INFO IDXX E*TRADE price returned: 508.3699951171875
+2025-05-14 15:51:39,972 INFO ALERT SENT IDXX OPPORTUNIST @ 508.37
+2025-05-14 15:51:40,666 INFO HCA E*TRADE price returned: 367.3500061035156
+2025-05-14 15:51:40,693 INFO ALERT SENT HCA OPPORTUNIST @ 367.35
+2025-05-14 15:51:41,593 INFO EOG E*TRADE price returned: 115.86000061035156
+2025-05-14 15:51:41,618 INFO ALERT SENT EOG OPPORTUNIST @ 115.86
+2025-05-14 15:51:42,830 INFO CDNS E*TRADE price returned: 319.3399963378906
+2025-05-14 15:51:42,860 INFO ALERT SENT CDNS OPPORTUNIST @ 319.34
+2025-05-14 15:51:43,306 INFO PSX E*TRADE price returned: 124.66000366210938
+2025-05-14 15:51:43,330 INFO ALERT SENT PSX OPPORTUNIST @ 124.66
+2025-05-14 15:51:44,364 INFO ADSK E*TRADE price returned: 295.80999755859375
+2025-05-14 15:51:46,370 ERROR Failed to send alert for ADSK: HTTPConnectionPool(host='127.0.0.1', port=5000): Max retries exceeded with url: /api/alerts (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000021F6AF0DF90>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+2025-05-14 15:51:46,868 INFO MS E*TRADE price returned: 131.44000244140625
+2025-05-14 15:51:48,395 INFO ALERT SENT MS OPPORTUNIST @ 131.44
+2025-05-14 15:51:48,832 INFO MET E*TRADE price returned: 80.13500213623047
+2025-05-14 15:51:48,857 INFO ALERT SENT MET OPPORTUNIST @ 80.14
+2025-05-14 15:51:49,260 INFO KLAC E*TRADE price returned: 802.1500244140625
+2025-05-14 15:51:49,288 INFO ALERT SENT KLAC OPPORTUNIST @ 802.15
+2025-05-14 15:51:49,980 INFO ROST E*TRADE price returned: 150.83299255371094
+2025-05-14 15:51:50,011 INFO ALERT SENT ROST OPPORTUNIST @ 150.83
+2025-05-14 15:51:50,677 INFO CMI E*TRADE price returned: 333.7799987792969
+2025-05-14 15:51:50,703 INFO ALERT SENT CMI OPPORTUNIST @ 333.78
+2025-05-14 15:51:51,175 INFO F E*TRADE price returned: 10.677300453186035
+2025-05-14 15:51:51,207 INFO ALERT SENT F OPPORTUNIST @ 10.68
+2025-05-14 15:51:51,634 INFO TEL E*TRADE price returned: 161.25999450683594
+2025-05-14 15:51:51,662 INFO ALERT SENT TEL OPPORTUNIST @ 161.26
+2025-05-14 15:51:52,074 INFO PCAR E*TRADE price returned: 95.13999938964844
+2025-05-14 15:51:52,104 INFO ALERT SENT PCAR OPPORTUNIST @ 95.14
+2025-05-14 15:51:52,728 INFO VLO E*TRADE price returned: 134.53500366210938
+2025-05-14 15:51:52,750 INFO ALERT SENT VLO OPPORTUNIST @ 134.54
+2025-05-14 15:51:53,386 INFO MNST E*TRADE price returned: 61.150001525878906
+2025-05-14 15:51:53,411 INFO ALERT SENT MNST OPPORTUNIST @ 61.15
+2025-05-14 15:51:53,878 INFO APH E*TRADE price returned: 85.86499786376953
+2025-05-14 15:51:53,926 INFO ALERT SENT APH OPPORTUNIST @ 85.86
+2025-05-14 15:51:54,337 INFO ANET E*TRADE price returned: 98.19999694824219
+2025-05-14 15:51:54,362 INFO ALERT SENT ANET OPPORTUNIST @ 98.2
+2025-05-14 15:51:54,876 INFO PAYX E*TRADE price returned: 152.02999877929688
+2025-05-14 15:51:54,902 INFO ALERT SENT PAYX OPPORTUNIST @ 152.03
+2025-05-14 15:51:55,594 INFO WMB E*TRADE price returned: 58.27000045776367
+2025-05-14 15:51:55,620 INFO ALERT SENT WMB OPPORTUNIST @ 58.27
+2025-05-14 15:51:56,020 INFO HES E*TRADE price returned: 134.74000549316406
+2025-05-14 15:51:56,047 INFO ALERT SENT HES OPPORTUNIST @ 134.74
+2025-05-14 15:51:56,494 INFO MCHP E*TRADE price returned: 60.560001373291016
+2025-05-14 15:51:56,521 INFO ALERT SENT MCHP OPPORTUNIST @ 60.56
+2025-05-14 15:51:57,034 INFO MAR E*TRADE price returned: 272.6099853515625
+2025-05-14 15:51:57,062 INFO ALERT SENT MAR OPPORTUNIST @ 272.61
+2025-05-14 15:51:57,570 INFO PRU E*TRADE price returned: 106.5
+2025-05-14 15:51:57,595 INFO ALERT SENT PRU OPPORTUNIST @ 106.5
+2025-05-14 15:51:59,607 INFO HLT E*TRADE price returned: 253.0050048828125
+2025-05-14 15:51:59,631 INFO ALERT SENT HLT OPPORTUNIST @ 253.01
+2025-05-14 15:52:00,404 INFO ALGN E*TRADE price returned: 187.5800018310547
+2025-05-14 15:52:00,428 INFO ALERT SENT ALGN OPPORTUNIST @ 187.58
+2025-05-14 15:52:00,967 INFO PPG E*TRADE price returned: 111.7300033569336
+2025-05-14 15:52:00,994 INFO ALERT SENT PPG OPPORTUNIST @ 111.73
+2025-05-14 15:52:02,015 INFO HPQ E*TRADE price returned: 28.65999984741211
+2025-05-14 15:52:02,037 INFO ALERT SENT HPQ OPPORTUNIST @ 28.66
+2025-05-14 15:52:02,589 INFO KEYS E*TRADE price returned: 164.72500610351562
+2025-05-14 15:52:02,616 INFO ALERT SENT KEYS OPPORTUNIST @ 164.73
+2025-05-14 15:52:03,169 INFO TT E*TRADE price returned: 419.82501220703125
+2025-05-14 15:52:03,193 INFO ALERT SENT TT OPPORTUNIST @ 419.83
+2025-05-14 15:52:03,963 INFO TTWO E*TRADE price returned: 229.2899932861328
+2025-05-14 15:52:04,012 INFO ALERT SENT TTWO OPPORTUNIST @ 229.29
+2025-05-14 15:52:05,048 INFO AMP E*TRADE price returned: 522.8200073242188
+2025-05-14 15:52:05,071 INFO ALERT SENT AMP OPPORTUNIST @ 522.82
+2025-05-14 15:52:05,605 INFO STT E*TRADE price returned: 97.8499984741211
+2025-05-14 15:52:05,631 INFO ALERT SENT STT OPPORTUNIST @ 97.85
+2025-05-14 15:52:06,148 INFO DXCM E*TRADE price returned: 86.05999755859375
+2025-05-14 15:52:06,171 INFO ALERT SENT DXCM OPPORTUNIST @ 86.06
+2025-05-14 15:52:06,687 INFO NTAP E*TRADE price returned: 99.79000091552734
+2025-05-14 15:52:06,711 INFO ALERT SENT NTAP OPPORTUNIST @ 99.79
+2025-05-14 15:52:07,238 INFO WDC E*TRADE price returned: 49.20000076293945
+2025-05-14 15:52:07,260 INFO ALERT SENT WDC OPPORTUNIST @ 49.2
+2025-05-14 15:52:07,778 INFO LHX E*TRADE price returned: 219.61000061035156
+2025-05-14 15:52:07,818 INFO ALERT SENT LHX OPPORTUNIST @ 219.61
+2025-05-14 15:52:08,574 INFO CSX E*TRADE price returned: 31.079999923706055
+2025-05-14 15:52:08,600 INFO ALERT SENT CSX OPPORTUNIST @ 31.08
+2025-05-14 15:52:10,058 INFO LUV E*TRADE price returned: 31.454999923706055
+2025-05-14 15:52:10,082 INFO ALERT SENT LUV OPPORTUNIST @ 31.45
+2025-05-14 15:52:11,793 INFO DFS E*TRADE price returned: 200.1300048828125
+2025-05-14 15:52:11,830 INFO ALERT SENT DFS OPPORTUNIST @ 200.13
+2025-05-14 15:52:12,322 INFO RCL E*TRADE price returned: 251.69749450683594
+2025-05-14 15:52:12,354 INFO ALERT SENT RCL OPPORTUNIST @ 251.7
+2025-05-14 15:52:13,902 INFO FAST E*TRADE price returned: 80.49500274658203
+2025-05-14 15:52:13,925 INFO ALERT SENT FAST OPPORTUNIST @ 80.5
+2025-05-14 15:52:14,720 INFO EXPE E*TRADE price returned: 169.4600067138672
+2025-05-14 15:52:14,761 INFO ALERT SENT EXPE OPPORTUNIST @ 169.46
+2025-05-14 15:52:15,581 INFO FITB E*TRADE price returned: 39.435001373291016
+2025-05-14 15:52:15,604 INFO ALERT SENT FITB OPPORTUNIST @ 39.44
+2025-05-14 15:52:16,482 INFO CDW E*TRADE price returned: 189.8800048828125
+2025-05-14 15:52:16,530 INFO ALERT SENT CDW OPPORTUNIST @ 189.88
+2025-05-14 15:52:19,058 ERROR 
+1 Failed download:
+2025-05-14 15:52:19,058 ERROR ['FLT']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:52:19,591 INFO INCY E*TRADE price returned: 61.09000015258789
+2025-05-14 15:52:19,620 INFO ALERT SENT INCY OPPORTUNIST @ 61.09
+2025-05-14 15:52:20,877 INFO MTB E*TRADE price returned: 185.85000610351562
+2025-05-14 15:52:20,922 INFO ALERT SENT MTB OPPORTUNIST @ 185.85
+2025-05-14 15:52:21,930 INFO AME E*TRADE price returned: 179.66000366210938
+2025-05-14 15:52:21,957 INFO ALERT SENT AME OPPORTUNIST @ 179.66
+2025-05-14 15:52:24,613 ERROR 
+1 Failed download:
+2025-05-14 15:52:24,614 ERROR ['CTLT']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:52:25,569 INFO VFC E*TRADE price returned: 14.765000343322754
+2025-05-14 15:52:25,597 INFO ALERT SENT VFC OPPORTUNIST @ 14.77
+2025-05-14 15:52:28,598 ERROR 
+1 Failed download:
+2025-05-14 15:52:28,599 ERROR ['ABC']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:52:29,125 INFO PAYC E*TRADE price returned: 257.0400085449219
+2025-05-14 15:52:29,148 INFO ALERT SENT PAYC OPPORTUNIST @ 257.04
+2025-05-14 15:52:31,292 ERROR 
+1 Failed download:
+2025-05-14 15:52:31,293 ERROR ['WRK']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:52:32,251 INFO CFG E*TRADE price returned: 41.70500183105469
+2025-05-14 15:52:32,275 INFO ALERT SENT CFG OPPORTUNIST @ 41.71
+2025-05-14 15:52:33,366 INFO CHD E*TRADE price returned: 93.4800033569336
+2025-05-14 15:52:33,402 INFO ALERT SENT CHD OPPORTUNIST @ 93.48
+2025-05-14 15:52:34,196 INFO DOV E*TRADE price returned: 184.78500366210938
+2025-05-14 15:52:34,229 INFO ALERT SENT DOV OPPORTUNIST @ 184.79
+2025-05-14 15:52:34,784 INFO EIX E*TRADE price returned: 56.595001220703125
+2025-05-14 15:52:34,818 INFO ALERT SENT EIX OPPORTUNIST @ 56.6
+2025-05-14 15:52:35,307 INFO LYB E*TRADE price returned: 59.380001068115234
+2025-05-14 15:52:35,328 INFO ALERT SENT LYB OPPORTUNIST @ 59.38
+2025-05-14 15:52:37,393 ERROR 
+1 Failed download:
+2025-05-14 15:52:37,394 ERROR ['PKI']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:52:38,165 INFO PKG E*TRADE price returned: 192.36000061035156
+2025-05-14 15:52:38,193 INFO ALERT SENT PKG OPPORTUNIST @ 192.36
+2025-05-14 15:52:38,673 INFO HWM E*TRADE price returned: 159.56500244140625
+2025-05-14 15:52:38,736 INFO ALERT SENT HWM OPPORTUNIST @ 159.57
+2025-05-14 15:52:40,075 INFO TER E*TRADE price returned: 83.97000122070312
+2025-05-14 15:52:40,102 INFO ALERT SENT TER OPPORTUNIST @ 83.97
+2025-05-14 15:52:40,885 INFO CPRT E*TRADE price returned: 62.52000045776367
+2025-05-14 15:52:40,910 INFO ALERT SENT CPRT OPPORTUNIST @ 62.52
+2025-05-14 15:52:41,427 INFO NTRS E*TRADE price returned: 106.66000366210938
+2025-05-14 15:52:41,451 INFO ALERT SENT NTRS OPPORTUNIST @ 106.66
+2025-05-14 15:52:41,963 INFO FANG E*TRADE price returned: 145.33999633789062
+2025-05-14 15:52:41,987 INFO ALERT SENT FANG OPPORTUNIST @ 145.34
+2025-05-14 15:52:42,470 INFO KEY E*TRADE price returned: 16.6299991607666
+2025-05-14 15:52:42,498 INFO ALERT SENT KEY OPPORTUNIST @ 16.63
+2025-05-14 15:52:42,993 INFO KMI E*TRADE price returned: 27.46500015258789
+2025-05-14 15:52:43,019 INFO ALERT SENT KMI OPPORTUNIST @ 27.47
+2025-05-14 15:52:43,480 INFO MPWR E*TRADE price returned: 729.9000244140625
+2025-05-14 15:52:43,502 INFO ALERT SENT MPWR OPPORTUNIST @ 729.9
+2025-05-14 15:52:44,243 INFO RF E*TRADE price returned: 22.479999542236328
+2025-05-14 15:52:44,288 INFO ALERT SENT RF OPPORTUNIST @ 22.48
+2025-05-14 15:52:45,030 INFO BKR E*TRADE price returned: 38.01499938964844
+2025-05-14 15:52:45,051 INFO ALERT SENT BKR OPPORTUNIST @ 38.01
+2025-05-14 15:52:45,537 INFO RJF E*TRADE price returned: 152.5
+2025-05-14 15:52:45,563 INFO ALERT SENT RJF OPPORTUNIST @ 152.5
+2025-05-14 15:52:46,121 INFO IP E*TRADE price returned: 50.5
+2025-05-14 15:52:46,149 INFO ALERT SENT IP OPPORTUNIST @ 50.5
+2025-05-14 15:52:46,672 INFO COF E*TRADE price returned: 197.22999572753906
+2025-05-14 15:52:46,719 INFO ALERT SENT COF OPPORTUNIST @ 197.23
+2025-05-14 15:52:48,056 INFO BALL E*TRADE price returned: 52.95000076293945
+2025-05-14 15:52:48,107 INFO ALERT SENT BALL OPPORTUNIST @ 52.95
+2025-05-14 15:52:48,619 INFO NDAQ E*TRADE price returned: 81.23999786376953
+2025-05-14 15:52:48,657 INFO ALERT SENT NDAQ OPPORTUNIST @ 81.24
+2025-05-14 15:52:49,176 INFO BXP E*TRADE price returned: 66.18499755859375
+2025-05-14 15:52:49,208 INFO ALERT SENT BXP OPPORTUNIST @ 66.18
+2025-05-14 15:52:49,938 INFO BR E*TRADE price returned: 237.6999969482422
+2025-05-14 15:52:49,989 INFO ALERT SENT BR OPPORTUNIST @ 237.7
+2025-05-14 15:52:50,465 INFO CAH E*TRADE price returned: 148.65499877929688
+2025-05-14 15:52:50,488 INFO ALERT SENT CAH OPPORTUNIST @ 148.65
+2025-05-14 15:52:52,798 ERROR 
+1 Failed download:
+2025-05-14 15:52:52,799 ERROR ['PEAK']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:52:53,565 INFO TYL E*TRADE price returned: 564.405029296875
+2025-05-14 15:52:53,667 INFO ALERT SENT TYL OPPORTUNIST @ 564.41
+2025-05-14 15:52:54,632 INFO BEN E*TRADE price returned: 22.045000076293945
+2025-05-14 15:52:54,657 INFO ALERT SENT BEN OPPORTUNIST @ 22.05
+2025-05-14 15:52:55,125 INFO POOL E*TRADE price returned: 310.2449951171875
+2025-05-14 15:52:55,159 INFO ALERT SENT POOL OPPORTUNIST @ 310.24
+2025-05-14 15:52:57,177 ERROR 
+1 Failed download:
+2025-05-14 15:52:57,178 ERROR ['RE']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:52:58,314 INFO ULTA E*TRADE price returned: 411.2149963378906
+2025-05-14 15:52:58,346 INFO ALERT SENT ULTA OPPORTUNIST @ 411.21
+2025-05-14 15:52:59,307 INFO NDSN E*TRADE price returned: 201.4499969482422
+2025-05-14 15:52:59,331 INFO ALERT SENT NDSN OPPORTUNIST @ 201.45
+2025-05-14 15:53:00,093 INFO TRGP E*TRADE price returned: 169.13999938964844
+2025-05-14 15:53:00,116 INFO ALERT SENT TRGP OPPORTUNIST @ 169.14
+2025-05-14 15:53:00,596 INFO BBY E*TRADE price returned: 73.36499786376953
+2025-05-14 15:53:00,643 INFO ALERT SENT BBY OPPORTUNIST @ 73.36
+2025-05-14 15:53:01,454 INFO WAB E*TRADE price returned: 203.8300018310547
+2025-05-14 15:53:01,497 INFO ALERT SENT WAB OPPORTUNIST @ 203.83
+2025-05-14 15:53:02,040 INFO CHRW E*TRADE price returned: 97.91999816894531
+2025-05-14 15:53:02,073 INFO ALERT SENT CHRW OPPORTUNIST @ 97.92
+2025-05-14 15:53:02,561 INFO NWL E*TRADE price returned: 5.920000076293945
+2025-05-14 15:53:02,583 INFO ALERT SENT NWL OPPORTUNIST @ 5.92
+2025-05-14 15:53:03,112 INFO PWR E*TRADE price returned: 343.3800048828125
+2025-05-14 15:53:03,143 INFO ALERT SENT PWR OPPORTUNIST @ 343.38
+2025-05-14 15:53:03,650 INFO HBAN E*TRADE price returned: 16.1299991607666
+2025-05-14 15:53:03,681 INFO ALERT SENT HBAN OPPORTUNIST @ 16.13
+2025-05-14 15:53:04,479 INFO DRI E*TRADE price returned: 207.0
+2025-05-14 15:53:04,521 INFO ALERT SENT DRI OPPORTUNIST @ 207.0
+2025-05-14 15:53:05,667 INFO APA E*TRADE price returned: 18.218299865722656
+2025-05-14 15:53:05,692 INFO ALERT SENT APA OPPORTUNIST @ 18.22
+2025-05-14 15:53:06,239 INFO SWK E*TRADE price returned: 71.93000030517578
+2025-05-14 15:53:06,259 INFO ALERT SENT SWK OPPORTUNIST @ 71.93
+2025-05-14 15:53:06,967 INFO JBHT E*TRADE price returned: 147.91000366210938
+2025-05-14 15:53:06,992 INFO ALERT SENT JBHT OPPORTUNIST @ 147.91
+2025-05-14 15:53:07,763 INFO WHR E*TRADE price returned: 83.5999984741211
+2025-05-14 15:53:07,790 INFO ALERT SENT WHR OPPORTUNIST @ 83.6
+2025-05-14 15:53:08,353 INFO CMA E*TRADE price returned: 58.34000015258789
+2025-05-14 15:53:08,377 INFO ALERT SENT CMA OPPORTUNIST @ 58.34
+2025-05-14 15:53:08,863 INFO XRAY E*TRADE price returned: 16.424999237060547
+2025-05-14 15:53:08,887 INFO ALERT SENT XRAY OPPORTUNIST @ 16.42
+2025-05-14 15:53:09,381 INFO MOS E*TRADE price returned: 33.70500183105469
+2025-05-14 15:53:09,406 INFO ALERT SENT MOS OPPORTUNIST @ 33.71
+2025-05-14 15:53:10,655 INFO LW E*TRADE price returned: 51.45000076293945
+2025-05-14 15:53:10,680 INFO ALERT SENT LW OPPORTUNIST @ 51.45
+2025-05-14 15:53:13,035 INFO NRG E*TRADE price returned: 153.3000030517578
+2025-05-14 15:53:13,061 INFO ALERT SENT NRG OPPORTUNIST @ 153.3
+2025-05-14 15:53:13,523 INFO PFG E*TRADE price returned: 81.19999694824219
+2025-05-14 15:53:13,550 INFO ALERT SENT PFG OPPORTUNIST @ 81.2
+2025-05-14 15:53:14,226 INFO HAS E*TRADE price returned: 65.13999938964844
+2025-05-14 15:53:14,250 INFO ALERT SENT HAS OPPORTUNIST @ 65.14
+2025-05-14 15:53:14,743 INFO TAP E*TRADE price returned: 55.45500183105469
+2025-05-14 15:53:14,768 INFO ALERT SENT TAP OPPORTUNIST @ 55.46
+2025-05-14 15:53:15,680 INFO EXPD E*TRADE price returned: 114.23999786376953
+2025-05-14 15:53:15,723 INFO ALERT SENT EXPD OPPORTUNIST @ 114.24
+2025-05-14 15:53:16,455 INFO ZION E*TRADE price returned: 49.77000045776367
+2025-05-14 15:53:16,477 INFO ALERT SENT ZION OPPORTUNIST @ 49.77
+2025-05-14 15:53:16,954 INFO NCLH E*TRADE price returned: 19.485000610351562
+2025-05-14 15:53:16,991 INFO ALERT SENT NCLH OPPORTUNIST @ 19.49
+2025-05-14 15:53:19,489 ERROR 
+1 Failed download:
+2025-05-14 15:53:19,489 ERROR ['FLIR']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:53:19,949 INFO TXT E*TRADE price returned: 75.26000213623047
+2025-05-14 15:53:19,972 INFO ALERT SENT TXT OPPORTUNIST @ 75.26
+2025-05-14 15:53:20,667 INFO GNRC E*TRADE price returned: 128.6300048828125
+2025-05-14 15:53:20,692 INFO ALERT SENT GNRC OPPORTUNIST @ 128.63
+2025-05-14 15:53:21,138 INFO TROW E*TRADE price returned: 97.27999877929688
+2025-05-14 15:53:21,166 INFO ALERT SENT TROW OPPORTUNIST @ 97.28
+2025-05-14 15:53:21,690 INFO CF E*TRADE price returned: 85.7300033569336
+2025-05-14 15:53:21,717 INFO ALERT SENT CF OPPORTUNIST @ 85.73
+2025-05-14 15:53:22,160 INFO HST E*TRADE price returned: 15.53499984741211
+2025-05-14 15:53:22,181 INFO ALERT SENT HST OPPORTUNIST @ 15.53
+2025-05-14 15:53:22,692 INFO PH E*TRADE price returned: 676.4099731445312
+2025-05-14 15:53:22,753 INFO ALERT SENT PH OPPORTUNIST @ 676.41
+2025-05-14 15:53:23,487 INFO LKQ E*TRADE price returned: 41.98500061035156
+2025-05-14 15:53:23,510 INFO ALERT SENT LKQ OPPORTUNIST @ 41.99
+2025-05-14 15:53:23,979 INFO MAS E*TRADE price returned: 66.61499786376953
+2025-05-14 15:53:24,007 INFO ALERT SENT MAS OPPORTUNIST @ 66.61
+2025-05-14 15:53:24,518 INFO RHI E*TRADE price returned: 47.404998779296875
+2025-05-14 15:53:24,552 INFO ALERT SENT RHI OPPORTUNIST @ 47.4
+2025-05-14 15:53:26,952 ERROR 
+1 Failed download:
+2025-05-14 15:53:26,953 ERROR ['CTXS']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:53:27,436 INFO SEE E*TRADE price returned: 32.49700164794922
+2025-05-14 15:53:27,462 INFO ALERT SENT SEE OPPORTUNIST @ 32.5
+2025-05-14 15:53:28,603 INFO NWS E*TRADE price returned: 32.939998626708984
+2025-05-14 15:53:28,637 INFO ALERT SENT NWS OPPORTUNIST @ 32.94
+2025-05-14 15:53:29,108 INFO FFIV E*TRADE price returned: 281.2799987792969
+2025-05-14 15:53:29,130 INFO ALERT SENT FFIV OPPORTUNIST @ 281.28
+2025-05-14 15:53:30,071 INFO EMN E*TRADE price returned: 80.9000015258789
+2025-05-14 15:53:30,105 INFO ALERT SENT EMN OPPORTUNIST @ 80.9
+2025-05-14 15:53:30,343 INFO Scan complete, sleeping 60s.
+2025-05-14 15:54:30,344 INFO Scanning 350 symbols...
+2025-05-14 15:54:32,238 INFO CMCSA E*TRADE price returned: 34.64500045776367
+2025-05-14 15:54:32,265 INFO ALERT SENT CMCSA OPPORTUNIST @ 34.65
+2025-05-14 15:54:45,684 ERROR 
+1 Failed download:
+2025-05-14 15:54:45,684 ERROR ['FISV']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:54:58,303 ERROR 
+1 Failed download:
+2025-05-14 15:54:58,303 ERROR ['FLT']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:55:01,179 ERROR 
+1 Failed download:
+2025-05-14 15:55:01,179 ERROR ['CTLT']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:55:03,020 ERROR 
+1 Failed download:
+2025-05-14 15:55:03,021 ERROR ['ABC']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:55:04,128 ERROR 
+1 Failed download:
+2025-05-14 15:55:04,129 ERROR ['WRK']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:55:06,453 ERROR 
+1 Failed download:
+2025-05-14 15:55:06,454 ERROR ['PKI']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:55:10,984 ERROR 
+1 Failed download:
+2025-05-14 15:55:10,985 ERROR ['PEAK']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:55:13,002 ERROR 
+1 Failed download:
+2025-05-14 15:55:13,002 ERROR ['RE']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:55:20,235 ERROR 
+1 Failed download:
+2025-05-14 15:55:20,236 ERROR ['FLIR']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:55:22,147 ERROR 
+1 Failed download:
+2025-05-14 15:55:22,147 ERROR ['CTXS']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:55:23,972 INFO SLG E*TRADE price returned: 57.17499923706055
+2025-05-14 15:55:23,997 INFO ALERT SENT SLG OPPORTUNIST @ 57.17
+2025-05-14 15:55:23,997 INFO Scan complete, sleeping 60s.
+2025-05-14 15:56:23,999 INFO Scanning 350 symbols...
+2025-05-14 15:56:38,703 ERROR 
+1 Failed download:
+2025-05-14 15:56:38,703 ERROR ['FISV']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:56:51,500 ERROR 
+1 Failed download:
+2025-05-14 15:56:51,500 ERROR ['FLT']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:56:54,179 ERROR 
+1 Failed download:
+2025-05-14 15:56:54,179 ERROR ['CTLT']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:56:55,739 ERROR 
+1 Failed download:
+2025-05-14 15:56:55,739 ERROR ['ABC']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:56:56,806 ERROR 
+1 Failed download:
+2025-05-14 15:56:56,806 ERROR ['WRK']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:56:59,159 ERROR 
+1 Failed download:
+2025-05-14 15:56:59,160 ERROR ['PKI']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:57:03,702 ERROR 
+1 Failed download:
+2025-05-14 15:57:03,703 ERROR ['PEAK']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:57:05,979 ERROR 
+1 Failed download:
+2025-05-14 15:57:05,980 ERROR ['RE']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:57:13,888 ERROR 
+1 Failed download:
+2025-05-14 15:57:13,888 ERROR ['FLIR']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:57:15,488 ERROR 
+1 Failed download:
+2025-05-14 15:57:15,489 ERROR ['CTXS']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:57:16,819 INFO Scan complete, sleeping 60s.
+2025-05-14 15:58:16,820 INFO Scanning 350 symbols...
+2025-05-14 15:58:27,914 ERROR 
+1 Failed download:
+2025-05-14 15:58:27,914 ERROR ['FISV']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:58:37,412 ERROR 
+1 Failed download:
+2025-05-14 15:58:37,412 ERROR ['FLT']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:58:39,689 ERROR 
+1 Failed download:
+2025-05-14 15:58:39,689 ERROR ['CTLT']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:58:40,975 ERROR 
+1 Failed download:
+2025-05-14 15:58:40,975 ERROR ['ABC']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:58:42,318 ERROR 
+1 Failed download:
+2025-05-14 15:58:42,318 ERROR ['WRK']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:58:44,434 ERROR 
+1 Failed download:
+2025-05-14 15:58:44,434 ERROR ['PKI']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:58:47,847 ERROR 
+1 Failed download:
+2025-05-14 15:58:47,847 ERROR ['PEAK']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:58:49,322 ERROR 
+1 Failed download:
+2025-05-14 15:58:49,322 ERROR ['RE']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:58:54,687 ERROR 
+1 Failed download:
+2025-05-14 15:58:54,687 ERROR ['FLIR']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:58:56,382 ERROR 
+1 Failed download:
+2025-05-14 15:58:56,382 ERROR ['CTXS']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 15:58:57,362 INFO Scan complete, sleeping 60s.
+2025-05-14 15:59:57,364 INFO Scanning 350 symbols...
+2025-05-14 16:00:10,097 ERROR 
+1 Failed download:
+2025-05-14 16:00:10,097 ERROR ['FISV']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 16:00:21,870 ERROR 
+1 Failed download:
+2025-05-14 16:00:21,870 ERROR ['FLT']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 16:00:24,193 ERROR 
+1 Failed download:
+2025-05-14 16:00:24,195 ERROR ['CTLT']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 16:00:25,639 ERROR 
+1 Failed download:
+2025-05-14 16:00:25,639 ERROR ['ABC']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 16:00:26,733 ERROR 
+1 Failed download:
+2025-05-14 16:00:26,733 ERROR ['WRK']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 16:00:28,782 ERROR 
+1 Failed download:
+2025-05-14 16:00:28,782 ERROR ['PKI']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 16:00:32,917 ERROR 
+1 Failed download:
+2025-05-14 16:00:32,917 ERROR ['PEAK']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 16:00:34,953 ERROR 
+1 Failed download:
+2025-05-14 16:00:34,953 ERROR ['RE']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 16:00:41,516 ERROR 
+1 Failed download:
+2025-05-14 16:00:41,518 ERROR ['FLIR']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 16:00:43,041 ERROR 
+1 Failed download:
+2025-05-14 16:00:43,048 ERROR ['CTXS']: YFPricesMissingError('possibly delisted; no price data found  (period=5d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-05-14 16:00:44,121 INFO Scan complete, sleeping 60s.
+2025-05-14 16:01:44,122 INFO Market closed, sleeping 900s.
+2025-05-14 16:16:44,125 INFO Market closed, sleeping 900s.
+2025-05-14 16:31:44,127 INFO Market closed, sleeping 900s.
+2025-05-14 16:46:44,132 INFO Market closed, sleeping 900s.
+2025-05-14 17:01:44,136 INFO Market closed, sleeping 900s.
+2025-05-14 17:16:44,142 INFO Market closed, sleeping 900s.
+2025-05-14 17:31:44,146 INFO Market closed, sleeping 900s.
+2025-05-14 17:46:44,150 INFO Market closed, sleeping 900s.
+2025-05-14 18:01:44,155 INFO Market closed, sleeping 900s.
+2025-05-14 18:16:44,159 INFO Market closed, sleeping 900s.

@@ -2,11 +2,10 @@ import sqlite3
 
 DB_PATH = 'alerts.db'
 
-
 def compute_vwap_for_symbol(symbol, limit=20):
     """
-    Compute the simple average of the last `limit` prices for the given symbol.
-    Returns None if no data.
+    Compute simple VWAP (average) over last `limit` alerts for the symbol.
+    Returns None if insufficient data.
     """
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -22,23 +21,24 @@ def compute_vwap_for_symbol(symbol, limit=20):
         return None
     return sum(prices) / len(prices)
 
-
 def get_sparkline_svg(alert_id, limit=20, width=100, height=30):
     """
-    Generate an inline sparkline SVG for the last `limit` prices of the symbol
-    associated with a given alert_id. Returns empty string if insufficient data.
+    Generate sparkline SVG for last `limit` prices of the alert's symbol.
+    Returns empty string if not enough data.
     """
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
-    # Fetch symbol for this alert
     cur.execute("SELECT symbol FROM alerts WHERE id = ?", (alert_id,))
     row = cur.fetchone()
+    conn.close()
     if not row:
-        conn.close()
         return ''
     symbol = row['symbol']
-    # Fetch latest prices
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
     cur.execute(
         "SELECT price FROM alerts WHERE symbol = ? ORDER BY timestamp DESC LIMIT ?",
         (symbol, limit)
@@ -49,9 +49,10 @@ def get_sparkline_svg(alert_id, limit=20, width=100, height=30):
     prices = [r['price'] for r in price_rows]
     if len(prices) < 2:
         return ''
+    # reverse to chronological
     prices = prices[::-1]
     min_p, max_p = min(prices), max(prices)
-    span = max_p - min_p or 1.0
+    span = max_p - min_p if max_p != min_p else 1.0
     step = width / (len(prices) - 1)
     pts = []
     for i, p in enumerate(prices):
