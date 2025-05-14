@@ -74,17 +74,6 @@
             {% endif %}
           </td>
           <td><!-- sparkline injected by JS --></td>
-          {% if a.vwap is defined %}
-            <td>${{ '%.2f'|format(a.vwap) }}</td>
-          {% else %}
-            <td>N/A</td>
-          {% endif %}
-          <td>
-            <form method="post" action="{{ url_for('clear_one', alert_id=a.id) }}">
-              <input type="hidden" name="filter" value="{{ current_filter }}">
-              <button type="submit" class="btn btn-sm btn-outline-light">Clear</button>
-            </form>
-          </td>
         </tr>
         {% endfor %}
       </tbody>
