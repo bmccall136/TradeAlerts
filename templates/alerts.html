@@ -60,7 +60,11 @@
           <td>{{ a.symbol }}</td>
           <td>{{ a.name }}</td>
           <td>{{ a.signal }}</td>
-          <td>{{ '%.1f'|format(a.confidence) }}%</td>
+          {% if a.confidence is defined %}
+            <td>{{ '%.1f'|format(a.confidence) }}%</td>
+          {% else %}
+            <td>N/A</td>
+          {% endif %}
           <td>${{ '%.2f'|format(a.price) }}</td>
           <td>
             {% if a.timestamp %}
@@ -70,7 +74,11 @@
             {% endif %}
           </td>
           <td><!-- sparkline injected by JS --></td>
-          <td>${{ '%.2f'|format(a.vwap) }}</td>
+          {% if a.vwap is defined %}
+            <td>${{ '%.2f'|format(a.vwap) }}</td>
+          {% else %}
+            <td>N/A</td>
+          {% endif %}
           <td>
             <form method="post" action="{{ url_for('clear_one', alert_id=a.id) }}">
               <input type="hidden" name="filter" value="{{ current_filter }}">
