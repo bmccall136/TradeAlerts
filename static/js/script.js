@@ -53,20 +53,23 @@ document.addEventListener('DOMContentLoaded', () => {
           .forEach(a => {
             const ts = a.timestamp ? a.timestamp.slice(0,19).replace('T',' ') : '--';
             const tr = document.createElement('tr');
-            tr.innerHTML = `
-              <td>${a.symbol}</td>
-              <td>${a.name}</td>
-              <td>${badge(a.signal)}</td>
-              <td>${Math.round(a.confidence)}%</td>
-              <td>$${parseFloat(a.price).toFixed(2)}</td>
-              <td>${ts}</td>
-              <td class="sparkline-cell">${a.sparkline || ''}</td>
-              <td>$${parseFloat(a.vwap).toFixed(2)}</td>
-              <td>
-                <input type="number" class="qty-input" placeholder="Qty">
-                <button class="btn-simulate" data-symbol="${a.symbol}">Buy</button>
-              </td>
-              <td><button class="btn-clear" data-id="${a.id}">Clear</button></td>`;
+           tr.innerHTML = `
+  <td>${a.symbol}</td>
+  <td>${a.name}</td>
+  <td>${badge(a.signal)}</td>
+  <td>${typeof a.confidence === 'number' ? Math.round(a.confidence) + '%' : 'N/A'}</td>
+  <td>$${parseFloat(a.price).toFixed(2)}</td>
+  <td>${ts}</td>
+  <td class="sparkline-cell">
+    <img src="/sparkline/${a.id}.svg" alt="sparkline" />
+  </td>
+  <td>${a.vwap ? '$' + parseFloat(a.vwap).toFixed(2) : 'N/A'}</td>
+  <td>
+    <input type="number" class="qty-input" placeholder="Qty">
+    <button class="btn-simulate" data-symbol="${a.symbol}">Buy</button>
+  </td>
+  <td><button class="btn-clear" data-id="${a.id}">Clear</button></td>`;
+
             tbody.appendChild(tr);
           });
         document.querySelectorAll('.btn-clear')
