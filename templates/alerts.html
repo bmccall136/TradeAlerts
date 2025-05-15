@@ -47,7 +47,7 @@
         <td>{{ alert.confidence or 'N/A' }}</td>
         <td>${{ alert.price | round(2) }}</td>
         <td>{{ alert.timestamp }}</td>
-        <td class="sparkline text-left"></td>
+        <td class="sparkline text-left" data-spark-values="{{ (alert.spark_values|default([]))|tojson }}"></td>
         <td class="text-right">${{ alert.vwap | round(2) }}</td>
         <td class="text-right {% if diff < 0 %}text-danger{% else %}text-success{% endif %}">
           {{ diff | round(2) }}

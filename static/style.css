@@ -1,6 +1,4 @@
-/*—————————————————————————————
-  Global & Page Background
-—————————————————————————————*/
+/* Global & Page Background */
 html, body {
   background-color: #000 !important;
   color: #fff;
@@ -8,14 +6,13 @@ html, body {
   padding: 0;
 }
 
-/*—————————————————————————————
-  Header & Status Bar
-—————————————————————————————*/
+/* Header & Status Bar */
 .site-header {
   background-color: #000;
+  position: relative;
 }
 .status-container {
-  padding: 0.5rem 0;
+  top: 0;
 }
 .status-row {
   display: flex;
@@ -25,19 +22,11 @@ html, body {
   color: #0af;
   text-decoration: underline;
 }
-
-/* Stack left‑hand items */
-.status-left {
-  gap: 0.5rem;
-}
-/* Stack right‑hand items */
-.status-right {
+.status-left, .status-right {
   gap: 0.5rem;
 }
 
-/*—————————————————————————————
-  Centered Title
-—————————————————————————————*/
+/* Centered Title */
 .header-center {
   text-align: center;
 }
@@ -46,9 +35,7 @@ html, body {
   font-size: 2.5rem;
 }
 
-/*—————————————————————————————
-  Filter Bar
-—————————————————————————————*/
+/* Filter Bar */
 .filter-bar {
   display: flex;
   justify-content: center;
@@ -65,9 +52,7 @@ html, body {
   color: #fff !important;
 }
 
-/*—————————————————————————————
-  Alerts Table
-—————————————————————————————*/
+/* Alerts Table */
 .table.alerts {
   background-color: #000;
   border-color: #111;
@@ -78,9 +63,14 @@ html, body {
   border-color: #111;
 }
 
-/*—————————————————————————————
-  Qty Input & Buttons
-—————————————————————————————*/
+/* Sparkline placeholder */
+.sparkline {
+  width: 100px;
+  height: 40px;
+  display: inline-block;
+}
+
+/* Qty Input & Buttons */
 .qty-input {
   width: 60px;
   background: #111;
@@ -95,13 +85,4 @@ html, body {
 }
 .buy-btn {
   margin-right: 0.25rem;
-}
-/*—————————————————————————————
-  Sparkline placeholder sizing
-—————————————————————————————*/
-.sparkline {
-  width: 100px;
-  height: 40px;
-  /* ensure it’s visible for the sparkline lib to draw into */
-  display: inline-block;
 }
