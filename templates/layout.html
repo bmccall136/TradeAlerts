@@ -4,42 +4,47 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Trade Alerts{% endblock %}</title>
+    <!-- Bootstrap CSS -->
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/css/bootstrap.min.css"
     >
+    <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     {% block head_extra %}{% endblock %}
   </head>
   <body>
-    <header class="site-header">
-      <div class="status-container container d-flex justify-content-between">
+    <header class="site-header position-relative">
+      <div class="status-container d-flex justify-content-between w-100 position-absolute top-0 px-3">
         <!-- LEFT side badges (stacked) -->
         <div class="status-row status-left d-flex flex-column align-items-start">
           {% block status_left %}{% endblock %}
           <a href="#" class="status-link mt-1">Reconnect API</a>
         </div>
-        <!-- RIGHT side badges (now stacked) -->
+        <!-- RIGHT side badges (stacked) -->
         <div class="status-row status-right d-flex flex-column align-items-end">
           {% block status_right %}{% endblock %}
         </div>
       </div>
 
-      <div class="header-center text-center my-3">
+      <div class="header-center text-center my-5 pt-5">
         <h1 class="site-title">
           🚀 Trade Alerts ({{ current_filter|capitalize }}) 🚀
         </h1>
       </div>
     </header>
 
-    <main class="container-fluid">
+    <main class="container-fluid pt-2">
       {% block content %}{% endblock %}
     </main>
 
+    <!-- JS -->
     <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
     <script
       src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/js/bootstrap.bundle.min.js"
     ></script>
-    {% block scripts %}{% endblock %}
+    {% block scripts %}
+      <script src="{{ url_for('static', filename='script.js') }}"></script>
+    {% endblock %}
   </body>
 </html>
