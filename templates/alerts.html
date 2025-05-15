@@ -1,13 +1,12 @@
 {% extends "layout.html" %}
 
 {% block status_left %}
-  <span class="badge badge-success status-text market">
-    Yahoo Finance Intraday: Open
+  <span class="badge badge-{{ 'success' if yahoo_open else 'danger' }} status-text market">
+    Yahoo Finance Intraday: {{ 'Open' if yahoo_open else 'Closed' }}
   </span>
   <span class="badge badge-success status-text etrade">
     E*TRADE API: Connected
   </span>
-  <a href="#" class="status-link">Reconnect API</a>
 {% endblock %}
 
 {% block status_right %}
@@ -16,67 +15,52 @@
 {% endblock %}
 
 {% block content %}
-  <div class="filter-bar my-3 text-center">
-    <form method="post" action="{{ url_for('clear_filtered') }}" class="d-inline">
-      <input type="hidden" name="filter" value="{{ current_filter }}">
-      <button type="submit" class="btn btn-outline-light btn-sm" {% raw %}{% if not alerts %}disabled{% endif %}{% endraw %}>
-        Clear All
-      </button>
-    </form>
-    &nbsp;
-    <span>Filter:</span>
-    {% for f,label in [
-         ('all','All'),
-         ('prime','Prime 💎'),
-         ('sharpshooter','Sharpshooter 🎯'),
-         ('sell','Sell 🔥'),
-         ('simulation','Simulation')
-       ] %}
-      <a href="{{ url_for('alerts_index', filter=f) }}"
-         class="btn btn-outline-light btn-sm {% raw %}{% if current_filter==f %}active{% endif %}{% endraw %}">
-        {{ label }}
-      </a>
-    {% endfor %}
+  <!-- Filter Buttons -->
+  <div class="filter-bar btn-toolbar mb-3" role="toolbar">
+    <div class="btn-group mr-2" role="group">
+      <a href="?filter=all"   class="btn btn-outline-light {% if current_filter=='all' %}active{% endif %}">All</a>
+      <a href="?filter=prime" class="btn btn-outline-light {% if current_filter=='prime' %}active{% endif %}">Prime 💎</a>
+      <a href="?filter=sharpshooter" class="btn btn-outline-light {% if current_filter=='sharpshooter' %}active{% endif %}">Sharpshooter 🎯</a>
+      <a href="?filter=sell"  class="btn btn-outline-light {% if current_filter=='sell' %}active{% endif %}">Sell 🔥</a>
+      <a href="?filter=simulation" class="btn btn-outline-light {% if current_filter=='simulation' %}active{% endif %}">Simulation</a>
+    </div>
+    <button class="btn btn-outline-light" onclick="clearAll()">Clear All</button>
   </div>
 
-  <div class="table-responsive">
-    <table class="table table-dark table-striped table-bordered alerts">
-      <thead class="thead-dark">
-        <tr>
-          <th>Symbol</th>
-          <th>Name</th>
-          <th>Signal</th>
-          <th>Conf.</th>
-          <th>Price</th>
-          <th>Timestamp</th>
-          <th>Spark</th>
-          <th>VWAP</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for a in alerts %}
-        <tr>
-          <td>{{ a.symbol }}</td>
-          <td>{{ a.name }}</td>
-          <td>{{ a.signal }}</td>
-          {% if a.confidence is defined %}
-            <td>{{ '%.1f'|format(a.confidence) }}%</td>
-          {% else %}
-            <td>N/A</td>
-          {% endif %}
-          <td>${{ '%.2f'|format(a.price) }}</td>
-          <td>
-            {% if a.timestamp %}
-              {{ a.timestamp[:19] }}
-            {% else %}
-              --
-            {% endif %}
-          </td>
-          <td><!-- sparkline injected by JS --></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  <!-- Alerts Table -->
+  <table class="table table-dark table-striped alerts mb-0">
+    <thead>
+      <tr>
+        <th>Symbol</th><th>Name</th><th>Signal</th><th>Conf.</th>
+        <th>Price</th><th>Timestamp</th><th class="text-left">Spark</th>
+        <th class="text-right">VWAP</th><th class="text-right">VWAP Diff</th>
+        <th class="text-center">Qty</th><th class="text-center">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for alert in alerts %}
+      {% set diff = alert.price - alert.vwap %}
+      <tr>
+        <td>{{ alert.symbol }}</td>
+        <td>{{ alert.name }}</td>
+        <td>{{ alert.signal }}</td>
+        <td>{{ alert.confidence or 'N/A' }}</td>
+        <td>${{ alert.price | round(2) }}</td>
+        <td>{{ alert.timestamp }}</td>
+        <td class="spark-cell text-left">sparkline</td>
+        <td class="text-right">${{ alert.vwap | round(2) }}</td>
+        <td class="text-right {% if diff < 0 %}text-danger{% else %}text-success{% endif %}">
+          {{ diff | round(2) }}
+        </td>
+        <td class="text-center">
+          <input type="number" class="qty-input" min="1" value="1">
+        </td>
+        <td class="text-center">
+          <button class="btn btn-sm btn-light buy-btn">Buy</button>
+          <button class="btn btn-sm btn-secondary clear-btn">Clear</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 {% endblock %}
