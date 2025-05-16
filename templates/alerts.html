@@ -1,3 +1,4 @@
+
 {% extends "layout.html" %}
 
 {% block status_left %}
@@ -39,7 +40,6 @@
     </thead>
     <tbody>
       {% for alert in alerts %}
-      {% set diff = alert.price - alert.vwap %}
       <tr>
         <td>{{ alert.symbol }}</td>
         <td>{{ alert.name }}</td>
@@ -48,9 +48,23 @@
         <td>${{ alert.price | round(2) }}</td>
         <td>{{ alert.timestamp }}</td>
         <td class="sparkline text-left" data-spark-values="{{ (alert.spark_values|default([]))|tojson }}"></td>
-        <td class="text-right">${{ alert.vwap | round(2) }}</td>
-        <td class="text-right {% if diff < 0 %}text-danger{% else %}text-success{% endif %}">
-          {{ diff | round(2) }}
+        <td class="text-right">
+          {% if alert.vwap is not none %}
+            ${{ alert.vwap | round(2) }}
+          {% else %}
+            N/A
+          {% endif %}
+        </td>
+        <td class="text-right
+          {% if alert.vwap is not none %}
+            {{ 'text-danger' if (alert.price - alert.vwap) < 0 else 'text-success' }}
+          {% endif %}
+        ">
+          {% if alert.vwap is not none %}
+            {{ (alert.price - alert.vwap) | round(2) }}
+          {% else %}
+            N/A
+          {% endif %}
         </td>
         <td class="text-center">
           <input type="number" class="qty-input" min="1" value="1">

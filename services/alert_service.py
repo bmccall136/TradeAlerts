@@ -1,53 +1,89 @@
-import sqlite3
 
-DB_PATH = 'alerts.db'
+import sqlite3
+from .db import get_connection
 
 def insert_alert(data):
-    conn = sqlite3.connect(DB_PATH)
+    """
+    Insert a new alert into the alerts table. If the 'confidence' column
+    doesn't exist yet, add it, then retry the insert.
+    """
+    conn = get_connection()
     c = conn.cursor()
+    # Ensure confidence column exists before insert
+    _ensure_confidence_column(c, conn)
+
     c.execute(
-        '''
-        INSERT INTO alerts (symbol, name, signal, confidence, price, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ''',
+        "INSERT INTO alerts(symbol, name, signal, confidence, price, vwap, timestamp) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
         (
-            data['symbol'],
-            data.get('name', ''),
-            data['signal'],
+            data.get('symbol'),
+            data.get('name'),
+            data.get('signal'),
             data.get('confidence'),
-            data['price'],
-            data['timestamp']
+            data.get('price'),
+            data.get('vwap'),
+            data.get('timestamp'),
         )
     )
     conn.commit()
     conn.close()
 
-def get_alerts(filter='all'):
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+def get_alerts(filter_name='all'):
+    """
+    Retrieve alerts from the database. Ensures 'confidence' column exists.
+    Supports filtering by 'signal' field.
+    """
+    conn = get_connection()
     c = conn.cursor()
-    if filter.lower() != 'all':
-        c.execute("SELECT * FROM alerts WHERE signal = ? ORDER BY timestamp DESC", (filter.upper(),))
+    # Ensure confidence column exists before selecting
+    _ensure_confidence_column(c, conn)
+
+    if filter_name and filter_name.lower() != 'all':
+        c.execute(
+            "SELECT symbol, name, signal, confidence, price, vwap, timestamp "
+            "FROM alerts WHERE signal = ? ORDER BY timestamp DESC",
+            (filter_name,)
+        )
     else:
-        c.execute("SELECT * FROM alerts ORDER BY timestamp DESC")
+        c.execute(
+            "SELECT symbol, name, signal, confidence, price, vwap, timestamp "
+            "FROM alerts ORDER BY timestamp DESC"
+        )
     rows = c.fetchall()
     conn.close()
 
-    alerts = []
-    from services.chart_service import get_sparkline_svg, compute_vwap_for_symbol
-    for r in rows:
-        a = dict(r)
-        a['sparkline'] = get_sparkline_svg(r['id'])
-        a['vwap'] = compute_vwap_for_symbol(r['symbol'])
-        alerts.append(a)
-    return alerts
+    return [
+        {
+            'symbol':     row[0],
+            'name':       row[1],
+            'signal':     row[2],
+            'confidence': row[3],
+            'price':      row[4],
+            'vwap':       row[5],
+            'timestamp':  row[6],
+        }
+        for row in rows
+    ]
 
-def clear_alerts_by_filter(filter):
-    conn = sqlite3.connect(DB_PATH)
+def clear_alerts_by_filter(filter_name='all'):
+    """
+    Delete alerts matching the given filter. If 'all', clears all alerts.
+    """
+    conn = get_connection()
     c = conn.cursor()
-    if filter.lower() == 'all':
-        c.execute("DELETE FROM alerts")
+    if filter_name and filter_name.lower() != 'all':
+        c.execute("DELETE FROM alerts WHERE signal = ?", (filter_name,))
     else:
-        c.execute("DELETE FROM alerts WHERE signal = ?", (filter.upper(),))
+        c.execute("DELETE FROM alerts")
     conn.commit()
     conn.close()
+
+def _ensure_confidence_column(cursor, conn):
+    """
+    Add 'confidence' column if missing.
+    """
+    cursor.execute("PRAGMA table_info(alerts)")
+    cols = [row[1] for row in cursor.fetchall()]
+    if 'confidence' not in cols:
+        cursor.execute("ALTER TABLE alerts ADD COLUMN confidence TEXT")
+        conn.commit()

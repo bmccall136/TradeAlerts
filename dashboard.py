@@ -1,3 +1,4 @@
+
 from flask import Flask, render_template, request, url_for, redirect
 from api import api as api_bp, init_db
 from services.alert_service import get_alerts, clear_alerts_by_filter
@@ -14,9 +15,24 @@ def root():
 
 @app.route('/alerts')
 def alerts_index():
+    # Fetch filter and alerts
     current_filter = request.args.get('filter', 'all')
     alerts_list = get_alerts(current_filter)
-    return render_template('alerts.html', alerts=alerts_list, current_filter=current_filter)
+
+    # (Removed date filter to show all alerts)
+    # If you'd like to re-enable "today only", uncomment below:
+    # from datetime import date
+    # today_pref = date.today().isoformat()
+    # alerts_list = [
+    #     a for a in alerts_list
+    #     if a.get('timestamp', '').startswith(today_pref)
+    # ]
+
+    return render_template(
+        'alerts.html',
+        alerts=alerts_list,
+        current_filter=current_filter
+    )
 
 @app.route('/alerts/clear', methods=['POST'])
 def clear_filtered():
