@@ -7,45 +7,38 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="bg-dark text-light">
-<div class="container py-4">
-  <h1 class="text-center mb-4">🚀 Trade Alerts ({{ current_filter.capitalize() }}) 🚀</h1>
+  <div class="container py-4">
+    <h1 class="text-center mb-4">🚀 Trade Alerts ({{ current_filter.capitalize() }}) 🚀</h1>
 
-  <div class="btn-toolbar justify-content-center mb-3 bg-black p-2 rounded" role="toolbar">
-    <div class="btn-group" role="group">
-      {% for f in ['all','Prime','Sharpshooter','Sell'] %}
-        <a href="/alerts?filter={{f}}"
-           class="btn btn-sm {% if current_filter==f %}btn-success{% else %}btn-outline-light{% endif %}">
-          {{ f.capitalize() }}{% if f=='Prime' %} 💎{% elif f=='Sharpshooter' %} 🎯{% elif f=='Sell' %} 🔥{% endif %}
-        </a>
-      {% endfor %}
+    <div class="btn-toolbar justify-content-center mb-3 bg-black p-2 rounded" role="toolbar">
+      <div class="btn-group" role="group">
+        {% for f in ['all','Prime','Sharpshooter','Sell'] %}
+          <button class="btn btn-sm filter-btn {% if current_filter==f %}btn-success{% else %}btn-outline-light{% endif %}"
+                  data-filter="{{f}}">
+            {{ f.capitalize() }}{% if f=='Prime' %} 💎{% elif f=='Sharpshooter' %} 🎯{% elif f=='Sell' %} 🔥{% endif %}
+          </button>
+        {% endfor %}
+      </div>
+      <div class="btn-group ml-2" role="group">
+        <a href="/simulation" class="btn btn-sm btn-outline-light">Simulation</a>
+        <button id="clear-all-btn" class="btn btn-sm btn-danger ml-1">Clear {{ current_filter.capitalize() }}</button>
+      </div>
     </div>
-    <div class="btn-group ml-2" role="group">
-      <a href="/simulation" class="btn btn-sm btn-outline-light">Simulation</a>
-      <form method="post" action="/alerts/clear" class="d-inline ml-1">
-        <input type="hidden" name="filter" value="{{ current_filter }}">
-        <button type="submit" class="btn btn-sm btn-danger">Clear {{ current_filter.capitalize() }}</button>
-      </form>
+
+    <div class="table-responsive">
+      <table id="alerts-table" class="table table-sm table-dark">
+        <thead>
+          <tr>
+            <th>Time</th><th>Status</th><th>Symbol</th><th>Price</th>
+            <th>Conf %</th><th>Triggers</th><th>Spark</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for alert in [] %}{% endfor %} <!-- rendered by JS -->
+        </tbody>
+      </table>
     </div>
   </div>
-
-  <div class="table-responsive">
-    <table id="alerts-table" class="table table-sm table-dark">
-      <thead>
-        <tr>
-          <th>Time</th>
-          <th>Status</th>
-          <th>Symbol</th>
-          <th>Price</th>
-          <th>Conf %</th>
-          <th>Triggers</th>
-          <th>Spark</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </div>
-</div>
-
-<script src="/static/js/script.js"></script>
+  <script src="/static/js/script.js"></script>
 </body>
 </html>
