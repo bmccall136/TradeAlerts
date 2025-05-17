@@ -1,88 +1,71 @@
-/* Global & Page Background */
-html, body {
+/* ensure the page and container are pitch‑black */
+body.bg-dark,
+.container {
   background-color: #000 !important;
-  color: #fff;
-  margin: 0;
-  padding: 0;
 }
 
-/* Header & Status Bar */
-.site-header {
-  background-color: #000;
-  position: relative;
-}
-.status-container {
-  top: 0;
-}
-.status-row {
-  display: flex;
-  gap: 0.5rem;
-}
-.status-link {
-  color: #0af;
-  text-decoration: underline;
-}
-.status-left, .status-right {
-  gap: 0.5rem;
-}
-
-/* Centered Title */
-.header-center {
-  text-align: center;
-}
-.site-title {
-  margin: 0;
-  font-size: 2.5rem;
-}
-
-/* Filter Bar */
-.filter-bar {
-  display: flex;
-  justify-content: center;
+/* toolbar behind filters */
+.btn-toolbar {
   background-color: #000 !important;
-  border: none !important;
-  padding: 0.5rem 0;
 }
-.filter-bar .btn {
-  margin: 0 0.25rem;
-}
-.filter-bar .btn.active,
-.filter-bar .btn:hover {
-  background-color: #444 !important;
+
+/* make all “dark” buttons fully black */
+.btn-dark {
+  background-color: #000 !important;
+  border-color: #222 !important;
   color: #fff !important;
 }
-
-/* Alerts Table */
-.table.alerts {
-  background-color: #000;
-  border-color: #111;
-}
-.table.alerts th,
-.table.alerts td {
-  vertical-align: middle;
-  border-color: #111;
+.btn-dark.active,
+.btn-dark:hover,
+.btn-dark:focus {
+  background-color: #111 !important;
+  border-color: #444 !important;
 }
 
-/* Sparkline placeholder */
-.sparkline {
-  width: 100px;
-  height: 40px;
+/* override Bootstrap’s dark table header */
+.table-dark thead th {
+  background-color: #000 !important;
+  border-color: #222 !important;
+}
+
+/* even/odd rows in table */
+.table-striped tbody tr:nth-of-type(odd) {
+  background-color: #111 !important;
+}
+.table-striped tbody tr:nth-of-type(even) {
+  background-color: #000 !important;
+}
+
+/* ensure table body background is black */
+.table-dark {
+  background-color: #000 !important;
+}
+
+/* remove any leftover gray from badges or status spans */
+.badge,
+.status-indicator {
+  background-color: #000 !important;
+  color: #fff !important;
+}
+/* little colored dots for status */
+.status-dot {
   display: inline-block;
-}
-
-/* Qty Input & Buttons */
-.qty-input {
-  width: 60px;
-  background: #111;
-  border: 1px solid #333;
-  color: #fff;
-  -moz-appearance: textfield;
-}
-.qty-input::-webkit-outer-spin-button,
-.qty-input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-.buy-btn {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
   margin-right: 0.25rem;
 }
+
+/* match your filter colors */
+.status-dot.prime {
+  background-color: #007bff; /* Bootstrap primary blue */
+}
+.status-dot.sharpshooter {
+  background-color: #28a745; /* Bootstrap success green */
+}
+.status-dot.sell {
+  background-color: #dc3545; /* Bootstrap danger red */
+}
+body { background-color: #000 !important; }
+.table-dark { background-color: #111 !important; }
+.btn-toolbar, .table thead { background-color: #000 !important; }

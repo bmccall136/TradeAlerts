@@ -1,49 +1,39 @@
-from flask import Blueprint, jsonify, request
-import sqlite3
-import time
+import json
+from flask import Blueprint, request, jsonify, abort, Response
+from services.alert_service import get_alerts, insert_alert, clear_alerts_by_filter
 
-from services.alert_service import insert_alert, get_alerts, clear_alerts_by_filter
+api_bp = Blueprint('api', __name__)
 
-DB_PATH = 'alerts.db'
-api = Blueprint('api', __name__, url_prefix='/api')
-
-# just define it here, don’t decorate the Blueprint
-def init_db():
-    conn = sqlite3.connect(DB_PATH, timeout=10)
-    conn.execute('PRAGMA journal_mode=WAL;')
-    conn.execute('PRAGMA busy_timeout=10000;')
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS alerts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol TEXT NOT NULL,
-            name TEXT NOT NULL DEFAULT '',
-            signal TEXT NOT NULL,
-            confidence REAL,
-            price REAL NOT NULL,
-            timestamp TEXT NOT NULL
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-@api.route('/alerts', methods=['GET','POST'], strict_slashes=False)
-def alerts():
-    if request.method == 'POST':
+@api_bp.route('/alerts', methods=['GET', 'POST'])
+def alerts_collection():
+    if request.method == 'GET':
+        f = request.args.get('filter', 'all')
+        return jsonify(get_alerts(f))
+    else:
         data = request.get_json(force=True)
-        insert_alert(data)
+        insert_alert(**data)
         return '', 201
-    return jsonify(get_alerts()), 200
 
-@api.route('/status', methods=['GET'], strict_slashes=False)
-def status():
-    return jsonify({
-        'yahoo': 'open' if time.localtime().tm_hour < 16 else 'closed',
-        'etrade': 'ok'
-    }), 200
-
-@api.route('/alerts/clear', methods=['POST'], strict_slashes=False)
-def clear_filtered():
-    payload = request.get_json(force=True)
-    f = (payload.get('filter') or 'all').lower()
+@api_bp.route('/alerts/clear', methods=['POST'])
+def alerts_clear():
+    f = request.form.get('filter', 'all')
     clear_alerts_by_filter(f)
     return '', 204
+
+@api_bp.route('/alerts/<int:alert_id>/sparkline.svg')
+def sparkline_svg(alert_id):
+    all_alerts = get_alerts('all')
+    alert = next((a for a in all_alerts if a['id'] == alert_id), None)
+    if not alert or not alert['spark']:
+        abort(404)
+    data = json.loads(alert['spark'])
+    width, height = 100, 30
+    lo, hi = min(data), max(data)
+    xs = [i * (width / (len(data)-1)) for i in range(len(data))]
+    ys = (height - (v - lo)/(hi-lo)*height if hi>lo else height/2
+          for v in data)
+    path = 'M' + ' L'.join(f'{x:.1f},{y:.1f}' for x,y in zip(xs, ys))
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}">
+    <path d="{path}" fill="none" stroke="#0f0" stroke-width="1"/>
+    </svg>'''
+    return Response(svg, mimetype='image/svg+xml')
