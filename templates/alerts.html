@@ -1,80 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>🚀 Trade Alerts 🚀</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="bg-dark text-light">
+<div class="container py-4">
+  <h1 class="text-center mb-4">🚀 Trade Alerts ({{ current_filter.capitalize() }}) 🚀</h1>
 
-{% extends "layout.html" %}
-
-{% block status_left %}
-  <span class="badge badge-{{ 'success' if yahoo_open else 'danger' }} status-text market">
-    Yahoo Finance Intraday: {{ 'Open' if yahoo_open else 'Closed' }}
-  </span>
-  <span class="badge badge-success status-text etrade">
-    E*TRADE API: Connected
-  </span>
-{% endblock %}
-
-{% block status_right %}
-  <span class="badge badge-success">Flask API Online</span>
-  <span class="badge badge-primary">JS Running</span>
-{% endblock %}
-
-{% block content %}
-  <!-- Filter Buttons -->
-  <div class="filter-bar btn-toolbar mb-3" role="toolbar">
-    <div class="btn-group mr-2" role="group">
-      <a href="?filter=all"   class="btn btn-outline-light {% if current_filter=='all' %}active{% endif %}">All</a>
-      <a href="?filter=prime" class="btn btn-outline-light {% if current_filter=='prime' %}active{% endif %}">Prime 💎</a>
-      <a href="?filter=sharpshooter" class="btn btn-outline-light {% if current_filter=='sharpshooter' %}active{% endif %}">Sharpshooter 🎯</a>
-      <a href="?filter=sell"  class="btn btn-outline-light {% if current_filter=='sell' %}active{% endif %}">Sell 🔥</a>
-      <a href="?filter=simulation" class="btn btn-outline-light {% if current_filter=='simulation' %}active{% endif %}">Simulation</a>
+  <div class="btn-toolbar justify-content-center mb-3 bg-black p-2 rounded" role="toolbar">
+    <div class="btn-group" role="group">
+      {% for f in ['all','Prime','Sharpshooter','Sell'] %}
+        <a href="/alerts?filter={{f}}"
+           class="btn btn-sm {% if current_filter==f %}btn-success{% else %}btn-outline-light{% endif %}">
+          {{ f.capitalize() }}{% if f=='Prime' %} 💎{% elif f=='Sharpshooter' %} 🎯{% elif f=='Sell' %} 🔥{% endif %}
+        </a>
+      {% endfor %}
     </div>
-    <button class="btn btn-outline-light" onclick="clearAll()">Clear All</button>
+    <div class="btn-group ml-2" role="group">
+      <a href="/simulation" class="btn btn-sm btn-outline-light">Simulation</a>
+      <form method="post" action="/alerts/clear" class="d-inline ml-1">
+        <input type="hidden" name="filter" value="{{ current_filter }}">
+        <button type="submit" class="btn btn-sm btn-danger">Clear {{ current_filter.capitalize() }}</button>
+      </form>
+    </div>
   </div>
 
-  <!-- Alerts Table -->
-  <table class="table table-dark table-striped alerts mb-0">
-    <thead>
-      <tr>
-        <th>Symbol</th><th>Name</th><th>Signal</th><th>Conf.</th>
-        <th>Price</th><th>Timestamp</th><th class="text-left">Spark</th>
-        <th class="text-right">VWAP</th><th class="text-right">VWAP Diff</th>
-        <th class="text-center">Qty</th><th class="text-center">Action</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for alert in alerts %}
-      <tr>
-        <td>{{ alert.symbol }}</td>
-        <td>{{ alert.name }}</td>
-        <td>{{ alert.signal }}</td>
-        <td>{{ alert.confidence or 'N/A' }}</td>
-        <td>${{ alert.price | round(2) }}</td>
-        <td>{{ alert.timestamp }}</td>
-        <td class="sparkline text-left" data-spark-values="{{ (alert.spark_values|default([]))|tojson }}"></td>
-        <td class="text-right">
-          {% if alert.vwap is not none %}
-            ${{ alert.vwap | round(2) }}
-          {% else %}
-            N/A
-          {% endif %}
-        </td>
-        <td class="text-right
-          {% if alert.vwap is not none %}
-            {{ 'text-danger' if (alert.price - alert.vwap) < 0 else 'text-success' }}
-          {% endif %}
-        ">
-          {% if alert.vwap is not none %}
-            {{ (alert.price - alert.vwap) | round(2) }}
-          {% else %}
-            N/A
-          {% endif %}
-        </td>
-        <td class="text-center">
-          <input type="number" class="qty-input" min="1" value="1">
-        </td>
-        <td class="text-center">
-          <button class="btn btn-sm btn-light buy-btn">Buy</button>
-          <button class="btn btn-sm btn-secondary clear-btn">Clear</button>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-{% endblock %}
+  <div class="table-responsive">
+    <table id="alerts-table" class="table table-sm table-dark">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Status</th>
+          <th>Symbol</th>
+          <th>Price</th>
+          <th>Conf %</th>
+          <th>Triggers</th>
+          <th>Spark</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script src="/static/js/script.js"></script>
+</body>
+</html>
