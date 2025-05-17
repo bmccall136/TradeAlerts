@@ -1,64 +1,107 @@
-{% extends "layout.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Simulation Dashboard</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="bg-dark text-light">
+  <div class="container py-4">
 
-{% block content %}
-<h1 style="text-align:center; color:#f8f8f2;">📈 Simulation Dashboard</h1>
+    <!-- Back link -->
+    <div class="mb-3">
+      <a href="{{ url_for('alerts_index') }}" class="btn btn-sm btn-outline-light">← Back to Alerts</a>
+    </div>
 
-<div class="stats" style="display:flex; justify-content:center; gap:20px; margin-bottom:20px; color:#f8f8f2;">
-  <div>Cash: ${{ simulation.cash }}</div>
-  <div>Open Value: ${{ simulation.open }}</div>
-  <div>Realized P&L: ${{ simulation.realized }}</div>
-</div>
+    <!-- Title -->
+    <h1 class="text-center mb-4">Simulation Dashboard</h1>
 
-<div style="text-align:center; margin-bottom:20px;">
-  <form action="{{ url_for('sim_reset') }}" method="post" style="display:inline;">
-    <button type="submit" class="btn clear">Reset</button>
-  </form>
-</div>
+    <!-- Stats -->
+    <div class="row text-light mb-4">
+      <div class="col text-center"><strong>Cash:</strong> ${{ simulation.cash | round(2) }}</div>
+      <div class="col text-center"><strong>Open Value:</strong> ${{ simulation.open | round(2) }}</div>
+      <div class="col text-center"><strong>Realized P&L:</strong> ${{ simulation.realized | round(2) }}</div>
+    </div>
 
-<table class="alerts" style="width:100%; border-collapse:collapse; color:#f8f8f2;">
-  <thead>
-    <tr>
-      <th>Symbol</th><th>Quantity</th><th>Avg Price</th><th>Current Price</th>
-      <th>Current Value</th><th>P/L</th><th>% P/L</th><th>Clear</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for h in simulation.holdings %}
-    <tr>
-      <td>{{ h.symbol }}</td>
-      <td>{{ h.quantity }}</td>
-      <td>${{ '%.2f'|format(h.avg_price) }}</td>
-      <td>${{ '%.2f'|format(h.current_price) }}</td>
-      <td>${{ '%.2f'|format(h.current_value) }}</td>
-      <td>${{ '%.2f'|format(h.profit_loss) }}</td>
-      <td>{{ '%.2f'|format(h.profit_pct) }}%</td>
-      <td>
-        <form action="{{ url_for('clear_holding', symbol=h.symbol) }}" method="post" style="display:inline;">
-          <button type="submit" class="btn btn-clear">X</button>
-        </form>
-      </td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+    <!-- Reset button -->
+    <div class="text-center mb-4">
+      <form action="{{ url_for('sim_reset') }}" method="post" style="display:inline;">
+        <button type="submit" class="btn btn-danger">Reset Simulation</button>
+      </form>
+    </div>
 
-<h2 style="text-align:center; margin-top:30px; color:#f8f8f2;">Trades</h2>
-<table class="alerts" style="width:100%; border-collapse:collapse; color:#f8f8f2;">
-  <thead>
-    <tr>
-      <th>Timestamp</th><th>Symbol</th><th>Action</th><th>Quantity</th><th>Price</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for t in simulation.trades %}
-    <tr>
-      <td>{{ t.timestamp }}</td>
-      <td>{{ t.symbol }}</td>
-      <td>{{ t.action }}</td>
-      <td>{{ t.quantity }}</td>
-      <td>${{ '%.2f'|format(t.price) }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-{% endblock %}
+    <!-- Holdings Table -->
+    <div class="table-responsive mb-5">
+      <table class="table table-sm table-dark">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Last Price</th>
+            <th>Change</th>
+            <th>Change %</th>
+            <th>Qty</th>
+            <th>Price Paid</th>
+            <th>Day Gain</th>
+            <th>Total Gain</th>
+            <th>Total Gain %</th>
+            <th>Value</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for h in simulation.holdings %}
+          <tr>
+            <td>{{ h.symbol }}</td>
+            <td>${{ h.current_price | round(2) }}</td>
+            <td>${{ (h.current_price - h.avg_price) | round(2) }}</td>
+            <td>{{ ((h.current_price - h.avg_price)/h.avg_price*100) | round(2) }}%</td>
+            <td>{{ h.quantity }}</td>
+            <td>${{ h.avg_price | round(2) }}</td>
+            <td>${{ (h.current_price - h.avg_price)*h.quantity | round(2) }}</td>
+            <td>${{ (h.current_value - h.avg_price*h.quantity) | round(2) }}</td>
+            <td>{{ ((h.current_value/(h.avg_price*h.quantity) -1)*100) | round(2) }}%</td>
+            <td>${{ h.current_value | round(2) }}</td>
+            <td>
+              <form action="{{ url_for('clear_holding', symbol=h.symbol) }}" method="post" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-warning">Sell All</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Trade History -->
+    <div class="table-responsive">
+      <h2 class="text-light">Trade History</h2>
+      <table class="table table-sm table-dark">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Symbol</th>
+            <th>Action</th>
+            <th>Quantity</th>
+            <th>Price</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in simulation.trades %}
+          <tr>
+            <td>{{ t.timestamp }}</td>
+            <td>{{ t.symbol }}</td>
+            <td>{{ t.action }}</td>
+            <td>{{ t.quantity }}</td>
+            <td>${{ t.price | round(2) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <script src="/static/js/script.js"></script>
+</body>
+</html>
