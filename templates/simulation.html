@@ -8,23 +8,15 @@
 </head>
 <body class="bg-dark text-light">
   <div class="container py-4">
-
-    <!-- Back link -->
     <div class="mb-3">
       <a href="{{ url_for('alerts_index') }}" class="btn btn-sm btn-outline-light">← Back to Alerts</a>
     </div>
-
-    <!-- Title -->
     <h1 class="text-center mb-4">Simulation Dashboard</h1>
-
-    <!-- Stats -->
     <div class="row text-light mb-4">
       <div class="col text-center"><strong>Cash:</strong> ${{ simulation.cash | round(2) }}</div>
       <div class="col text-center"><strong>Open Value:</strong> ${{ simulation.open | round(2) }}</div>
       <div class="col text-center"><strong>Realized P&L:</strong> ${{ simulation.realized | round(2) }}</div>
     </div>
-
-    <!-- Reset button -->
     <div class="text-center mb-4">
       <form action="{{ url_for('sim_reset') }}" method="post" style="display:inline;">
         <button type="submit" class="btn btn-danger">Reset Simulation</button>
@@ -33,20 +25,13 @@
 
     <!-- Holdings Table -->
     <div class="table-responsive mb-5">
+      <h2 class="text-light">Holdings</h2>
       <table class="table table-sm table-dark">
         <thead>
           <tr>
-            <th>Symbol</th>
-            <th>Last Price</th>
-            <th>Change</th>
-            <th>Change %</th>
-            <th>Qty</th>
-            <th>Price Paid</th>
-            <th>Day Gain</th>
-            <th>Total Gain</th>
-            <th>Total Gain %</th>
-            <th>Value</th>
-            <th>Action</th>
+            <th>Symbol</th><th>Last Price</th><th>Change</th><th>Change %</th>
+            <th>Qty</th><th>Price Paid</th><th>Day Gain</th><th>Total Gain</th>
+            <th>Total Gain %</th><th>Value</th><th>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -63,8 +48,13 @@
             <td>{{ ((h.current_value/(h.avg_price*h.quantity) -1)*100) | round(2) }}%</td>
             <td>${{ h.current_value | round(2) }}</td>
             <td>
-              <form action="{{ url_for('clear_holding', symbol=h.symbol) }}" method="post" style="display:inline;">
-                <button type="submit" class="btn btn-sm btn-warning">Sell All</button>
+              <form action="{{ url_for('simulate_sell') }}" method="post" style="display:inline;">
+                <input type="hidden" name="symbol" value="{{ h.symbol }}">
+                <input type="number" name="quantity" min="1" max="{{ h.quantity }}" value="1"
+                       class="form-control form-control-sm"
+                       style="width:70px; display:inline-block; margin-right:5px;">
+                <input type="hidden" name="price" value="{{ h.current_price }}">
+                <button type="submit" class="btn btn-sm btn-danger">Sell</button>
               </form>
             </td>
           </tr>
@@ -73,17 +63,20 @@
       </table>
     </div>
 
-    <!-- Trade History -->
-    <div class="table-responsive">
-      <h2 class="text-light">Trade History</h2>
+    <!-- Trade History Controls -->
+    <div class="d-flex justify-content-between mb-2">
+      <form action="{{ url_for('sim_reset') }}" method="post" style="display:inline;">
+        <button type="submit" class="btn btn-sm btn-warning">Clear Trade History</button>
+      </form>
+      <a href="{{ url_for('download_trades') }}" class="btn btn-sm btn-outline-light">Download CSV</a>
+    </div>
+
+    <!-- Trade History Table -->
+    <div class="table-responsive mb-5">
       <table class="table table-sm table-dark">
         <thead>
           <tr>
-            <th>Time</th>
-            <th>Symbol</th>
-            <th>Action</th>
-            <th>Quantity</th>
-            <th>Price</th>
+            <th>Time</th><th>Symbol</th><th>Action</th><th>Qty</th><th>Price</th><th>P/L</th>
           </tr>
         </thead>
         <tbody>
@@ -94,14 +87,16 @@
             <td>{{ t.action }}</td>
             <td>{{ t.quantity }}</td>
             <td>${{ t.price | round(2) }}</td>
+            <td>
+              {% if t.pnl is not none %}
+                ${{ t.pnl | round(2) }}
+              {% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-
   </div>
-
-  <script src="/static/js/script.js"></script>
 </body>
 </html>
