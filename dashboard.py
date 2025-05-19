@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()   # this will read your .env file into os.environ
+
 from flask import Flask, render_template, request, redirect, url_for, jsonify, Response
 from api import api_bp
 
