@@ -1,0 +1,7 @@
+i had another thought about the newsapi.org getting 401s on the calls.  i had already added the env var in python....windows python btw.  but i am thinking now that maybe we should have put it in the .env where the etrade keys are?
+NEWSAPI_KEY "12f1f678b30a4a5d929ebf218d515ca3"
+should we add a column to the alerts table that has a link to that news?
+
+
+on the simulation page, i want last price to pull and show current etrade value on a regular interval and therefore recalculating the other columns.  and when a sell is initiated, it should be with te current price.
+
