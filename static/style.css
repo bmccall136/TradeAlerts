@@ -66,6 +66,139 @@ body.bg-dark,
 .status-dot.sell {
   background-color: #dc3545; /* Bootstrap danger red */
 }
+
 body { background-color: #000 !important; }
 .table-dark { background-color: #111 !important; }
 .btn-toolbar, .table thead { background-color: #000 !important; }
+
+/* make the main alerts container full‑width */
+.alerts-container,
+.container.alerts-container {
+  max-width: none;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+}
+
+/* if you’re using a table for alerts, force it to fill */
+.alerts-table,
+table.alerts-table {
+  width: 100% !important;
+}
+
+/* remove any gutters on the row wrapper */
+.row.alerts-row {
+  margin-left: 0;
+  margin-right: 0;
+}
+.row.alerts-row > [class*="col-"] {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* FULL‑WIDTH ALERTS BAR */
+.alerts-container {
+  width: 100vw;
+  position: relative;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+  padding: 0;
+}
+.alerts-container .alerts-table,
+.alerts-container table {
+  width: 100% !important;
+  table-layout: fixed;
+}
+.alerts-container .row {
+  margin-left: 0;
+  margin-right: 0;
+}
+.alerts-container .row > [class*="col-"] {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* KEEP IT BLACK */
+.alerts-container,
+.alerts-container .btn-toolbar,
+.alerts-container .table thead,
+.alerts-container .table tbody {
+  background-color: #000 !important;
+}
+.alerts-container .table-striped tbody tr:nth-of-type(odd) {
+  background-color: #111 !important;
+}
+.alerts-container .table-striped tbody tr:nth-of-type(even) {
+  background-color: #000 !important;
+}
+
+/* Make the overall container full‑width */
+.container {
+  max-width: 100% !important;
+  width: 100% !important;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+/* Ensure the table wrapper spans the full viewport width */
+.table-responsive {
+  width: 100% !important;
+  margin: 0 auto;
+  padding: 0;
+}
+
+/* Force the alerts table to fill its parent */
+#alerts-table {
+  width: 100% !important;
+}
+
+/* Optional: remove the default Bootstrap container max‑width on extra‑large screens */
+@media (min-width: 1200px) {
+  .container {
+    max-width: 100% !important;
+  }
+}
+
+/* --------------------------------------------------
+   FILTER BUTTONS: Custom gray for un‑selected states
+   -------------------------------------------------- */
+.navbar-filters .filter-btn.btn-outline-light {
+  color: #999 !important;         /* gray text */
+  border-color: #999 !important;  /* gray border */
+}
+
+.navbar-filters .filter-btn.btn-outline-light:hover,
+.navbar-filters .filter-btn.btn-outline-light:focus {
+  color: #fff !important;         /* white text on hover */
+  border-color: #fff !important;  /* white border on hover */
+}
+
+/* Keep the green background on the active filter */
+.navbar-filters .filter-btn.btn-success {
+  /* Bootstrap default applies only when active */
+}
+/* ——————————————————————————————————————————
+   Filters: “All” button styling
+   —————————————————————————————————————————— */
+#alerts-filters a.filter-all.btn {
+  /* default (un‑selected) state: gray text + gray border */
+  color: #adb5bd !important;
+  border-color: #adb5bd !important;
+  background: transparent !important;
+}
+
+#alerts-filters a.filter-all.btn:hover {
+  /* hover same as other outline buttons */
+  color: #fff !important;
+  background-color: rgba(255,255,255,0.1) !important;
+  border-color: #fff !important;
+}
+
+#alerts-filters a.filter-all.btn.active {
+  /* when selected: green like before */
+  color: #fff !important;
+  background-color: #28a745 !important;
+  border-color: #28a745 !important;
+}
