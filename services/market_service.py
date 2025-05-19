@@ -44,22 +44,20 @@ def analyze_symbol(sym):
     base_count = len(triggers)
     sentiment = None
 
-    # only fetch news for Prime alerts to conserve your free calls
+      # only fetch news for Prime alerts to conserve your free calls
     if base_count >= 3:
         sentiment = news_sentiment(sym)
         if sentiment > 0.05:
             triggers.append('News 📰')
 
-    # assign alert type based on number of technical triggers
+    # only generate a Prime alert if there are 3 or more triggers
     if base_count >= 3:
-        alert_type = 'Prime'
-        confidence = 100
-    elif base_count == 2:
-        alert_type = 'Sharpshooter'
-        confidence = 75
+        alert_type  = 'Prime'
+        confidence  = 100
     else:
-        # no alert for fewer than 2 triggers
+        # no alert for 2 (formerly Sharpshooter) or fewer triggers
         return None
+
 
     # bump confidence for strong positive sentiment
     if sentiment is not None and sentiment > 0.05:

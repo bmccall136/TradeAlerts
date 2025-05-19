@@ -13,10 +13,10 @@
     <!-- added navbar-filters here -->
     <div class="btn-toolbar navbar-filters justify-content-center mb-3 bg-black p-2 rounded" role="toolbar">
       <div class="btn-group" role="group">
-        {% for f in ['All','Prime','Sharpshooter','Sell'] %}
+        {% for f in ['Prime','Sell'] %}
           <button class="btn btn-sm filter-btn {% if current_filter==f %}btn-success{% else %}btn-outline-light{% endif %}"
                   data-filter="{{f}}">
-            {{ f.capitalize() }}{% if f=='Prime' %} 💎{% elif f=='Sharpshooter' %} 🎯{% elif f=='Sell' %} 🔥{% endif %}
+            {{ f.capitalize() }}{% if f=='Prime' %} 💎{% elif f=='Sell' %} 🔥{% endif %}
           </button>
         {% endfor %}
       </div>
