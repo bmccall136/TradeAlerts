@@ -12,7 +12,7 @@ NEWSAPI_URL = "https://newsapi.org/v2/everything"
 def fetch_latest_headlines(symbol, count=3):
     """
     Fetch the latest 'count' headlines for a given symbol via NewsAPI.org.
-    Returns an empty list on any error (e.g., unauthorized).
+    Returns list of dicts [{ title, url }] or empty list on error.
     """
     try:
         params = {
@@ -25,19 +25,22 @@ def fetch_latest_headlines(symbol, count=3):
         resp = requests.get(NEWSAPI_URL, params=params, timeout=5)
         resp.raise_for_status()
         data = resp.json()
-        return [article["title"] for article in data.get("articles", [])]
+        return [
+            {"title": art["title"], "url": art["url"]}
+            for art in data.get("articles", [])
+        ]
     except Exception:
-        # On error, return no headlines
         return []
 
 def news_sentiment(symbol, count=3):
     """
-    Return the average VADER sentiment compound score for recent headlines.
-    If fetching headlines fails or none are found, returns 0.0.
+    Return (avg_sentiment, first_url). avg_sentiment ∈ [–1,1], url or ''.
     """
     headlines = fetch_latest_headlines(symbol, count)
     if not headlines:
-        return 0.0
+        return 0.0, ""
     analyzer = SentimentIntensityAnalyzer()
-    scores = [analyzer.polarity_scores(headline)["compound"] for headline in headlines]
-    return sum(scores) / len(scores)
+    scores = [analyzer.polarity_scores(h["title"])["compound"] for h in headlines]
+    avg = sum(scores) / len(scores)
+    first_url = headlines[0]["url"]
+    return avg, first_url

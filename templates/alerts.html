@@ -3,39 +3,59 @@
 <head>
   <meta charset="UTF-8">
   <title>🚀 Trade Alerts 🚀</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/css/bootstrap.min.css">
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/css/bootstrap.min.css"
+  >
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="bg-dark text-light">
-  <div class="container py-4">
-    <h1 class="text-center mb-4">🚀 Trade Alerts ({{ current_filter.capitalize() }}) 🚀</h1>
+  <div class="container-fluid py-4">
+    <h1 class="text-center mb-4">
+      🚀 Trade Alerts 🚀
+    </h1>
 
-    <!-- added navbar-filters here -->
-    <div class="btn-toolbar navbar-filters justify-content-center mb-3 bg-black p-2 rounded" role="toolbar">
+    <div
+      class="btn-toolbar navbar-filters justify-content-center mb-3 bg-black p-2 rounded"
+      role="toolbar"
+    >
       <div class="btn-group" role="group">
         {% for f in ['Prime','Sell'] %}
-          <button class="btn btn-sm filter-btn {% if current_filter==f %}btn-success{% else %}btn-outline-light{% endif %}"
-                  data-filter="{{f}}">
-            {{ f.capitalize() }}{% if f=='Prime' %} 💎{% elif f=='Sell' %} 🔥{% endif %}
+          <button
+            class="btn btn-sm filter-btn 
+                   {% if current_filter==f %}btn-success{% else %}btn-outline-light{% endif %}"
+            data-filter="{{ f }}"
+          >
+            {{ f }}{% if f=='Prime' %} 💎{% elif f=='Sell' %} 🔥{% endif %}
           </button>
         {% endfor %}
       </div>
       <div class="btn-group ml-2" role="group">
-        <a href="/simulation" class="btn btn-sm btn-outline-light">Simulation</a>
-        <button id="clear-all-btn" class="btn btn-sm btn-danger ml-1">Clear {{ current_filter.capitalize() }}</button>
+        <a href="/simulation" class="btn btn-sm btn-outline-light">
+          Simulation
+        </a>
+        <button id="clear-all-btn" class="btn btn-sm btn-danger ml-1">
+          Clear {{ current_filter }}
+        </button>
       </div>
     </div>
 
     <div class="table-responsive">
-      <table id="alerts-table" class="table table-sm table-dark">
+      <table id="alerts-table" class="table table-sm table-dark w-100">
         <thead>
           <tr>
-            <th>Time</th><th>Status</th><th>Symbol</th><th>Price</th>
-            <th>Conf %</th><th>Triggers</th><th>Spark</th><th>Actions</th>
+            <th>Time</th>
+            <th>Status</th>
+            <th>Symbol</th>
+            <th>Price</th>
+            <th>Conf %</th>
+            <th>Triggers</th>
+            <th>Spark</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {% for alert in [] %}{% endfor %} <!-- rendered by JS -->
+          {% for alert in [] %}{% endfor %} <!-- filled by JS -->
         </tbody>
       </table>
     </div>
