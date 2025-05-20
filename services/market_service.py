@@ -1,83 +1,58 @@
-# services/market_service.py
-
 import json
 import logging
+import os
+
 import yfinance as yf
+import pandas as pd
 
 from .alert_service import insert_alert
-from .news_service import news_sentiment
-
-# make sure you have these in your project under services/indicators.py
 from .indicators import calculate_macd, compute_rsi, compute_bollinger
+from .news_service import news_sentiment  # this already exists in news_service
 
 logger = logging.getLogger(__name__)
 
+
+def load_sp500_list():
+    """
+    Try to load the S&P 500 symbols from Wikipedia. Returns a list of tickers.
+    """
+    WIKI_URL = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
+    try:
+        df = pd.read_html(WIKI_URL, header=0)[0]
+        # Wikipedia table uses dots in tickers (e.g. BRK.B) – change to dash
+        symbols = df['Symbol'].str.replace(r'\.', '-', regex=True).tolist()
+        logger.info(f"Loaded {len(symbols)} S&P 500 symbols from Wikipedia")
+        return symbols
+    except Exception as e:
+        logger.warning("Could not fetch S&P 500 list from Wikipedia, falling back to local file", exc_info=e)
+        fn = os.path.join(os.path.dirname(__file__), '..', 'sp500_symbols.txt')
+        try:
+            with open(fn) as f:
+                symbols = [s.strip() for s in f if s.strip()]
+                logger.info(f"Loaded {len(symbols)} S&P 500 symbols from local file")
+                return symbols
+        except FileNotFoundError:
+            logger.error(f"No local fallback file found at {fn}")
+            return []
+
+
 def get_symbols(simulation=False):
-    with open('sp500_symbols.txt') as f:
-        return [line.strip() for line in f if line.strip()]
+    """
+    Return the list of symbols to scan.
+    For live (simulation=False) we always scan the current S&P 500.
+    """
+    if simulation:
+        # your existing simulation-based symbol loading here
+        # e.g. read from your simulation db
+        return load_symbols_from_simulation_db()
+
+    return load_sp500_list()
+
 
 def fetch_data(sym, period='1d', interval='5m'):
-    return yf.Ticker(sym).history(period=period, interval=interval)
-
-def analyze_symbol(sym):
-    df = fetch_data(sym)
-    if df.empty:
-        return None
-
-    close_price = df['Close'].iloc[-1]
-    macd_line, sig_line    = calculate_macd(df['Close'])
-    rsi_series            = compute_rsi(df['Close'])
-    vol                   = df['Volume'].iloc[-1]
-    avg_vol               = df['Volume'].rolling(20).mean().iloc[-1]
-    bb_up, bb_mid, bb_dn  = compute_bollinger(df['Close'])
-
-    triggers = []
-    if macd_line.iloc[-1] > sig_line.iloc[-1]:
-        triggers.append('MACD 🚀')
-    if rsi_series.iloc[-1] < 30:
-        triggers.append('RSI 📉')
-    if vol > avg_vol:
-        triggers.append('VOL 🔊')
-    if close_price > bb_up.iloc[-1] or close_price < bb_dn.iloc[-1]:
-        triggers.append('BB 📈')
-
-    base_count = len(triggers)
-    sentiment = None
-
-      # only fetch news for Prime alerts to conserve your free calls
-    if base_count >= 3:
-        sentiment = news_sentiment(sym)
-        if sentiment > 0.05:
-            triggers.append('News 📰')
-
-    # only generate a Prime alert if there are 3 or more triggers
-    if base_count >= 3:
-        alert_type  = 'Prime'
-        confidence  = 100
-    else:
-        # no alert for 2 (formerly Sharpshooter) or fewer triggers
-        return None
-
-
-    # bump confidence for strong positive sentiment
-    if sentiment is not None and sentiment > 0.05:
-        confidence = min(100, confidence + 10)
-
-    # prepare sparkline data
-    spark = json.dumps(df['Close'].tolist())
-
-    alert = {
-        'symbol': sym,
-        'price': close_price,
-        'filter_name': alert_type,
-        'confidence': confidence,
-        'spark': spark,
-        'triggers': ",".join(triggers)
-    }
-
-    insert_alert(**alert)
-
-    info_extra = f" | NewsSentiment={sentiment:.2f}" if sentiment is not None else ""
-    logger.info(f"→ {sym} | {alert_type} | ${close_price:.2f} | {confidence}%{info_extra}")
-
-    return alert
+    """
+    Fetch OHLC + indicators for a single symbol, decide if it triggers an alert.
+    """
+    # --- (keep your existing fetch_data code here, unchanged) ---
+    # at the end you call insert_alert(...) and log via logger.info
+    ...

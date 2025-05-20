@@ -1,43 +1,54 @@
 import os
+import logging
 import requests
-import nltk
-from nltk.sentiment.vader import SentimentIntensityAnalyzer
+from datetime import datetime, timedelta
+from textblob import TextBlob
 
-# Ensure VADER lexicon is available
-nltk.download('vader_lexicon', quiet=True)
+logger = logging.getLogger(__name__)
+NEWSAPI_KEY = os.getenv('NEWSAPI_KEY')
 
-NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
-NEWSAPI_URL = "https://newsapi.org/v2/everything"
 
-def fetch_latest_headlines(symbol, count=3):
+def fetch_latest_headlines(symbol, count=5):
     """
-    Fetch the latest 'count' headlines for a given symbol via NewsAPI.org.
-    Returns an empty list on any error (e.g., unauthorized).
+    Fetch the most recent news headlines for `symbol` via NewsAPI.
     """
-    try:
-        params = {
-            "q": symbol,
-            "apiKey": NEWSAPI_KEY,
-            "language": "en",
-            "sortBy": "publishedAt",
-            "pageSize": count
-        }
-        resp = requests.get(NEWSAPI_URL, params=params, timeout=5)
-        resp.raise_for_status()
-        data = resp.json()
-        return [article["title"] for article in data.get("articles", [])]
-    except Exception:
-        # On error, return no headlines
+    if not NEWSAPI_KEY:
+        logger.error("NEWSAPI_KEY not set in environment")
         return []
 
-def news_sentiment(symbol, count=3):
+    url = 'https://newsapi.org/v2/everything'
+    params = {
+        'q': symbol,
+        'apiKey': NEWSAPI_KEY,
+        'pageSize': count,
+        'sortBy': 'publishedAt',
+        'language': 'en',
+    }
+    try:
+        resp = requests.get(url, params=params)
+        resp.raise_for_status()
+        articles = resp.json().get('articles', [])
+        return [a['title'] for a in articles]
+    except Exception as e:
+        logger.error(f"Error fetching news for {symbol}", exc_info=e)
+        return []
+
+
+def news_sentiment(symbol, count=5):
     """
-    Return the average VADER sentiment compound score for recent headlines.
-    If fetching headlines fails or none are found, returns 0.0.
+    Compute a simple average polarity across the latest `count` headlines.
     """
     headlines = fetch_latest_headlines(symbol, count)
     if not headlines:
         return 0.0
-    analyzer = SentimentIntensityAnalyzer()
-    scores = [analyzer.polarity_scores(headline)["compound"] for headline in headlines]
-    return sum(scores) / len(scores)
+
+    scores = []
+    for h in headlines:
+        blob = TextBlob(h)
+        scores.append(blob.sentiment.polarity)
+    sentiment = sum(scores) / len(scores)
+    return sentiment
+
+
+# alias so market_service (and any other code) can import this name
+analyze_sentiment = news_sentiment
