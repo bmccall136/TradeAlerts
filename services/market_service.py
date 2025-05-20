@@ -1,58 +1,93 @@
-import json
 import logging
-import os
-
-import yfinance as yf
 import pandas as pd
-
-from .alert_service import insert_alert
+from .etrade_service import fetch_etrade_quote
+from .news_service import fetch_latest_headlines, analyze_sentiment
 from .indicators import calculate_macd, compute_rsi, compute_bollinger
-from .news_service import news_sentiment  # this already exists in news_service
 
 logger = logging.getLogger(__name__)
 
-
-def load_sp500_list():
-    """
-    Try to load the S&P 500 symbols from Wikipedia. Returns a list of tickers.
-    """
-    WIKI_URL = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
-    try:
-        df = pd.read_html(WIKI_URL, header=0)[0]
-        # Wikipedia table uses dots in tickers (e.g. BRK.B) – change to dash
-        symbols = df['Symbol'].str.replace(r'\.', '-', regex=True).tolist()
-        logger.info(f"Loaded {len(symbols)} S&P 500 symbols from Wikipedia")
-        return symbols
-    except Exception as e:
-        logger.warning("Could not fetch S&P 500 list from Wikipedia, falling back to local file", exc_info=e)
-        fn = os.path.join(os.path.dirname(__file__), '..', 'sp500_symbols.txt')
-        try:
-            with open(fn) as f:
-                symbols = [s.strip() for s in f if s.strip()]
-                logger.info(f"Loaded {len(symbols)} S&P 500 symbols from local file")
-                return symbols
-        except FileNotFoundError:
-            logger.error(f"No local fallback file found at {fn}")
-            return []
+WIKI_SNP_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
 
 
-def get_symbols(simulation=False):
+def get_symbols(simulation: bool = False):
     """
-    Return the list of symbols to scan.
-    For live (simulation=False) we always scan the current S&P 500.
+    Returns the list of symbols to scan:
+    - If `simulation=True`, pulls from your simulation DB.
+    - Otherwise, scrapes the current S&P 500 list from Wikipedia.
     """
     if simulation:
-        # your existing simulation-based symbol loading here
-        # e.g. read from your simulation db
-        return load_symbols_from_simulation_db()
+        from .simulation_service import get_simulation_symbols
+        return get_simulation_symbols()
 
-    return load_sp500_list()
+    # scrape with pandas
+    try:
+        tables = pd.read_html(WIKI_SNP_URL, attrs={"id": "constituents"})
+        df = tables[0]
+        # Wikipedia uses e.g. "BRK.B" – convert dots to dashes
+        symbols = df["Symbol"].str.replace(r"\.", "-", regex=True).tolist()
+        return symbols
+    except Exception as e:
+        logger.error(f"Failed to load S&P 500 list: {e}")
+        return []
 
 
-def fetch_data(sym, period='1d', interval='5m'):
+def analyze_symbol(symbol: str):
     """
-    Fetch OHLC + indicators for a single symbol, decide if it triggers an alert.
+    Fetches quote + computes triggers + (if Prime) pulls news sentiment.
+    Returns alert dict or None.
     """
-    # --- (keep your existing fetch_data code here, unchanged) ---
-    # at the end you call insert_alert(...) and log via logger.info
-    ...
+    try:
+        price = fetch_etrade_quote(symbol)
+    except Exception as e:
+        logger.error(f"{symbol}: error fetching price: {e}")
+        return None
+
+    triggers = []
+
+    # MACD
+    try:
+        if calculate_macd(symbol):
+            triggers.append("MACD")
+    except Exception as e:
+        logger.error(f"{symbol}: MACD error: {e}")
+
+    # RSI
+    try:
+        if compute_rsi(symbol):
+            triggers.append("RSI")
+    except Exception as e:
+        logger.error(f"{symbol}: RSI error: {e}")
+
+    # Bollinger
+    try:
+        upper, lower = compute_bollinger(symbol)
+        if price > upper:
+            triggers.append("Bollinger↑")
+        elif price < lower:
+            triggers.append("Bollinger↓")
+    except Exception as e:
+        logger.error(f"{symbol}: Bollinger error: {e}")
+
+    # Only pull news for Prime candidates
+    sentiment = None
+    if len(triggers) >= 3:
+        try:
+            headlines = fetch_latest_headlines(symbol)
+            sentiment = analyze_sentiment(headlines)
+            if sentiment and sentiment > 0.05:
+                triggers.append("News 📰")
+        except Exception as e:
+            logger.error(f"{symbol}: News error: {e}")
+
+    # Only Prime (3+ triggers) produces an alert
+    if len(triggers) < 3:
+        return None
+
+    return {
+        "symbol": symbol,
+        "price": price,
+        "triggers": triggers,
+        "alert_type": "Prime",
+        "confidence": 100,
+        "sentiment": sentiment,
+    }
