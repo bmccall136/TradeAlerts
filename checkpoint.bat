@@ -7,7 +7,7 @@ REM Make sure checkpoints folder exists
 if not exist checkpoints mkdir checkpoints
 
 REM Optional: Create a zip archive of your project as a checkpoint
-powershell Compress-Archive -Path * -DestinationPath "checkpoints\checkpoint_%dt%.zip"
+REM powershell Compress-Archive -Path * -DestinationPath "checkpoints\checkpoint_%dt%.zip"
 
 REM Stage all changes
 git add .
