@@ -25,11 +25,11 @@ def analyze_symbol(sym):
         return None
 
     close_price = df['Close'].iloc[-1]
-    macd_line, sig_line    = calculate_macd(df['Close'])
-    rsi_series            = compute_rsi(df['Close'])
-    vol                   = df['Volume'].iloc[-1]
-    avg_vol               = df['Volume'].rolling(20).mean().iloc[-1]
-    bb_up, bb_mid, bb_dn  = compute_bollinger(df['Close'])
+    macd_line, sig_line = calculate_macd(df['Close'])
+    rsi_series = compute_rsi(df['Close'])
+    vol = df['Volume'].iloc[-1]
+    avg_vol = df['Volume'].rolling(20).mean().iloc[-1]
+    bb_up, bb_mid, bb_dn = compute_bollinger(df['Close'])
 
     triggers = []
     if macd_line.iloc[-1] > sig_line.iloc[-1]:
@@ -44,7 +44,7 @@ def analyze_symbol(sym):
     base_count = len(triggers)
     sentiment = None
 
-      # only fetch news for Prime alerts to conserve your free calls
+    # only fetch news for Prime alerts to conserve your free calls
     if base_count >= 3:
         sentiment = news_sentiment(sym)
         if sentiment > 0.05:
@@ -52,19 +52,26 @@ def analyze_symbol(sym):
 
     # only generate a Prime alert if there are 3 or more triggers
     if base_count >= 3:
-        alert_type  = 'Prime'
-        confidence  = 100
+        alert_type = 'Prime'
+        confidence = 100
     else:
-        # no alert for 2 (formerly Sharpshooter) or fewer triggers
         return None
 
+    # prepare sparkline data
+    spark = json.dumps(df['Close'].tolist())
 
     # bump confidence for strong positive sentiment
     if sentiment is not None and sentiment > 0.05:
         confidence = min(100, confidence + 10)
 
-    # prepare sparkline data
-    spark = json.dumps(df['Close'].tolist())
+    # Get news URL if News trigger is present
+    news_url = None
+    if "News 📰" in triggers:
+        # Dummy: Replace with your real news fetch function
+        from .news_service import get_latest_news_for_symbol
+        latest_news = get_latest_news_for_symbol(sym)
+        if latest_news and 'url' in latest_news:
+            news_url = latest_news['url']
 
     alert = {
         'symbol': sym,
@@ -72,7 +79,8 @@ def analyze_symbol(sym):
         'filter_name': alert_type,
         'confidence': confidence,
         'spark': spark,
-        'triggers': ",".join(triggers)
+        'triggers': ",".join(triggers),
+        'news_url': news_url  # <--- This is what the JS expects
     }
 
     insert_alert(**alert)

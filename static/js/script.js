@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <td>${alert.symbol}</td>
         <td>$${alert.price.toFixed(2)}</td>
         <td>${alert.confidence.toFixed(1)}%</td>
-        <td>${alert.triggers.split(',').map(t=>`<span class="badge badge-secondary mr-1">${t}</span>`).join('')}</td>
+        <td>${renderTriggers(alert)}</td>
         <td><img src="/api/alerts/${alert.id}/sparkline.svg" alt="spark"></td>
         <td>
           <input type="number" class="qty-input form-control form-control-sm" value="1" min="1"
@@ -35,6 +35,17 @@ document.addEventListener('DOMContentLoaded', () => {
       tbody.appendChild(tr);
     });
     attachHandlers();
+  }
+
+  // --- NEW: Renders triggers with News 📰 as link if news_url is present ---
+  function renderTriggers(alert) {
+    return alert.triggers.split(',').map(t => {
+      t = t.trim();
+      if ((t === "News 📰" || t === "News") && alert.news_url && alert.news_url.length > 0) {
+        return `<a href="${alert.news_url}" target="_blank" class="badge badge-info mr-1" style="color:#0af;text-decoration:underline;">${t}</a>`;
+      }
+      return `<span class="badge badge-secondary mr-1">${t}</span>`;
+    }).join('');
   }
 
   function attachHandlers() {
