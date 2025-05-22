@@ -15,12 +15,13 @@ def init_db():
                 confidence REAL,
                 timestamp TEXT,
                 spark TEXT,
-                triggers TEXT
+                triggers TEXT,
+                news_url TEXT      -- <- this line is new!
             )"""
         )
         conn.commit()
 
-def insert_alert(symbol, price, filter_name, confidence, spark=None, triggers=None, **kwargs):
+def insert_alert(symbol, price, filter_name, confidence, spark=None, triggers=None, news_url=None, **kwargs):
     """
     Insert or update an alert for a symbol. Overwrites any existing alert for the same symbol.
     """
@@ -29,9 +30,9 @@ def insert_alert(symbol, price, filter_name, confidence, spark=None, triggers=No
         c = conn.cursor()
         c.execute('DELETE FROM alerts WHERE symbol = ?', (symbol,))
         c.execute(
-            'INSERT INTO alerts (symbol, price, filter_name, confidence, timestamp, spark, triggers) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?)',
-            (symbol, price, filter_name, confidence, ts, spark or '', triggers or '')
+            'INSERT INTO alerts (symbol, price, filter_name, confidence, timestamp, spark, triggers, news_url) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            (symbol, price, filter_name, confidence, ts, spark or '', triggers or '', news_url or '')
         )
         conn.commit()
 
@@ -40,12 +41,12 @@ def get_alerts(filter_name='all'):
         c = conn.cursor()
         if filter_name == 'all':
             c.execute(
-                'SELECT id, symbol, price, filter_name, confidence, timestamp, spark, triggers '
+                'SELECT id, symbol, price, filter_name, confidence, timestamp, spark, triggers, news_url '
                 'FROM alerts ORDER BY id DESC'
             )
         else:
             c.execute(
-                'SELECT id, symbol, price, filter_name, confidence, timestamp, spark, triggers '
+                'SELECT id, symbol, price, filter_name, confidence, timestamp, spark, triggers, news_url '
                 'FROM alerts WHERE filter_name = ? ORDER BY id DESC',
                 (filter_name,)
             )
@@ -54,7 +55,8 @@ def get_alerts(filter_name='all'):
         {
             'id': r[0], 'symbol': r[1], 'price': r[2],
             'filter_name': r[3], 'confidence': r[4],
-            'timestamp': r[5], 'spark': r[6], 'triggers': r[7]
+            'timestamp': r[5], 'spark': r[6], 'triggers': r[7],
+            'news_url': r[8]   # <-- here!
         }
         for r in rows
     ]

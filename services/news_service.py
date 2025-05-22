@@ -41,3 +41,16 @@ def news_sentiment(symbol, count=3):
     analyzer = SentimentIntensityAnalyzer()
     scores = [analyzer.polarity_scores(headline)["compound"] for headline in headlines]
     return sum(scores) / len(scores)
+
+# Add to services/news_service.py
+
+def get_latest_news_for_symbol(symbol):
+    """
+    Returns a dummy news dict for testing.
+    Replace with real implementation to fetch news.
+    """
+    # Example: you could integrate with Yahoo, Finnhub, or NewsAPI here
+    return {
+        'url': f'https://www.google.com/search?q={symbol}+stock+news',
+        'headline': f'Latest news for {symbol}'
+    }

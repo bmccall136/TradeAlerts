@@ -1,22 +1,20 @@
 @echo off
-REM checkpoint.bat — stage, commit, and tag a restore point
+REM Set the timestamp
+set dt=%date:~10,4%-%date:~4,2%-%date:~7,2%_%time:~0,2%-%time:~3,2%-%time:~6,2%
+set dt=%dt: =0%
 
-REM 1) Stage all changes
+REM Optional: Create a zip archive of your project as a checkpoint
+REM (adjust folders/files as needed)
+powershell Compress-Archive -Path * -DestinationPath "checkpoints\checkpoint_%dt%.zip"
+
+REM Stage all changes
 git add .
 
-REM 2) Commit with your message
-git commit -m "🚀 Alerts pipeline live: scanner → API → dashboard"
+REM Commit with timestamp message
+git commit -m "Checkpoint %dt%"
 
-REM 3) Delete existing tag if it exists to avoid errors
-git tag -l v1.0-alerts-live >nul 2>&1
-if %ERRORLEVEL% EQU 0 (
-    echo Tag v1.0-alerts-live exists, deleting old tag...
-    git tag -d v1.0-alerts-live
-)
+REM Push to origin (change branch if needed)
+git push origin HEAD
 
-REM 4) Create annotated tag
-git tag -a v1.0-alerts-live -m "Alerts pipeline fully functional"
-
-echo.
-echo 🎉 Checkpoint created: commit and tag v1.0-alerts-live
+echo Backup and sync to remote completed!
 pause

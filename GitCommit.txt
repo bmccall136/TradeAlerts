@@ -1,0 +1,16 @@
+PS C:\TradeAlerts> cd C:\TradeAlerts
+PS C:\TradeAlerts> git add docs/ToDo.md
+PS C:\TradeAlerts> git commit -m "chore: update ToDo with completed items and next work"
+
+
+PS C:\TradeAlerts> cd C:\TradeAlerts
+PS C:\TradeAlerts> git add docs/ToDo.md
+PS C:\TradeAlerts> git commit -m "chore: update ToDo with completed items and next work"
+
+
+git add dashboard.jpg
+git add simulation1.jpg
+git add simulation2.jpg
+git commit -m "chore: update screenshots"
+
+esc > :wq > enter
