@@ -42,7 +42,7 @@ def save_config(cfg, prod=True):
 def alerts():
     conn = sqlite3.connect(ALERTS_DB)
     c = conn.cursor()
-    c.execute("SELECT id, symbol, alert_type, price, confidence, timestamp, triggers, sparkline, cleared FROM alerts WHERE cleared=0 ORDER BY timestamp DESC")
+    c.execute("SELECT id, symbol, alert_type, price, timestamp, triggers, sparkline, cleared FROM alerts WHERE cleared=0 ORDER BY timestamp DESC")
     alerts = c.fetchall()
     conn.close()
     # convert UTC to local for display
@@ -139,7 +139,7 @@ from flask import send_file
 def sparkline(alert_id):
     conn = sqlite3.connect(ALERTS_DB)
     c = conn.cursor()
-    c.execute("SELECT sparkline FROM alerts WHERE id=?", (alert_id,))
+    c.execute("SELECT id, symbol, price, triggers, sparkline, timestamp, name FROM alerts WHERE cleared=0 ORDER BY timestamp DESC")
     row = c.fetchone()
     conn.close()
     if not row or not row[0]:
@@ -151,16 +151,23 @@ def sparkline(alert_id):
             raise ValueError
     except Exception:
         return ('<svg width="60" height="20"></svg>', 200, {'Content-Type': 'image/svg+xml'})
-    fig, ax = plt.subplots(figsize=(1.2, 0.4), dpi=100)
-    ax.plot(prices, linewidth=2, color="#66ff66")
+    fig, ax = plt.subplots(figsize=(2.4, 0.75), dpi=50)
+    fig.patch.set_facecolor('black')
+    ax.set_facecolor('black')
+    ax.plot(prices, linewidth=2, color="#39ff14")
     ax.axis('off')
+    ax.set_xlim([0, len(prices)-1])
+    ax.set_ylim([min(prices), max(prices)])
     for spine in ax.spines.values():
         spine.set_visible(False)
+    rect = plt.Rectangle((0,0),1,1, color='black', zorder=-1)
+    ax.add_patch(rect)
     buf = io.BytesIO()
-    plt.savefig(buf, format='svg', bbox_inches='tight', pad_inches=0)
+    plt.savefig(buf, format='svg', bbox_inches='tight', pad_inches=0, facecolor='black')
     plt.close(fig)
     buf.seek(0)
     return send_file(buf, mimetype='image/svg+xml')
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

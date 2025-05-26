@@ -1,15 +1,62 @@
 .black-bg, body.black-bg {
     background: #000 !important;
-    color: #ffd700 !important; /* or white/yellow for text */
+    color: #ffd700 !important;
 }
 .sparkline-img {
-    height: 38px;   /* increased from 22px */
-    width: 120px;   /* increased from 60px */
-    background: #000;
+    width: 100%;
+    min-width: 80px;
+    max-width: 180px;
+    height: 38px;
+    background: #000 !important;
+    border-radius: 8px;
     display: block;
     margin: 0 auto;
-    border-radius: 7px;
     box-shadow: 0 2px 12px #000a;
+    vertical-align: middle;
+}
+.qty-input {
+    width: 48px;
+    padding: 4px;
+    border-radius: 5px;
+    margin-right: 6px;
+    text-align: right;
+    font-size: 1em;
+}
+.buy-btn {
+    padding: 5px 14px;
+    margin: 2px 0;
+    border: none;
+    border-radius: 6px;
+    font-size: 1em;
+    background: #29e667;
+    color: #111;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background 0.15s;
+}
+.buy-btn:hover {
+    background: #20c15c;
+    color: #fff;
+}
+.clear-btn, .clear-all-btn {
+    padding: 5px 18px;
+    margin: 2px 0;
+    border: none;
+    border-radius: 6px;
+    font-size: 1em;
+    background: #222;
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.17s;
+    font-weight: 500;
+}
+.clear-btn:hover, .clear-all-btn:hover {
+    background: #ffda58;
+    color: #181818;
+}
+.clear-all-btn {
+    margin-top: 12px;
+    background: #2b2b2b;
 }
 
 .navbar {

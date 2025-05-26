@@ -30,14 +30,14 @@ def clear_all_alerts():
     conn.commit()
     conn.close()
 
-def insert_alert(symbol, alert_type, price, confidence, triggers, sparkline):
+def insert_alert(symbol, alert_type, price, triggers, sparkline, name):
     conn = sqlite3.connect(ALERTS_DB)
     c = conn.cursor()
     now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     c.execute("""
         INSERT INTO alerts
-        (symbol, alert_type, price, confidence, timestamp, triggers, sparkline, cleared)
+        (symbol, alert_type, price, triggers, sparkline, timestamp, name, cleared)
         VALUES (?, ?, ?, ?, ?, ?, ?, 0)
-    """, (symbol, alert_type, price, confidence, now, triggers, sparkline))
+    """, (symbol, alert_type, price, triggers, sparkline, now, name))
     conn.commit()
     conn.close()

@@ -1,3 +1,10 @@
+import sqlite3
+
+DB = "alerts.db"
+
+conn = sqlite3.connect(DB)
+c = conn.cursor()
+c.execute('''
 CREATE TABLE IF NOT EXISTS alerts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     symbol TEXT,
@@ -8,4 +15,8 @@ CREATE TABLE IF NOT EXISTS alerts (
     triggers TEXT,
     sparkline TEXT,
     cleared INTEGER DEFAULT 0
-);
+)
+''')
+conn.commit()
+conn.close()
+print("alerts table ensured.")
