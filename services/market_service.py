@@ -74,16 +74,18 @@ def analyze_symbol(sym):
             news_url = latest_news['url']
 
     alert = {
-        'symbol': sym,
-        'price': close_price,
-        'filter_name': alert_type,
-        'confidence': confidence,
-        'spark': spark,
-        'triggers': ",".join(triggers),
-        'news_url': news_url  # <--- This is what the JS expects
-    }
+    'symbol': sym,
+    'alert_type': alert_type,
+    'price': close_price,
+    'confidence': confidence,
+    'sparkline': spark,
+    'triggers': ",".join(triggers),
+    'news_url': news_url
+}
 
+    alert.pop('news_url', None)   # <--- ADD THIS LINE
     insert_alert(**alert)
+
 
     info_extra = f" | NewsSentiment={sentiment:.2f}" if sentiment is not None else ""
     logger.info(f"→ {sym} | {alert_type} | ${close_price:.2f} | {confidence}%{info_extra}")

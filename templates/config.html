@@ -1,0 +1,9 @@
+{% extends "layout.html" %}
+{% block content %}
+    <div class="container mt-4">
+        <h2>Config Settings</h2>
+        <pre>{{ config | tojson(indent=2) }}</pre>
+        <p>Production: {{ prod }}</p>
+        <!-- Add more UI here for editing configs -->
+    </div>
+{% endblock %}

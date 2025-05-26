@@ -1,102 +1,59 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Simulation Dashboard</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="/static/style.css">
+    <meta charset="UTF-8">
+    <title>TradeAlerts - Simulation</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body class="bg-dark text-light">
-  <div class="container py-4">
-    <div class="mb-3">
-      <a href="{{ url_for('alerts_index') }}" class="btn btn-sm btn-outline-light">← Back to Alerts</a>
+<body class="black-bg">
+    <nav class="navbar">
+        <div class="navbar-brand">🚀 TradeAlerts</div>
+        <div class="navbar-links">
+            <a href="{{ url_for('alerts') }}" class="nav-link{% if request.path == '/alerts' %} active{% endif %}">Alerts</a>
+            <a href="{{ url_for('simulation') }}" class="nav-link{% if request.path == '/simulation' %} active{% endif %}">Simulation</a>
+            <a href="{{ url_for('backtest') }}" class="nav-link{% if request.path == '/backtest' %} active{% endif %}">Backtest</a>
+            <a href="{{ url_for('config') }}" class="nav-link{% if request.path == '/config' %} active{% endif %}">Settings</a>
+        </div>
+    </nav>
+    <div class="container">
+        <h1 class="page-title">Simulation Portfolio</h1>
+        <div class="sim-summary">
+            <div><strong>Cash Balance:</strong> ${{ '%.2f'|format(cash) }}</div>
+            <div>
+                <strong>Unrealized P&amp;L:</strong>
+                <span style="color:{{ 'lime' if unrealized_total >= 0 else 'red' }}">
+                    ${{ '%.2f'|format(unrealized_total) }}
+                </span>
+            </div>
+            <div>
+                <strong>Total Portfolio Value:</strong>
+                ${{ '%.2f'|format(cash + unrealized_total) }}
+            </div>
+        </div>
+        <table class="sim-table">
+            <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th>Quantity</th>
+                    <th>Avg Cost</th>
+                    <th>Last Price</th>
+                    <th>Unrealized P&amp;L</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for h in holdings %}
+                <tr>
+                    <td>{{ h.symbol }}</td>
+                    <td>{{ h.qty }}</td>
+                    <td>${{ '%.2f'|format(h.avg_cost) }}</td>
+                    <td>${{ '%.2f'|format(h.last_price) }}</td>
+                    <td style="color:{{ 'lime' if h.unreal >= 0 else 'red' }}">
+                        ${{ '%.2f'|format(h.unreal) }}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
     </div>
-    <h1 class="text-center mb-4">Simulation Dashboard</h1>
-    <div class="row text-light mb-4">
-      <div class="col text-center"><strong>Cash:</strong> ${{ simulation.cash | round(2) }}</div>
-      <div class="col text-center"><strong>Open Value:</strong> ${{ simulation.open | round(2) }}</div>
-      <div class="col text-center"><strong>Realized P&L:</strong> ${{ simulation.realized | round(2) }}</div>
-    </div>
-    <div class="text-center mb-4">
-      <form action="{{ url_for('sim_reset') }}" method="post" style="display:inline;">
-        <button type="submit" class="btn btn-danger">Reset Simulation</button>
-      </form>
-    </div>
-
-    <!-- Holdings Table -->
-    <div class="table-responsive mb-5">
-      <h2 class="text-light">Holdings</h2>
-      <table class="table table-sm table-dark">
-        <thead>
-          <tr>
-            <th>Symbol</th><th>Last Price</th><th>Change</th><th>Change %</th>
-            <th>Qty</th><th>Price Paid</th><th>Day Gain</th><th>Total Gain</th>
-            <th>Total Gain %</th><th>Value</th><th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for h in simulation.holdings %}
-          <tr>
-            <td>{{ h.symbol }}</td>
-            <td>${{ h.current_price | round(2) }}</td>
-            <td>${{ (h.current_price - h.avg_price) | round(2) }}</td>
-            <td>{{ ((h.current_price - h.avg_price)/h.avg_price*100) | round(2) }}%</td>
-            <td>{{ h.quantity }}</td>
-            <td>${{ h.avg_price | round(2) }}</td>
-            <td>${{ (h.current_price - h.avg_price)*h.quantity | round(2) }}</td>
-            <td>${{ (h.current_value - h.avg_price*h.quantity) | round(2) }}</td>
-            <td>{{ ((h.current_value/(h.avg_price*h.quantity) -1)*100) | round(2) }}%</td>
-            <td>${{ h.current_value | round(2) }}</td>
-            <td>
-              <form action="{{ url_for('simulate_sell') }}" method="post" style="display:inline;">
-                <input type="hidden" name="symbol" value="{{ h.symbol }}">
-                <input type="number" name="quantity" min="1" max="{{ h.quantity }}" value="1"
-                       class="form-control form-control-sm"
-                       style="width:70px; display:inline-block; margin-right:5px;">
-                <input type="hidden" name="price" value="{{ h.current_price }}">
-                <button type="submit" class="btn btn-sm btn-danger">Sell</button>
-              </form>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Trade History Controls -->
-    <div class="d-flex justify-content-between mb-2">
-      <form action="{{ url_for('sim_reset') }}" method="post" style="display:inline;">
-        <button type="submit" class="btn btn-sm btn-warning">Clear Trade History</button>
-      </form>
-      <a href="{{ url_for('download_trades') }}" class="btn btn-sm btn-outline-light">Download CSV</a>
-    </div>
-
-    <!-- Trade History Table -->
-    <div class="table-responsive mb-5">
-      <table class="table table-sm table-dark">
-        <thead>
-          <tr>
-            <th>Time</th><th>Symbol</th><th>Action</th><th>Qty</th><th>Price</th><th>P/L</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for t in simulation.trades %}
-          <tr>
-            <td>{{ t.timestamp }}</td>
-            <td>{{ t.symbol }}</td>
-            <td>{{ t.action }}</td>
-            <td>{{ t.quantity }}</td>
-            <td>${{ t.price | round(2) }}</td>
-            <td>
-              {% if t.pnl is not none %}
-                ${{ t.pnl | round(2) }}
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
 </body>
 </html>
