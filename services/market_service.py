@@ -1,13 +1,9 @@
-# services/market_service.py
-
 import json
 import logging
 import yfinance as yf
 
 from .alert_service import insert_alert
 from .news_service import news_sentiment
-
-# make sure you have these in your project under services/indicators.py
 from .indicators import calculate_macd, compute_rsi, compute_bollinger
 
 logger = logging.getLogger(__name__)
@@ -25,6 +21,8 @@ def analyze_symbol(sym):
         return None
 
     close_price = df['Close'].iloc[-1]
+    info = yf.Ticker(sym).info
+    name = info.get("shortName", sym)
     macd_line, sig_line = calculate_macd(df['Close'])
     rsi_series = compute_rsi(df['Close'])
     vol = df['Volume'].iloc[-1]
@@ -44,50 +42,24 @@ def analyze_symbol(sym):
     base_count = len(triggers)
     sentiment = None
 
-    # only fetch news for Prime alerts to conserve your free calls
+    # only fetch news for Prime alerts to conserve free calls
     if base_count >= 3:
         sentiment = news_sentiment(sym)
         if sentiment > 0.05:
             triggers.append('News 📰')
-
-    # only generate a Prime alert if there are 3 or more triggers
-    if base_count >= 3:
         alert_type = 'Prime'
-        confidence = 100
     else:
         return None
 
-    # prepare sparkline data
     spark = json.dumps(df['Close'].tolist())
 
-    # bump confidence for strong positive sentiment
-    if sentiment is not None and sentiment > 0.05:
-        confidence = min(100, confidence + 10)
-
-    # Get news URL if News trigger is present
-    news_url = None
-    if "News 📰" in triggers:
-        # Dummy: Replace with your real news fetch function
-        from .news_service import get_latest_news_for_symbol
-        latest_news = get_latest_news_for_symbol(sym)
-        if latest_news and 'url' in latest_news:
-            news_url = latest_news['url']
-
     alert = {
-    'symbol': sym,
-    'alert_type': alert_type,
-    'price': close_price,
-    'confidence': confidence,
-    'sparkline': spark,
-    'triggers': ",".join(triggers),
-    'news_url': news_url
-}
-
-    alert.pop('news_url', None)   # <--- ADD THIS LINE
+        'symbol': sym,
+        'alert_type': alert_type,
+        'price': float(close_price),
+        'triggers': ",".join(triggers),
+        'sparkline': spark,
+        'name': name
+    }
     insert_alert(**alert)
-
-
-    info_extra = f" | NewsSentiment={sentiment:.2f}" if sentiment is not None else ""
-    logger.info(f"→ {sym} | {alert_type} | ${close_price:.2f} | {confidence}%{info_extra}")
-
     return alert

@@ -1,22 +1,21 @@
 import sqlite3
 
-DB = "alerts.db"
-
-conn = sqlite3.connect(DB)
+conn = sqlite3.connect('alerts.db')
 c = conn.cursor()
+c.execute('DROP TABLE IF EXISTS alerts')
 c.execute('''
-CREATE TABLE IF NOT EXISTS alerts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    symbol TEXT,
-    alert_type TEXT,
-    price REAL,
-    confidence REAL,
-    timestamp TEXT,
-    triggers TEXT,
-    sparkline TEXT,
-    cleared INTEGER DEFAULT 0
-)
+    CREATE TABLE alerts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        symbol TEXT,
+        alert_type TEXT,
+        price REAL,
+        triggers TEXT,
+        sparkline TEXT,
+        timestamp TEXT,
+        name TEXT,
+        cleared INTEGER DEFAULT 0
+    )
 ''')
 conn.commit()
 conn.close()
-print("alerts table ensured.")
+print("alerts table recreated.")

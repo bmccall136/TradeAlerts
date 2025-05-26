@@ -7,7 +7,7 @@ def get_active_alerts():
     conn = sqlite3.connect(ALERTS_DB)
     c = conn.cursor()
     c.execute("""
-        SELECT id, symbol, alert_type, price, confidence, timestamp, triggers, sparkline, cleared
+        SELECT id, symbol, price, triggers, sparkline, timestamp, name, cleared
         FROM alerts
         WHERE cleared=0
         ORDER BY timestamp DESC

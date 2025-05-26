@@ -3,7 +3,6 @@ import json
 import logging
 from datetime import datetime, time as dt_time, timedelta
 from services.market_service import get_symbols, analyze_symbol
-from services.alert_service import insert_alert
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
@@ -59,14 +58,12 @@ def main(simulation=False):
         for sym in syms:
             try:
                 alert = analyze_symbol(sym)
-                if alert:
-                    insert_alert(**alert)
+                # Do NOT call insert_alert here, analyze_symbol now does it!
             except Exception as e:
                 logger.error(f"Error scanning {sym}: {e}")
 
         # pause between sweeps
         time.sleep(60)
-
 
 if __name__ == "__main__":
     main(simulation=False)

@@ -42,14 +42,14 @@ def save_config(cfg, prod=True):
 def alerts():
     conn = sqlite3.connect(ALERTS_DB)
     c = conn.cursor()
-    c.execute("SELECT id, symbol, alert_type, price, timestamp, triggers, sparkline, cleared FROM alerts WHERE cleared=0 ORDER BY timestamp DESC")
+    c.execute("SELECT id, symbol, price, triggers, sparkline, timestamp, name FROM alerts WHERE cleared=0 ORDER BY timestamp DESC")
     alerts = c.fetchall()
     conn.close()
     # convert UTC to local for display
     alerts = [list(alert) for alert in alerts]
     for alert in alerts:
         alert[5] = local_time_str(alert[5])
-        alert[7] = f"/sparkline/{alert[0]}.svg" if alert[7] else ""  # alert[0] is id, alert[7] is sparkline field
+        alert[4] = f"/sparkline/{alert[0]}.svg" if alert[4] else ""
     return render_template('alerts.html', alerts=alerts, config=load_config(True))
 
 
@@ -139,11 +139,10 @@ from flask import send_file
 def sparkline(alert_id):
     conn = sqlite3.connect(ALERTS_DB)
     c = conn.cursor()
-    c.execute("SELECT id, symbol, price, triggers, sparkline, timestamp, name FROM alerts WHERE cleared=0 ORDER BY timestamp DESC")
+    c.execute("SELECT sparkline FROM alerts WHERE id=?", (alert_id,))
     row = c.fetchone()
     conn.close()
     if not row or not row[0]:
-        # Return a tiny empty SVG if nothing found
         return ('<svg width="60" height="20"></svg>', 200, {'Content-Type': 'image/svg+xml'})
     try:
         prices = json.loads(row[0])
