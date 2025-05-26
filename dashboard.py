@@ -1,107 +1,166 @@
-from dotenv import load_dotenv
-load_dotenv()   # this will read your .env file into os.environ
-
-from flask import Flask, render_template, request, redirect, url_for, jsonify, Response
-from api import api_bp
-
-from services.alert_service import init_db, clear_alerts_by_filter
-from services.simulation_service import (
-    get_simulation_state,
-    reset_state,
-    delete_holding,
-    process_trade,
-    process_sell
-)
-from services.etrade_service import fetch_etrade_quote
-import yfinance as yf
-import csv
-from io import StringIO
+import os
+import sqlite3
+from flask import Flask, render_template, request, jsonify, redirect, url_for
+from datetime import datetime, timedelta
+import pytz
+import json
 
 app = Flask(__name__)
-init_db()
-app.register_blueprint(api_bp, url_prefix='/api')
 
+# --- CONFIG PATHS ---
+PROD_CONFIG_PATH = 'config_live.json'
+BACKTEST_CONFIG_PATH = 'config_backtest.json'
+SIM_DB = 'simulation.db'
+ALERTS_DB = 'alerts.db'
+BACKTEST_DB = 'backtest.db'
+
+# --- TIMEZONE ---
+LOCAL_TZ = pytz.timezone('America/New_York')
+
+# --- UTILS ---
+def local_time_str(utc_str):
+    # Convert UTC string to Eastern time string for display
+    utc_dt = datetime.strptime(utc_str, "%Y-%m-%d %H:%M:%S")
+    return utc_dt.replace(tzinfo=pytz.utc).astimezone(LOCAL_TZ).strftime('%Y-%m-%d %I:%M:%S %p')
+
+# --- LOAD CONFIG ---
+def load_config(prod=True):
+    cfg_path = PROD_CONFIG_PATH if prod else BACKTEST_CONFIG_PATH
+    if not os.path.exists(cfg_path):
+        return {}
+    with open(cfg_path, 'r') as f:
+        return json.load(f)
+
+def save_config(cfg, prod=True):
+    cfg_path = PROD_CONFIG_PATH if prod else BACKTEST_CONFIG_PATH
+    with open(cfg_path, 'w') as f:
+        json.dump(cfg, f, indent=2)
+
+# --- ALERT ROUTES ---
+@app.route('/')
 @app.route('/alerts')
-def alerts_index():
-    current_filter = request.args.get('filter', 'all')
-    return render_template('alerts.html', current_filter=current_filter)
+def alerts():
+    conn = sqlite3.connect(ALERTS_DB)
+    c = conn.cursor()
+    c.execute("SELECT id, symbol, alert_type, price, confidence, timestamp, triggers, sparkline, cleared FROM alerts WHERE cleared=0 ORDER BY timestamp DESC")
+    alerts = c.fetchall()
+    conn.close()
+    # convert UTC to local for display
+    alerts = [list(alert) for alert in alerts]
+    for alert in alerts:
+        alert[5] = local_time_str(alert[5])
+        alert[7] = f"/sparkline/{alert[0]}.svg" if alert[7] else ""  # alert[0] is id, alert[7] is sparkline field
+    return render_template('alerts.html', alerts=alerts, config=load_config(True))
 
-@app.route('/alerts/clear', methods=['POST'])
-def clear_filtered():
-    f = request.form.get('filter', 'all')
-    clear_alerts_by_filter(f)
-    return '', 204
 
+@app.route('/clear_alert/<int:alert_id>', methods=['POST'])
+def clear_alert(alert_id):
+    conn = sqlite3.connect(ALERTS_DB)
+    c = conn.cursor()
+    c.execute("UPDATE alerts SET cleared=1 WHERE id=?", (alert_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success'})
+
+@app.route('/clear_all_alerts', methods=['POST'])
+def clear_all_alerts():
+    conn = sqlite3.connect(ALERTS_DB)
+    c = conn.cursor()
+    c.execute("UPDATE alerts SET cleared=1")
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success'})
+
+# --- SIMULATION ROUTES ---
 @app.route('/simulation')
-def simulation_dashboard():
-    state = get_simulation_state()
-    holdings = []
-    for sym, qty, avg_price in state['holdings']:
-        try:
-            current_price = fetch_etrade_quote(sym)
-        except:
-            df = yf.Ticker(sym).history(period='1d', interval='1d')
-            current_price = df['Close'].iloc[-1] if not df.empty else avg_price
-        current_value = qty * current_price
-        profit_loss = current_value - (qty * avg_price)
-        profit_pct = (profit_loss / (qty * avg_price) * 100) if (qty * avg_price) else 0.0
-        holdings.append({
-            'symbol': sym,
-            'quantity': qty,
-            'avg_price': avg_price,
-            'current_price': current_price,
-            'current_value': current_value,
-            'profit_loss': profit_loss,
-            'profit_pct': profit_pct
+def simulation():
+    conn = sqlite3.connect(SIM_DB)
+    c = conn.cursor()
+    c.execute("SELECT symbol, qty, avg_cost, last_price FROM holdings")
+    holdings = c.fetchall()
+    unrealized_total = 0
+    holdings_data = []
+    for sym, qty, avg_cost, last_price in holdings:
+        unreal = (last_price - avg_cost) * qty
+        holdings_data.append({
+            "symbol": sym,
+            "qty": qty,
+            "avg_cost": avg_cost,
+            "last_price": last_price,
+            "unreal": unreal
         })
-    simulation = {
-        'cash':     state['cash'],
-        'open':     sum(h['current_value'] for h in holdings),
-        'realized': sum(t['pnl'] for t in state['trades'] if t['pnl'] != None),
-        'holdings': holdings,
-        'trades':   state['trades']
-    }
-    return render_template('simulation.html', simulation=simulation)
+        unrealized_total += unreal
+    c.execute("SELECT cash_balance FROM account LIMIT 1")
+    row = c.fetchone()
+    cash = row[0] if row else 0
 
-@app.route('/simulation/reset', methods=['POST'])
-def sim_reset():
-    reset_state()
-    return redirect(url_for('simulation_dashboard'))
+    conn.close()
+    return render_template('simulation.html',
+                           holdings=holdings_data,
+                           unrealized_total=unrealized_total,
+                           cash=cash,
+                           config=load_config(True))
 
-@app.route('/simulation/clear/<symbol>', methods=['POST'])
-def clear_holding(symbol):
-    delete_holding(symbol)
-    return redirect(url_for('simulation_dashboard'))
+# --- BACKTEST ROUTES ---
+@app.route('/backtest', methods=['GET', 'POST'])
+def backtest():
+    # POST runs a backtest, GET displays last run
+    if request.method == 'POST':
+        config = request.json or request.form
+        # ... Insert your backtest run logic here ...
+        # Simulate and store results
+        pass
+    # For now, show a placeholder
+    return render_template('backtest.html', config=load_config(False))
 
-@app.route('/simulation/simulate', methods=['POST'])
-def simulate_trade():
-    symbol   = request.args.get('symbol', '').upper()
-    quantity = int(request.args.get('quantity', 1))
-    price    = float(request.args.get('price', 0))
-    process_trade(symbol, quantity, price)
-    return redirect(url_for('simulation_dashboard'))
+# --- CONFIG ROUTES ---
+@app.route('/config', methods=['GET', 'POST'])
+def config():
+    prod = (request.args.get('mode', 'prod') == 'prod')
+    if request.method == 'POST':
+        cfg = request.json if request.is_json else request.form.to_dict()
+        save_config(cfg, prod=prod)
+        return jsonify({'status': 'success'})
+    cfg = load_config(prod=prod)
+    return render_template('config.html', config=cfg, prod=prod)
 
-@app.route('/simulation/sell', methods=['POST'])
-def simulate_sell():
-    symbol   = request.form.get('symbol', '').upper()
-    quantity = int(request.form.get('quantity', 1))
-    price    = float(request.form.get('price', 0))
-    process_sell(symbol, quantity, price)
-    return redirect(url_for('simulation_dashboard'))
+# --- STATUS ROUTE ---
+@app.route('/status')
+def status():
+    # Add health checks for API keys, database status, etc.
+    return jsonify({'status': 'ok'})
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import io
+from flask import send_file
 
-# New download endpoint
-@app.route('/simulation/download', methods=['GET'])
-def download_trades():
-    state = get_simulation_state()
-    si = StringIO()
-    cw = csv.writer(si)
-    cw.writerow(['Time','Symbol','Action','Quantity','Price','P/L'])
-    for t in state['trades']:
-        pnl = '' if t['pnl'] is None else f"{t['pnl']:.2f}"
-        cw.writerow([t['timestamp'], t['symbol'], t['action'], t['quantity'], f"{t['price']:.2f}", pnl])
-    output = si.getvalue()
-    return Response(output, mimetype='text/csv',
-                    headers={'Content-Disposition':'attachment; filename=trades.csv'})
+@app.route('/sparkline/<int:alert_id>.svg')
+def sparkline(alert_id):
+    conn = sqlite3.connect(ALERTS_DB)
+    c = conn.cursor()
+    c.execute("SELECT sparkline FROM alerts WHERE id=?", (alert_id,))
+    row = c.fetchone()
+    conn.close()
+    if not row or not row[0]:
+        # Return a tiny empty SVG if nothing found
+        return ('<svg width="60" height="20"></svg>', 200, {'Content-Type': 'image/svg+xml'})
+    try:
+        prices = json.loads(row[0])
+        if not isinstance(prices, list):
+            raise ValueError
+    except Exception:
+        return ('<svg width="60" height="20"></svg>', 200, {'Content-Type': 'image/svg+xml'})
+    fig, ax = plt.subplots(figsize=(1.2, 0.4), dpi=100)
+    ax.plot(prices, linewidth=2, color="#66ff66")
+    ax.axis('off')
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    buf = io.BytesIO()
+    plt.savefig(buf, format='svg', bbox_inches='tight', pad_inches=0)
+    plt.close(fig)
+    buf.seek(0)
+    return send_file(buf, mimetype='image/svg+xml')
 
-if __name__ == '__main__':
-    app.run(debug=True)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=True)

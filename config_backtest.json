@@ -1,0 +1,9 @@
+{
+  "trade_size": 500,
+  "rsi_threshold": 40,
+  "macd_threshold": 0,
+  "vwap_enabled": true,
+  "prime_mode": true,
+  "triggers": ["RSI", "MACD", "VWAP", "Bollinger"],
+  "timezone": "America/New_York"
+}

@@ -6,43 +6,33 @@
 - `simulation_index` → GET `/simulation`
 - `buy_route` → POST `/simulation/buy`
 - `sell_route` → POST `/simulation/sell`
+- `backtest_index` → GET `/backtest`
+- `promote_settings` → POST `/api/promote_settings`
 
 ## Templates
 - `templates/alerts.html`
 - `templates/simulation.html`
+- `templates/backtest.html`
 
 ## Context Variables
 - `alerts`: list of dicts `{ id, symbol, price, status, confidence, timestamp, spark, triggers }`
+- `backtest_results`: list of dicts `{ symbol, buy_time, buy_price, sell_time, sell_price, pl, exit_reason }`
 - `current_filter`
+- `strategy_params`: dict of tweakable strategy parameters (profit_target, stop_loss, hold_time, min_triggers, etc.)
 - `news_api_key`
+
+## Config Handling
+- UI-based parameter controls are available in `/backtest` and (optionally) on the live dashboard.
+- Strategy parameters are saved to `config.json` and shared between backtest and live scanner.
+- The "Promote to Live" button in the backtest page updates the shared config, instantly applying those parameters to the live scanner.
 
 ## DB Path
 In `services/alert_service.py`:
 ```python
 import os
 DB = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'alerts.db'))
+```
+- **Backtest results** are *not* stored in the database by default; export as CSV if needed.
 
-ETRADE_API_KEY=1e0978925ddea6a6addb5436e6ff2164
-ETRADE_API_SECRET=0fdac4a22a68112d7e855281bab9df70af85cfd023206d15d75bcf51f1390bc2
-OAUTH_TOKEN=Vke2hWOaff2rr+cWbh2V9okjFp5wADsimK4q/lKHheU=
-OAUTH_TOKEN_SECRET=rHE0AgP+3V+PQHZtzTnBnVo80H70GXKn4TzckeYQuNc=
-ETRADE_ENV=production
-
-CONSUMER_KEY=1e0978925ddea6a6addb5436e6ff2164
-CONSUMER_SECRET=0fdac4a22a68112d7e855281bab9df70af85cfd023206d15d75bcf51f1390bc2
-
-NEWSAPI_KEY=12f1f678b30a4a5d929ebf218d515ca3
-
-# Restore baseline:
-git reset --hard HEAD
-git clean -fd
-
-# Copy in final files:
-Copy-Item .\dashboard-final.py .\dashboard.py -Force
-Copy-Item .\alerts-final.html .\templates\alerts.html -Force
-Copy-Item .\alert_service-final.py .\services\alert_service.py -Force
-Copy-Item .\style-final.css .\static\style.css -Force
-Copy-Item .\simulation-final.html .\templates\simulation.html -Force
-
-# Restart:
-python .\dashboard.py
+## Navigation
+- All pages feature a nav bar with shortcuts to Trade Alerts, Simulation, Backtest, and Settings (if present).
