@@ -2,12 +2,40 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>🚀 Trade Alerts 🚀</title>
-  <link rel="stylesheet"
-        href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <title>Trade Alerts</title>
+  <link rel="stylesheet" href="{{ url_for('static_assets.serve_asset', filename='style.css') }}">
 </head>
-<body class="bg-dark text-light">
-  {% block body %}{% endblock %}
+<body>
+  <header class="main-header">
+    <h1>🚀 Trade Alerts ({{ filter|capitalize if filter else 'All' }}) 🚀</h1>
+    <div class="status">
+      <span>Yahoo Finance Intraday: <strong class="status-text market">Loading...</strong></span>
+      <span>E*TRADE API: <strong class="status-text etrade">Loading...</strong></span>
+      <a href="{{ url_for('reconnect_api') }}">Reconnect API</a>
+    </div>
+  </header>
+
+  <nav class="filter-nav">
+    <button id="clearFiltered" class="btn-clear-all">Clear All</button>
+    <span>Filter:</span>
+    {% for key,label in [
+      ('all','All'),
+      ('prime','Prime 💎'),
+      ('sharpshooter','Sharpshooter 🎯'),
+      ('opportunist','Opportunist 👍'),
+      ('sell','Sell 🔥')] %}
+      <button data-type="{{ key }}"
+              class="btn-filter {{ 'active' if filter==key or (not filter and key=='all') else '' }}">
+        {{ label }}
+      </button>
+    {% endfor %}
+    <a href="{{ url_for('simulation') }}" class="btn-simulation">Simulation</a>
+  </nav>
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="{{ url_for('static_assets.serve_asset', filename='script.js') }}"></script>
 </body>
 </html>
