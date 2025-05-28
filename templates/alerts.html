@@ -7,86 +7,13 @@
     <style>
         body, html {
             background: #000 !important;
-        }
-        .alerts-table-wrapper {
-            width: 100vw !important;
-            background: #000 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-        }
-        .alerts-table {
-            width: 100% !important;
-            background: #000 !important;
-            color: #ffd700 !important;
-            border-collapse: collapse;
-            font-size: 1.05em;
-        }
-        .alerts-table th, .alerts-table td {
-            background: #000 !important;
-            color: #ffd700 !important;
-            border: 1px solid #333 !important;
-            padding: 0.6rem 1rem !important;
-            text-align: center;
-        }
-        .sparkline-img {
-            height: 22px;
-            width: 60px;
-            background: #000;
-            display: block;
-            margin: 0 auto;
-        }
-        .clear-btn, .clear-all-btn {
-            background: #ffc107;
-            color: #222;
-            border: none;
-            border-radius: 6px;
-            padding: 0.4rem 1rem;
-            font-weight: bold;
-            margin: 0.2rem 0;
-            cursor: pointer;
-        }
-        .clear-btn:hover, .clear-all-btn:hover {
-            background: #ff9900;
-        }
-        .page-title {
-            text-align: center;
-            color: #ffd700;
-            margin: 1.5rem 0 1rem 0;
-        }
-        nav.navbar {
-            width: 100vw;
-            background: #111;
-            color: #ffd700;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.7rem 2vw;
-            font-size: 1.1rem;
-        }
-        .navbar-brand {
-            font-weight: bold;
-            font-size: 1.3em;
-            letter-spacing: 1px;
-        }
-        .navbar-links {
-            display: flex;
-            gap: 1.6em;
-        }
-        .nav-link {
-            color: #ffd700;
-            text-decoration: none;
-            padding: 0.3em 0.7em;
-            border-radius: 8px;
-        }
-        .nav-link.active, .nav-link:hover {
-            background: #ffd700;
-            color: #111;
-        }
-    </style>
+          </style>
 </head>
 <body class="black-bg">
     <nav class="navbar">
-        <div class="navbar-brand">🚀 TradeAlerts</div>
+        <div class="trade-alerts-title" style="flex: 1; text-align: center;">
+        <span style="font-weight: bold; font-size: 2rem;">🚀 TradeAlerts 🚀</span>
+    </div>
         <div class="navbar-links">
             <a href="{{ url_for('alerts') }}" class="nav-link{% if request.path == '/alerts' %} active{% endif %}">Alerts</a>
             <a href="{{ url_for('simulation') }}" class="nav-link{% if request.path == '/simulation' %} active{% endif %}">Simulation</a>
@@ -94,8 +21,7 @@
             <a href="{{ url_for('config') }}" class="nav-link{% if request.path == '/config' %} active{% endif %}">Settings</a>
         </div>
     </nav>
-    <h1 class="page-title">🚀 Trade Alerts 🚀</h1>
-    <div class="alerts-table-wrapper">
+     <div class="alerts-table-wrapper">
         <table class="alerts-table">
             <thead>
                 <tr>
@@ -118,11 +44,12 @@
                     <td>${{ '%.2f'|format(alert[3]) }}</td>
                     <td>{{ alert[4] }}%</td>
                     <td>{{ alert[6] }}</td>
-                    <td>
-                        {% if alert[7] %}
-                            <img src="{{ alert[7] }}" class="sparkline-img" alt="sparkline">
-                        {% endif %}
-                    </td>
+<td class="sparkline-cell">
+    {% if alert[7] %}
+        {{ alert[7]|safe }}
+    {% endif %}
+</td>
+
                     <td>
                         <button class="clear-btn" onclick="clearAlert({{ alert[0] }})">Clear</button>
                     </td>

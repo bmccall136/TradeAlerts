@@ -1,7 +1,26 @@
 import sqlite3
 from datetime import datetime
-
+import matplotlib.pyplot as plt
+import io
 ALERTS_DB = 'alerts.db'
+
+def generate_sparkline(prices):
+    fig, ax = plt.subplots(figsize=(2.0, 0.4), dpi=100)
+    fig.patch.set_facecolor('black')       # Black outer background
+    ax.set_facecolor('black')              # Black plot background
+    ax.plot(prices, color='yellow', linewidth=1.25)
+    ax.axis('off')
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='svg', bbox_inches='tight', pad_inches=0, transparent=True)
+    plt.close(fig)
+    svg_data = buf.getvalue().decode()
+
+    # Strip unneeded metadata from SVG
+    svg_data = svg_data.split('<svg', 1)[1]
+    svg_data = f'<svg{svg_data}'
+
+    return svg_data
 
 def get_active_alerts():
     conn = sqlite3.connect(ALERTS_DB)

@@ -2,14 +2,12 @@
     background: #000 !important;
     color: #ffd700 !important; /* or white/yellow for text */
 }
-.sparkline-img {
-    height: 38px;   /* increased from 22px */
-    width: 120px;   /* increased from 60px */
-    background: #000;
+.sparkline-cell svg {
+    width: 100%;
+    height: 30px;
+    background-color: black;
     display: block;
     margin: 0 auto;
-    border-radius: 7px;
-    box-shadow: 0 2px 12px #000a;
 }
 
 .navbar {
