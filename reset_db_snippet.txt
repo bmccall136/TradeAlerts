@@ -1,0 +1,30 @@
+
+from flask import redirect, url_for
+import os
+import sqlite3
+
+@app.route("/reset-db")
+def reset_db():
+    db_path = "alerts.db"
+    if os.path.exists(db_path):
+        os.remove(db_path)
+        print("🗑️ alerts.db deleted.")
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS alerts (
+        symbol TEXT PRIMARY KEY,
+        name TEXT,
+        price REAL,
+        vwap REAL,
+        vwap_diff REAL,
+        qty INTEGER,
+        sparkline TEXT,
+        triggers TEXT,
+        timestamp TEXT
+    )
+    """)
+    conn.commit()
+    conn.close()
+    print("✅ alerts.db recreated.")
+    return redirect(url_for("index"))

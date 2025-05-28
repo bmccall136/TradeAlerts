@@ -7,7 +7,9 @@
 </head>
 <body class="black-bg">
     <nav class="navbar">
-        <div class="navbar-brand">🚀 TradeAlerts</div>
+       <div class="trade-alerts-title" style="flex: 1; text-align: center;">
+        <span style="font-weight: bold; font-size: 2rem;">🚀 TradeAlerts 🚀</span>
+    </div>
         <div class="navbar-links">
             <a href="{{ url_for('alerts') }}" class="nav-link{% if request.path == '/alerts' %} active{% endif %}">Alerts</a>
             <a href="{{ url_for('simulation') }}" class="nav-link{% if request.path == '/simulation' %} active{% endif %}">Simulation</a>
