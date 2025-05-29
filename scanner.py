@@ -52,15 +52,23 @@ def main(simulation=False):
     while True:
         now = datetime.now()
         logger.info(f"Checking market hours at {now.strftime('%Y-%m-%d %H:%M:%S')}")
-        if not in_market_hours():
+        is_open = in_market_hours()
+        logger.info(f"[CHECK] in_market_hours() = {is_open}")
+        if not is_open:
+            logger.info("[CHECK] Market is CLOSED according to logic. Waiting for open.")
             wait_for_open()
             continue
+        logger.info("[CHECK] Market is OPEN! Proceeding to scan symbols...")
 
         for sym in syms:
+            logger.info(f"→ [LOOP] Scanning {sym}")
             try:
                 alert = analyze_symbol(sym)
                 if alert:
                     insert_alert(**alert)
+                    logger.info(f"→ [INSERTED] Alert for {sym} inserted successfully.")
+                else:
+                    logger.info(f"→ [NO ALERT] {sym}: No alert generated this round.")
             except Exception as e:
                 logger.error(f"Error scanning {sym}: {e}")
 
