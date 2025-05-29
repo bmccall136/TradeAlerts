@@ -6,6 +6,7 @@ import yfinance as yf
 
 from .alert_service import insert_alert
 from .news_service import news_sentiment
+from services.alert_service import generate_sparkline
 
 # make sure you have these in your project under services/indicators.py
 from .indicators import calculate_macd, compute_rsi, compute_bollinger
@@ -57,8 +58,9 @@ def analyze_symbol(sym):
     else:
         return None
 
-    # prepare sparkline data
-    spark = json.dumps(df['Close'].tolist())
+        # prepare sparkline data
+    from .alert_service import generate_sparkline
+    spark = generate_sparkline(df['Close'].tolist())
 
     # bump confidence for strong positive sentiment
     if sentiment is not None and sentiment > 0.05:
