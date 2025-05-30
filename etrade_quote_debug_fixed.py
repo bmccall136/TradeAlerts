@@ -5,7 +5,7 @@ import requests
 from dotenv import load_dotenv
 from requests_oauthlib import OAuth1
 
-load_dotenv("etrade.env")
+load_dotenv(".env")
 
 auth = OAuth1(
     os.getenv("ETRADE_API_KEY"),
@@ -13,6 +13,11 @@ auth = OAuth1(
     os.getenv("OAUTH_TOKEN"),
     os.getenv("OAUTH_TOKEN_SECRET")
 )
+print("OAUTH_TOKEN =", os.getenv("OAUTH_TOKEN"))
+print("OAUTH_TOKEN_SECRET =", os.getenv("OAUTH_TOKEN_SECRET"))
+print("ETRADE_API_KEY =", os.getenv("ETRADE_API_KEY"))
+print("ETRADE_API_SECRET =", os.getenv("ETRADE_API_SECRET"))
+print("ETRADE_ENV =", os.getenv("ETRADE_ENV"))
 
 symbols_to_test = ["SPY", "AAPL", "MSFT", "GOOG", "AMZN", "MMM"]
 

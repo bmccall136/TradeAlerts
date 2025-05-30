@@ -1,114 +1,192 @@
-.black-bg, body.black-bg {
-    background: #000 !important;
-    color: #ffd700 !important; /* or white/yellow for text */
+/* General Dark Background */
+body, html {
+    background: #0d0e17 !important;
+    color: #eaeaea;
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', Arial, sans-serif;
 }
-.sparkline-cell svg {
-    width: 100%;
-    height: 30px;
-    background-color: black;
-    display: block;
-    margin: 0 auto;
+.alerts-table tbody tr {
+    background-color: #000 !important;
+}
+.alert-row {
+    background-color: #000 !important;
 }
 
-.navbar {
+.navbar-auth-shortcut {
+    position: absolute;
+    right: 20px;
+    top: 8px;
+}
+.auth-btn {
+    background: #222;
+    color: #ffe900;
+    border: 1px solid #ffe900;
+    border-radius: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-weight: bold;
+}
+.auth-btn:hover {
+    background: #ffe900;
+    color: #222;
+}
+.alert-row {
+    background: #000 !important; /* true black */
+    color: #fff;                 /* text color */
+    border-bottom: 1px solid #222; /* subtle separator */
+}
+
+/* Add to your style.css */
+.alerts-table {
+    background: #101010 !important;
+}
+.alerts-table thead tr,
+.alerts-table th {
+    background-color: #111 !important;
+    color: #ffd700 !important;
+}
+.alerts-table tbody tr {
+    background-color: #181818 !important;
+    color: #fff !important;
+}
+.buy-btn {
+    border: none;
+    border-radius: 8px;
+    padding: 6px 18px;
+    background: lime;
+    color: #000;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.buy-btn:hover {
+    background: #00ff00;
+}
+
+.qty-input {
+    border: 1px solid #444;
+    border-radius: 5px;
+    padding: 4px 8px;
     background: #111;
+    color: #ff0;
+    width: 60px;
+}
+
+/* Navbar Styles */
+.pro-navbar {
+    background: #181a21;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 32px;
-    border-bottom: 1px solid #222;
+    padding: 0 2rem;
+    height: 64px;
+    border-bottom: 2px solid #24243c;
+    box-shadow: 0 2px 8px #0007;
 }
-
 .navbar-brand {
-    font-size: 1.5em;
-    font-weight: bold;
-    color: #fff;
+    display: flex;
+    align-items: center;
 }
-
+.brand-logo {
+    font-size: 2rem;
+    color: #ffd700;
+    margin-right: 12px;
+    font-weight: bold;
+}
+.brand-title {
+    font-size: 1.5rem;
+    color: #ffd700;
+    font-weight: bold;
+    letter-spacing: 2px;
+}
 .navbar-links {
     display: flex;
-    gap: 22px;
+    gap: 2rem;
 }
-
 .nav-link {
-    color: #fff;
+    color: #eaeaea;
     text-decoration: none;
-    font-weight: 500;
-    padding: 6px 16px;
-    border-radius: 5px;
-    transition: background 0.18s;
-}
-
-.nav-link.active,
-.nav-link:hover {
-    background: #222;
-    color: #ffda58;
-}
-
-.container {
-    max-width: 960px;
-    margin: 30px auto;
-    background: #131313;
-    border-radius: 18px;
-    padding: 26px 36px 36px 36px;
-    box-shadow: 0 2px 18px 0 #0007;
-}
-
-.page-title {
-    text-align: center;
-    margin-bottom: 22px;
-    font-size: 2em;
-    letter-spacing: 1px;
-    color: #ffda58;
     font-weight: 600;
-}
-
-body.black-bg, .container, .alerts-table, .alerts-table th, .alerts-table td {
-    background: #000 !important;
-    color: #ffd700 !important;
-}
-.alerts-table {
-    width: 100vw !important;
-}
-.sparkline-img {
-    height: 22px; /* adjust as you wish */
-    width: 60px;
-    background: #000;
-}
-
-.clear-btn, .clear-all-btn, .run-btn {
-    padding: 5px 18px;
-    margin: 2px 0;
-    border: none;
+    font-size: 1.05rem;
+    padding: 6px 10px;
     border-radius: 6px;
-    font-size: 1em;
-    background: #222;
-    color: #fff;
-    cursor: pointer;
-    transition: background 0.17s;
-    font-weight: 500;
+    transition: background 0.15s, color 0.15s;
 }
-.clear-btn:hover, .clear-all-btn:hover, .run-btn:hover {
-    background: #ffda58;
-    color: #181818;
+.nav-link.active, .nav-link:hover {
+    background: #ffd70020;
+    color: #ffd700;
 }
 
-.clear-all-btn {
+/* Table Styles */
+table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: #eaeaea;
+    color: #eaeaea;
     margin-top: 12px;
-    background: #2b2b2b;
+    border-radius: 16px;
+    overflow: hidden;
+}
+th, td {
+    padding: 12px 14px;
+    text-align: center;
+}
+th {
+    background: #24243c;
+    color: #ffd700;
+    font-size: 1.04rem;
+    font-weight: bold;
+    border-bottom: 2px solid #24243c;
+}
+td {
+    font-size: 1.01rem;
+    border-bottom: 1px solid #23233a;
+}
+tr:last-child td {
+    border-bottom: none;
 }
 
-.sim-summary {
-    display: flex;
-    gap: 38px;
-    justify-content: flex-start;
-    margin-bottom: 16px;
-    font-size: 1.12em;
-}
-
-.sparkline-img {
-    height: 22px;
-    background: #101;
+/* Buttons */
+button, .btn-simulation, .run-btn, .clear-all-btn, .clear-btn {
+    background: linear-gradient(90deg, #ffd700bb 30%, #ffe066bb 100%);
+    color: #181a21;
+    border: none;
+    padding: 7px 20px;
     border-radius: 8px;
-    vertical-align: middle;
+    font-weight: 700;
+    cursor: pointer;
+    margin: 0 5px;
+    font-size: 1rem;
+    transition: background 0.15s, color 0.15s;
+    outline: none;
+}
+button:hover, .btn-simulation:hover, .run-btn:hover, .clear-all-btn:hover, .clear-btn:hover {
+    background: #ffe066;
+    color: #000;
+}
+
+/* Page Titles */
+.page-title {
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: #ffd700;
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+/* Responsive */
+@media (max-width: 800px) {
+    .container {
+        padding: 10px 2px;
+        min-width: 98vw;
+        box-shadow: none;
+    }
+    .pro-navbar {
+        flex-direction: column;
+        height: auto;
+        padding: 8px 2px;
+        gap: 10px;
+    }
 }
