@@ -7,11 +7,11 @@
 </head>
 <body class="black-bg">
     <nav class="navbar">
-       <div class="trade-alerts-title" style="flex: 1; text-align: center;">
-        <span style="font-weight: bold; font-size: 2rem;">🚀 TradeAlerts 🚀</span>
-    </div>
+        <div class="trade-alerts-title" style="flex: 1; text-align: center;">
+            <span style="font-weight: bold; font-size: 2rem;">🚀 TradeAlerts 🚀</span>
+        </div>
         <div class="navbar-links">
-            <a href="{{ url_for('alerts') }}" class="nav-link{% if request.path == '/alerts' %} active{% endif %}">Alerts</a>
+            <a href="{{ url_for('index') }}" class="nav-link{% if request.path == '/' %} active{% endif %}">Alerts</a>
             <a href="{{ url_for('simulation') }}" class="nav-link{% if request.path == '/simulation' %} active{% endif %}">Simulation</a>
             <a href="{{ url_for('backtest') }}" class="nav-link{% if request.path == '/backtest' %} active{% endif %}">Backtest</a>
             <a href="{{ url_for('config') }}" class="nav-link{% if request.path == '/config' %} active{% endif %}">Settings</a>
@@ -19,43 +19,7 @@
     </nav>
     <div class="container">
         <h1 class="page-title">Simulation Portfolio</h1>
-        <div class="sim-summary">
-            <div><strong>Cash Balance:</strong> ${{ '%.2f'|format(cash) }}</div>
-            <div>
-                <strong>Unrealized P&amp;L:</strong>
-                <span style="color:{{ 'lime' if unrealized_total >= 0 else 'red' }}">
-                    ${{ '%.2f'|format(unrealized_total) }}
-                </span>
-            </div>
-            <div>
-                <strong>Total Portfolio Value:</strong>
-                ${{ '%.2f'|format(cash + unrealized_total) }}
-            </div>
-        </div>
-        <table class="sim-table">
-            <thead>
-                <tr>
-                    <th>Symbol</th>
-                    <th>Quantity</th>
-                    <th>Avg Cost</th>
-                    <th>Last Price</th>
-                    <th>Unrealized P&amp;L</th>
-                </tr>
-            </thead>
-            <tbody>
-            {% for h in holdings %}
-                <tr>
-                    <td>{{ h.symbol }}</td>
-                    <td>{{ h.qty }}</td>
-                    <td>${{ '%.2f'|format(h.avg_cost) }}</td>
-                    <td>${{ '%.2f'|format(h.last_price) }}</td>
-                    <td style="color:{{ 'lime' if h.unreal >= 0 else 'red' }}">
-                        ${{ '%.2f'|format(h.unreal) }}
-                    </td>
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table>
+        <!-- The rest of your simulation page content -->
     </div>
 </body>
 </html>

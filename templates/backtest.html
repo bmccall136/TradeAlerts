@@ -8,10 +8,10 @@
 <body class="black-bg">
     <nav class="navbar">
         <div class="trade-alerts-title" style="flex: 1; text-align: center;">
-        <span style="font-weight: bold; font-size: 2rem;">🚀 TradeAlerts 🚀</span>
-    </div>
+            <span style="font-weight: bold; font-size: 2rem;">🚀 TradeAlerts 🚀</span>
+        </div>
         <div class="navbar-links">
-            <a href="{{ url_for('alerts') }}" class="nav-link{% if request.path == '/alerts' %} active{% endif %}">Alerts</a>
+            <a href="{{ url_for('index') }}" class="nav-link{% if request.path == '/' %} active{% endif %}">Alerts</a>
             <a href="{{ url_for('simulation') }}" class="nav-link{% if request.path == '/simulation' %} active{% endif %}">Simulation</a>
             <a href="{{ url_for('backtest') }}" class="nav-link{% if request.path == '/backtest' %} active{% endif %}">Backtest</a>
             <a href="{{ url_for('config') }}" class="nav-link{% if request.path == '/config' %} active{% endif %}">Settings</a>
@@ -19,23 +19,7 @@
     </nav>
     <div class="container">
         <h1 class="page-title">Backtesting</h1>
-        <form id="run-backtest-form" method="post">
-            <button type="submit" class="run-btn">Run Backtest</button>
-        </form>
-        <div id="backtest-results">
-            <!-- Backtest results and summary will go here -->
-            <p>(Results will display after running backtest.)</p>
-        </div>
+        <!-- The rest of your backtest page content -->
     </div>
-    <script>
-        document.getElementById('run-backtest-form').onsubmit = function(e) {
-            e.preventDefault();
-            fetch('/backtest', {method: 'POST'})
-            .then(res => res.text())
-            .then(html => {
-                document.getElementById('backtest-results').innerHTML = html;
-            });
-        }
-    </script>
 </body>
 </html>

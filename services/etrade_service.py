@@ -32,7 +32,12 @@ def fetch_etrade_quote(symbol):
     resp = session.get(url)
     resp.raise_for_status()
     data = resp.json()
-    quote_data = data.get("quoteResponse", {}).get("quoteData", [])
-    if quote_data:
+    # USE PROPER CASE for keys!
+    quote_data = data.get("QuoteResponse", {}).get("QuoteData", [])
+    if quote_data and "All" in quote_data[0]:
+        # Grab lastTrade from the All block (this is what your sample response has!)
+        return float(quote_data[0]["All"].get("lastTrade", 0.0))
+    elif quote_data:
+        # fallback if All block missing
         return float(quote_data[0].get("lastTrade", 0.0))
     return 0.0

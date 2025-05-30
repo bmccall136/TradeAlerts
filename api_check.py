@@ -12,7 +12,7 @@ def load_env(filepath):
     return env_vars
 
 # Load credentials
-env = load_env("etrade.env")
+env = load_env(".env")
 
 consumer_key = env.get("ETRADE_API_KEY")
 consumer_secret = env.get("ETRADE_API_SECRET")

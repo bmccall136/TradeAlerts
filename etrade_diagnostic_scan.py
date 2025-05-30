@@ -3,6 +3,14 @@ import requests
 from requests_oauthlib import OAuth1
 from dotenv import load_dotenv
 import time
+from dotenv import load_dotenv
+load_dotenv()
+
+print("OAUTH_TOKEN =", os.getenv("OAUTH_TOKEN"))
+print("OAUTH_TOKEN_SECRET =", os.getenv("OAUTH_TOKEN_SECRET"))
+print("ETRADE_API_KEY =", os.getenv("ETRADE_API_KEY"))
+print("ETRADE_API_SECRET =", os.getenv("ETRADE_API_SECRET"))
+print("ETRADE_ENV =", os.getenv("ETRADE_ENV"))
 
 load_dotenv("etrade.env")
 

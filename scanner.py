@@ -1,9 +1,12 @@
+from dotenv import load_dotenv
+load_dotenv()
 import time
 import json
 import logging
 from datetime import datetime, time as dt_time, timedelta
 from services.market_service import get_symbols, analyze_symbol
 from services.alert_service import insert_alert
+
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
@@ -61,14 +64,14 @@ def main(simulation=False):
         logger.info("[CHECK] Market is OPEN! Proceeding to scan symbols...")
 
         for sym in syms:
-            logger.info(f"→ [LOOP] Scanning {sym}")
+            logger.info(f"→Scanning {sym}")
             try:
                 alert = analyze_symbol(sym)
                 if alert:
                     insert_alert(**alert)
-                    logger.info(f"→ [INSERTED] Alert for {sym} inserted successfully.")
+                    logger.info(f"→ Alert for {sym} inserted successfully.")
                 else:
-                    logger.info(f"→ [NO ALERT] {sym}: No alert generated this round.")
+                    logger.info(f"→ {sym}: No alert generated this round.")
             except Exception as e:
                 logger.error(f"Error scanning {sym}: {e}")
 
