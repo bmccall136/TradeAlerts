@@ -1,80 +1,72 @@
 {% extends "layout.html" %}
 {% block content %}
 <div class="container">
-    <div style="display: flex; justify-content: flex-end; margin-bottom: 16px;">
-        <form action="{{ url_for('clear_all_alerts') }}" method="post" style="display:inline;">
-            <button type="submit" class="btn-clearall">Clear All</button>
-        </form>
-    </div>
-    <table class="alerts-table">
-        <thead>
-            <tr>
-                <th>Time</th>
-    <th>Symbol</th>
-    <th>Name</th>
-    <th>Price</th>
-    <th>VWAP</th>
-    <th>VWAP Diff</th>
-    <th>Spark</th>
-    <th>Triggers</th>
-    <th>Qty</th>
-    <th>Buy</th>
-    <th>Clear</th>
-
-            </tr>
-        </thead>
-        <tbody>
-        {% for alert in alerts %}
-            <tr>
-                <td>{{ alert['timestamp'] }}</td>
-                <td>{{ alert['symbol'] }}</td>
-                <td>{{ alert['name'] }}</td>
-                <td>${{ '%.2f'|format(alert['price']|float) }}</td>
-                <td>${{ '%.2f'|format(alert['vwap']|float) }}</td>
-                <td style="color:{% if alert['vwap_diff']|float < 0 %}lime{% else %}red{% endif %};">
-                    {{ '%.2f'|format(alert['vwap_diff']|float) }}
-                </td>
-                
-                <td>
-                    {% if alert['sparkline'] %}
-                        {{ alert['sparkline']|safe }}
-                    {% endif %}
-                </td>
-                <td>{{ alert['triggers'] }}</td>
-                <td>
-                    <input type="number" min="1" value="1" class="qty-input" style="width:60px;">
-                </td>
-                <td>
-                    <button class="buy-btn"
-                        onclick="buyStock('{{ alert['symbol'] }}', this)">
-                        Buy
-                    </button>
-                </td>
-                <td>
-                    <form action="{{ url_for('clear_alert', id=alert['id']) }}" method="post" style="display:inline;">
-                        <button type="submit" class="btn-clear">Clear</button>
-                    </form>
-                </td>
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
+  <!-- Optional: place this above or below the table, as you prefer -->
+<div style="display: flex; justify-content: flex-end; margin: 16px 0;">
+  <form action="{{ url_for('clear_all_alerts') }}" method="post" style="display:inline;">
+    <button class="clear-all-btn" type="submit">✏️ Clear All</button>
+  </form>
 </div>
 
-<script>
-function buyStock(symbol, btn) {
-    let row = btn.closest('tr');
-    let qty = row.querySelector('.qty-input').value;
-    fetch('/simulation/buy', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({symbol: symbol, qty: qty})
-    })
-    .then(res => res.json())
-    .then(data => {
-        btn.textContent = "Bought!";
-        setTimeout(() => btn.textContent = "Buy", 2000);
-    });
-}
-</script>
+  <table class="alerts-table">
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Symbol</th>
+        <th>Name</th>
+        <th>Price</th>
+        <th>VWAP</th>
+        <th>VWAP Diff</th>
+        <th>Spark</th>
+        <th>Triggers</th>
+        <th>Qty</th>
+        <th>Buy</th>
+        <th>Clear</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for alert in alerts %}
+      <tr class="alert-row">
+        <td>{{ alert['timestamp'] }}</td>
+        <td>{{ alert['symbol'] }}</td>
+        <td>{{ alert['name'] }}</td>
+        <td>${{ '%.2f'|format(alert['price']|float) }}</td>
+        <td>{{ alert['vwap'] }}</td>
+        <td>
+          {% if alert['vwap_diff'] < 0 %}
+            <span style="color: #10ff50;">{{ alert['vwap_diff'] }}</span>
+          {% else %}
+            <span style="color: #ff5151;">+{{ alert['vwap_diff'] }}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if alert['sparkline'] %}
+            <div class="sparkline-img">{{ alert['sparkline']|safe }}</div>
+          {% endif %}
+        </td>
+        <td>{{ alert['triggers'] }}</td>
+
+        <!-- Qty input (just a placeholder, you can wire it up to JS or leave it static) -->
+        <td>
+          <input type="number" name="qty" value="1" min="1" class="qty-input">
+        </td>
+
+        <!-- “Buy” button for each row -->
+        <td>
+          <form action="{{ url_for('buy_stock', symbol=alert['symbol']) }}" method="post" style="display:inline;">
+            <button class="buy-btn" type="submit">Buy</button>
+          </form>
+        </td>
+
+        <!-- “Clear” button for each row -->
+        <td>
+          <form action="{{ url_for('clear_alert', id=alert['id']) }}" method="post" style="display:inline;">
+            <button class="clear-btn" type="submit">Clear</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% endblock %}
