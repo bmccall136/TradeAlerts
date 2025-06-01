@@ -5,6 +5,8 @@ from services.etrade_service import fetch_etrade_quote
 from services.alert_service import generate_sparkline, insert_alert
 import pandas as pd
 from datetime import datetime
+import os
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -20,25 +22,41 @@ def get_symbols(simulation=False):
         logger.error(f"Could not load symbols from {filename}: {e}")
         return []
 
+import requests
+import os
 
-def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
-    """
-    Download OHLCV from Yahoo Finance asynchronously (to avoid blocking).
-    """
-    def do_fetch():
-        return yf.Ticker(sym).history(period=period, interval=interval)
+def get_realtime_price(symbol):
+    url = f"https://api.etrade.com/v1/market/quote/{symbol}.json"
+    headers = {
+        "Authorization": f"Bearer {os.getenv('ETRADE_ACCESS_TOKEN')}"
+    }
 
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(do_fetch)
-        try:
-            return future.result(timeout=timeout)
-        except FuturesTimeout:
-            logger.error(f"[TIMEOUT] Yahoo fetch for {sym} timed out after {timeout}s!")
+    try:
+        response = requests.get(url, headers=headers)
+        data = response.json()
+
+        quote_data_list = data.get('QuoteResponse', {}).get('QuoteData', [])
+        if not quote_data_list:
+            print(f"❌ No QuoteData returned for {symbol}")
             return None
-        except Exception as e:
-            logger.error(f"[ERROR] Yahoo fetch for {sym} failed: {e}")
+
+        quote_data = quote_data_list[0]
+
+        price = (
+            quote_data.get('All', {}).get('lastTrade')
+            or quote_data.get('lastPrice')
+        )
+
+        if price is not None:
+            print(f"✅ Real-time price for {symbol}: {price}")
+            return float(price)
+        else:
+            print(f"⚠️ Price missing for {symbol}, full data: {quote_data}")
             return None
 
+    except Exception as e:
+        print(f"❌ API error for {symbol}: {e}")
+        return None
 
 def analyze_symbol(sym):
     """

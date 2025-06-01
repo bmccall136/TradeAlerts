@@ -1,47 +1,41 @@
-
 import sqlite3
-from datetime import datetime
+import os
 
-SIM_DB = "simulation_state.db"
+SIM_DB = "simulation.db"
+
+if os.path.exists(SIM_DB):
+    os.remove(SIM_DB)
 
 conn = sqlite3.connect(SIM_DB)
-cursor = conn.cursor()
+c = conn.cursor()
 
-# Drop old tables (if needed)
-cursor.execute("DROP TABLE IF EXISTS simulation_state")
-cursor.execute("DROP TABLE IF EXISTS positions")
-cursor.execute("DROP TABLE IF EXISTS simulation_trades")
-
-# Create fresh simulation_state with $10,000 cash
-cursor.execute("""
-    CREATE TABLE simulation_state (
-        cash REAL,
-        open_value REAL,
-        realized_pnl REAL
+c.execute('''
+    CREATE TABLE account (
+        id INTEGER PRIMARY KEY,
+        cash_balance REAL NOT NULL
     )
-""")
-cursor.execute("INSERT INTO simulation_state VALUES (?, ?, ?)", (10000.0, 0.0, 0.0))
+''')
+c.execute("INSERT INTO account (id, cash_balance) VALUES (1, 10000.00)")
 
-# Create open positions table
-cursor.execute("""
-    CREATE TABLE positions (
+c.execute('''
+    CREATE TABLE holdings (
         symbol TEXT PRIMARY KEY,
-        quantity REAL,
-        price REAL
+        qty INTEGER NOT NULL,
+        avg_cost REAL NOT NULL
     )
-""")
-# Create trade history table
-cursor.execute("""
-    CREATE TABLE simulation_trades (
+''')
+
+c.execute('''
+    CREATE TABLE trade_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT,
         symbol TEXT,
         action TEXT,
-        quantity REAL,
-        price REAL,
-        timestamp TEXT
+        qty INTEGER,
+        price REAL
     )
-""")
+''')
+
 conn.commit()
 conn.close()
-
-print("✅ simulation_state.db initialized with $10,000 starting cash.")
+print("✅ Recreated simulation.db with account, holdings, and trade_history.")

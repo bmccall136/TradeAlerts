@@ -1,25 +1,83 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>TradeAlerts - Simulation</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body class="black-bg">
-    <nav class="navbar">
-        <div class="trade-alerts-title" style="flex: 1; text-align: center;">
-            <span style="font-weight: bold; font-size: 2rem;">🚀 TradeAlerts 🚀</span>
-        </div>
-        <div class="navbar-links">
-            <a href="{{ url_for('index') }}" class="nav-link{% if request.path == '/' %} active{% endif %}">Alerts</a>
-            <a href="{{ url_for('simulation') }}" class="nav-link{% if request.path == '/simulation' %} active{% endif %}">Simulation</a>
-            <a href="{{ url_for('backtest') }}" class="nav-link{% if request.path == '/backtest' %} active{% endif %}">Backtest</a>
-            <a href="{{ url_for('config') }}" class="nav-link{% if request.path == '/config' %} active{% endif %}">Settings</a>
-        </div>
-    </nav>
-    <div class="container">
-        <h1 class="page-title">Simulation Portfolio</h1>
-        <!-- The rest of your simulation page content -->
-    </div>
-</body>
-</html>
+{% extends "layout.html" %}
+{% block content %}
+<div class="container">
+  <h1 class="section-title">Simulation Dashboard</h1>
+
+  <div style="margin-bottom: 16px;">
+    <form method="POST" action="/reset_simulation">
+      <button class="btn btn-danger">Reset Simulation</button>
+    </form>
+  </div>
+
+  <div>
+    <strong>Cash:</strong> ${{ '%.2f'|format(cash) }}
+  </div>
+
+  <h3>Holdings</h3>
+  <table class="alerts-table">
+    <thead>
+      <tr>
+        <th>Symbol</th>
+        <th>Last Price</th>
+        <th>Change</th>
+        <th>Change %</th>
+        <th>Qty</th>
+        <th>Price Paid</th>
+        <th>Day Gain</th>
+        <th>Total Gain</th>
+        <th>Total Gain %</th>
+        <th>Value</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for h in holdings %}
+      <tr>
+        <td>{{ h.symbol }}</td>
+        <td>${{ '%.2f'|format(h.last_price) }}</td>
+        <td>{{ h.change }}</td>
+        <td>{{ '%.2f'|format(h.change_percent) }}%</td>
+        <td>{{ h.qty }}</td>
+        <td>${{ '%.2f'|format(h.avg_cost) }}</td>
+        <td>${{ '%.2f'|format(h.day_gain) }}</td>
+        <td>${{ '%.2f'|format(h.total_gain) }}</td>
+        <td>{{ '%.2f'|format(h.total_gain_percent) }}%</td>
+        <td>${{ '%.2f'|format(h.value) }}</td>
+        <td>
+          <form action="/sell/{{ h.symbol }}" method="post">
+            <input type="number" name="qty" value="1" min="1" class="qty-input">
+            <button class="sell-btn" type="submit">Sell</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h3>Trade History</h3>
+  <table class="alerts-table">
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Symbol</th>
+        <th>Action</th>
+        <th>Qty</th>
+        <th>Price</th>
+        <th>P/L</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in trades %}
+      <tr>
+        <td>{{ t.timestamp }}</td>
+        <td>{{ t.symbol }}</td>
+        <td>{{ t.action }}</td>
+        <td>{{ t.quantity }}</td>
+        <td>${{ '%.2f'|format(t.price) }}</td>
+        <td>{% if t.pl is not none %}${{ '%.2f'|format(t.pl) }}{% else %}-{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

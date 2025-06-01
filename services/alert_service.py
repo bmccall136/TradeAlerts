@@ -116,6 +116,12 @@ def clear_alerts_by_filter(filter_type, value):
     conn.commit()
     conn.close()
 
+def clear_alert_by_id(alert_id):
+    conn = sqlite3.connect(ALERTS_DB)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM alerts WHERE id = ?", (alert_id,))
+    conn.commit()
+    conn.close()
 
 # Expose get_alerts under this name so api.py can import it
 get_alerts = get_active_alerts

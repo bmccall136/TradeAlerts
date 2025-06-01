@@ -45,20 +45,12 @@
           {% endif %}
         </td>
         <td>{{ alert['triggers'] }}</td>
-
-        <!-- Qty input (just a placeholder, you can wire it up to JS or leave it static) -->
         <td>
           <input type="number" name="qty" value="1" min="1" class="qty-input">
         </td>
-
-        <!-- “Buy” button for each row -->
         <td>
-          <form action="{{ url_for('buy_stock', symbol=alert['symbol']) }}" method="post" style="display:inline;">
-            <button class="buy-btn" type="submit">Buy</button>
-          </form>
+          <button class="buy-btn" onclick="buyStock('{{ alert['symbol'] }}', this)">Buy</button>
         </td>
-
-        <!-- “Clear” button for each row -->
         <td>
           <form action="{{ url_for('clear_alert', id=alert['id']) }}" method="post" style="display:inline;">
             <button class="clear-btn" type="submit">Clear</button>
@@ -69,4 +61,26 @@
     </tbody>
   </table>
 </div>
+
+<script>
+function buyStock(symbol, button) {
+  const row = button.closest('tr');
+  const qtyInput = row.querySelector('.qty-input');
+  const qty = qtyInput ? parseInt(qtyInput.value) : 1;
+
+  fetch('/simulation/buy', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ symbol: symbol, qty: qty })
+  }).then(response => {
+    if (response.ok) {
+      alert(`Buy order sent for ${symbol} x${qty}`);
+    } else {
+      alert('Buy failed.');
+    }
+  });
+}
+</script>
 {% endblock %}
