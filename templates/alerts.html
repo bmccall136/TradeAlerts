@@ -9,36 +9,44 @@
 </div>
 
   <table class="alerts-table">
-    <thead>
-      <tr>
-        <th>Time</th>
-        <th>Symbol</th>
-        <th>Name</th>
-        <th>Price</th>
-        <th>VWAP</th>
-        <th>VWAP Diff</th>
-        <th>Spark</th>
-        <th>Triggers</th>
-        <th>Qty</th>
-        <th>Buy</th>
-        <th>Clear</th>
-      </tr>
-    </thead>
+<thead>
+  <tr>
+    <th style="width:12%;">Time</th>
+    <th style="width:5%;">Symbol</th>
+    <th style="width:12%;">Name</th>
+    <th style="width:5%;">Price</th>
+    <th style="width:7%;">VWAP</th>
+    <th style="width:8%;">VWAP Diff</th>
+    <th style="width:10%;">News</th>
+    <th style="width:10%;">Spark</th>
+    <th style="width:15%;">Triggers</th>
+    <th style="width:5%;">Qty</th>
+    <th style="width:3%;">Buy</th>
+    <th style="width:3%;">Clear</th>
+  </tr>
+</thead>
+
     <tbody>
       {% for alert in alerts %}
       <tr class="alert-row">
         <td>{{ alert['timestamp'] }}</td>
         <td>{{ alert['symbol'] }}</td>
         <td>{{ alert['name'] }}</td>
-        <td>${{ '%.2f'|format(alert['price']|float) }}</td>
-        <td>{{ alert['vwap'] }}</td>
-        <td>
-          {% if alert['vwap_diff'] < 0 %}
-            <span style="color: #10ff50;">{{ alert['vwap_diff'] }}</span>
-          {% else %}
-            <span style="color: #ff5151;">+{{ alert['vwap_diff'] }}</span>
-          {% endif %}
-        </td>
+    <td>${{ '%.2f'|format(alert['price']|float) }}</td>
+    <td>${{ '%.2f'|format(alert['vwap']|float) }}</td>       <!-- formatted VWAP -->
+    <td>
+      {% if alert['vwap_diff'] < 0 %}
+        <span style="color: #10ff50;">${{ '%.2f'|format(alert['vwap_diff']|float) }}</span>
+      {% else %}
+        <span style="color: #ff5151;">+${{ '%.2f'|format(alert['vwap_diff']|float) }}</span>
+      {% endif %}
+    </td>
+
+    <!-- new “News” cell: button + container for headline/sentiment -->
+    <td>
+      <button class="news-btn" onclick="showNews('{{ alert['symbol'] }}')">News</button>
+      <div class="news-container" id="news-{{ alert['symbol'] }}"></div>
+    </td>
         <td>
           {% if alert['sparkline'] %}
             <div class="sparkline-img">{{ alert['sparkline']|safe }}</div>
@@ -83,4 +91,45 @@ function buyStock(symbol, button) {
   });
 }
 </script>
+<script>
+function buyStock(symbol, button) {
+  const row = button.closest('tr');
+  const qtyInput = row.querySelector('.qty-input');
+  const qty = qtyInput ? parseInt(qtyInput.value) : 1;
+
+  fetch('/simulation/buy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbol: symbol, qty: qty })
+  }).then(response => {
+    if (response.ok) {
+      alert(`Buy order sent for ${symbol} x${qty}`);
+    } else {
+      alert('Buy failed.');
+    }
+  });
+}
+
+function showNews(symbol) {
+  const container = document.getElementById(`news-${symbol}`);
+  // Clear previous contents
+  container.innerHTML = 'Loading...';
+  fetch(`/news/${symbol}`)
+    .then(resp => resp.json())
+    .then(data => {
+      // Build a simple list of headlines + sentiment score
+      let html = '<ul>';
+      data.headlines.forEach(h => {
+        html += `<li>${h}</li>`;
+      });
+      html += `</ul><p><strong>Sentiment:</strong> ${data.sentiment}</p>`;
+      container.innerHTML = html;
+    })
+    .catch(err => {
+      container.innerHTML = '<p style="color:red;">Error loading news.</p>';
+      console.error(err);
+    });
+}
+</script>
+
 {% endblock %}

@@ -5,6 +5,14 @@ from services.etrade_service import fetch_etrade_quote
 from services.alert_service import generate_sparkline, insert_alert
 import pandas as pd
 from datetime import datetime
+from services.chart_service import compute_vwap_for_symbol
+
+…
+vwap_value = compute_vwap_for_symbol(sym, limit=20) or 0
+# If compute_vwap_for_symbol returns None, default to 0
+vwap_diff = etrade_price - vwap_value
+alert_payload['vwap'] = vwap_value
+alert_payload['vwap_diff'] = vwap_diff
 
 logger = logging.getLogger(__name__)
 
@@ -103,20 +111,23 @@ def analyze_symbol(sym):
     spark_svg = generate_sparkline(df['Close'].tolist())
 
     # 6) Build the payload and insert into DB (name is now the real company_name)
-    alert_payload = {
-        'symbol': sym,
-        'price': etrade_price,
-        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'name': company_name,            # <-- fill in the real name
-        'vwap': 0,                       # you can adjust if you compute actual VWAP
-        'vwap_diff': 0,                  # you can adjust if you compute actual VWAP diff
-        'triggers': ",".join(triggers),
-        'sparkline': spark_svg
-    }
+from services.chart_service import compute_vwap_for_symbol
 
-    logger.info(f"→ {sym}: Alert ready, inserting to DB with name = {company_name}")
-    insert_alert(**alert_payload)
-    return alert_payload
+vwap_value = compute_vwap_for_symbol(sym) or 0.0
+diff = etrade_price - vwap_value
+
+alert_payload = {
+    'symbol': sym,
+    'price': etrade_price,
+    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+    'name': company_name,
+    'vwap': round(vwap_value, 2),
+    'vwap_diff': round(diff, 2),
+    'triggers': ",".join(triggers),
+    'sparkline': spark_svg
+}
+insert_alert(**alert_payload)
+
 
 
 # ---------- Indicator Helpers (unchanged) ----------
@@ -144,3 +155,20 @@ def compute_bollinger(close, window=20, num_std=2):
     upper_band = rolling_mean + (rolling_std * num_std)
     lower_band = rolling_mean - (rolling_std * num_std)
     return upper_band, rolling_mean, lower_band
+
+#-----------------------------------------------------
+
+def get_realtime_price(symbol):
+    try:
+        return get_etrade_price(symbol)
+    except Exception as e:
+        print(f"Error in get_realtime_price({symbol}): {e}")
+        return None
+
+def get_realtime_price(symbol):
+    try:
+        quote = get_etrade_price(symbol)
+        return float(quote) if quote is not None else None
+    except Exception as e:
+        print(f"❌ Failed to fetch price for {symbol}: {e}")
+        return None
