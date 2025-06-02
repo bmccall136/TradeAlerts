@@ -1,5 +1,6 @@
 from pathlib import Path
-
+import os
+import requests
 import sqlite3
 import subprocess
 from datetime import datetime, timedelta
@@ -15,9 +16,35 @@ app.secret_key = "replace_this_with_a_random_secret"
 DB_PATH = 'alerts.db'
 SIM_DB = 'simulation.db'
 
-def get_realtime_price(symbol):
-    return 100.00  # Placeholder price
 
+def get_realtime_price(symbol):
+    url = f"https://api.etrade.com/v1/market/quote/{symbol}.json"
+    headers = {
+        "Authorization": f"Bearer {os.getenv('ETRADE_ACCESS_TOKEN')}"
+    }
+
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+
+        quote_data = data.get("quoteResponse", {}).get("quoteData", [])
+        if not quote_data:
+            print(f"❌ No QuoteData returned for {symbol}")
+            return None
+
+        last_trade = quote_data[0].get("All", {}).get("lastTrade")
+        if last_trade is None:
+            print(f"❌ No lastTrade price found for {symbol}")
+            return None
+
+        return float(last_trade)
+
+    except Exception as e:
+        print(f"❌ API error for {symbol}: {e}")
+        return None
+
+   
 def safe_insert_alert(data):
     conn = sqlite3.connect(DB_PATH)
     try:

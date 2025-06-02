@@ -1,6 +1,6 @@
 
 import sqlite3
-from etrade_api import get_realtime_quote
+from services.market_service import get_realtime_price
 from datetime import datetime
 
 SIM_DB = 'C:/TradeAlerts/simulation.db'  # Absolute path for Windows
@@ -21,10 +21,10 @@ def get_holdings():
 
     holdings = []
     for symbol, qty, avg_cost in rows:
-        quote = get_realtime_quote(symbol)
-        last_price = quote['last']
-        change = quote['change']
-        change_percent = quote['changePercent']
+        last_price = get_realtime_price(symbol) or 0
+        prev_price = 0  # Placeholder, replace with real historic price if needed
+        change = last_price - prev_price
+        change_percent = ((change / prev_price) * 100) if prev_price else 0
         value = qty * last_price
         day_gain = change * qty
         total_gain = (last_price - avg_cost) * qty
