@@ -9,6 +9,7 @@ from flask import (
     request, flash, jsonify
 )
 from services.alert_service import get_alerts
+from services.news_service import fetch_latest_headlines, news_sentiment
 
 app = Flask(__name__)
 app.secret_key = "replace_this_with_a_random_secret"
@@ -214,7 +215,9 @@ def simulation_buy():
     data = request.get_json()
     symbol = data.get("symbol")
     qty = int(data.get("qty", 1))
-    price = get_realtime_price(symbol)
+    from services.etrade_service import get_etrade_price
+    price = get_etrade_price(symbol)
+
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     conn = sqlite3.connect(SIM_DB)
@@ -225,6 +228,10 @@ def simulation_buy():
         old_qty, old_cost = existing
         total_qty = old_qty + qty
         new_avg = ((old_cost * old_qty) + (price * qty)) / total_qty
+    print(f"📦 Buying {qty} shares of {symbol} at price: {price}")
+    if price is None:
+        return "Price is missing", 400
+    
         cursor.execute("UPDATE holdings SET qty = ?, avg_cost = ? WHERE symbol = ?", (total_qty, new_avg, symbol))
     else:
         cursor.execute("INSERT INTO holdings (symbol, qty, avg_cost) VALUES (?, ?, ?)", (symbol, qty, price))
@@ -237,5 +244,14 @@ def simulation_buy():
     conn.close()
     return jsonify(success=True)
 
+@app.route('/news/<symbol>')
+def news_for_symbol(symbol):
+    # … fetch from news_service, return JSON or render a template …
+    headlines = fetch_latest_headlines(symbol)
+    sentiment = news_sentiment(symbol)
+    return jsonify({'headlines': headlines, 'sentiment': sentiment})
+
 if __name__ == '__main__':
     app.run(debug=True)
+
+
