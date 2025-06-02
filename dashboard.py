@@ -10,6 +10,7 @@ from flask import (
 )
 from services.alert_service import get_alerts
 from services.news_service import fetch_latest_headlines, news_sentiment
+from services.etrade_service import get_etrade_price
 
 app = Flask(__name__)
 app.secret_key = "replace_this_with_a_random_secret"
@@ -160,51 +161,56 @@ def simulation():
         cursor.execute("SELECT * FROM holdings")
         holdings_raw = cursor.fetchall()
         for row in holdings_raw:
-            symbol = row["symbol"]
-            qty = row["qty"]
+            symbol   = row["symbol"]
+            qty      = row["qty"]
             avg_cost = row["avg_cost"]
-            last_price = get_realtime_price(symbol)
-            if last_price is None:
-                last_price = 0.0
 
-            change = round(last_price - avg_cost, 2)
-            change_percent = round((change / avg_cost) * 100, 2) if avg_cost else 0
-            value = round(qty * last_price, 2)
-            total_gain = round((last_price - avg_cost) * qty, 2)
-            total_gain_percent = round((total_gain / (avg_cost * qty)) * 100, 2) if avg_cost * qty else 0
+            # Fetch live last price from E*TRADE
+            try:
+                last_price_val = get_etrade_price(symbol) or 0.0
+            except Exception:
+                last_price_val = 0.0
+            last_price = float(last_price_val)
+
+            # Compute P/L and other fields based on live last_price
+            change       = last_price - avg_cost
+            change_pct   = (change / avg_cost * 100) if avg_cost else 0.0
+            day_gain     = change * qty
+            total_gain   = change * qty
+            total_pct    = (change / avg_cost * 100) if avg_cost else 0.0
+            value        = last_price * qty
 
             holdings.append({
-                "symbol": symbol,
-                "qty": qty,
-                "avg_cost": avg_cost,
-                "last_price": last_price,
-                "change": change,
-                "change_percent": change_percent,
-                "value": value,
-                "day_gain": change * qty,
-                "total_gain": total_gain,
-                "total_gain_percent": total_gain_percent,
+                'symbol':       symbol,
+               'last_price':   f"${last_price:.2f}",
+                'change':       f"${change:.2f}",
+                'change_pct':   f"{change_pct:.2f}%",
+                'qty':          qty,
+                'price_paid':   f"${avg_cost:.2f}",
+                'day_gain':     f"${day_gain:.2f}",
+                'total_gain':   f"${total_gain:.2f}",
+                'total_pct':    f"{total_pct:.2f}%",
+                'value':        f"${value:.2f}"
             })
 
-        cursor.execute("SELECT * FROM trade_history ORDER BY timestamp DESC")
-        trades_raw = cursor.fetchall()
-        for row in trades_raw:
+        cursor.execute("SELECT * FROM trades")
+        history_raw = cursor.fetchall()
+        for t in history_raw:
             trades.append({
-                "timestamp": row["timestamp"],
-                "symbol": row["symbol"],
-                "action": row["action"],
-                "quantity": row["qty"],
-                "price": row["price"],
-                "pl": None
+                'time':      t["time"],
+                'symbol':    t["symbol"],
+                'action':    t["action"],
+                'qty':       t["qty"],
+                'price':     f"${t['price']:.2f}",
+                'pl':        f"${t['pl']:.2f}"
             })
 
-        conn.close()
     except Exception as e:
-        print("❌ Simulation load error:", e)
+        print(f"[Simulation Error] {e}")
+    finally:
+        conn.close()
 
-    return render_template("simulation.html", cash=cash, holdings=holdings, trades=trades)
-
-    return render_template('simulation.html')
+        return render_template('simulation.html', holdings=holdings, history=trades, cash=cash)
 
 @app.route('/simulation/reset', methods=['POST'])
 def sim_reset():

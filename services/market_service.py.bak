@@ -107,17 +107,18 @@ def analyze_symbol(sym):
     vwap_value = compute_vwap_for_symbol(sym, limit=20) or 0.0
     vwap_diff_value = etrade_price - vwap_value
 
-alert_payload = {
-    'symbol': sym,
-    'price': etrade_price,
-    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-    'name': company_name,
-    'vwap': round(vwap_value, 2),
-    'vwap_diff': round(vwap_diff_value, 2),
-    'triggers': ",".join(triggers),
-    'sparkline': spark_svg
-}
-insert_alert(**alert_payload)
+    alert_payload = {
+        'symbol': sym,
+        'price': etrade_price,
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'name': company_name,
+        'vwap': round(vwap_value, 2),
+        'vwap_diff': round(vwap_diff_value, 2),
+        'triggers': ",".join(triggers),
+        'sparkline': spark_svg
+    }
+    insert_alert(**alert_payload)
+
 
 # ---------- Indicator Helpers (unchanged) ----------
 
