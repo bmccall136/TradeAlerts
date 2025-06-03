@@ -37,6 +37,7 @@ c.execute('''
         realized_pl REAL NOT NULL
     );
 ''')
+# ... previous code ...
 c.execute("INSERT INTO state (id, realized_pl) VALUES (1, 0.0);")
 
 # 4) Create 'trades' table
@@ -51,7 +52,16 @@ c.execute('''
         pl REAL
     );
 ''')
-UPDATE state SET realized_pl = 0.0 WHERE id = 1;
+c.execute("DROP TABLE IF EXISTS state;")
+c.execute("""
+    CREATE TABLE state (
+        id INTEGER PRIMARY KEY,
+        realized_pl REAL NOT NULL DEFAULT 0.0,
+        cash REAL NOT NULL DEFAULT 10000
+    );
+""")
+c.execute("INSERT INTO state (id, realized_pl, cash) VALUES (1, 0.0, 10000);")
+c.execute("UPDATE state SET realized_pl = 0.0 WHERE id = 1;")  # <-- FIXED LINE
 conn.commit()
 conn.close()
 print("✅ simulation.db has been initialized (account, holdings, state, trades).")
