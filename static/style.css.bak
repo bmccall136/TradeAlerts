@@ -151,6 +151,67 @@ button.btn-buy {
 button.btn-buy:hover {
     background-color: #0ec240 !important;  /* slightly darker green on hover */
 }
+/* Simulation / Alerts: horizontal scroll */
+.alerts-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed; /* → allows horizontal scrolling */
+}
+.alerts-table th,
+.alerts-table td {
+  padding: 8px 12px;
+  color: #ffff66; /* light yellow text on black background */
+  font-size: 0.9rem;
+  border-bottom: 1px solid #333;
+  white-space: nowrap; /* prevents wrapping */
+}
+
+/*— Table header styling (yellow text) —*/
+.alerts-table thead {
+    background-color: #000;
+}
+
+/*— Table body cells (white text by default) —*/
+.alerts-table tbody tr {
+    background-color: #000;
+    border-bottom: 1px solid #111;
+}
+
+/* Red “Sell” button: */
+button.btn-clear {
+  background-color: #ff5151 !important;  /* bright red */
+  color: #fff !important;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  cursor: pointer;
+  margin-left: 8px;
+  transition: background 0.15s;
+}
+button.btn-clear:hover {
+  background-color: #e04444 !important;
+}
+
+/* Green “Buy” button: */
+button.btn-buy {
+  background-color: #10ff50 !important;  /* bright green */
+  color: #000 !important;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  cursor: pointer;
+  margin-left: 8px;
+  transition: background 0.15s;
+}
+button.btn-buy:hover {
+  background-color: #0ec240 !important;
+}
+
+/* … rest of your CSS … */
 
 
 /* ===================================================================
@@ -246,18 +307,18 @@ button.btn-buy:hover {
     margin-right: 20px;
     font-size: 2rem;
 }
-.simulation-header .reset-btn {
-    background-color: #ffe900; /* gold */
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
-    color: #000;
-    font-weight: bold;
-    cursor: pointer;
-    transition: background 0.15s;
+/* Ensure the “Reset Simulation” button itself matches your theme */
+.reset-btn {
+  background-color: #ffd700;
+  color: #000;
+  font-weight: bold;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
 }
-.simulation-header .reset-btn:hover {
-    background-color: #b99a2e;
+.reset-btn:hover {
+  background-color: #e6c200;
 }
 
 /*— Cash / P&L summary lines —*/
@@ -346,15 +407,15 @@ h2 {
 }
 
 /*— 4) Day Gain cells: bright green if positive, bright red if negative —*/
+/* Day Gain/Loss coloring */
 .gain-positive {
-    color: #10ff50 !important;  /* bright green */
-    font-weight: bold !important;
+  color: #10ff50 !important;  /* bright green */
+  font-weight: bold;
 }
 .gain-negative {
-    color: #ff5151 !important;  /* bright red */
-    font-weight: bold !important;
+  color: #ff5151 !important;  /* bright red */
+  font-weight: bold;
 }
-
 /*— 5) Sell button: bright red background, white text, forced by !important —*/
 .sell-btn-red {
     background-color: #ff5151 !important;
@@ -382,87 +443,3 @@ h2 {
 .simulation-table td:last-child {
     padding-right: 4px !important;
 }
-/* … your existing CSS above … */
-
-/* ===================================================================
-   ALERTS TABLE (used on Alerts page, and as base for Simulation)
-   =================================================================== */
-
-/*— Base table container —*/
-.alerts-table {
-    width: 100%;
-    border-collapse: collapse;
-    background: #000;            /* black background */
-    margin-bottom: 20px;
-
-    /* ← change table‐layout to fixed so <th style="width:…"> takes effect */
-    table-layout: fixed;
-}
-
-/*— Table header styling (yellow text) —*/
-.alerts-table thead {
-    background-color: #000;
-}
-.alerts-table thead th {
-    padding: 10px 12px;
-    text-align: left;
-    border-bottom: 2px solid #222;
-    color: #ffe900 !important;   /* bright yellow */
-    font-size: 1.05rem;
-    white-space: nowrap;
-}
-
-/*— Table body cells (white text by default) —*/
-.alerts-table tbody tr {
-    background-color: #000;
-    border-bottom: 1px solid #111;
-}
-.alerts-table tbody td {
-    padding: 8px 12px;
-    text-align: left;
-    color: #ffffff !important;   /* force white text */
-    font-size: 0.95rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-/*— Highlight on hover —*/
-.alerts-table tbody tr:hover {
-    background-color: #222222;
-}
-
-/* ===================================================================
-   GENERIC BUTTON STYLES (used across pages)
-   =================================================================== */
-
-/*— “Clear All” or “Clear” buttons (Alerts page) —*/
-button.btn-clear {
-    background-color: #ff5151;   /* bright red */
-    color: #ffffff;
-    padding: 6px 12px;
-    border-radius: 4px;
-    font-weight: bold;
-    font-size: 0.9rem;
-    transition: background 0.15s;
-}
-button.btn-clear:hover {
-    background-color: #e04444;
-}
-
-/*— “Buy” buttons in Alerts table —*/
-button.btn-buy {
-    background-color: #10ff50 !important;  /* force bright green */
-    color: #000000 !important;             /* force black text */
-    padding: 6px 12px;
-    border-radius: 4px;
-    font-weight: bold;
-    font-size: 0.9rem;
-    cursor: pointer;
-    transition: background 0.15s;
-}
-button.btn-buy:hover {
-    background-color: #0ec240 !important;  /* slightly darker green on hover */
-}
-
-/* … rest of your CSS … */

@@ -4,7 +4,7 @@ import sqlite3
 from services.market_service import get_realtime_price
 from datetime import datetime
 
-# Make sure this path matches exactly where your SQLite file lives.
+# Make sure this matches exactly where your SQLite file lives:
 SIM_DB = 'C:/TradeAlerts/simulation.db'
 
 
@@ -28,82 +28,74 @@ def get_realized_pl():
 
 def get_holdings():
     """
-    Return a list of dictionaries for each holding with its live last_price, paper gains, etc.
-    All numeric fields are raw floats (no formatting).
+    Return a list of dicts for each holding with its live last_price + computed gains.
+    All numeric fields are raw floats (no formatting).  
+    Each dict has keys: 'symbol', 'qty', 'avg_cost', 'last_price', 'change', 'change_percent',
+                       'value', 'day_gain', 'total_gain', 'total_gain_percent'.
     """
+    holdings = []
     with sqlite3.connect(SIM_DB) as conn:
         rows = conn.execute("SELECT symbol, qty, avg_cost FROM holdings").fetchall()
-        holdings = []
         for symbol, qty, avg_cost in rows:
-            # Fetch last price from E*TRADE (or whatever market service)
+            # 1) Fetch live last price (or 0.0 if the API fails)
             last_price = get_realtime_price(symbol) or 0.0
 
-            # If you had a prior‐close price, you could compute day‐change; for now assume prev_price = 0
+            # 2) For now, we set prev_price=0.0 (unless you have a stored “previous close” column).
             prev_price = 0.0
-
-            # Calculate daily change
             change = last_price - prev_price
             change_percent = ((change / prev_price) * 100) if prev_price else 0.0
 
-            # Compute total value, day_gain, total_gain, etc.
+            # 3) Compute “paper” gains
             value = float(qty) * last_price
             day_gain = change * qty
             total_gain = (last_price - avg_cost) * qty
             total_gain_percent = ((last_price - avg_cost) / avg_cost * 100) if avg_cost else 0.0
 
             holdings.append({
-                'symbol':             symbol,
-                'qty':                qty,
-                'avg_cost':           avg_cost,
-                'last_price':         last_price,
-                'change':             change,
-                'change_percent':     change_percent,
-                'value':              value,
-                'day_gain':           day_gain,
-                'total_gain':         total_gain,
+                'symbol': symbol,
+                'qty': qty,
+                'avg_cost': avg_cost,
+                'last_price': last_price,
+                'change': change,
+                'change_percent': change_percent,
+                'value': value,
+                'day_gain': day_gain,
+                'total_gain': total_gain,
                 'total_gain_percent': total_gain_percent
             })
-
-        return holdings
+    return holdings
 
 
 def get_trades():
     """
-    Return a list of dictionaries for each trade in descending order of id.
-    Assumes `trades` table has:
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      timestamp TEXT,
-      symbol TEXT,
-      action TEXT,       -- 'BUY' or 'SELL'
-      quantity INTEGER,
-      price REAL,
-      pl REAL           -- NULL on BUY, non‐NULL on SELL
+    Return a list of dicts for each trade (newest first).  
+    Each dict has keys: 'timestamp', 'symbol', 'action', 'quantity', 'price', 'pl'.
     """
+    trades = []
     with sqlite3.connect(SIM_DB) as conn:
-        rows = conn.execute(
-            "SELECT timestamp, symbol, action, quantity, price, pl "
-            "FROM trades "
-            "ORDER BY id DESC"
-        ).fetchall()
+        rows = conn.execute("""
+            SELECT timestamp, symbol, action, quantity, price, pl
+            FROM trades
+            ORDER BY id DESC
+        """).fetchall()
 
-        trades = []
         for ts, sym, action, qty, price, pl in rows:
             pl_val = float(pl) if pl is not None else None
             trades.append({
                 'timestamp': ts,
-                'symbol':    sym,
-                'action':    action,
-                'quantity':  qty,
-                'price':     price,
-                'pl':        pl_val
+                'symbol': sym,
+                'action': action,
+                'quantity': qty,
+                'price': price,
+                'pl': pl_val
             })
-        return trades
+    return trades
 
 
 def buy_stock(symbol, qty, price):
     """
     1) Subtract (price * qty) from account.cash_balance.
-    2) Insert or update `holdings` for that symbol (re‐compute avg_cost if exists).
+    2) Insert or update `holdings` for that symbol (re‐compute avg_cost if it already exists).
     3) Insert a new BUY row into `trades` with pl=NULL.
     """
     timestamp = datetime.now().strftime("%H:%M:%S")
@@ -130,14 +122,14 @@ def buy_stock(symbol, qty, price):
         old_qty = int(existing['qty'])
         old_cost = float(existing['avg_cost'])
         new_qty = old_qty + qty
-        # Weighted average cost
-        new_avg = ((old_cost * old_qty) + (float(price) * qty)) / new_qty
+        # Weighted average cost:
+        new_avg_cost = ((old_cost * old_qty) + (float(price) * qty)) / new_qty
         cur.execute(
             "UPDATE holdings SET qty = ?, avg_cost = ?, last_price = ? WHERE symbol = ?",
-            (new_qty, new_avg, price, symbol)
+            (new_qty, new_avg_cost, price, symbol)
         )
     else:
-        # New holding
+        # New holding record:
         cur.execute(
             "INSERT INTO holdings (symbol, qty, avg_cost, last_price) VALUES (?, ?, ?, ?)",
             (symbol, qty, price, price)
@@ -145,12 +137,17 @@ def buy_stock(symbol, qty, price):
 
     # 3) Subtract from cash balance
     new_cash = cash - total_cost
-    cur.execute("UPDATE account SET cash_balance = ? WHERE id = 1", (new_cash,))
+    cur.execute(
+        "UPDATE account SET cash_balance = ? WHERE id = 1",
+        (new_cash,)
+    )
 
     # 4) Insert BUY into trades (pl = NULL)
     cur.execute(
-        "INSERT INTO trades (timestamp, symbol, action, quantity, price, pl) "
-        "VALUES (?, ?, 'BUY', ?, ?, NULL)",
+        """
+        INSERT INTO trades (timestamp, symbol, action, quantity, price, pl)
+        VALUES (?, ?, 'BUY', ?, ?, NULL)
+        """,
         (timestamp, symbol, qty, price)
     )
 
@@ -187,6 +184,7 @@ def sell_stock(symbol, qty, price):
     if not hold_row:
         conn.close()
         raise Exception(f"No holdings found for symbol '{symbol}'.")
+
     existing_qty = int(hold_row['qty'])
     avg_cost = float(hold_row['avg_cost'])
     if qty > existing_qty:
@@ -201,8 +199,8 @@ def sell_stock(symbol, qty, price):
     new_qty = existing_qty - qty
     if new_qty > 0:
         cur.execute(
-            "UPDATE holdings SET qty = ? WHERE symbol = ?",
-            (new_qty, symbol)
+            "UPDATE holdings SET qty = ?, last_price = ? WHERE symbol = ?",
+            (new_qty, price, symbol)
         )
     else:
         cur.execute(
@@ -212,12 +210,15 @@ def sell_stock(symbol, qty, price):
 
     # 5) Add proceeds back into cash_balance
     new_cash = cash + proceeds
-    cur.execute("UPDATE account SET cash_balance = ? WHERE id = 1", (new_cash,))
+    cur.execute(
+        "UPDATE account SET cash_balance = ? WHERE id = 1",
+        (new_cash,)
+    )
 
     # 6) Accumulate realized_pl into state.realized_pl
     state_row = cur.execute("SELECT realized_pl FROM state WHERE id = 1").fetchone()
     if not state_row:
-        # If your state table is empty, insert initial row
+        # If the `state` table is empty, insert initial row:
         cur.execute(
             "INSERT INTO state (id, realized_pl) VALUES (1, ?)",
             (realized_pl,)
@@ -232,8 +233,10 @@ def sell_stock(symbol, qty, price):
 
     # 7) Insert a new SELL row into trades (pl = realized_pl)
     cur.execute(
-        "INSERT INTO trades (timestamp, symbol, action, quantity, price, pl) "
-        "VALUES (?, ?, 'SELL', ?, ?, ?)",
+        """
+        INSERT INTO trades (timestamp, symbol, action, quantity, price, pl)
+        VALUES (?, ?, 'SELL', ?, ?, ?)
+        """,
         (timestamp, symbol, qty, price, realized_pl)
     )
 

@@ -1,6 +1,7 @@
 # File: dashboard.py
 
 from pathlib import Path
+import os
 import subprocess
 import sqlite3
 from datetime import datetime, timedelta
@@ -13,6 +14,7 @@ from services.alert_service import get_alerts
 from services.news_service import fetch_latest_headlines, news_sentiment
 from services.etrade_service import get_etrade_price
 
+# Import everything we need from simulation_service:
 from services.simulation_service import (
     get_cash,
     get_realized_pl,
@@ -26,7 +28,7 @@ app = Flask(__name__)
 app.secret_key = "replace_this_with_a_random_secret"
 
 DB_PATH  = 'alerts.db'
-SIM_DB   = 'simulation.db'  # Must match the path in simulation_service.py
+SIM_DB   = 'simulation.db'  # Must match SIM_DB in simulation_service.py
 
 
 ### ────────────── ALERTS (UNCHANGED) ────────────── ###
@@ -79,7 +81,7 @@ def clear_alert(id):
 
 @app.route('/buy/<symbol>', methods=['POST'])
 def buy_stock_route(symbol):
-    # This route is unrelated to the simulation; it just flashes a message.
+    # This “Buy” route is only for the Alerts page (index), not Simulation.
     flash(f'🟢 Simulated BUY for {symbol}', 'success')
     return redirect(url_for('index'))
 
@@ -105,7 +107,10 @@ def backtest():
 @app.route('/config')
 def config():
     config = {}
-    config_clean = {k: str(v) if isinstance(v, timedelta) else v for k, v in config.items()}
+    config_clean = {
+        k: str(v) if isinstance(v, timedelta) else v
+        for k, v in config.items()
+    }
     return render_template('config.html', config=config_clean)
 
 
@@ -115,7 +120,7 @@ def config():
 def reset_simulation():
     """
     Whenever the user clicks “Reset Simulation,” we re‑create the simulation DB
-    by invoking an external script (init_simulation_db.py).
+    by invoking an external script (e.g. init_simulation_db.py).
     """
     try:
         subprocess.run(["python", "init_simulation_db.py"], check=True)
@@ -153,9 +158,8 @@ def simulation():
         for h in raw_holdings:
             # Accumulate total (paper) gain = h['total_gain']
             unrealized_pnl += h['total_gain']
-
             formatted_holdings.append({
-                'symbol':     h['symbol'],
+                'symbol':    h['symbol'],
                 'last_price': f"${h['last_price']:.2f}",
                 'change':     f"${h['change']:.2f}",
                 'change_pct': f"{h['change_percent']:.2f}%",
@@ -171,12 +175,12 @@ def simulation():
         for t in raw_trades:
             pl_display = f"${t['pl']:.2f}" if t['pl'] is not None else "-"
             formatted_trades.append({
-                'time':   t['timestamp'],
-                'symbol': t['symbol'],
-                'action': t['action'],
-                'qty':    t['quantity'],
-                'price':  f"${t['price']:.2f}",
-                'pl':     pl_display
+                'time':     t['timestamp'],
+                'symbol':   t['symbol'],
+                'action':   t['action'],
+                'qty':      t['quantity'],
+                'price':    f"${t['price']:.2f}",
+                'pl':       pl_display
             })
 
     except Exception as e:
@@ -194,24 +198,26 @@ def simulation():
 
 @app.route('/simulation/sell', methods=['POST'])
 def route_sell_stock():
-    """
-    Expects JSON: { "symbol": "...", "qty": N, "price": 123.45 }
-    Returns JSON on failure (with error message) or on success:
-      { "success": true, "cash":  <new_cash>, "realized_pl": <new_realized_pl> }
-    """
     data = request.get_json()
     if not data:
         return jsonify({"error": "Missing JSON payload"}), 400
 
     symbol = data.get("symbol")
     try:
-        qty   = int(data.get("qty", 0))
-        price = float(data.get("price", 0.0))
+        qty = int(data.get("qty", 0))
     except (ValueError, TypeError):
-        return jsonify({"error": "Invalid qty or price"}), 400
+        return jsonify({"error": "Invalid qty"}), 400
 
-    if not symbol or qty <= 0 or price <= 0.0:
-        return jsonify({"error": "Symbol, qty, and price must be provided"}), 400
+    if not symbol or qty <= 0:
+        return jsonify({"error": "Symbol and qty must be provided"}), 400
+
+    try:
+        price = get_etrade_price(symbol)  # Fetch real-time price on the backend!
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch price for {symbol}: {e}"}), 400
+
+    if price is None or price <= 0:
+        return jsonify({"error": f"Failed to fetch a valid price for {symbol}"}), 400
 
     try:
         sell_stock(symbol, qty, price)
@@ -219,13 +225,14 @@ def route_sell_stock():
         return jsonify({"error": str(e)}), 500
 
     # If successful, return updated cash & realized P/L
-    new_cash     = get_cash()
+    new_cash = get_cash()
     new_realized = get_realized_pl()
     return jsonify({
-        "success":      True,
-        "cash":         new_cash,
-        "realized_pl":  new_realized
+        "success": True,
+        "cash": new_cash,
+        "realized_pl": new_realized
     }), 200
+
 
 
 @app.route("/simulation/buy", methods=["POST"])

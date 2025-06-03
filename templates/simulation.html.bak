@@ -1,30 +1,50 @@
+{# File: templates/simulation.html #}
 {% extends "layout.html" %}
 {% block content %}
-<div class="container">
-  <h1 class="section-title">Simulation Dashboard</h1>
+from services.etrade_service import get_etrade_price
 
-  <div style="margin-bottom: 16px;">
-    <form method="POST" action="/reset_simulation">
-      <button class="btn btn-danger">Reset Simulation</button>
+<div class="container">
+
+  <!-- 1) Center the title + “Reset Simulation” button -->
+  <div class="simulation-header" style="text-align:center; margin-bottom: 20px;">
+    <h1>Simulation Dashboard</h1>
+    <form action="{{ url_for('reset_simulation') }}" method="post" style="display:inline;">
+      <button class="reset-btn" type="submit">Reset Simulation</button>
     </form>
   </div>
 
-  <div>
-    <strong>Cash:</strong> ${{ '%.2f'|format(cash) }}
+  <!-- 2) Show Cash, Unrealized P&L, Realized P&L -->
+  <div class="simulation-summary" style="text-align:center; margin-bottom: 30px;">
+    <p><strong>Cash:</strong> ${{ '%.2f'|format(cash) }}</p>
+    <p><strong>Unrealized P&amp;L:</strong> ${{ '%.2f'|format(unrealized_pnl) }}</p>
+    <p><strong>Realized P&amp;L:</strong> ${{ '%.2f'|format(realized_pnl) }}</p>
   </div>
 
-  <h3>Holdings</h3>
-  <table class="alerts-table">
+  <!-- 3) Holdings Table -->
+  <h2>Holdings</h2>
+  <table class="alerts-table simulation-table">
+    <colgroup>
+      <col style="width: 8%;" />   <!-- Symbol -->
+      <col style="width: 10%;" />  <!-- Last Price -->
+      <col style="width: 8%;" />   <!-- Change -->
+      <col style="width: 8%;" />   <!-- Change % -->
+      <col style="width: 6%;" />   <!-- Qty -->
+      <col style="width: 10%;" />  <!-- Price Paid -->
+      <col style="width: 10%;" />  <!-- Day Gain/Loss -->
+      <col style="width: 10%;" />  <!-- Total Gain/Loss -->
+      <col style="width: 10%;" />  <!-- Value -->
+      <col style="width: 10%;" />  <!-- Action -->
+    </colgroup>
     <thead>
       <tr>
         <th>Symbol</th>
         <th>Last Price</th>
         <th>Change</th>
-        <th>Change %</th>
+        <th>Change %</th>
         <th>Qty</th>
-        <th>Price Paid</th>
-        <th>Day Gain</th>
-        <th>Total Gain</th>
+        <th>Price Paid</th>
+        <th>Day Gain/Loss</th>
+        <th>Total Gain/Loss</th>
         <th>Value</th>
         <th>Action</th>
       </tr>
@@ -33,27 +53,36 @@
       {% for h in holdings %}
       <tr>
         <td>{{ h.symbol }}</td>
-        <td>{{ h.last_price }}</td>
+        <td>${{ '%.2f'|format(h.last_price|float) }}</td>
         <td>{{ h.change }}</td>
         <td>{{ h.change_pct }}</td>
         <td>{{ h.qty }}</td>
         <td>{{ h.price_paid }}</td>
-        <td>{{ h.day_gain }}</td>
+
+        <!-- Color “Day Gain/Loss” red if negative (starts with “$‑”), else green -->
+        <td class="{% if h.day_gain.startswith('$-') %}gain-negative{% else %}gain-positive{% endif %}">
+          {{ h.day_gain }}
+        </td>
+
         <td>{{ h.total_gain }}</td>
         <td>{{ h.value }}</td>
+
         <td>
-          <form action="/sell/{{ h.symbol }}" method="post">
-            <input type="number" name="qty" value="1" min="1" class="qty-input">
-            <button class="sell-btn" type="submit">Sell</button>
-          </form>
+          <input type="number" name="qty" value="1" min="1" class="qty-input">
+
+          <!-- Red “Sell” button: -->
+          <button class="btn-clear" onclick="sellStock('{{ h.symbol }}', this)">
+            Sell
+          </button>
         </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 
-  <h3>Trade History</h3>
-  <table class="alerts-table">
+  <!-- 4) Trade History -->
+  <h2 style="margin-top: 40px;">Trade History</h2>
+  <table class="alerts-table trade-history-table">
     <thead>
       <tr>
         <th>Time</th>
@@ -65,17 +94,80 @@
       </tr>
     </thead>
     <tbody>
-      {% for t in trades %}
+      {% for t in history %}
       <tr>
         <td>{{ t.time }}</td>
         <td>{{ t.symbol }}</td>
         <td>{{ t.action }}</td>
         <td>{{ t.qty }}</td>
         <td>{{ t.price }}</td>
-        <td>{{ t.pl if t.pl is not none else '-' }}</td>
+        <td>
+          {% if t.pl != "-" %}
+            {{ t.pl }}
+          {% else %}
+            -
+          {% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+
 </div>
+
+<script>
+function buyStock(symbol, button) {
+  const row = button.closest('tr');
+  const qtyInput = row.querySelector('.qty-input');
+  const qty = qtyInput ? parseInt(qtyInput.value) : 1;
+
+  fetch('/simulation/buy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbol: symbol, qty: qty })
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      alert(`Bought ${symbol} x${qty}\nNew cash balance: $${data.cash.toFixed(2)}`);
+      location.reload();
+    } else {
+      alert(`Buy failed: ${data.error}`);
+    }
+  })
+  .catch(err => {
+    alert('Buy request error');
+    console.error(err);
+  });
+}
+
+function sellStock(symbol, button) {
+  const row = button.closest('tr');
+  const qtyInput = row.querySelector('.qty-input');
+  const qty = qtyInput ? parseInt(qtyInput.value) : 1;
+
+  // Grab the “Last Price” from the 2nd <td> in this <tr> (strip out the “$”)
+  const priceStr = row.querySelector('td:nth-child(2)').textContent.replace('$','');
+  const price = parseFloat(priceStr) || 0.0;
+
+  fetch('/simulation/sell', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbol: symbol, qty: qty, price: price })
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      alert(`Sold ${symbol} x${qty}\nNew cash: $${data.cash.toFixed(2)}\nRealized P/L: $${data.realized_pl.toFixed(2)}`);
+      location.reload();
+    } else {
+      alert(`Sell failed: ${data.error}`);
+    }
+  })
+  .catch(err => {
+    alert('Sell request error');
+    console.error(err);
+  });
+}
+</script>
 {% endblock %}

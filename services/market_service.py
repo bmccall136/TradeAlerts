@@ -6,6 +6,7 @@ from services.alert_service import generate_sparkline, insert_alert
 import pandas as pd
 from datetime import datetime
 from services.chart_service import compute_vwap_for_symbol
+from services.etrade_service import get_etrade_price
 
 logger = logging.getLogger(__name__)
 
