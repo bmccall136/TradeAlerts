@@ -129,20 +129,25 @@ def reset_simulation():
         return "Failed to reset simulation database.", 500
 
 def nuke_simulation_db():
-    try:
-        with sqlite3.connect('simulation.db') as conn:
-            c = conn.cursor()
-            c.execute("DELETE FROM holdings;")
-            c.execute("DELETE FROM trades;")
-            # ...delete/clear other tables if needed...
-            # Optionally, reset account balance, etc.
-            c.execute("UPDATE account SET cash_balance=10000;")
-            conn.commit()
+    with sqlite3.connect('simulation.db') as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM holdings;")
+        c.execute("DELETE FROM trades;")
+        try:
+            c.execute("UPDATE state SET realized_pl = 0.0 WHERE id = 1;")
+        except sqlite3.OperationalError:
+            # If the column doesn't exist, add it and try again!
+            c.execute("ALTER TABLE state ADD COLUMN realized_pl REAL DEFAULT 0.0;")
+            c.execute("UPDATE state SET realized_pl = 0.0 WHERE id = 1;")
+        conn.commit()
+
+
         print("Simulation DB nuked/reset!")
-        return True
-    except Exception as e:
+            return True
+        except Exception as e:
         print(f"Failed to nuke simulation DB: {e}")
-        return False
+            return False
+
 
 @app.route('/simulation')
 def simulation():

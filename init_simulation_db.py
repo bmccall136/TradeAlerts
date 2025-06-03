@@ -51,7 +51,7 @@ c.execute('''
         pl REAL
     );
 ''')
-
+UPDATE state SET realized_pl = 0.0 WHERE id = 1;
 conn.commit()
 conn.close()
 print("✅ simulation.db has been initialized (account, holdings, state, trades).")
