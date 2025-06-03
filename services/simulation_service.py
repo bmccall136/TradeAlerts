@@ -3,10 +3,61 @@
 import sqlite3
 from services.market_service import get_realtime_price
 from datetime import datetime
+import yfinance as yf
 
 # Make sure this matches exactly where your SQLite file lives:
 SIM_DB = 'C:/TradeAlerts/simulation.db'
 
+import yfinance as yf
+
+def get_previous_close(symbol):
+    """
+    Return the previous trading session’s close price for `symbol`.
+    Uses yfinance to grab the last two daily bars and returns yesterday’s close.
+    If something goes wrong, returns 0.0.
+    """
+    try:
+        # Request 2 days of daily data; the older bar is “yesterday”
+        df = yf.download(symbol, period="2d", interval="1d", progress=False)
+        if len(df) >= 2:
+            val = df['Close'].iloc[-2]
+            return float(val.item()) if hasattr(val, "item") else float(val)
+        else:
+            return 0.0
+    except Exception:
+        return 0.0
+
+def build_holdings_list():
+    holdings = []
+    with sqlite3.connect(SIM_DB) as conn:
+        rows = conn.execute("SELECT symbol, qty, avg_cost FROM holdings").fetchall()
+        for symbol, qty, avg_cost in rows:
+            # 1) fetch the current (realtime) market price
+            last_price = get_realtime_price(symbol)
+            print(f"[SIM HOLDINGS] {symbol}: last_price={last_price}")
+
+            # 2) fetch “yesterday’s close” instead of zero
+            prev_price = get_previous_close(symbol)
+            if prev_price > 0:
+                change = last_price - prev_price
+                change_percent = (change / prev_price) * 100
+            else:
+                # if we couldn’t fetch a real previous close, just default to zero
+                change = 0.0
+                change_percent = 0.0
+
+            # 3) Build whatever dict/tuple/list you need for rendering
+            holdings.append({
+                'symbol': symbol,
+                'qty': qty,
+                'avg_cost': avg_cost,
+                'last_price': last_price,
+                'prev_price': prev_price,
+                'change': change,
+                'change_percent': change_percent
+            })
+
+    return holdings
 
 def get_cash():
     """
@@ -29,21 +80,28 @@ def get_realized_pl():
 def get_holdings():
     """
     Return a list of dicts for each holding with its live last_price + computed gains.
-    All numeric fields are raw floats (no formatting).  
-    Each dict has keys: 'symbol', 'qty', 'avg_cost', 'last_price', 'change', 'change_percent',
-                       'value', 'day_gain', 'total_gain', 'total_gain_percent'.
+    All numeric fields are raw floats (no formatting).
+    Each dict has these keys:
+      'symbol', 'qty', 'avg_cost', 'last_price',
+      'change', 'change_percent', 'value',
+      'day_gain', 'total_gain', 'total_gain_percent'
     """
     holdings = []
     with sqlite3.connect(SIM_DB) as conn:
         rows = conn.execute("SELECT symbol, qty, avg_cost FROM holdings").fetchall()
         for symbol, qty, avg_cost in rows:
-            # 1) Fetch live last price (or 0.0 if the API fails)
-            last_price = get_realtime_price(symbol) or 0.0
+            # 1) fetch the current (realtime) market price
+            last_price = get_realtime_price(symbol)
+            print(f"[SIM HOLDINGS] {symbol}: last_price={last_price}")
 
-            # 2) For now, we set prev_price=0.0 (unless you have a stored “previous close” column).
-            prev_price = 0.0
-            change = last_price - prev_price
-            change_percent = ((change / prev_price) * 100) if prev_price else 0.0
+            # 2) fetch yesterday’s close instead of hard‐coding zero
+            prev_price = get_previous_close(symbol)
+            if prev_price > 0:
+                change = last_price - prev_price
+                change_percent = (change / prev_price) * 100
+            else:
+                change = 0.0
+                change_percent = 0.0
 
             # 3) Compute “paper” gains
             value = float(qty) * last_price
@@ -64,6 +122,7 @@ def get_holdings():
                 'total_gain_percent': total_gain_percent
             })
     return holdings
+
 
 
 def get_trades():

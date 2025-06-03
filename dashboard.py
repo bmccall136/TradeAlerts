@@ -23,6 +23,10 @@ from services.simulation_service import (
     buy_stock,
     sell_stock
 )
+from services.backtest_service import backtest
+
+trades, pnl = backtest("AAPL", "2024-01-01", "2024-06-01", initial_cash=10000)
+# Now you can format `trades` into a table or feed into your simulation service.
 
 app = Flask(__name__)
 app.secret_key = "replace_this_with_a_random_secret"
@@ -118,16 +122,26 @@ def config():
 
 @app.route('/reset_simulation', methods=['POST'])
 def reset_simulation():
-    """
-    Whenever the user clicks “Reset Simulation,” we re‑create the simulation DB
-    by invoking an external script (e.g. init_simulation_db.py).
-    """
-    try:
-        subprocess.run(["python", "init_simulation_db.py"], check=True)
-        flash('🌀 Simulation database reset.', 'info')
-        return redirect(url_for('simulation'))
-    except subprocess.CalledProcessError:
+    result = nuke_simulation_db()
+    if result:
+        return "Simulation reset!", 200
+    else:
         return "Failed to reset simulation database.", 500
+
+def nuke_simulation_db():
+    try:
+        with sqlite3.connect('simulation.db') as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM holdings;")
+            c.execute("DELETE FROM trades;")
+            # Also reset realized P&L, cash, and any stats
+            c.execute("UPDATE account SET cash_balance=10000, realized_pl=0.0, unrealized_pl=0.0;")
+            conn.commit()
+        print("Simulation DB nuked/reset!")
+        return True
+    except Exception as e:
+        print(f"Failed to nuke simulation DB: {e}")
+        return False
 
 
 @app.route('/simulation')
@@ -156,19 +170,19 @@ def simulation():
         raw_holdings = get_holdings()
         unrealized_pnl = 0.0
         for h in raw_holdings:
-            # Accumulate total (paper) gain = h['total_gain']
             unrealized_pnl += h['total_gain']
             formatted_holdings.append({
                 'symbol':    h['symbol'],
-                'last_price': f"${h['last_price']:.2f}",
-                'change':     f"${h['change']:.2f}",
-                'change_pct': f"{h['change_percent']:.2f}%",
+                'last_price': h['last_price'],
+                'change':     h['change'],
+                'change_pct': h['change_percent'],
                 'qty':        h['qty'],
-                'price_paid': f"${h['avg_cost']:.2f}",
-                'day_gain':   f"${h['day_gain']:.2f}",
-                'total_gain': f"${h['total_gain']:.2f}",
-                'value':      f"${h['value']:.2f}"
-            })
+                'price_paid': h['avg_cost'],
+                'day_gain':   h['day_gain'],
+                'total_gain': h['total_gain'],
+                'value':      h['value']
+    })
+
 
         # 3) Gather and format trade history for the template
         raw_trades = get_trades()
