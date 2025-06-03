@@ -23,6 +23,10 @@ from services.simulation_service import (
     buy_stock,
     sell_stock
 )
+from services.backtest_service import backtest
+
+trades, pnl = backtest("AAPL", "2024-01-01", "2024-06-01", initial_cash=10000)
+# Now you can format `trades` into a table or feed into your simulation service.
 
 app = Flask(__name__)
 app.secret_key = "replace_this_with_a_random_secret"
@@ -118,17 +122,27 @@ def config():
 
 @app.route('/reset_simulation', methods=['POST'])
 def reset_simulation():
-    """
-    Whenever the user clicks “Reset Simulation,” we re‑create the simulation DB
-    by invoking an external script (e.g. init_simulation_db.py).
-    """
-    try:
-        subprocess.run(["python", "init_simulation_db.py"], check=True)
-        flash('🌀 Simulation database reset.', 'info')
-        return redirect(url_for('simulation'))
-    except subprocess.CalledProcessError:
+    result = nuke_simulation_db()
+    if result:
+        return "Simulation reset!", 200
+    else:
         return "Failed to reset simulation database.", 500
 
+def nuke_simulation_db():
+    try:
+        with sqlite3.connect('simulation.db') as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM holdings;")
+            c.execute("DELETE FROM trades;")
+            # ...delete/clear other tables if needed...
+            # Optionally, reset account balance, etc.
+            c.execute("UPDATE account SET cash_balance=10000;")
+            conn.commit()
+        print("Simulation DB nuked/reset!")
+        return True
+    except Exception as e:
+        print(f"Failed to nuke simulation DB: {e}")
+        return False
 
 @app.route('/simulation')
 def simulation():
@@ -156,19 +170,19 @@ def simulation():
         raw_holdings = get_holdings()
         unrealized_pnl = 0.0
         for h in raw_holdings:
-            # Accumulate total (paper) gain = h['total_gain']
             unrealized_pnl += h['total_gain']
             formatted_holdings.append({
                 'symbol':    h['symbol'],
-                'last_price': f"${h['last_price']:.2f}",
-                'change':     f"${h['change']:.2f}",
-                'change_pct': f"{h['change_percent']:.2f}%",
+                'last_price': h['last_price'],
+                'change':     h['change'],
+                'change_pct': h['change_percent'],
                 'qty':        h['qty'],
-                'price_paid': f"${h['avg_cost']:.2f}",
-                'day_gain':   f"${h['day_gain']:.2f}",
-                'total_gain': f"${h['total_gain']:.2f}",
-                'value':      f"${h['value']:.2f}"
-            })
+                'price_paid': h['avg_cost'],
+                'day_gain':   h['day_gain'],
+                'total_gain': h['total_gain'],
+                'value':      h['value']
+    })
+
 
         # 3) Gather and format trade history for the template
         raw_trades = get_trades()
@@ -198,24 +212,26 @@ def simulation():
 
 @app.route('/simulation/sell', methods=['POST'])
 def route_sell_stock():
-    """
-    Expects JSON: { "symbol": "...", "qty": N, "price": 123.45 }
-    Returns JSON on failure (with error message) or on success:
-      { "success": true, "cash":  <new_cash>, "realized_pl": <new_realized_pl> }
-    """
     data = request.get_json()
     if not data:
         return jsonify({"error": "Missing JSON payload"}), 400
 
     symbol = data.get("symbol")
     try:
-        qty   = int(data.get("qty", 0))
-        price = float(data.get("price", 0.0))
+        qty = int(data.get("qty", 0))
     except (ValueError, TypeError):
-        return jsonify({"error": "Invalid qty or price"}), 400
+        return jsonify({"error": "Invalid qty"}), 400
 
-    if not symbol or qty <= 0 or price <= 0.0:
-        return jsonify({"error": "Symbol, qty, and price must be provided"}), 400
+    if not symbol or qty <= 0:
+        return jsonify({"error": "Symbol and qty must be provided"}), 400
+
+    try:
+        price = get_etrade_price(symbol)  # Fetch real-time price on the backend!
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch price for {symbol}: {e}"}), 400
+
+    if price is None or price <= 0:
+        return jsonify({"error": f"Failed to fetch a valid price for {symbol}"}), 400
 
     try:
         sell_stock(symbol, qty, price)
@@ -223,13 +239,14 @@ def route_sell_stock():
         return jsonify({"error": str(e)}), 500
 
     # If successful, return updated cash & realized P/L
-    new_cash      = get_cash()
-    new_realized  = get_realized_pl()
+    new_cash = get_cash()
+    new_realized = get_realized_pl()
     return jsonify({
-        "success":      True,
-        "cash":         new_cash,
-        "realized_pl":  new_realized
+        "success": True,
+        "cash": new_cash,
+        "realized_pl": new_realized
     }), 200
+
 
 
 @app.route("/simulation/buy", methods=["POST"])

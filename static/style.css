@@ -1,7 +1,3 @@
-/* ===================================================================
-   GLOBAL RESET & BASE STYLES
-   =================================================================== */
-
 /*— Reset margins/padding, set black background, default font —*/
 html, body {
     margin: 0;
@@ -87,7 +83,7 @@ select {
     white-space: nowrap;
 }
 
-/*— Right‐side shortcut buttons (Auth / Nuke DB / Clear All) —*/
+/*— Right‐side shortcut buttons (Auth / Nuke DB / Clear All) —*/
 .navbar-shortcuts {
     display: flex;
     gap: 10px;

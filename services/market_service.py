@@ -5,7 +5,9 @@ from services.etrade_service import fetch_etrade_quote
 from services.alert_service import generate_sparkline, insert_alert
 import pandas as pd
 from datetime import datetime
-from services.chart_service import compute_vwap_for_symbol
+# We no longer need compute_vwap_for_symbol here, since we’ll compute intraday VWAP directly
+# from the OHLCV DataFrame.
+# from services.chart_service import compute_vwap_for_symbol
 from services.etrade_service import get_etrade_price
 
 logger = logging.getLogger(__name__)
@@ -48,7 +50,9 @@ def analyze_symbol(sym):
     2) Grab E*TRADE last price  
     3) Grab company name via yfinance (.info['longName'])  
     4) Calculate MACD, RSI, Volume, Bollinger  
-    5) If ≥ 3 triggers, build a sparkline and insert_alert(...)  
+    5) Compute intraday VWAP + Diff  
+    6) If ≥ 3 triggers (out of MACD, RSI, VOL, BB, VWAP), build a sparkline 
+       and insert_alert(...)  
     """
     # 1) Download Yahoo data
     df = fetch_data_with_timeout(sym)
@@ -96,23 +100,40 @@ def analyze_symbol(sym):
     if df['Close'].iloc[-1] > bb_up.iloc[-1] or df['Close'].iloc[-1] < bb_dn.iloc[-1]:
         triggers.append('BB 📈')
 
+    # 5) Compute intraday VWAP + Diff
+    # Calculate Typical Price = (High + Low + Close) / 3
+    df['TypicalPrice'] = (df['High'] + df['Low'] + df['Close']) / 3
+    # TPV = TypicalPrice * Volume
+    df['TPV'] = df['TypicalPrice'] * df['Volume']
+    # Cumulative TPV and cumulative Volume
+    df['CumulativeTPV'] = df['TPV'].cumsum()
+    df['CumulativeVol'] = df['Volume'].cumsum()
+    # VWAP = cumulative(TPV) / cumulative(Volume)
+    df['VWAP'] = df['CumulativeTPV'] / df['CumulativeVol']
+
+    latest_vwap = df['VWAP'].iloc[-1]
+    vwap_diff_value = etrade_price - latest_vwap
+    logger.info(f"{sym}: Intraday VWAP = ${latest_vwap:.2f}, Diff = ${vwap_diff_value:.2f}")
+    # Only append a VWAP trigger if price is above VWAP
+    if vwap_diff_value > 0:
+        triggers.append('VWAP+Diff 🚀')
+
+    # 6) Check if we have at least three triggers
     logger.info(f"→ {sym}: {triggers}")
-    vwap_value = compute_vwap_for_symbol(sym, limit=20) or 0.0
-    vwap_diff_value = etrade_price - vwap_value
-    logger.info(f"{sym}: VWAP = {vwap_value:.2f}, Diff = {vwap_diff_value:.2f}")
     if len(triggers) < 3:
         logger.info(f"→ {sym}: Not enough triggers ({len(triggers)}), skipping alert.")
         return None
 
-    # 5) Generate sparkline
+    # 7) Generate sparkline
     spark_svg = generate_sparkline(df['Close'].tolist())
 
+    # 8) Build alert payload and insert into DB
     alert_payload = {
         'symbol': sym,
         'price': etrade_price,
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'name': company_name,
-        'vwap': round(vwap_value, 2),
+        'vwap': round(latest_vwap, 2),
         'vwap_diff': round(vwap_diff_value, 2),
         'triggers': ",".join(triggers),
         'sparkline': spark_svg
@@ -146,14 +167,6 @@ def compute_bollinger(close, window=20, num_std=2):
     lower_band = rolling_mean - (rolling_std * num_std)
     return upper_band, rolling_mean, lower_band
 
-#-----------------------------------------------------
-
-def get_realtime_price(symbol):
-    try:
-        return get_etrade_price(symbol)
-    except Exception as e:
-        print(f"Error in get_realtime_price({symbol}): {e}")
-        return None
 
 def get_realtime_price(symbol):
     try:

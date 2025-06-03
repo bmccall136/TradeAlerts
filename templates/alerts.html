@@ -44,9 +44,12 @@
           {% endif %}
         </td>
         <td>
-          <button class="news-btn" onclick="showNews('{{ alert['symbol'] }}')">News</button>
+          <button class="news-btn" onclick="showNews('{{ alert['symbol'] }}')">
+          📰
+          </button>
           <div class="news-container" id="news-{{ alert['symbol'] }}"></div>
         </td>
+
         <td>
           {% if alert['sparkline'] %}
             <div class="sparkline-img">{{ alert['sparkline']|safe }}</div>
