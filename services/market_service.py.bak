@@ -96,17 +96,15 @@ def analyze_symbol(sym):
         triggers.append('BB 📈')
 
     logger.info(f"→ {sym}: {triggers}")
+    vwap_value = compute_vwap_for_symbol(sym, limit=20) or 0.0
+    vwap_diff_value = etrade_price - vwap_value
+    logger.info(f"{sym}: VWAP = {vwap_value:.2f}, Diff = {vwap_diff_value:.2f}")
     if len(triggers) < 3:
         logger.info(f"→ {sym}: Not enough triggers ({len(triggers)}), skipping alert.")
         return None
 
     # 5) Generate sparkline
     spark_svg = generate_sparkline(df['Close'].tolist())
-
-    # 6) Build the payload and insert into DB (name is now the real company_name)
-    vwap_value = compute_vwap_for_symbol(sym, limit=20) or 0.0
-    vwap_diff_value = etrade_price - vwap_value
-    logger.info(f"{sym}: VWAP = {vwap_value:.2f}, Diff = {vwap_diff_value:.2f}")
 
     alert_payload = {
         'symbol': sym,

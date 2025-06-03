@@ -1,6 +1,7 @@
 {# File: templates/simulation.html #}
 {% extends "layout.html" %}
 {% block content %}
+
 <div class="container">
 
   <!-- 1) Center the title + “Reset Simulation” button -->
@@ -28,8 +29,8 @@
       <col style="width: 8%;" />   <!-- Change % -->
       <col style="width: 6%;" />   <!-- Qty -->
       <col style="width: 10%;" />  <!-- Price Paid -->
-      <col style="width: 10%;" />  <!-- Day Gain -->
-      <col style="width: 10%;" />  <!-- Total Gain -->
+      <col style="width: 10%;" />  <!-- Day Gain/Loss -->
+      <col style="width: 10%;" />  <!-- Total Gain/Loss -->
       <col style="width: 10%;" />  <!-- Value -->
       <col style="width: 10%;" />  <!-- Action -->
     </colgroup>
@@ -51,25 +52,27 @@
       {% for h in holdings %}
       <tr>
         <td>{{ h.symbol }}</td>
-        <td>{{ h.last_price }}</td>
+        <td>${{ '%.2f'|format(h.last_price|float) }}</td>
         <td>{{ h.change }}</td>
         <td>{{ h.change_pct }}</td>
         <td>{{ h.qty }}</td>
         <td>{{ h.price_paid }}</td>
 
-        <!-- 3b) Color “Day Gain” red if it starts with “$‑”, else green -->
+        <!-- Color “Day Gain/Loss” red if negative (starts with “$‑”), else green -->
         <td class="{% if h.day_gain.startswith('$-') %}gain-negative{% else %}gain-positive{% endif %}">
           {{ h.day_gain }}
         </td>
 
         <td>{{ h.total_gain }}</td>
         <td>{{ h.value }}</td>
+
         <td>
           <input type="number" name="qty" value="1" min="1" class="qty-input">
-          <!-- 3c) Use the green “Buy” button class -->
-          <button class="btn-buy" onclick="buyStock('{{ h.symbol }}', this)">Buy</button>
-          <!-- 3d) Use the red “Sell” button class -->
-          <button class="btn-clear" onclick="sellStock('{{ h.symbol }}', this)">Sell</button>
+
+          <!-- Red “Sell” button: -->
+          <button class="btn-clear" onclick="sellStock('{{ h.symbol }}', this)">
+            Sell
+          </button>
         </td>
       </tr>
       {% endfor %}
@@ -141,6 +144,8 @@ function sellStock(symbol, button) {
   const row = button.closest('tr');
   const qtyInput = row.querySelector('.qty-input');
   const qty = qtyInput ? parseInt(qtyInput.value) : 1;
+
+  // Grab the “Last Price” from the 2nd <td> in this <tr> (strip out the “$”)
   const priceStr = row.querySelector('td:nth-child(2)').textContent.replace('$','');
   const price = parseFloat(priceStr) || 0.0;
 
