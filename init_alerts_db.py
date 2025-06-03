@@ -16,7 +16,7 @@ def nuke_and_rebuild():
         c = conn.cursor()
         # Drop alerts table if it exists
         c.execute("DROP TABLE IF EXISTS alerts")
-        # Recreate clean schema (no 'time' column)
+        # Recreate clean schema (now includes 'volume')
         c.execute("""
         CREATE TABLE alerts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,15 +28,17 @@ def nuke_and_rebuild():
             sparkline TEXT,
             vwap REAL,
             vwap_diff REAL,
+            volume REAL,
             cleared INTEGER DEFAULT 0
         )
         """)
         conn.commit()
-        print("Recreated alerts table with clean schema.")
-        # Optional: insert a sample alert row for dashboard sanity-check
+        print("Recreated alerts table with volume column.")
+
+        # Insert a sample alert row
         c.execute("""
-            INSERT INTO alerts (symbol, timestamp, name, price, triggers, sparkline, vwap, vwap_diff, cleared)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+            INSERT INTO alerts (symbol, timestamp, name, price, triggers, sparkline, vwap, vwap_diff, volume, cleared)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
         """, (
             'AAPL',
             '2025-05-29 16:00:00',
@@ -46,6 +48,7 @@ def nuke_and_rebuild():
             '<svg width="60" height="16"><polyline points="1,15 10,10 20,12 30,7 40,9 50,4 59,8" style="fill:none;stroke:yellow;stroke-width:2"/></svg>',
             192.45,
             2.88,
+            31200000  # sample volume
         ))
         conn.commit()
         print("Inserted sample alert row.")

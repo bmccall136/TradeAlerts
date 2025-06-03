@@ -4,22 +4,28 @@ DB_PATH = 'alerts.db'
 
 def compute_vwap_for_symbol(symbol, limit=20):
     """
-    Compute simple VWAP (average) over last `limit` alerts for the symbol.
-    Returns None if insufficient data.
+    Compute true VWAP over the last `limit` alerts for the symbol.
+    Returns None if insufficient data or missing volume.
     """
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     cur.execute(
-        "SELECT price FROM alerts WHERE symbol = ? ORDER BY timestamp DESC LIMIT ?",
+        "SELECT price, volume FROM alerts WHERE symbol = ? AND volume IS NOT NULL ORDER BY timestamp DESC LIMIT ?",
         (symbol, limit)
     )
     rows = cur.fetchall()
     conn.close()
-    prices = [r['price'] for r in rows]
-    if not prices:
+
+    if not rows or len(rows) < 2:
         return None
-    return sum(prices) / len(prices)
+
+    total_pv = sum(r['price'] * r['volume'] for r in rows)
+    total_vol = sum(r['volume'] for r in rows)
+    if total_vol == 0:
+        return None
+
+    return total_pv / total_vol
 
 def get_sparkline_svg(alert_id, limit=20, width=100, height=30):
     """

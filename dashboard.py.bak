@@ -161,32 +161,36 @@ def simulation():
         cursor.execute("SELECT * FROM holdings")
         holdings_raw = cursor.fetchall()
         for row in holdings_raw:
-            symbol    = row["symbol"]
-            qty       = row["qty"]
-            avg_cost  = row["avg_cost"]
+            symbol   = row["symbol"]
+            qty      = row["qty"]
+            avg_cost = row["avg_cost"]
 
-            # First attempt: use get_realtime_price (if you have that function)
-            last_price = get_realtime_price(symbol)
-            if last_price is None:
-                # NEW: fetch the real last price from E*TRADE (or your chosen service)
-                try:
-                    last_price_val = get_etrade_price(symbol) or 0.0
-                except Exception:
-                    last_price_val = 0.0
+            # Fetch live last price from E*TRADE
+            try:
+                last_price_val = get_etrade_price(symbol) or 0.0
+            except Exception:
+                last_price_val = 0.0
+            last_price = float(last_price_val)
 
-                last_price = float(last_price_val)
+            # Compute P/L and other fields based on live last_price
+            change       = last_price - avg_cost
+            change_pct   = (change / avg_cost * 100) if avg_cost else 0.0
+            day_gain     = change * qty
+            total_gain   = change * qty
+            total_pct    = (change / avg_cost * 100) if avg_cost else 0.0
+            value        = last_price * qty
 
             holdings.append({
-                'symbol':     symbol,
-                'last_price': f"${last_price:.2f}",
-                'change':     f"${(last_price - avg_cost):.2f}",
-                'change_pct': f"{((last_price - avg_cost) / avg_cost * 100) if avg_cost else 0:.2f}%",
-                'qty':        qty,
-                'price_paid': f"${avg_cost:.2f}",
-                'day_gain':   f"${((last_price - avg_cost) * qty):.2f}",
-                'total_gain': f"${((last_price - avg_cost) * qty):.2f}",
-                'total_pct':  f"{((last_price - avg_cost) / avg_cost * 100) if avg_cost else 0:.2f}%",
-                'value':      f"${(last_price * qty):.2f}"
+                'symbol':       symbol,
+               'last_price':   f"${last_price:.2f}",
+                'change':       f"${change:.2f}",
+                'change_pct':   f"{change_pct:.2f}%",
+                'qty':          qty,
+                'price_paid':   f"${avg_cost:.2f}",
+                'day_gain':     f"${day_gain:.2f}",
+                'total_gain':   f"${total_gain:.2f}",
+                'total_pct':    f"{total_pct:.2f}%",
+                'value':        f"${value:.2f}"
             })
 
         cursor.execute("SELECT * FROM trades")
