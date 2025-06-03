@@ -9,19 +9,17 @@ from flask import (
     Flask, render_template, redirect, url_for,
     request, flash, jsonify
 )
-
+from services.simulation_service import buy_stock
 from services.alert_service import get_alerts
 from services.news_service import fetch_latest_headlines, news_sentiment
 from services.etrade_service import get_etrade_price
 
 # Import everything we need from simulation_service:
 from services.simulation_service import (
+    get_holdings,
     get_cash,
     get_realized_pl,
-    get_holdings,
-    get_trades,
-    buy_stock,
-    sell_stock
+    get_trades
 )
 from services.backtest_service import backtest
 
@@ -103,10 +101,13 @@ def launch_auth():
     return redirect(url_for('index'))
 
 
-@app.route('/backtest')
-def backtest():
-    return render_template('backtest.html')
-
+@app.route("/backtest")
+def backtest_view():
+    symbol = "AAPL"
+    start_date = "2024-01-01"
+    end_date = "2024-06-01"
+    trades, pnl = backtest(symbol, start_date, end_date)
+    return render_template("backtest.html", trades=trades, pnl=pnl)
 
 @app.route('/config')
 def config():
@@ -153,25 +154,17 @@ def nuke_simulation_db():
 
 @app.route('/simulation')
 def simulation():
-    """
-    Renders the main Simulation page with:
-      - current cash
-      - unrealized P/L (sum of holdings’ paper gains)
-      - realized P/L (from state table)
-      - a list of holdings (with formatted strings for display)
-      - trade history (all BUY/SELL rows)
-    """
     # Default fallback values if something goes wrong
     cash               = 0.0
     unrealized_pnl     = 0.0
-    realized_pnl       = 0.0
+    realized_pnl       = 0.0     # define it here to avoid NameError
     formatted_holdings = []
     formatted_trades   = []
 
     try:
         # 1) Current cash & realized P/L
-        cash = get_cash()
-        realized_pnl = get_realized_pl()
+        cash          = get_cash()
+        realized_pnl  = get_realized_pl()   # ← newly added line
 
         # 2) Gather and format holdings for the template
         raw_holdings = get_holdings()
@@ -188,8 +181,7 @@ def simulation():
                 'day_gain':   h['day_gain'],
                 'total_gain': h['total_gain'],
                 'value':      h['value']
-    })
-
+            })
 
         # 3) Gather and format trade history for the template
         raw_trades = get_trades()
@@ -211,10 +203,11 @@ def simulation():
         'simulation.html',
         cash=cash,
         unrealized_pnl=unrealized_pnl,
-        realized_pnl=realized_pnl,
+        realized_pnl=realized_pnl,   # now defined above
         holdings=formatted_holdings,
         history=formatted_trades
     )
+
 
 
 @app.route('/simulation/sell', methods=['POST'])
@@ -278,9 +271,9 @@ def simulation_buy():
     if price is None:
         return jsonify({"error": "Could not fetch price"}), 400
 
-    try:
+
         buy_stock(symbol, qty, price)
-    except Exception as e:
+
         return jsonify({"error": str(e)}), 500
 
     new_cash = get_cash()

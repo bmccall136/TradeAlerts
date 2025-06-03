@@ -1,122 +1,38 @@
-# backtest_service.py
-
-import yfinance as yf
-import pandas as pd
-import numpy as np
-
-
-def calculate_indicators(df):
-    """
-    Calculate RSI, MACD, and Bollinger Bands for the given DataFrame.
-    """
-    # RSI (14-period)
-    delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    df['RSI'] = 100 - (100 / (1 + rs))
-
-    # MACD
-    ema12 = df['Close'].ewm(span=12, adjust=False).mean()
-    ema26 = df['Close'].ewm(span=26, adjust=False).mean()
-    df['MACD'] = ema12 - ema26
-    df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
-
-    # Bollinger Bands (20-period, ±2σ)
-    df['MB'] = df['Close'].rolling(window=20).mean()
-    df['UB'] = df['MB'] + 2 * df['Close'].rolling(window=20).std()
-    df['LB'] = df['MB'] - 2 * df['Close'].rolling(window=20).std()
-
-    return df
-
-
-def backtest(symbol, start, end, initial_cash=10000):
-    """
-    Perform a simple backtest on the given symbol over the date range [start, end].
-    Uses RSI and MACD crossover logic for buy/sell signals:
-      - Buy when MACD crosses above Signal and RSI < 30
-      - Sell when MACD crosses below Signal and RSI > 70
-
-    Trades execute at the opening price of the next bar.
-    Returns a list of trade dicts and the net P/L.
-    """
-    # 1) Download historical price data
-    df = yf.download(symbol, start=start, end=end, progress=False)
-    if df.empty:
-        raise ValueError(f"No data found for symbol '{symbol}' in {start}–{end}.")
-
-    # 2) Calculate indicators
-    df = calculate_indicators(df)
-
-    cash = initial_cash
-    position = 0
-    trades = []
-
-    # 3) Loop through each bar (starting at index 1 so we have a "previous" to compare)
-    for i in range(1, len(df)):
-        today = df.iloc[i]
-        yesterday = df.iloc[i - 1]
-
-        # BUY condition: yesterday MACD < yesterday Signal, today MACD > today Signal, and RSI < 30
-        if (
-            (yesterday['MACD'] < yesterday['Signal'])
-            and (today['MACD'] > today['Signal'])
-            and (today['RSI'] < 30)
-            and (position == 0)
-        ):
-            price = today['Open']
-            qty = int(cash // price)
-            if qty > 0:
-                cost = qty * price
-                cash -= cost
-                position = qty
-                trades.append({
-                    'Date': today.name,
-                    'Type': 'Buy',
-                    'Price': price,
-                    'Qty': qty
-                })
-
-        # SELL condition: yesterday MACD > yesterday Signal, today MACD < today Signal, and RSI > 70
-        elif (
-            (yesterday['MACD'] > yesterday['Signal'])
-            and (today['MACD'] < today['Signal'])
-            and (today['RSI'] > 70)
-            and (position > 0)
-        ):
-            price = today['Open']
-            cash += position * price
-            trades.append({
-                'Date': today.name,
-                'Type': 'Sell',
-                'Price': price,
-                'Qty': position
-            })
-            position = 0
-
-    # 4) Close any open position at final close price
-    if position > 0:
-        final_price = df.iloc[-1]['Close']
-        cash += position * final_price
-        trades.append({
-            'Date': df.index[-1],
-            'Type': 'Sell',
-            'Price': final_price,
-            'Qty': position
-        })
-        position = 0
-
-    net_return = cash - initial_cash
-    return trades, net_return
-
-
-if __name__ == "__main__":
-    # Example run: backtest SPY over 2023, starting with $10,000
-    symbol = "SPY"
-    start_date = "2023-01-01"
-    end_date = "2023-12-31"
-    trades, pnl = backtest(symbol, start_date, end_date)
-    print(f"Net return for {symbol} from {start_date} to {end_date}: ${pnl:.2f}")
-    print("Trades:")
-    for t in trades:
-        print(t)
+{% extends "layout.html" %}
+{% block content %}
+<div class="container">
+  <h2>Backtest Results</h2>
+  <table class="backtest-table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Type</th>
+        <th>Price</th>
+        <th>Qty</th>
+        <th>P/L</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in trades %}
+      <tr>
+        <td>{{ t.Date }}</td>
+        <td>{{ t.Type }}</td>
+        <td>${{ '%.2f'|format(t.Price) }}</td>
+        <td>{{ t.Qty }}</td>
+        <td>
+          {% if t['P/L'] is not none %}
+            ${{ '%.2f'|format(t['P/L']) }}
+          {% else %}
+            &mdash;
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p>
+    <strong>Net Return:</strong>
+    ${{ '%.2f'|format(pnl) }}
+  </p>
+</div>
+{% endblock %}

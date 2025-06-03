@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>TradeAlerts</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="black-bg">
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <!-- 1) Left‑side navigation links -->
+    <div class="navbar-links">
+      <a href="{{ url_for('index') }}" class="nav-link{% if request.path == '/' %} active{% endif %}">Alerts</a>
+      <a href="{{ url_for('simulation') }}" class="nav-link{% if request.path == '/simulation' %} active{% endif %}">Simulation</a>
+      <a href="{{ url_for('backtest') }}" class="nav-link{% if request.path == '/backtest' %} active{% endif %}">Backtest</a>
+    </div>
+
+    <!-- 2) Flex‑1 spacer pushes title to center -->
+    <div class="nav-left-spacer"></div>
+
+    <!-- 3) Shortcut Buttons (Auth + Nuke) on the right; Clear All removed -->
+    <div class="navbar-shortcuts">
+      <form action="{{ url_for('launch_auth') }}" method="post" style="display:inline;">
+        <button type="submit" class="auth-btn" title="E*TRADE Auth">🔑 E*TRADE Auth</button>
+      </form>
+      <form action="{{ url_for('nuke_db') }}" method="post" style="display:inline;">
+        <button type="submit" class="nuke-btn" title="Nuke DB">💣 Nuke DB</button>
+      </form>
+    </div>
+
+    <!-- 4) Centered Title (absolute‑positioned) -->
+    <div class="trade-alerts-title">
+      🚀 <b>TradeAlerts</b> 🚀
+    </div>
+  </nav>
+
+  <!-- MAIN CONTENT (alerts.html or equivalent) -->
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
