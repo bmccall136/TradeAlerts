@@ -106,6 +106,7 @@ def analyze_symbol(sym):
     # 6) Build the payload and insert into DB (name is now the real company_name)
     vwap_value = compute_vwap_for_symbol(sym, limit=20) or 0.0
     vwap_diff_value = etrade_price - vwap_value
+    logger.info(f"{sym}: VWAP = {vwap_value:.2f}, Diff = {vwap_diff_value:.2f}")
 
     alert_payload = {
         'symbol': sym,

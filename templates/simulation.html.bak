@@ -25,7 +25,6 @@
         <th>Price Paid</th>
         <th>Day Gain</th>
         <th>Total Gain</th>
-        <th>Total Gain %</th>
         <th>Value</th>
         <th>Action</th>
       </tr>
@@ -41,7 +40,6 @@
         <td>{{ h.price_paid }}</td>
         <td>{{ h.day_gain }}</td>
         <td>{{ h.total_gain }}</td>
-        <td>{{ h.total_gain_percent }}</td>
         <td>{{ h.value }}</td>
         <td>
           <form action="/sell/{{ h.symbol }}" method="post">
