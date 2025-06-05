@@ -2,164 +2,154 @@
 {% extends "layout.html" %}
 
 {% block content %}
-  {# ─── FILTER BAR ─── #}
-  <div class="row g-2 align-items-end mb-4">
-    <!-- “Match” dropdown -->
-    <div class="col-6 col-md-2">
-      <label for="num_to_match" class="form-label">
-        <i class="bi bi-funnel-fill"></i> Match
-      </label>
-      <select id="num_to_match" class="form-select">
-        <option value="1">1 of 4</option>
-        <option value="2">2 of 4</option>
-        <option value="3">3 of 4</option>
-        <option value="4">4 of 4</option>
-      </select>
-    </div>
+{# ─── FILTER BAR (with dropdowns) ─── #}
+<div class="row g-2 align-items-end mb-4">
+  <!-- 1) How many indicators must match (Dropdown) -->
+  <div class="col-6 col-md-2">
+    <label for="num_to_match" class="form-label">
+      <i class="bi bi-funnel-fill"></i> Match
+    </label>
+    <select id="num_to_match" class="form-select">
+      <option value="1">1 of 4</option>
+      <option value="2">2 of 4</option>
+      <option value="3">3 of 4</option>
+      <option value="4">4 of 4</option>
+    </select>
+  </div>
 
-    <!-- SMA input -->
-    <div class="col-6 col-md-2">
-      <label for="SMA_length" class="form-label">
-        <i class="bi bi-graph-up-arrow"></i> SMA
-      </label>
-      <input
-        type="number"
-        id="SMA_length"
-        class="form-control"
-        placeholder="Len"
-        min="1"
-        step="1"
-      />
-    </div>
+  <!-- 2) SMA length (dropdown of common lengths) -->
+  <div class="col-6 col-md-2">
+    <label for="SMA_length" class="form-label">
+      <i class="bi bi-graph-up-arrow"></i> SMA
+    </label>
+    <select id="SMA_length" class="form-select">
+      <option value="" disabled selected>Length</option>
+      <option value="10">10</option>
+      <option value="20">20</option>
+      <option value="50">50</option>
+      <option value="100">100</option>
+      <option value="200">200</option>
+    </select>
+  </div>
 
-    <!-- RSI inputs (three small cols on md+) -->
-    <div class="col-6 col-md-1">
-      <label for="RSI_length" class="form-label">
-        <i class="bi bi-speedometer2"></i> RSI
-      </label>
-      <input
-        type="number"
-        id="RSI_length"
-        class="form-control"
-        placeholder="Len"
-        min="1"
-        step="1"
-      />
-    </div>
-    <div class="col-6 col-md-1">
-      <label for="RSI_overbought" class="form-label">&nbsp;</label>
-      <input
-        type="number"
-        id="RSI_overbought"
-        class="form-control"
-        placeholder="OB"
-        min="1"
-        max="100"
-        step="1"
-      />
-    </div>
-    <div class="col-6 col-md-1">
-      <label for="RSI_oversold" class="form-label">&nbsp;</label>
-      <input
-        type="number"
-        id="RSI_oversold"
-        class="form-control"
-        placeholder="OS"
-        min="1"
-        max="100"
-        step="1"
-      />
-    </div>
+  <!-- 3a) RSI length -->
+  <div class="col-6 col-md-1">
+    <label for="RSI_length" class="form-label">
+      <i class="bi bi-speedometer2"></i> RSI
+    </label>
+    <select id="RSI_length" class="form-select">
+      <option value="" disabled selected>Len</option>
+      <option value="9">9</option>
+      <option value="14">14</option>
+      <option value="21">21</option>
+    </select>
+  </div>
+  <!-- 3b) RSI overbought threshold -->
+  <div class="col-6 col-md-1">
+    <label for="RSI_overbought" class="form-label">&nbsp;</label>
+    <select id="RSI_overbought" class="form-select">
+      <option value="" disabled selected>OB</option>
+      <option value="70">70</option>
+      <option value="75">75</option>
+      <option value="80">80</option>
+    </select>
+  </div>
+  <!-- 3c) RSI oversold threshold -->
+  <div class="col-6 col-md-1">
+    <label for="RSI_oversold" class="form-label">&nbsp;</label>
+    <select id="RSI_oversold" class="form-select">
+      <option value="" disabled selected>OS</option>
+      <option value="30">30</option>
+      <option value="25">25</option>
+      <option value="20">20</option>
+    </select>
+  </div>
 
-    <!-- MACD (three tiny cols) -->
-    <div class="col-6 col-md-1">
-      <label for="MACD_fast" class="form-label">
-        <i class="bi bi-triangle-fill"></i> MACD
-      </label>
-      <input
-        type="number"
-        id="MACD_fast"
-        class="form-control"
-        placeholder="Fast"
-        min="1"
-        step="1"
-      />
-    </div>
-    <div class="col-6 col-md-1">
-      <label for="MACD_slow" class="form-label">&nbsp;</label>
-      <input
-        type="number"
-        id="MACD_slow"
-        class="form-control"
-        placeholder="Slow"
-        min="1"
-        step="1"
-      />
-    </div>
-    <div class="col-6 col-md-1">
-      <label for="MACD_signal" class="form-label">&nbsp;</label>
-      <input
-        type="number"
-        id="MACD_signal"
-        class="form-control"
-        placeholder="Sig"
-        min="1"
-        step="1"
-      />
-    </div>
+  <!-- 4a) MACD fast EMA length -->
+  <div class="col-6 col-md-1">
+    <label for="MACD_fast" class="form-label">
+      <i class="bi bi-triangle-fill"></i> MACD
+    </label>
+    <select id="MACD_fast" class="form-select">
+      <option value="" disabled selected>Fast</option>
+      <option value="8">8</option>
+      <option value="12">12</option>
+      <option value="15">15</option>
+    </select>
+  </div>
+  <!-- 4b) MACD slow EMA length -->
+  <div class="col-6 col-md-1">
+    <label for="MACD_slow" class="form-label">&nbsp;</label>
+    <select id="MACD_slow" class="form-select">
+      <option value="" disabled selected>Slow</option>
+      <option value="21">21</option>
+      <option value="26">26</option>
+      <option value="30">30</option>
+    </select>
+  </div>
+  <!-- 4c) MACD signal EMA length -->
+  <div class="col-6 col-md-1">
+    <label for="MACD_signal" class="form-label">&nbsp;</label>
+    <select id="MACD_signal" class="form-select">
+      <option value="" disabled selected>Sig</option>
+      <option value="9">9</option>
+      <option value="7">7</option>
+      <option value="10">10</option>
+    </select>
+  </div>
 
-    <!-- BB (two tiny cols) -->
-    <div class="col-6 col-md-1">
-      <label for="BB_length" class="form-label">
-        <i class="bi bi-bar-chart-fill"></i> BB
-      </label>
-      <input
-        type="number"
-        id="BB_length"
-        class="form-control"
-        placeholder="Len"
-        min="1"
-        step="1"
-      />
-    </div>
-    <div class="col-6 col-md-1">
-      <label for="BB_stddev" class="form-label">&nbsp;</label>
-      <input
-        type="number"
-        id="BB_stddev"
-        class="form-control"
-        placeholder="SD"
-        step="0.1"
-      />
-    </div>
+  <!-- 5a) BB length -->
+  <div class="col-6 col-md-1">
+    <label for="BB_length" class="form-label">
+      <i class="bi bi-bar-chart-fill"></i> BB
+    </label>
+    <select id="BB_length" class="form-select">
+      <option value="" disabled selected>Len</option>
+      <option value="10">10</option>
+      <option value="20">20</option>
+      <option value="30">30</option>
+      <option value="50">50</option>
+    </select>
+  </div>
+  <!-- 5b) BB StdDev multiplier -->
+  <div class="col-6 col-md-1">
+    <label for="BB_stddev" class="form-label">&nbsp;</label>
+    <select id="BB_stddev" class="form-select">
+      <option value="" disabled selected>SD</option>
+      <option value="1.5">1.5</option>
+      <option value="2.0">2.0</option>
+      <option value="2.5">2.5</option>
+      <option value="3.0">3.0</option>
+    </select>
+  </div>
 
-    <!-- News toggle (col-2) -->
-    <div class="col-6 col-md-2">
-      <label class="form-label">
-        <i class="bi bi-newspaper"></i> News
-      </label>
-      <div class="form-check form-switch">
-        <input
-          class="form-check-input"
-          type="checkbox"
-          id="use_news"
-        />
-        <label class="form-check-label" for="use_news">On/Off</label>
-      </div>
-    </div>
-
-    <!-- Apply button (col-2) -->
-    <div class="col-6 col-md-2 text-end">
-      <button
-        type="button"
-        class="btn btn-success w-100"
-        onclick="applyFilters()"
-      >
-        <i class="bi bi-arrow-repeat"></i> Apply
-      </button>
+  <!-- 6) News toggle -->
+  <div class="col-6 col-md-2">
+    <label class="form-label">
+      <i class="bi bi-newspaper"></i> News
+    </label>
+    <div class="form-check form-switch">
+      <input
+        class="form-check-input"
+        type="checkbox"
+        id="use_news"
+      />
+      <label class="form-check-label" for="use_news">On/Off</label>
     </div>
   </div>
-  {# ─────────────────────────────────────────────────────────────────────── #}
+
+  <!-- 7) Apply button (unchanged) -->
+  <div class="col-6 col-md-2 text-end">
+    <button
+      type="button"
+      class="btn btn-success w-100"
+      onclick="applyFilters()"
+    >
+      <i class="bi bi-arrow-repeat"></i> Apply
+    </button>
+  </div>
+</div>
+{# ─────────────────────────────────────────────────────────────────────── #}
 
 
   {# ─── “Clear All” button & Alerts Table ─── #}
