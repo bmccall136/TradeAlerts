@@ -1,0 +1,568 @@
+/*— Reset margins/padding, set black background, default font —*/
+html, body {
+    margin: 0;
+    padding: 0;
+    background-color: #000;   /* Black page background */
+    color: #ffffff;           /* Default text color: white */
+    font-family: Arial, sans-serif;
+    line-height: 1.4;
+}
+
+/*— Links and buttons share the same font/size/reset —*/
+a {
+    color: #ffffff;
+    text-decoration: none;
+}
+button,
+input,
+select {
+    font-family: inherit;
+    font-size: 1rem;
+    line-height: 1.4;
+    background: none;
+    border: none;
+    outline: none;
+    cursor: pointer;
+}
+
+/*— Container to center content and limit width —*/
+.container {
+    width: 99vw;
+    max-width: 100vw;
+    margin: 20px 0 0 0;   /* top margin, no auto-centering */
+    padding: 0 8px;
+    box-sizing: border-box;
+}
+
+
+/* ===================================================================
+   NAVIGATION BAR (ACROSS THE TOP)
+   =================================================================== */
+
+/*— Navbar wrapper: black background, fixed height, border bottom —*/
+.navbar {
+    background-color: #000;     /* black */
+    border-bottom: 2px solid #222;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    height: 60px;
+    padding: 0 20px;
+}
+
+/*— Left group of nav links —*/
+.navbar-links {
+    display: flex;
+    gap: 20px;
+    margin-left: 20px;
+}
+.nav-link {
+    color: #ffe900;          /* bright yellow */
+    font-weight: bold;
+    font-size: 1rem;
+    padding: 6px 10px;
+    border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
+}
+.nav-link:hover,
+.nav-link.active {
+    background-color: #333;
+    color: #fff;
+}
+/* ==============================================
+   MAKE THE “News” BUTTON VISIBLE
+   ============================================== */
+button.news-btn {
+  /* Show a small border on black background so it’s easy to click */
+  border: 1px solid #ffe900;   /* bright yellow outline */
+  background: transparent;     /* keep no background fill */
+  color: #ffe900;              /* bright yellow text */
+  font-size: 0.9rem;           /* make it readable */
+  padding: 4px 8px;            /* give it some clickable area */
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+button.news-btn:hover {
+  background-color: rgba(255, 233, 0, 0.2);  /* faint yellowish hover */
+  color: #ffffff;                            /* white on hover */
+}
+
+/* =============================================================================
+   Enlarge the TradeAlerts title in the navbar
+   ============================================================================= */
+.trade-alerts-title {
+  font-size: 3.75rem;   /* about 28px on most screens */
+  letter-spacing: 1px;  /* a little breathing room between letters */
+  color: #ffe900;       /* keep it bright yellow */
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+  /* center positioning is already handled by Bootstrap classes */
+}
+
+/*— Right‐side shortcut buttons (Auth / Nuke DB / Clear All) —*/
+.navbar-shortcuts {
+    display: flex;
+    gap: 10px;
+    margin-left: auto;
+}
+.clear-all-btn,
+.auth-btn,
+.nuke-btn {
+    background-color: #111;      /* dark gray */
+    color: #ffe900;              /* yellow text */
+    border: 2px solid #ffe900;   /* yellow border */
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-weight: bold;
+    font-size: 0.9rem;
+    transition: background 0.15s, color 0.15s;
+    white-space: nowrap;
+}
+.nuke-btn {
+    border-color: #ff4444;       /* bright red border */
+    color: #ff4444;
+}
+.clear-all-btn:hover,
+.auth-btn:hover,
+.nuke-btn:hover {
+    background-color: #ffe900;   /* yellow on hover */
+    color: #000;                 /* black text on hover */
+}
+.nuke-btn:hover {
+    background-color: #660000;   /* deep red on hover */
+    color: #fff;
+}
+
+/* ===================================================================
+   GENERIC BUTTON STYLES (used across pages)
+   =================================================================== */
+
+/*— “Clear All” or “Clear” buttons (Alerts page) —*/
+button.btn-clear {
+    background-color: #ff5151;   /* bright red */
+    color: #ffffff;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 0.9rem;
+    transition: background 0.15s;
+}
+button.btn-clear:hover {
+    background-color: #e04444;
+}
+
+/*— “Buy” buttons in Alerts table —*/
+button.btn-buy {
+    background-color: #10ff50 !important;  /* force bright green */
+    color: #000000 !important;             /* force black text */
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+button.btn-buy:hover {
+    background-color: #0ec240 !important;  /* slightly darker green on hover */
+}
+/* Simulation / Alerts: horizontal scroll */
+.alerts-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed; /* → allows horizontal scrolling */
+}
+.alerts-table th,
+.alerts-table td {
+  padding: 8px 12px;
+  color: #ffff66; /* light yellow text on black background */
+  font-size: 0.9rem;
+  border-bottom: 1px solid #333;
+  white-space: nowrap; /* prevents wrapping */
+}
+
+/*— Table header styling (yellow text) —*/
+.alerts-table thead {
+    background-color: #000;
+}
+
+/*— Table body cells (white text by default) —*/
+.alerts-table tbody tr {
+    background-color: #000;
+    border-bottom: 1px solid #111;
+}
+
+/* Red “Sell” button: */
+button.btn-clear {
+  background-color: #ff5151 !important;  /* bright red */
+  color: #fff !important;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  cursor: pointer;
+  margin-left: 8px;
+  transition: background 0.15s;
+}
+button.btn-clear:hover {
+  background-color: #e04444 !important;
+}
+
+/* Green “Buy” button: */
+button.btn-buy {
+  background-color: #10ff50 !important;  /* bright green */
+  color: #000 !important;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  cursor: pointer;
+  margin-left: 8px;
+  transition: background 0.15s;
+}
+button.btn-buy:hover {
+  background-color: #0ec240 !important;
+}
+
+/* … rest of your CSS … */
+
+
+/* ===================================================================
+   ALERTS TABLE (used on Alerts page, and as base for Simulation)
+   =================================================================== */
+
+/*— Base table container —*/
+.alerts-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #000;            /* black background */
+    margin-bottom: 20px;
+}
+.alerts-table {
+    table-layout: auto !important;
+}
+
+/*— Table header styling (yellow text) —*/
+.alerts-table thead {
+    background-color: #000;
+}
+.alerts-table thead th {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 2px solid #222;
+    color: #ffe900 !important;   /* bright yellow */
+    font-size: 1.05rem;
+    white-space: nowrap;
+}
+
+/*— Table body cells (yellow text by default) —*/
+.alerts-table tbody tr {
+    background-color: #000;
+    border-bottom: 1px solid #111;
+}
+.alerts-table tbody td {
+    padding: 8px 12px;
+    text-align: left;
+    color: #ffffff !important;   /* white text */
+    font-size: 0.95rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/*— Highlight on hover —*/
+.alerts-table tbody tr:hover {
+    background-color: #222222;
+}
+
+/*— Sparkline images on Alerts page —*/
+.sparkline-img {
+    width: 100px;
+    height: 30px;
+}
+
+/* ===================================================================
+   TRADE HISTORY TABLE (used on Simulation & Backtest pages)
+   =================================================================== */
+
+.trade-history-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 40px;
+}
+.trade-history-table thead th {
+    color: #ffffff;
+    border-bottom: 1px solid #555555;
+    padding: 10px 12px;
+    text-align: left;
+}
+.trade-history-table tbody tr td {
+    color: #ffffff;
+    padding: 8px 12px;
+    border-bottom: 1px solid #333333;
+    text-align: left;
+    font-size: 0.95rem;
+}
+
+/* ===================================================================
+   SIMULATION PAGE BASE STYLES (BEFORE OVERRIDES)
+   =================================================================== */
+
+/*— Header + “Reset Simulation” button —*/
+.simulation-header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 20px 0;
+}
+.simulation-header h1 {
+    color: #ffffff;
+    margin-right: 20px;
+    font-size: 2rem;
+}
+/* Ensure the “Reset Simulation” button itself matches your theme */
+.reset-btn {
+  background-color: #ffd700;
+  color: #000;
+  font-weight: bold;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.reset-btn:hover {
+  background-color: #e6c200;
+}
+
+/*— Cash / P&L summary lines —*/
+.simulation-summary {
+    text-align: center;
+    margin-bottom: 20px;
+}
+.simulation-summary p {
+    color: #ffffff;
+    font-size: 1.1rem;
+    margin: 4px 0;
+}
+
+/*— “Holdings” heading —*/
+h2 {
+    color: #ffffff;
+    margin-top: 20px;
+    margin-bottom: 10px;
+}
+
+/*— Quantity input inside the holdings table —*/
+.qty-input {
+    border: 1px solid #444;
+    border-radius: 5px;
+    padding: 4px 8px;
+    background: #111;
+    color: #ffe900;
+    width: 60px;
+    text-align: center;
+    margin-right: 8px;
+}
+
+/*— In case .sell-btn-red fails, fallback “Sell” styling (gold) —*/
+.sell-btn {
+    background-color: #d4af37;  /* gold */
+    border: none;
+    color: #000;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    margin-left: 8px;
+    transition: background 0.15s;
+}
+.sell-btn:hover {
+    background-color: #b99a2e;
+}
+
+/* ===================================================================
+   SIMULATION PAGE OVERRIDES (CLEAN & FINAL)
+   =================================================================== */
+
+/*— 1) Reset the Alerts‑table nth‑child widths for Simulation —*/
+.alerts-table.simulation-table th:nth-child(1),
+.alerts-table.simulation-table td:nth-child(1),
+.alerts-table.simulation-table th:nth-child(2),
+.alerts-table.simulation-table td:nth-child(2),
+.alerts-table.simulation-table th:nth-child(3),
+.alerts-table.simulation-table td:nth-child(3),
+.alerts-table.simulation-table th:nth-child(4),
+.alerts-table.simulation-table td:nth-child(4),
+.alerts-table.simulation-table th:nth-child(5),
+.alerts-table.simulation-table td:nth-child(5),
+.alerts-table.simulation-table th:nth-child(6),
+.alerts-table.simulation-table td:nth-child(6),
+.alerts-table.simulation-table th:nth-child(7),
+.alerts-table.simulation-table td:nth-child(7),
+.alerts-table.simulation-table th:nth-child(8),
+.alerts-table.simulation-table td:nth-child(8),
+.alerts-table.simulation-table th:nth-child(9),
+.alerts-table.simulation-table td:nth-child(9),
+.alerts-table.simulation-table th:nth-child(10),
+.alerts-table.simulation-table td:nth-child(10) {
+    width: auto !important;
+}
+
+/*— 2) Make the <colgroup> percentages work exactly for Simulation table —*/
+.simulation-table {
+    table-layout: fixed !important;
+    width: 100% !important;
+}
+
+/*— 3) Force all non‑“Day Gain” cells white (override any inherited yellow) —*/
+.simulation-table tbody tr td {
+    color: #ffffff !important;
+}
+
+/*— 4) Day Gain cells: bright green if positive, bright red if negative —*/
+/* Day Gain/Loss coloring */
+.gain-positive {
+  color: #10ff50 !important;  /* bright green */
+  font-weight: bold;
+}
+.gain-negative {
+  color: #ff5151 !important;  /* bright red */
+  font-weight: bold;
+}
+/*— 5) Sell button: bright red background, white text, forced by !important —*/
+.sell-btn-red {
+    background-color: #ff5151 !important;
+    border: none !important;
+    color: #ffffff !important;
+    padding: 4px 8px !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    font-size: 0.9rem !important;
+    margin-left: 8px !important;
+    transition: background 0.15s !important;
+}
+.sell-btn-red:hover {
+    background-color: #e04444 !important;  /* darker red on hover */
+}
+/* =============================================================================
+   FORCE FILTER‐BAR & FORM CONTROLS TO BE BLACK ON DARK THEME
+   ============================================================================= */
+
+/* 1) Make <input> and <select> fields in filter bar black background, yellow text */
+.row .form-control,
+.row .form-select {
+  background-color: #000 !important;      /* pure black */
+  color: #ffe900 !important;              /* bright yellow */
+  border: 1px solid #444 !important;      /* dark border so you can see edges */
+  box-shadow: none !important;
+}
+
+/* 2) Force the dropdown caret (on .form-select) to be white/yellow so it’s visible */
+.row .form-select {
+  /* override Bootstrap’s default blue caret */
+  -webkit-text-fill-color: #ffe900 !important;
+  -moz-text-fill-color: #ffe900 !important;
+}
+.row .form-select::placeholder {
+  color: #999;    /* if you have a “Length” placeholder, keep it gray */
+}
+
+/* 3) When a <select> is “focused,” keep border bright yellow */
+.row .form-select:focus,
+.row .form-control:focus {
+  outline: none !important;
+  border-color: #ffe900 !important;       /* yellow on focus */
+  box-shadow: none !important;
+  background-color: #000 !important;
+  color: #ffe900 !important;
+}
+
+/* 4) The <button class="btn btn-success"> “Apply” is green; override its text to white */
+.btn-success {
+  color: #ffffff !important;
+}
+
+/* 5) Table header (<thead>) – force black background, yellow text */
+.alerts-table thead {
+  background-color: #000 !important;
+}
+.alerts-table thead th {
+  background-color: #000 !important;
+  color: #ffe900 !important;   /* bright yellow */
+}
+
+/* 6) Table body (<tbody>) – ensure background stays black, and text is white or yellow */
+.alerts-table tbody tr {
+  background-color: #000 !important;
+}
+.alerts-table tbody tr td {
+  background-color: #000 !important;
+  color: #ffffff !important;   /* pure white text, except where you override (e.g., vwap_diff) */
+}
+
+/* 7) If you wrapped your table in .table-responsive, force that container to remain black */
+.table-responsive {
+  background-color: #000 !important;
+}
+
+/* 8) If any Bootstrap “.bg-light” got injected, turn it back to black */
+.bg-light {
+  background-color: #000 !important;
+  color: #ffffff !important;
+}
+
+/* 9) OPTIONAL: Darken the scrollbar (if you want to hide the default white scrollbar on wide tables) */
+.table-responsive::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.table-responsive::-webkit-scrollbar-track {
+  background: #111;
+}
+.table-responsive::-webkit-scrollbar-thumb {
+  background-color: #333;
+  border-radius: 4px;
+}
+.table-responsive::-webkit-scrollbar-thumb:hover {
+  background-color: #555;
+}
+
+/*— 6) Tighten padding in Simulation table cells (so columns do not overflow) —*/
+.simulation-table th,
+.simulation-table td {
+    padding: 6px 8px !important;
+    text-align: center !important;
+}
+
+/*— 7) Reduce right padding on the “Action” column so Sell button never clips —*/
+.simulation-table td:last-child {
+    padding-right: 4px !important;
+}
+/* =============================================================================
+   Darken the table borders (no more bright white grid lines)
+   ============================================================================= */
+
+/* 1) Make the table outer border dark instead of white */
+.alerts-table,
+.alerts-table th,
+.alerts-table td {
+  border-color: #333 !important;      /* very dark gray */
+}
+
+/* 2) If Bootstrap added a white background inside <thead> or <tbody>, force them black */
+.alerts-table thead th,
+.alerts-table tbody td {
+  background-color: transparent !important;
+}
+
+/* 3) Changing the horizontal “hr” line under the navbar to a darker gray (if you have one) */
+.navbar + hr {
+  border-color: #333 !important;
+}
+
+/* 4) If you have any “.table” class defaults leftover, force that to no border or dark border */
+.table-bordered {
+  border: 1px solid #333 !important;
+}

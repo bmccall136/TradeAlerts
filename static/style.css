@@ -70,17 +70,34 @@ select {
     background-color: #333;
     color: #fff;
 }
+/* ==============================================
+   MAKE THE “News” BUTTON VISIBLE
+   ============================================== */
+button.news-btn {
+  /* Show a small border on black background so it’s easy to click */
+  border: 1px solid #ffe900;   /* bright yellow outline */
+  background: transparent;     /* keep no background fill */
+  color: #ffe900;              /* bright yellow text */
+  font-size: 0.9rem;           /* make it readable */
+  padding: 4px 8px;            /* give it some clickable area */
+  border-radius: 4px;
+  cursor: pointer;
+}
 
-/*— Centered title (absolute) —*/
+button.news-btn:hover {
+  background-color: rgba(255, 233, 0, 0.2);  /* faint yellowish hover */
+  color: #ffffff;                            /* white on hover */
+}
+
+/* =============================================================================
+   Enlarge the TradeAlerts title in the navbar
+   ============================================================================= */
 .trade-alerts-title {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 2rem;
-    font-weight: bold;
-    color: #ffe900;
-    pointer-events: none;
-    white-space: nowrap;
+  font-size: 1.75rem;   /* about 28px on most screens */
+  letter-spacing: 1px;  /* a little breathing room between letters */
+  color: #ffe900;       /* keep it bright yellow */
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+  /* center positioning is already handled by Bootstrap classes */
 }
 
 /*— Right‐side shortcut buttons (Auth / Nuke DB / Clear All) —*/
@@ -429,6 +446,88 @@ h2 {
 .sell-btn-red:hover {
     background-color: #e04444 !important;  /* darker red on hover */
 }
+/* =============================================================================
+   FORCE FILTER‐BAR & FORM CONTROLS TO BE BLACK ON DARK THEME
+   ============================================================================= */
+
+/* 1) Make <input> and <select> fields in filter bar black background, yellow text */
+.row .form-control,
+.row .form-select {
+  background-color: #000 !important;      /* pure black */
+  color: #ffe900 !important;              /* bright yellow */
+  border: 1px solid #444 !important;      /* dark border so you can see edges */
+  box-shadow: none !important;
+}
+
+/* 2) Force the dropdown caret (on .form-select) to be white/yellow so it’s visible */
+.row .form-select {
+  /* override Bootstrap’s default blue caret */
+  -webkit-text-fill-color: #ffe900 !important;
+  -moz-text-fill-color: #ffe900 !important;
+}
+.row .form-select::placeholder {
+  color: #999;    /* if you have a “Length” placeholder, keep it gray */
+}
+
+/* 3) When a <select> is “focused,” keep border bright yellow */
+.row .form-select:focus,
+.row .form-control:focus {
+  outline: none !important;
+  border-color: #ffe900 !important;       /* yellow on focus */
+  box-shadow: none !important;
+  background-color: #000 !important;
+  color: #ffe900 !important;
+}
+
+/* 4) The <button class="btn btn-success"> “Apply” is green; override its text to white */
+.btn-success {
+  color: #ffffff !important;
+}
+
+/* 5) Table header (<thead>) – force black background, yellow text */
+.alerts-table thead {
+  background-color: #000 !important;
+}
+.alerts-table thead th {
+  background-color: #000 !important;
+  color: #ffe900 !important;   /* bright yellow */
+}
+
+/* 6) Table body (<tbody>) – ensure background stays black, and text is white or yellow */
+.alerts-table tbody tr {
+  background-color: #000 !important;
+}
+.alerts-table tbody tr td {
+  background-color: #000 !important;
+  color: #ffffff !important;   /* pure white text, except where you override (e.g., vwap_diff) */
+}
+
+/* 7) If you wrapped your table in .table-responsive, force that container to remain black */
+.table-responsive {
+  background-color: #000 !important;
+}
+
+/* 8) If any Bootstrap “.bg-light” got injected, turn it back to black */
+.bg-light {
+  background-color: #000 !important;
+  color: #ffffff !important;
+}
+
+/* 9) OPTIONAL: Darken the scrollbar (if you want to hide the default white scrollbar on wide tables) */
+.table-responsive::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.table-responsive::-webkit-scrollbar-track {
+  background: #111;
+}
+.table-responsive::-webkit-scrollbar-thumb {
+  background-color: #333;
+  border-radius: 4px;
+}
+.table-responsive::-webkit-scrollbar-thumb:hover {
+  background-color: #555;
+}
 
 /*— 6) Tighten padding in Simulation table cells (so columns do not overflow) —*/
 .simulation-table th,
@@ -440,4 +539,30 @@ h2 {
 /*— 7) Reduce right padding on the “Action” column so Sell button never clips —*/
 .simulation-table td:last-child {
     padding-right: 4px !important;
+}
+/* =============================================================================
+   Darken the table borders (no more bright white grid lines)
+   ============================================================================= */
+
+/* 1) Make the table outer border dark instead of white */
+.alerts-table,
+.alerts-table th,
+.alerts-table td {
+  border-color: #333 !important;      /* very dark gray */
+}
+
+/* 2) If Bootstrap added a white background inside <thead> or <tbody>, force them black */
+.alerts-table thead th,
+.alerts-table tbody td {
+  background-color: transparent !important;
+}
+
+/* 3) Changing the horizontal “hr” line under the navbar to a darker gray (if you have one) */
+.navbar + hr {
+  border-color: #333 !important;
+}
+
+/* 4) If you have any “.table” class defaults leftover, force that to no border or dark border */
+.table-bordered {
+  border: 1px solid #333 !important;
 }
