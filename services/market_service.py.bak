@@ -244,13 +244,42 @@ def analyze_symbol(sym):
 
 # ────────────────────────────────────────────────────────────────────────────────
 
-def get_symbols():
+def get_symbols(simulation=False):
     """
-    Returns a list of symbols to scan. First tries to read 'symbols.txt' (one ticker per line).
-    If 'symbols.txt' does not exist or is empty, falls back to a small example list.
+    Returns a list of symbols to scan.
+    By default, this will fetch the current S&P 500 tickers from Wikipedia.
+    If that fails (no Internet, changed page layout, etc.), it will fall back
+    to reading 'symbols.txt' (one ticker per line), or finally to a hard-coded list.
     """
-    fallback = ['AAPL', 'MSFT', 'GOOG', 'TSLA']  # replace with whatever you like
 
+    # 1) Try to scrape the S&P 500 list from Wikipedia
+    try:
+        # URL of the Wikipedia page that lists S&P 500 constituents
+        url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+        # pandas will parse all <table> tags and return a list of DataFrames
+        tables = pd.read_html(url, header=0)
+        # The first table on that page is the S&P 500 constituents table
+        sp500_table = tables[0]
+        # The column name is usually "Symbol" (some pages call it "Ticker symbol")
+        if 'Symbol' in sp500_table.columns:
+            tickers = sp500_table['Symbol'].astype(str).str.replace('.', '-', regex=False).tolist()
+        elif 'Ticker symbol' in sp500_table.columns:
+            tickers = sp500_table['Ticker symbol'].astype(str).str.replace('.', '-', regex=False).tolist()
+        else:
+            # If the column name changed, just take the first column
+            tickers = sp500_table.iloc[:, 0].astype(str).tolist()
+
+        # Make sure each ticker is uppercase and stripped
+        tickers = [sym.strip().upper() for sym in tickers if sym.strip()]
+        if tickers:
+            return tickers
+
+    except Exception as e:
+        # If anything goes wrong (no connection, parse error, etc.), we fall through to next step
+        print(f"[WARN] Could not fetch S&P 500 from Wikipedia: {e}")
+
+    # 2) If scraping failed, look for 'symbols.txt' one per line
+    fallback = ['AAPL', 'MSFT', 'GOOG', 'TSLA']  # as a last resort
     path = os.path.join(os.path.dirname(__file__), '..', 'symbols.txt')
     try:
         with open(path, 'r') as f:
