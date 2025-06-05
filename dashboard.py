@@ -5,46 +5,57 @@ import os
 import subprocess
 import sqlite3
 from datetime import datetime, timedelta
+
 from flask import (
     Flask, render_template, redirect, url_for,
     request, flash, jsonify
 )
-from services.simulation_service import buy_stock
-from services.alert_service import get_alerts
+
+# ALERTS & INDICATOR SETTINGS
+from services.alert_service import (
+    save_indicator_settings,
+    get_all_indicator_settings,
+    get_alerts
+)
+
+# NEWS
 from services.news_service import fetch_latest_headlines, news_sentiment
+
+# E*TRADE
 from services.etrade_service import get_etrade_price
 
-# Import everything we need from simulation_service:
+# SIMULATION
 from services.simulation_service import (
+    buy_stock,
     get_holdings,
     get_cash,
     get_realized_pl,
     get_trades,
-    sell_stock
+    sell_stock,
+    nuke_simulation_db   # if you need to reset simulation DB
 )
+
+# BACKTEST
 from services.backtest_service import backtest
 
-trades, pnl = backtest("AAPL", "2024-01-01", "2024-06-01", initial_cash=10000)
-# Now you can format `trades` into a table or feed into your simulation service.
+# MARKET SCANNER
+from services.market_service import analyze_symbol, get_symbols
+
 
 app = Flask(__name__)
-app.secret_key = "replace_this_with_a_random_secret"
+app.secret_key = "replace_with_your_secret_key"
 
 DB_PATH  = 'alerts.db'
 SIM_DB   = 'simulation.db'  # Must match SIM_DB in simulation_service.py
 
 
-### ────────────── ALERTS (UNCHANGED) ────────────── ###
+### ────────────── PRELOAD BACKTEST DATA (optional) ────────────── ###
+# If you want to run a backtest when the server starts, uncomment below:
+# trades, pnl = backtest("AAPL", "2024-01-01", "2024-06-01", initial_cash=10000)
+# You can then pass `trades` and `pnl` into a template or store them.
 
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    if request.method == 'POST':
-        # Insert an incoming alert JSON payload
-        safe_insert_alert(request.get_json(force=True))
-        return ('', 204)
-    alerts = get_alerts()
-    return render_template('alerts.html', alerts=alerts)
 
+### ────────────── ALERTS (LIST & CLEAR) ────────────── ###
 
 @app.route('/nuke_db', methods=['POST'])
 def nuke_db():
@@ -84,7 +95,7 @@ def clear_alert(id):
 
 @app.route('/buy/<symbol>', methods=['POST'])
 def buy_stock_route(symbol):
-    # This “Buy” route is only for the Alerts page (index), not Simulation.
+    # “Buy” route just flashes a message on the Alerts page
     flash(f'🟢 Simulated BUY for {symbol}', 'success')
     return redirect(url_for('index'))
 
@@ -102,6 +113,8 @@ def launch_auth():
     return redirect(url_for('index'))
 
 
+### ────────────── BACKTEST VIEW ────────────── ###
+
 @app.route("/backtest")
 def backtest_view():
     symbol = "AAPL"
@@ -109,6 +122,7 @@ def backtest_view():
     end_date = "2024-06-01"
     trades, pnl = backtest(symbol, start_date, end_date)
     return render_template("backtest.html", trades=trades, pnl=pnl)
+
 
 @app.route('/config')
 def config():
@@ -124,33 +138,11 @@ def config():
 
 @app.route('/reset_simulation', methods=['POST'])
 def reset_simulation():
-    result = nuke_simulation_db()
-    if result:
+    success = nuke_simulation_db()
+    if success:
         return "Simulation reset!", 200
     else:
         return "Failed to reset simulation database.", 500
-
-
-def nuke_simulation_db():
-    try:
-        with sqlite3.connect(str(Path(__file__).resolve().parent.parent / 'simulation.db')) as conn:
-            c = conn.cursor()
-            c.execute("DELETE FROM holdings;")
-            c.execute("DELETE FROM simulation_trades;")
-            # Try to reset realized_pl in state
-            try:
-                c.execute("UPDATE state SET realized_pl = 0.0 WHERE id = 1;")
-            except sqlite3.OperationalError:
-                c.execute("ALTER TABLE state ADD COLUMN realized_pl REAL DEFAULT 0.0;")
-                c.execute("UPDATE state SET realized_pl = 0.0 WHERE id = 1;")
-            c.execute("INSERT OR IGNORE INTO state (id, realized_pl) VALUES (1, 0.0);")
-            conn.commit()
-
-        print("Simulation DB nuked/reset!")
-        return True  # <--- NOT indented under with!
-    except Exception as e:
-        print(f"Failed to nuke simulation DB: {e}")
-        return False
 
 
 @app.route('/simulation')
@@ -158,16 +150,16 @@ def simulation():
     # Default fallback values if something goes wrong
     cash               = 0.0
     unrealized_pnl     = 0.0
-    realized_pnl       = 0.0     # define it here to avoid NameError
+    realized_pnl       = 0.0
     formatted_holdings = []
     formatted_trades   = []
 
     try:
         # 1) Current cash & realized P/L
         cash          = get_cash()
-        realized_pnl  = get_realized_pl()   # ← newly added line
+        realized_pnl  = get_realized_pl()
 
-        # 2) Gather and format holdings for the template
+        # 2) Gather and format holdings
         raw_holdings = get_holdings()
         unrealized_pnl = 0.0
         for h in raw_holdings:
@@ -184,17 +176,17 @@ def simulation():
                 'value':      h['value']
             })
 
-        # 3) Gather and format trade history for the template
+        # 3) Gather and format trade history
         raw_trades = get_trades()
         for t in raw_trades:
             pl_display = f"${t['pnl']:.2f}" if t['pnl'] is not None else "-"
             formatted_trades.append({
-                'time':     t['trade_time'],
-                'symbol':   t['symbol'],
-                'action':   t['action'],
-                'qty':      t['qty'],
-                'price':    f"${t['price']:.2f}",
-                'pl':       pl_display
+                'time':   t['trade_time'],
+                'symbol': t['symbol'],
+                'action': t['action'],
+                'qty':    t['qty'],
+                'price':  f"${t['price']:.2f}",
+                'pl':     pl_display
             })
 
     except Exception as e:
@@ -205,7 +197,7 @@ def simulation():
         'simulation.html',
         cash=cash,
         unrealized_pnl=unrealized_pnl,
-        realized_pnl=realized_pnl,   # now defined above
+        realized_pnl=realized_pnl,
         holdings=formatted_holdings,
         history=formatted_trades
     )
@@ -220,7 +212,7 @@ def simulation_buy():
         return jsonify({"error": "Invalid symbol or quantity"}), 400
 
     try:
-        price = get_etrade_price(symbol)  # or however you fetch a live price
+        price = get_etrade_price(symbol)
         buy_stock(symbol, qty, price)
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -248,11 +240,56 @@ def simulation_sell():
         "realized_pl": get_realized_pl()
     }), 200
 
+
 @app.route('/news/<symbol>')
 def news_for_symbol(symbol):
     headlines = fetch_latest_headlines(symbol)
     sentiment = news_sentiment(symbol)
     return jsonify({'headlines': headlines, 'sentiment': sentiment})
+
+
+### ────────────── SINGLE INDEX ROUTE (ALERTS + INDICATOR SETTINGS) ────────────── ###
+
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    # 1) Read filter‐bar parameters from query string (if provided), else defaults
+    match_count    = int(request.args.get('match_count',     1))
+    sma_length     = int(request.args.get('sma_length',     20))
+    rsi_len        = int(request.args.get('rsi_len',        14))
+    rsi_overbought = int(request.args.get('rsi_overbought', 70))
+    rsi_oversold   = int(request.args.get('rsi_oversold',   30))
+    macd_fast      = int(request.args.get('macd_fast',      12))
+    macd_slow      = int(request.args.get('macd_slow',      26))
+    macd_signal    = int(request.args.get('macd_signal',    9))
+    bb_length      = int(request.args.get('bb_length',      20))
+    bb_std         = float(request.args.get('bb_std',       2.0))
+    vol_multiplier = float(request.args.get('vol_multiplier', 1.0))
+    vwap_threshold = float(request.args.get('vwap_threshold', 0.0))
+    news_on        = (request.args.get('news_on') == '1')
+
+    # 2) Persist all twelve values into indicator_settings (alerts.db)
+    save_indicator_settings(
+        match_count,
+        sma_length,
+        rsi_len, rsi_overbought, rsi_oversold,
+        macd_fast, macd_slow, macd_signal,
+        bb_length, bb_std,
+        vol_multiplier,
+        vwap_threshold,
+        news_on
+    )
+
+    # 3) Load all existing alerts from the database
+    alerts = get_alerts()
+
+    # 4) Read back the settings so the template can pre‐select the dropdowns
+    settings = get_all_indicator_settings()
+
+    return render_template(
+        'alerts.html',
+        alerts=alerts,
+        settings=settings
+    )
 
 
 if __name__ == '__main__':

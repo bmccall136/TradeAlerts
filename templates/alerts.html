@@ -1,134 +1,212 @@
-{# templates/alerts.html #}
+{# File: templates/alerts.html #}
 {% extends "layout.html" %}
-
 {% block content %}
-{# ─── FILTER BAR (with dropdowns) ─── #}
-<div class="row g-2 align-items-end mb-4">
-  <!-- 1) How many indicators must match (Dropdown) -->
-{# Example snippet from alerts.html #}
 
-<!-- RSI: three dropdowns -->
-<div class="col-6 col-md-1">
-  <label for="RSI_length" class="form-label">
-    <i class="bi bi-speedometer2"></i> RSI
-  </label>
-  <select id="RSI_length" class="form-select">
-    <option value="" disabled selected>Len</option>
-    <option value="9">9</option>
-    <option value="14">14</option>
-    <option value="21">21</option>
-  </select>
-</div>
-<div class="col-6 col-md-1">
-  <label for="RSI_overbought" class="form-label">&nbsp;</label>
-  <select id="RSI_overbought" class="form-select">
-    <option value="" disabled selected>OB</option>
-    <option value="70">70</option>
-    <option value="75">75</option>
-    <option value="80">80</option>
-  </select>
-</div>
-<div class="col-6 col-md-1">
-  <label for="RSI_oversold" class="form-label">&nbsp;</label>
-  <select id="RSI_oversold" class="form-select">
-    <option value="" disabled selected>OS</option>
-    <option value="30">30</option>
-    <option value="25">25</option>
-    <option value="20">20</option>
-  </select>
-</div>
+<div class="container">
+  <!-- ─── FILTER BAR ─── -->
+  <form id="indicator-form" method="GET" action="{{ url_for('index') }}">
+    <div class="row g-2 align-items-end mb-4">
 
-<!-- MACD: three dropdowns -->
-<div class="col-6 col-md-1">
-  <label for="MACD_fast" class="form-label">
-    <i class="bi bi-triangle-fill"></i> MACD
-  </label>
-  <select id="MACD_fast" class="form-select">
-    <option value="" disabled selected>Fast</option>
-    <option value="8">8</option>
-    <option value="12">12</option>
-    <option value="15">15</option>
-  </select>
-</div>
-<div class="col-6 col-md-1">
-  <label for="MACD_slow" class="form-label">&nbsp;</label>
-  <select id="MACD_slow" class="form-select">
-    <option value="" disabled selected>Slow</option>
-    <option value="21">21</option>
-    <option value="26">26</option>
-    <option value="30">30</option>
-  </select>
-</div>
-<div class="col-6 col-md-1">
-  <label for="MACD_signal" class="form-label">&nbsp;</label>
-  <select id="MACD_signal" class="form-select">
-    <option value="" disabled selected>Sig</option>
-    <option value="9">9</option>
-    <option value="7">7</option>
-    <option value="10">10</option>
-  </select>
-</div>
+      <!-- 1) Match “N of 6” -->
+      <div class="col-6 col-md-2">
+        <label for="match_count" class="form-label">
+          <i class="bi bi-funnel-fill"></i> Match
+        </label>
+        <select id="match_count" name="match_count" class="form-select">
+          {% for i in range(1, 7) %}
+            <option value="{{ i }}"
+              {% if settings.match_count == i %}selected{% endif %}>
+              {{ i }} of 6
+            </option>
+          {% endfor %}
+        </select>
+      </div>
 
-<!-- BB: two dropdowns -->
-<div class="col-6 col-md-1">
-  <label for="BB_length" class="form-label">
-    <i class="bi bi-bar-chart-fill"></i> BB
-  </label>
-  <select id="BB_length" class="form-select">
-    <option value="" disabled selected>Len</option>
-    <option value="10">10</option>
-    <option value="20">20</option>
-    <option value="30">30</option>
-    <option value="50">50</option>
-  </select>
-</div>
-<div class="col-6 col-md-1">
-  <label for="BB_stddev" class="form-label">&nbsp;</label>
-  <select id="BB_stddev" class="form-select">
-    <option value="" disabled selected>SD</option>
-    <option value="1.5">1.5</option>
-    <option value="2.0">2.0</option>
-    <option value="2.5">2.5</option>
-    <option value="3.0">3.0</option>
-  </select>
-</div>
+      <!-- 2) SMA length -->
+      <div class="col-6 col-md-2">
+        <label for="sma_length" class="form-label">
+          <i class="bi bi-graph-up-arrow"></i> SMA
+        </label>
+        <select id="sma_length" name="sma_length" class="form-select">
+          {% for length in [10, 20, 50, 100, 200] %}
+            <option value="{{ length }}"
+              {% if settings.sma_length == length %}selected{% endif %}>
+              {{ length }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
 
-  <!-- 6) News toggle -->
-  <div class="col-6 col-md-2">
-    <label class="form-label">
-      <i class="bi bi-newspaper"></i> News
-    </label>
-    <div class="form-check form-switch">
-      <input
-        class="form-check-input"
-        type="checkbox"
-        id="use_news"
-      />
-      <label class="form-check-label" for="use_news">On/Off</label>
+      <!-- 3a) RSI length -->
+      <div class="col-6 col-md-1">
+        <label for="rsi_len" class="form-label">
+          <i class="bi bi-speedometer2"></i> RSI
+        </label>
+        <select id="rsi_len" name="rsi_len" class="form-select">
+          {% for length in [7, 14, 21, 28] %}
+            <option value="{{ length }}"
+              {% if settings.rsi_len == length %}selected{% endif %}>
+              {{ length }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <!-- 3b) RSI overbought -->
+      <div class="col-6 col-md-1">
+        <label for="rsi_overbought" class="form-label">&nbsp;</label>
+        <select id="rsi_overbought" name="rsi_overbought" class="form-select">
+          {% for ob in [70, 75, 80, 85] %}
+            <option value="{{ ob }}"
+              {% if settings.rsi_overbought == ob %}selected{% endif %}>
+              {{ ob }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <!-- 3c) RSI oversold -->
+      <div class="col-6 col-md-1">
+        <label for="rsi_oversold" class="form-label">&nbsp;</label>
+        <select id="rsi_oversold" name="rsi_oversold" class="form-select">
+          {% for os in [20, 25, 30, 35] %}
+            <option value="{{ os }}"
+              {% if settings.rsi_oversold == os %}selected{% endif %}>
+              {{ os }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- 4a) MACD fast -->
+      <div class="col-6 col-md-1">
+        <label for="macd_fast" class="form-label">
+          <i class="bi bi-triangle-fill"></i> MACD
+        </label>
+        <select id="macd_fast" name="macd_fast" class="form-select">
+          {% for fast in [8, 12, 16] %}
+            <option value="{{ fast }}"
+              {% if settings.macd_fast == fast %}selected{% endif %}>
+              {{ fast }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <!-- 4b) MACD slow -->
+      <div class="col-6 col-md-1">
+        <label for="macd_slow" class="form-label">&nbsp;</label>
+        <select id="macd_slow" name="macd_slow" class="form-select">
+          {% for slow in [18, 26, 34] %}
+            <option value="{{ slow }}"
+              {% if settings.macd_slow == slow %}selected{% endif %}>
+              {{ slow }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <!-- 4c) MACD signal -->
+      <div class="col-6 col-md-1">
+        <label for="macd_signal" class="form-label">&nbsp;</label>
+        <select id="macd_signal" name="macd_signal" class="form-select">
+          {% for sig in [6, 9, 12] %}
+            <option value="{{ sig }}"
+              {% if settings.macd_signal == sig %}selected{% endif %}>
+              {{ sig }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- 5a) Bollinger Bands length -->
+      <div class="col-6 col-md-1">
+        <label for="bb_length" class="form-label">
+          <i class="bi bi-bar-chart-fill"></i> BB
+        </label>
+        <select id="bb_length" name="bb_length" class="form-select">
+          {% for length in [10, 20, 30] %}
+            <option value="{{ length }}"
+              {% if settings.bb_length == length %}selected{% endif %}>
+              {{ length }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <!-- 5b) Bollinger Bands stddev -->
+      <div class="col-6 col-md-1">
+        <label for="bb_std" class="form-label">&nbsp;</label>
+        <select id="bb_std" name="bb_std" class="form-select">
+          {% for σ in [1.5, 2.0, 2.5] %}
+            <option value="{{ σ }}"
+              {% if settings.bb_std == σ %}selected{% endif %}>
+              {{ σ }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- 6) Volume multiplier dropdown -->
+      <div class="col-6 col-md-1">
+        <label for="vol_multiplier" class="form-label">
+          <i class="bi bi-bar-chart-lines"></i> Vol
+        </label>
+        <select id="vol_multiplier" name="vol_multiplier" class="form-select">
+          {% for vm in [1.0, 1.5, 2.0, 2.5] %}
+            <option value="{{ vm }}"
+              {% if settings.vol_multiplier == vm %}selected{% endif %}>
+              ×{{ vm }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- 7) VWAP threshold dropdown -->
+      <div class="col-6 col-md-1">
+        <label for="vwap_threshold" class="form-label">
+          <i class="bi bi-calculator"></i> VWAP
+        </label>
+        <select id="vwap_threshold" name="vwap_threshold" class="form-select">
+          {% for vt in [0.0, 0.5, 1.0, 2.0] %}
+            <option value="{{ vt }}"
+              {% if settings.vwap_threshold == vt %}selected{% endif %}>
+              ≥${{ '%.1f'|format(vt) }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- 8) News toggle -->
+      <div class="col-6 col-md-1">
+        <label class="form-label">
+          <i class="bi bi-newspaper"></i> News
+        </label>
+        <div class="form-check form-switch">
+          <input
+            class="form-check-input"
+            type="checkbox"
+            id="news_on"
+            name="news_on"
+            value="1"
+            {% if settings.news_on %}checked{% endif %} />
+          <label class="form-check-label" for="news_on">On/Off</label>
+        </div>
+      </div>
+
+      <!-- 9) Apply button -->
+      <div class="col-6 col-md-1 text-end">
+        <button
+          type="submit"
+          class="btn btn-success w-100"
+        >
+          <i class="bi bi-arrow-repeat"></i> Apply
+        </button>
+      </div>
+
     </div>
-  </div>
-
-  <!-- 7) Apply button (unchanged) -->
-  <div class="col-6 col-md-2 text-end">
-    <button
-      type="button"
-      class="btn btn-success w-100"
-      onclick="applyFilters()"
-    >
-      <i class="bi bi-arrow-repeat"></i> Apply
-    </button>
-  </div>
-</div>
-{# ─────────────────────────────────────────────────────────────────────── #}
+  </form>
+  <!-- ─────────────────────────────────────────────────────────────────────── #}
 
 
-  {# ─── “Clear All” button & Alerts Table ─── #}
+  <!-- ─── “Clear All” & Alerts Table (unchanged) ─── #-->
   <div class="d-flex justify-content-end mb-2">
-    <form
-      action="{{ url_for('clear_all_alerts') }}"
-      method="post"
-      class="d-inline"
-    >
+    <form action="{{ url_for('clear_all_alerts') }}" method="post" class="d-inline">
       <button class="btn btn-sm btn-outline-warning" type="submit">
         ✏️ Clear All
       </button>
@@ -156,24 +234,20 @@
       <tbody>
         {% for alert in alerts %}
         <tr class="alert-row">
-          <td>{{ alert['timestamp'] or '—' }}</td>
-          <td>{{ alert['symbol'] or '—' }}</td>
-          <td>{{ alert['name'] or '—' }}</td>
+          <td>{{ alert['timestamp'] }}</td>
+          <td>{{ alert['symbol'] }}</td>
+          <td>{{ alert['name'] }}</td>
           <td>${{ '%.2f'|format(alert['price']|float) }}</td>
           <td>${{ '%.2f'|format(alert['vwap']|float) }}</td>
           <td>
-            {% if alert['vwap_diff'] is not none %}
-              {% if alert['vwap_diff'] < 0 %}
-                <span class="text-success">
-                  ${{ '%.2f'|format(alert['vwap_diff']|float) }}
-                </span>
-              {% else %}
-                <span class="text-danger">
-                  +${{ '%.2f'|format(alert['vwap_diff']|float) }}
-                </span>
-              {% endif %}
+            {% if alert['vwap_diff'] < 0 %}
+              <span class="text-success">
+                ${{ '%.2f'|format(alert['vwap_diff']|float) }}
+              </span>
             {% else %}
-              &mdash;
+              <span class="text-danger">
+                +${{ '%.2f'|format(alert['vwap_diff']|float) }}
+              </span>
             {% endif %}
           </td>
           <td class="text-center">
@@ -193,13 +267,7 @@
               &mdash;
             {% endif %}
           </td>
-          <td>
-            {% if alert['triggers'] %}
-              {{ alert['triggers']|safe }}
-            {% else %}
-              &mdash;
-            {% endif %}
-          </td>
+          <td>{{ alert['triggers'] }}</td>
           <td>
             <input
               type="number"
@@ -237,107 +305,45 @@
       </tbody>
     </table>
   </div>
-{% endblock %}
+</div>
 
 <script>
-  // Populate filter‐bar inputs from /alert/settings
-  document.addEventListener('DOMContentLoaded', () => {
-    fetch('/alert/settings')
-      .then(res => res.json())
-      .then(cfg => {
-        document.getElementById('num_to_match').value   = cfg.num_to_match;
-        document.getElementById('SMA_length').value     = cfg.SMA_length;
-        document.getElementById('RSI_length').value     = cfg.RSI_length;
-        document.getElementById('RSI_overbought').value = cfg.RSI_overbought;
-        document.getElementById('RSI_oversold').value   = cfg.RSI_oversold;
-        document.getElementById('MACD_fast').value      = cfg.MACD_fast;
-        document.getElementById('MACD_slow').value      = cfg.MACD_slow;
-        document.getElementById('MACD_signal').value    = cfg.MACD_signal;
-        document.getElementById('BB_length').value      = cfg.BB_length;
-        document.getElementById('BB_stddev').value      = cfg.BB_stddev;
-        document.getElementById('use_news').checked     = (cfg.use_news === "true");
-      });
+function buyStock(symbol, button) {
+  const row = button.closest('tr');
+  const qtyInput = row.querySelector('.qty-input');
+  const qty = qtyInput ? parseInt(qtyInput.value) : 1;
+
+  fetch('/simulation/buy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbol: symbol, qty: qty })
+  }).then(response => {
+    if (response.ok) {
+      alert(`Buy order sent for ${symbol} x${qty}`);
+    } else {
+      alert('Buy failed.');
+    }
   });
+}
 
-  function applyFilters() {
-    const toMatch = document.getElementById('num_to_match').value;
-    const smaLen  = document.getElementById('SMA_length').value;
-    const rsiLen  = document.getElementById('RSI_length').value;
-    const rsiOB   = document.getElementById('RSI_overbought').value;
-    const rsiOS   = document.getElementById('RSI_oversold').value;
-    const macdF   = document.getElementById('MACD_fast').value;
-    const macdS   = document.getElementById('MACD_slow').value;
-    const macdSig = document.getElementById('MACD_signal').value;
-    const bbLen   = document.getElementById('BB_length').value;
-    const bbSD    = document.getElementById('BB_stddev').value;
-    const newsOn  = document.getElementById('use_news').checked ? "true" : "false";
-
-    const updates = [
-      { key: 'num_to_match',   value: toMatch },
-      { key: 'SMA_length',     value: smaLen  },
-      { key: 'RSI_length',     value: rsiLen  },
-      { key: 'RSI_overbought', value: rsiOB  },
-      { key: 'RSI_oversold',   value: rsiOS  },
-      { key: 'MACD_fast',      value: macdF  },
-      { key: 'MACD_slow',      value: macdS  },
-      { key: 'MACD_signal',    value: macdSig},
-      { key: 'BB_length',      value: bbLen  },
-      { key: 'BB_stddev',      value: bbSD   },
-      { key: 'use_news',       value: newsOn }
-    ];
-
-    let chain = Promise.resolve();
-    updates.forEach(u => {
-      chain = chain.then(() =>
-        fetch(`/alert/settings/${u.key}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ value: u.value })
-        })
-      );
-    });
-
-    chain.then(() => {
-      window.location.reload();
-    }).catch(err => {
-      alert('Error saving settings: ' + err);
-    });
-  }
-
-  function buyStock(symbol, button) {
-    const row = button.closest('tr');
-    const qtyInput = row.querySelector('.qty-input');
-    const qty = qtyInput ? parseInt(qtyInput.value) : 1;
-
-    fetch('/simulation/buy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ symbol: symbol, qty: qty })
-    }).then(response => {
-      if (response.ok) {
-        alert(`Buy order sent for ${symbol} x${qty}`);
-      } else {
-        alert('Buy failed.');
-      }
-    });
-  }
-
-  function showNews(symbol) {
-    const container = document.getElementById(`news-${symbol}`);
-    container.innerHTML = 'Loading...';
-    fetch(`/news/${symbol}`)
-      .then(resp => resp.json())
-      .then(data => {
-        let html = '<ul class="list-unstyled mb-1">';
-        data.headlines.forEach(h => {
-          html += `<li>• ${h}</li>`;
-        });
-        html += `</ul><p><strong>Sentiment:</strong> ${data.sentiment}</p>`;
-        container.innerHTML = html;
-      })
-      .catch(err => {
-        container.innerHTML = '<p style="color:red;">Error loading news.</p>';
-        console.error(err);
+function showNews(symbol) {
+  const container = document.getElementById(`news-${symbol}`);
+  container.innerHTML = 'Loading...';
+  fetch(`/news/${symbol}`)
+    .then(resp => resp.json())
+    .then(data => {
+      let html = '<ul>';
+      data.headlines.forEach(h => {
+        html += `<li>${h}</li>`;
       });
-  }
+      html += `</ul><p><strong>Sentiment:</strong> ${data.sentiment}</p>`;
+      container.innerHTML = html;
+    })
+    .catch(err => {
+      container.innerHTML = '<p style="color:red;">Error loading news.</p>';
+      console.error(err);
+    });
+}
 </script>
+
+{% endblock %}

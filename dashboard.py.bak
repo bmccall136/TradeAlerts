@@ -23,6 +23,16 @@ from services.simulation_service import (
     sell_stock
 )
 from services.backtest_service import backtest
+from flask import Flask, request, render_template, redirect, url_for, flash
+from services.alert_service import (
+    save_indicator_settings,
+    get_all_indicator_settings,
+    get_alerts
+)
+from services.market_service import analyze_symbol, get_symbols
+
+app = Flask(__name__)
+app.secret_key = "replace_with_your_secret_key"
 
 trades, pnl = backtest("AAPL", "2024-01-01", "2024-06-01", initial_cash=10000)
 # Now you can format `trades` into a table or feed into your simulation service.
@@ -168,21 +178,21 @@ def simulation():
         realized_pnl  = get_realized_pl()   # ← newly added line
 
         # 2) Gather and format holdings for the template
-raw_holdings = get_holdings()
-unrealized_pnl = 0.0
-for h in raw_holdings:
-    unrealized_pnl += h['total_gain']
-    formatted_holdings.append({
-        'symbol':     h['symbol'],
-        'last_price': h['last_price'],
-        'change':     h['change'],
-        'change_pct': h['change_pct'],
-        'qty':        h['qty'],
-        'price_paid': h['price_paid'],
-        'day_gain':   h['day_gain'],
-        'total_gain': h['total_gain'],
-        'value':      h['value']
-    })
+        raw_holdings = get_holdings()
+        unrealized_pnl = 0.0
+        for h in raw_holdings:
+            unrealized_pnl += h['total_gain']
+            formatted_holdings.append({
+                'symbol':     h['symbol'],
+                'last_price': h['last_price'],
+                'change':     h['change'],
+                'change_pct': h['change_pct'],
+                'qty':        h['qty'],
+                'price_paid': h['price_paid'],
+                'day_gain':   h['day_gain'],
+                'total_gain': h['total_gain'],
+                'value':      h['value']
+            })
 
         # 3) Gather and format trade history for the template
         raw_trades = get_trades()
@@ -254,237 +264,45 @@ def news_for_symbol(symbol):
     sentiment = news_sentiment(symbol)
     return jsonify({'headlines': headlines, 'sentiment': sentiment})
 
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    # ─── 1) Read the filter‐bar parameters from the query string ───
+    match_count    = int(request.args.get('match_count',    1))
+    sma_length     = int(request.args.get('sma_length',     20))
+    rsi_len        = int(request.args.get('rsi_len',        14))
+    rsi_overbought = int(request.args.get('rsi_overbought', 70))
+    rsi_oversold   = int(request.args.get('rsi_oversold',   30))
+    macd_fast      = int(request.args.get('macd_fast',      12))
+    macd_slow      = int(request.args.get('macd_slow',      26))
+    macd_signal    = int(request.args.get('macd_signal',    9))
+    bb_length      = int(request.args.get('bb_length',      20))
+    bb_std         = float(request.args.get('bb_std',       2.0))
+    vol_multiplier = float(request.args.get('vol_multiplier', 1.0))
+    vwap_threshold = float(request.args.get('vwap_threshold', 0.0))
+    news_on        = (request.args.get('news_on') == '1')
+
+    # ─── 2) Save them to disk (alerts.db) ───
+    save_indicator_settings(
+        match_count,
+        sma_length,
+        rsi_len, rsi_overbought, rsi_oversold,
+        macd_fast, macd_slow, macd_signal,
+        bb_length, bb_std,
+        vol_multiplier,
+        vwap_threshold,
+        news_on
+    )
+
+    # ─── 3) Load all existing alerts (for the table) ───
+    alerts = get_alerts()
+
+    # ─── 4) Read them back to pass into the template ───
+    settings = get_all_indicator_settings()
+
+    return render_template('alerts.html',
+                           alerts=alerts,
+                           settings=settings)
+
 
 if __name__ == '__main__':
     app.run(debug=True)
-
-
-# File: services/simulation_service.py
-
-import sqlite3
-from datetime import datetime
-import yfinance as yf
-from pathlib import Path
-
-# Always point to the correct absolute path for simulation.db
-SIM_DB = str(Path(__file__).resolve().parent.parent / "simulation.db")
-
-
-def _connect():
-    return sqlite3.connect(SIM_DB, detect_types=sqlite3.PARSE_DECLTYPES)
-
-
-def get_cash():
-    """Return the single row `state.cash` (or 0.0 if missing)."""
-    conn = _connect()
-    cur = conn.cursor()
-    cur.execute("SELECT cash FROM state WHERE id = 1;")
-    row = cur.fetchone()
-    conn.close()
-    return float(row[0]) if row else 0.0
-
-
-def get_realized_pl():
-    """Return state.realized_pl (or 0.0)."""
-    conn = _connect()
-    cur = conn.cursor()
-    cur.execute("SELECT realized_pl FROM state WHERE id = 1;")
-    row = cur.fetchone()
-    conn.close()
-    return float(row[0]) if row else 0.0
-
-
-def get_trades():
-    """
-    Return a list of all trades (newest first).
-    Each trade is a dict with keys:
-      id, symbol, action, price, qty, trade_time, pnl
-    """
-    conn = _connect()
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    cur.execute("""
-      SELECT id, symbol, action, price, qty, trade_time, pnl
-        FROM simulation_trades
-       ORDER BY id DESC;
-    """)
-    rows = cur.fetchall()
-    conn.close()
-
-    trades = []
-    for r in rows:
-        trades.append({
-            "id":         r["id"],
-            "symbol":     r["symbol"],
-            "action":     r["action"],
-            "price":      float(r["price"]),
-            "qty":        int(r["qty"]),
-            "trade_time": r["trade_time"],
-            "pnl":        float(r["pnl"]) if r["pnl"] is not None else None
-        })
-    return trades
-
-
-def get_holdings():
-    """
-    Return a list of holdings dictionaries. Each one has keys matching the template:
-      symbol, qty, price_paid, last_price, change, change_pct, day_gain, total_gain, value
-    """
-    holdings = []
-    conn = _connect()
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    cur.execute("SELECT symbol, qty, avg_cost FROM holdings;")
-    rows = cur.fetchall()
-    conn.close()
-
-    for r in rows:
-        symbol   = r["symbol"]
-        qty      = int(r["qty"])
-        avg_cost = float(r["avg_cost"])
-
-        # Fetch the live price (we’ll just grab "Open" for today)
-        try:
-            df = yf.download(symbol, period="1d", interval="1d", progress=False)
-            last_price = float(df["Open"].iloc[0]) if not df.empty else avg_cost
-        except Exception:
-            last_price = avg_cost
-
-        # Compute change from cost and percent
-        change_amount  = last_price - avg_cost
-        change_pct     = (change_amount / avg_cost * 100) if avg_cost != 0 else 0.0
-
-        # Day gain approximation and total gain
-        day_gain       = change_amount * qty
-        total_gain     = change_amount * qty
-        value          = last_price * qty
-
-        holdings.append({
-            "symbol":        symbol,
-            "qty":           qty,
-            "price_paid":    avg_cost,
-            "last_price":    last_price,
-            "change":        change_amount,
-            "change_pct":    change_pct,
-            "day_gain":      day_gain,
-            "total_gain":    total_gain,
-            "value":         value
-        })
-
-    return holdings
-
-
-def buy_stock(symbol: str, quantity: int, price: float):
-    """
-    1) Insert a new BUY into simulation_trades (pnl=NULL)
-    2) Deduct cash = price * quantity from state.cash
-    3) Add or update holdings (recompute avg_cost)
-    """
-    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    conn = _connect()
-    cur = conn.cursor()
-
-    total_cost = price * quantity
-
-    # 1) Check current cash
-    cur.execute("SELECT cash FROM state WHERE id = 1;")
-    row = cur.fetchone()
-    if not row or float(row[0]) < total_cost:
-        conn.close()
-        raise ValueError("Insufficient cash to buy.")
-
-    # 2) Insert trade
-    cur.execute(
-        "INSERT INTO simulation_trades (symbol, action, price, qty, trade_time, pnl) "
-        "VALUES (?, 'BUY', ?, ?, ?, NULL);",
-        (symbol, price, quantity, timestamp)
-    )
-
-    # 3) Subtract cash
-    new_cash = float(row[0]) - total_cost
-    cur.execute("UPDATE state SET cash = ? WHERE id = 1;", (new_cash,))
-
-    # 4) Update / insert holding
-    cur.execute("SELECT qty, avg_cost FROM holdings WHERE symbol = ?;", (symbol,))
-    hold = cur.fetchone()
-    if hold:
-        old_qty, old_avg = int(hold[0]), float(hold[1])
-        new_qty = old_qty + quantity
-        new_avg = ((old_avg * old_qty) + (price * quantity)) / new_qty
-        cur.execute(
-            "UPDATE holdings SET qty = ?, avg_cost = ?, last_price = ? WHERE symbol = ?;",
-            (new_qty, new_avg, price, symbol)
-        )
-    else:
-        cur.execute(
-            "INSERT INTO holdings (symbol, qty, avg_cost, last_price) VALUES (?, ?, ?, ?);",
-            (symbol, quantity, price, price)
-        )
-
-    conn.commit()
-    conn.close()
-
-
-def sell_stock(symbol: str, quantity: int, price: float):
-    """
-    1) Lookup existing holding; if not enough qty, error out.
-    2) Compute realized_pl = (price - avg_cost) * quantity.
-    3) Insert SELL into simulation_trades with pnl.
-    4) Subtract that qty from holdings (or delete if qty→0).
-    5) Add proceeds = price * quantity back into state.cash.
-    6) Add realized_pl to state.realized_pl.
-    """
-    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    conn = _connect()
-    cur = conn.cursor()
-
-    # 1) Get current cash + realized_pl
-    cur.execute("SELECT cash, realized_pl FROM state WHERE id = 1;")
-    state_row = cur.fetchone()
-    if not state_row:
-        conn.close()
-        raise Exception("No state row found.")
-    cash_now, realized = float(state_row[0]), float(state_row[1])
-
-    # 2) Get holding
-    cur.execute("SELECT qty, avg_cost FROM holdings WHERE symbol = ?;", (symbol,))
-    hold = cur.fetchone()
-    if not hold:
-        conn.close()
-        raise Exception(f"No holdings for {symbol}.")
-    old_qty, avg_cost = int(hold[0]), float(hold[1])
-    if quantity > old_qty:
-        conn.close()
-        raise Exception(f"Cannot sell {quantity} {symbol}; only {old_qty} held.")
-
-    # 3) Compute realized P/L
-    proceeds     = price * quantity
-    realized_pl  = (price - avg_cost) * quantity
-
-    # 4) Insert SELL trade
-    cur.execute(
-        "INSERT INTO simulation_trades (symbol, action, price, qty, trade_time, pnl) "
-        "VALUES (?, 'SELL', ?, ?, ?, ?);",
-        (symbol, price, quantity, timestamp, realized_pl)
-    )
-
-    # 5) Update holdings
-    new_qty = old_qty - quantity
-    if new_qty > 0:
-        cur.execute(
-            "UPDATE holdings SET qty = ?, last_price = ? WHERE symbol = ?;",
-            (new_qty, price, symbol)
-        )
-    else:
-        cur.execute("DELETE FROM holdings WHERE symbol = ?;", (symbol,))
-
-    # 6) Update cash + realized_pl in state
-    new_cash     = cash_now + proceeds
-    new_realized = realized + realized_pl
-    cur.execute(
-        "UPDATE state SET cash = ?, realized_pl = ? WHERE id = 1;",
-        (new_cash, new_realized)
-    )
-
-    conn.commit()
-    conn.close()

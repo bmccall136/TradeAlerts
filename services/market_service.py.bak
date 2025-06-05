@@ -1,177 +1,260 @@
+# File: services/market_service.py
+
 import logging
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
-import yfinance as yf
-from services.etrade_service import fetch_etrade_quote
-from services.alert_service import generate_sparkline, insert_alert
-import pandas as pd
 from datetime import datetime
-# We no longer need compute_vwap_for_symbol here, since we’ll compute intraday VWAP directly
-# from the OHLCV DataFrame.
-# from services.chart_service import compute_vwap_for_symbol
-from services.etrade_service import get_etrade_price
+import yfinance as yf
+import pandas as pd
+import os
+
+from services.etrade_service import fetch_etrade_quote
+from services.alert_service import (
+    get_all_indicator_settings,
+    insert_alert,
+    generate_sparkline
+)
+from services.indicators import (
+    calculate_macd,
+    compute_rsi,
+    compute_bollinger,
+    compute_sma
+)
 
 logger = logging.getLogger(__name__)
 
 
-def get_symbols(simulation=False):
-    """Fetch S&P 500 symbols from local file (or switch to Wikipedia scraping if desired)."""
-    filename = 'sim_symbols.txt' if simulation else 'sp500_symbols.txt'
-    try:
-        with open(filename, 'r') as f:
-            syms = [line.strip() for line in f if line.strip()]
-        return syms
-    except Exception as e:
-        logger.error(f"Could not load symbols from {filename}: {e}")
-        return []
-
-
 def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
     """
-    Download OHLCV from Yahoo Finance asynchronously (to avoid blocking).
+    Attempt to fetch intraday data (1d/5m) from Yahoo Finance with a timeout.
+    Returns a Pandas DataFrame or None on failure.
     """
-    def do_fetch():
-        return yf.Ticker(sym).history(period=period, interval=interval)
+    def _fetch():
+        try:
+            return yf.download(
+                sym,
+                period=period,
+                interval=interval,
+                progress=False,
+                threads=False
+            )
+        except Exception as e:
+            logger.error(f"[ERROR] Yahoo download {sym} failed: {e}")
+            return None
 
     with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(do_fetch)
+        future = executor.submit(_fetch)
         try:
             return future.result(timeout=timeout)
         except FuturesTimeout:
-            logger.error(f"[TIMEOUT] Yahoo fetch for {sym} timed out after {timeout}s!")
-            return None
-        except Exception as e:
-            logger.error(f"[ERROR] Yahoo fetch for {sym} failed: {e}")
+            logger.error(f"[ERROR] Yahoo download {sym} timed out after {timeout}s")
             return None
 
 
 def analyze_symbol(sym):
     """
-    1) Grab 1d/5m bars from Yahoo  
-    2) Grab E*TRADE last price  
-    3) Grab company name via yfinance (.info['longName'])  
-    4) Calculate MACD, RSI, Volume, Bollinger  
-    5) Compute intraday VWAP + Diff  
-    6) If ≥ 3 triggers (out of MACD, RSI, VOL, BB, VWAP), build a sparkline 
-       and insert_alert(...)  
+    1) Read all 12 indicator settings from DB:
+       - match_count (1..6)
+       - sma_length
+       - rsi_len, rsi_overbought, rsi_oversold
+       - macd_fast, macd_slow, macd_signal
+       - bb_length, bb_std
+       - vol_multiplier
+       - vwap_threshold
+       - news_on (boolean)
+    2) Download 1d/5m bars from Yahoo
+    3) Fetch current E*TRADE price
+    4) Compute each indicator with those parameters:
+       • SMA (length = sma_length)
+       • RSI (period=rsi_len, thresholds = rsi_overbought/oversold)
+       • MACD (fast, slow, signal)
+       • BB (window=bb_length, std=bb_std)
+       • Volume trigger (vol >= vol_multiplier * avg(volume, 20))
+       • VWAP trigger (price - VWAP >= vwap_threshold)
+    5) Count how many of the SIX “primary” triggers are true:
+       [SMA, RSI, MACD, BB, Volume, VWAP]
+       If count < match_count: skip; else insert alert.
     """
-    # 1) Download Yahoo data
+
+    # ── A) Load settings from DB ──
+    settings = get_all_indicator_settings()
+    match_count    = settings['match_count']
+    sma_length     = settings['sma_length']
+    rsi_len        = settings['rsi_len']
+    rsi_ob         = settings['rsi_overbought']
+    rsi_os         = settings['rsi_oversold']
+    macd_fast      = settings['macd_fast']
+    macd_slow      = settings['macd_slow']
+    macd_signal    = settings['macd_signal']
+    bb_length      = settings['bb_length']
+    bb_std         = settings['bb_std']
+    vol_multiplier = settings['vol_multiplier']
+    vwap_threshold = settings['vwap_threshold']
+    news_on        = settings['news_on']
+
+    # ── B) Download price data ──
     df = fetch_data_with_timeout(sym)
     if df is None or df.empty:
-        logger.error(f"→ [SKIP] {sym}: Yahoo Finance returned no data.")
+        logger.error(f"[SKIP] {sym}: no intraday data")
         return None
 
-    # 2) Fetch latest price via E*TRADE
+    # ── C) Fetch last price from E*TRADE ──
     try:
         etrade_price = fetch_etrade_quote(sym)
     except Exception as e:
-        logger.error(f"→ [SKIP] {sym}: E*TRADE fetch exception: {e}")
+        logger.error(f"[SKIP] {sym}: E*TRADE error {e}")
         return None
-
     if not etrade_price or etrade_price == 0.0:
-        logger.error(f"→ [SKIP] {sym}: E*TRADE returned no last price.")
+        logger.error(f"[SKIP] {sym}: invalid E*TRADE price")
         return None
+    logger.info(f"{sym}: Price = ${etrade_price:.2f}")
 
-    logger.info(f"{sym}: E*TRADE last price = ${etrade_price:.2f}")
-
-    # 3) Fetch full company name via yfinance
+    # ── D) Fetch company name ──
     try:
-        ticker = yf.Ticker(sym)
-        info = ticker.info
-        # Prefer longName; fallback to shortName; fallback to ticker itself
+        info = yf.Ticker(sym).info
         company_name = info.get('longName') or info.get('shortName') or sym
-    except Exception as e:
-        logger.error(f"→ [WARN] {sym}: Failed to fetch company name: {e}")
+    except:
         company_name = sym
 
-    # 4) Compute indicators (MACD, RSI, Volume, Bollinger)
-    macd_line, sig_line = calculate_macd(df['Close'])
-    rsi_series = compute_rsi(df['Close'])
-    vol = df['Volume'].iloc[-1]
-    avg_vol = df['Volume'].rolling(20).mean().iloc[-1]
-    bb_up, bb_mid, bb_dn = compute_bollinger(df['Close'])
+    # ── E) Compute each indicator with user settings ──
 
-    triggers = []
+    # 1) SMA (period = sma_length)
+    price_series = df['Close']
+    sma_val = compute_sma(price_series, length=sma_length)
+
+    # 2) RSI (period = rsi_len)
+    rsi_series = compute_rsi(price_series, period=rsi_len)
+    rsi_val = rsi_series.iloc[-1]
+
+    # 3) MACD (fast/slw/sig)
+    macd_line, sig_line = calculate_macd(
+        price_series,
+        fast=macd_fast,
+        slow=macd_slow,
+        signal=macd_signal
+    )
+
+    # 4) Bollinger Bands (window = bb_length, num_std = bb_std)
+    bb_up, bb_mid, bb_dn = compute_bollinger(
+        price_series,
+        window=bb_length,
+        num_std=bb_std
+    )
+
+    # 5) Volume trigger: check vol >= vol_multiplier × avg(vol,20)
+    vol         = df['Volume'].iloc[-1]
+    avg_vol_20  = df['Volume'].rolling(window=20).mean().iloc[-1]
+    vol_trigger = (vol >= vol_multiplier * avg_vol_20)
+
+    # 6) VWAP trigger: price - VWAP >= vwap_threshold
+    df['TypicalPrice']   = (df['High'] + df['Low'] + df['Close']) / 3
+    df['TPV']            = df['TypicalPrice'] * df['Volume']
+    df['CumulativeTPV']  = df['TPV'].cumsum()
+    df['CumulativeVol']  = df['Volume'].cumsum()
+    df['VWAP']           = df['CumulativeTPV'] / df['CumulativeVol']
+    latest_vwap          = df['VWAP'].iloc[-1]
+    vwap_diff_value      = etrade_price - latest_vwap
+    vwap_trigger         = (vwap_diff_value >= vwap_threshold)
+
+    # ── F) Count how many of the SIX “primary” indicators triggered ──
+    primary_triggers = []
+    price = price_series.iloc[-1]
+
+    # 1) SMA
+    if price > sma_val:
+        primary_triggers.append('SMA')
+
+    # 2) RSI
+    if rsi_val > rsi_ob:
+        primary_triggers.append('RSI_OB')
+    elif rsi_val < rsi_os:
+        primary_triggers.append('RSI_OS')
+
+    # 3) MACD
     if macd_line.iloc[-1] > sig_line.iloc[-1]:
-        triggers.append('MACD 🚀')
-    if rsi_series.iloc[-1] < 30:
-        triggers.append('RSI 📉')
-    if vol > avg_vol:
-        triggers.append('VOL 🔊')
-    if df['Close'].iloc[-1] > bb_up.iloc[-1] or df['Close'].iloc[-1] < bb_dn.iloc[-1]:
-        triggers.append('BB 📈')
+        primary_triggers.append('MACD')
 
-    # 5) Compute intraday VWAP + Diff
-    # Calculate Typical Price = (High + Low + Close) / 3
-    df['TypicalPrice'] = (df['High'] + df['Low'] + df['Close']) / 3
-    # TPV = TypicalPrice * Volume
-    df['TPV'] = df['TypicalPrice'] * df['Volume']
-    # Cumulative TPV and cumulative Volume
-    df['CumulativeTPV'] = df['TPV'].cumsum()
-    df['CumulativeVol'] = df['Volume'].cumsum()
-    # VWAP = cumulative(TPV) / cumulative(Volume)
-    df['VWAP'] = df['CumulativeTPV'] / df['CumulativeVol']
+    # 4) BB
+    if price > bb_up.iloc[-1] or price < bb_dn.iloc[-1]:
+        primary_triggers.append('BB')
 
-    latest_vwap = df['VWAP'].iloc[-1]
-    vwap_diff_value = etrade_price - latest_vwap
-    logger.info(f"{sym}: Intraday VWAP = ${latest_vwap:.2f}, Diff = ${vwap_diff_value:.2f}")
-    # Only append a VWAP trigger if price is above VWAP
-    if vwap_diff_value > 0:
-        triggers.append('VWAP+Diff 🚀')
+    # 5) Volume
+    if vol_trigger:
+        primary_triggers.append('VOLUME')
 
-    # 6) Check if we have at least three triggers
-    logger.info(f"→ {sym}: {triggers}")
-    if len(triggers) < 3:
-        logger.info(f"→ {sym}: Not enough triggers ({len(triggers)}), skipping alert.")
+    # 6) VWAP
+    if vwap_trigger:
+        primary_triggers.append('VWAP')
+
+    if len(primary_triggers) < match_count:
+        logger.info(
+            f"[SKIP] {sym}: {len(primary_triggers)} < {match_count} primary indicators"
+        )
         return None
 
-    # 7) Generate sparkline
-    spark_svg = generate_sparkline(df['Close'].tolist())
+    # ── G) Build the full “triggers” list for display/storage ──
+    display_triggers = []
+    # SMA
+    if price > sma_val:
+        display_triggers.append('SMA 🟡')
+    # RSI
+    if rsi_val > rsi_ob:
+        display_triggers.append('RSI 📈')
+    elif rsi_val < rsi_os:
+        display_triggers.append('RSI 📉')
+    # MACD
+    if macd_line.iloc[-1] > sig_line.iloc[-1]:
+        display_triggers.append('MACD 🚀')
+    # BB
+    if price > bb_up.iloc[-1] or price < bb_dn.iloc[-1]:
+        display_triggers.append('BB 📈')
+    # Volume
+    if vol_trigger:
+        display_triggers.append(f'VOL 🔊 ({vol/avg_vol_20:.2f}×)')
+    # VWAP
+    if vwap_trigger:
+        display_triggers.append(f'VWAP+ (${vwap_diff_value:.2f})')
 
-    # 8) Build alert payload and insert into DB
+    # ── H) Optional: News if enabled ──
+    if news_on:
+        from services.news_service import fetch_sentiment_for
+        try:
+            sentiment = fetch_sentiment_for(sym)
+            if sentiment > 0.2 or sentiment < -0.2:
+                display_triggers.append('News 📰')
+        except Exception as e:
+            logger.error(f"[WARN] {sym}: News fetch failed: {e}")
+
+    # ── I) Generate sparkline, insert alert ──
+    spark_svg = generate_sparkline(price_series.tolist())
     alert_payload = {
-        'symbol': sym,
-        'price': etrade_price,
+        'symbol':    sym,
+        'price':     etrade_price,
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'name': company_name,
-        'vwap': round(latest_vwap, 2),
+        'name':      company_name,
+        'vwap':      round(latest_vwap, 2),
         'vwap_diff': round(vwap_diff_value, 2),
-        'triggers': ",".join(triggers),
+        'triggers':  ",".join(display_triggers),
         'sparkline': spark_svg
     }
     insert_alert(**alert_payload)
+    logger.info(f"[ALERT] {sym}: {display_triggers}")
+
+    return alert_payload
 
 
-# ---------- Indicator Helpers (unchanged) ----------
+# ────────────────────────────────────────────────────────────────────────────────
 
-def calculate_macd(close):
-    exp1 = close.ewm(span=12, adjust=False).mean()
-    exp2 = close.ewm(span=26, adjust=False).mean()
-    macd_line = exp1 - exp2
-    sig_line = macd_line.ewm(span=9, adjust=False).mean()
-    return macd_line, sig_line
+def get_symbols():
+    """
+    Returns a list of symbols to scan. First tries to read 'symbols.txt' (one ticker per line).
+    If 'symbols.txt' does not exist or is empty, falls back to a small example list.
+    """
+    fallback = ['AAPL', 'MSFT', 'GOOG', 'TSLA']  # replace with whatever you like
 
-
-def compute_rsi(close, window=14):
-    delta = close.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
-    rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
-
-
-def compute_bollinger(close, window=20, num_std=2):
-    rolling_mean = close.rolling(window).mean()
-    rolling_std = close.rolling(window).std()
-    upper_band = rolling_mean + (rolling_std * num_std)
-    lower_band = rolling_mean - (rolling_std * num_std)
-    return upper_band, rolling_mean, lower_band
-
-
-def get_realtime_price(symbol):
+    path = os.path.join(os.path.dirname(__file__), '..', 'symbols.txt')
     try:
-        quote = get_etrade_price(symbol)
-        return float(quote) if quote is not None else None
-    except Exception as e:
-        print(f"❌ Failed to fetch price for {symbol}: {e}")
-        return None
+        with open(path, 'r') as f:
+            lines = [line.strip().upper() for line in f if line.strip()]
+            return lines if lines else fallback
+    except FileNotFoundError:
+        return fallback

@@ -22,6 +22,11 @@ def get_cash():
     conn.close()
     return float(row[0]) if row else 0.0
 
+def nuke_simulation_db():
+    """
+    Delete or reinitialize simulation.db by re-running init_simulation_db.py.
+    Returns True on success, False on error.
+    """
 
 def get_realized_pl():
     """Return state.realized_pl (or 0.0)."""
