@@ -1,11 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>TradeAlerts</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta charset="UTF-8" />
+  <title>🚀 Trade Alerts</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body class="black-bg">
+  <!-- … -->
+</body>
+</html>
 
   <!-- NAVBAR -->
   <nav class="navbar">
@@ -13,7 +16,7 @@
     <div class="navbar-links">
       <a href="{{ url_for('index') }}" class="nav-link{% if request.path == '/' %} active{% endif %}">Alerts</a>
       <a href="{{ url_for('simulation') }}" class="nav-link{% if request.path == '/simulation' %} active{% endif %}">Simulation</a>
-      <a href="{{ url_for('backtest') }}" class="nav-link{% if request.path == '/backtest' %} active{% endif %}">Backtest</a>
+      <a href="{{ url_for('backtest_view') }}" class="nav-link{% if request.path == '/backtest' %} active{% endif %}">Backtest</a>
     </div>
 
     <!-- 2) Flex‑1 spacer pushes title to center -->

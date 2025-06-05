@@ -1,243 +1,233 @@
 import sqlite3
-from datetime import datetime, date
+from datetime import datetime
 import yfinance as yf
+from pathlib import Path
 
-SIM_DB = "simulation.db"   # Or the correct path to your SQLite file
+SIM_DB = str(Path(__file__).resolve().parent.parent / "simulation.db")
+
+def _connect():
+    return sqlite3.connect(SIM_DB, detect_types=sqlite3.PARSE_DECLTYPES)
+
+def _connect():
+    return sqlite3.connect(SIM_DB, detect_types=sqlite3.PARSE_DECLTYPES)
+
+# … rest of get_holdings(), buy_stock(), sell_stock(), etc. …
+
+def get_cash():
+    """Return the single row `state.cash` (or 0.0 if missing)."""
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("SELECT cash FROM state WHERE id = 1;")
+    row = cur.fetchone()
+    conn.close()
+    return float(row[0]) if row else 0.0
+
+
+def get_realized_pl():
+    """Return state.realized_pl (or 0.0)."""
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("SELECT realized_pl FROM state WHERE id = 1;")
+    row = cur.fetchone()
+    conn.close()
+    return float(row[0]) if row else 0.0
+
 
 def get_trades():
     """
-    Fetch all historical trades (both BUY and SELL) from the simulation_trades table.
-    Returns a list of dicts:
-      [
-        {
-          'id': 1,
-          'symbol': 'AAPL',
-          'action': 'BUY',
-          'price': 150.0,
-          'qty': 10.0,
-          'trade_time': '2025-06-03 14:35:00',
-          'pnl': None           # p/l is only set on SELL trades
-        },
-        { … },
-        …
-      ]
+    Return a list of all trades (newest first).
+    Each trade is a dict with keys:
+      id, symbol, action, price, qty, trade_time, pnl
     """
-    conn = sqlite3.connect(SIM_DB)
+    conn = _connect()
     conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-
-    # Adjust "simulation_trades" to match your actual table name if different
-    c.execute("SELECT id, symbol, action, price, qty, trade_time, pnl FROM simulation_trades ORDER BY trade_time DESC")
-    rows = c.fetchall()
+    cur = conn.cursor()
+    cur.execute("""
+      SELECT id, symbol, action, price, qty, trade_time, pnl
+        FROM simulation_trades
+       ORDER BY id DESC;
+    """)
+    rows = cur.fetchall()
     conn.close()
 
     trades = []
-    for row in rows:
+    for r in rows:
         trades.append({
-            'id': row['id'],
-            'symbol': row['symbol'],
-            'action': row['action'],
-            'price': float(row['price']),
-            'qty': float(row['qty']),
-            'trade_time': row['trade_time'],   # e.g. "2025-06-03 14:35:00"
-            'pnl': float(row['pnl']) if row['pnl'] is not None else None
+            "id":         r["id"],
+            "symbol":     r["symbol"],
+            "action":     r["action"],
+            "price":      float(r["price"]),
+            "qty":        int(r["qty"]),
+            "trade_time": r["trade_time"],
+            "pnl":        float(r["pnl"]) if r["pnl"] is not None else None
         })
     return trades
 
 
-def get_realized_pl():
+def get_holdings():
     """
-    Return the sum of P/L from all closed (SELL) trades in the simulation_trades table.
-    If your table stores 'pnl' on each SELL row, simply sum that column. 
+    Return a list of holdings dictionaries. Each one has keys matching the template:
+      symbol, qty, price_paid, last_price, change, change_pct, day_gain, total_gain, value
     """
-    conn = sqlite3.connect(SIM_DB)
-    c = conn.cursor()
-    c.execute("""
-        SELECT SUM(pnl) 
-          FROM simulation_trades 
-         WHERE action = 'SELL'
-    """)
-    row = c.fetchone()
-    conn.close()
-
-    if row and row[0] is not None:
-        try:
-            return float(row[0])
-        except (TypeError, ValueError):
-            return 0.0
-    return 0.0
-
-
-def get_cash():
-    with sqlite3.connect(SIM_DB) as conn:
-        c = conn.cursor()
-        c.execute("SELECT cash FROM state WHERE id = 1")
-        row = c.fetchone()
-        return row[0] if row else 0.0
-
-def get_previous_close(symbol):
-    """
-    (Optional) If you ever need yesterday's close,
-    you could implement this with yfinance as well. 
-    We only need today's open for our logic below.
-    """
-    # For now, we don't use this for "Day Gain"—we use today's open instead.
-    return 0.0
-
-
-def get_today_open(symbol):
-    """
-    Fetch today's opening price for `symbol` via yfinance.
-    We'll download just the last 1 day of data at 1d resolution,
-    then pull the 'Open' column for today.
-    If we can't get it, return None.
-    """
-    try:
-        # period="1d" with interval="1d" returns a single-row DataFrame for today
-        df = yf.download(symbol, period="1d", interval="1d", progress=False)
-        if df is None or df.empty:
-            return None
-        # The index is today's date; .iloc[0]['Open'] is the open price
-        today_open = df["Open"].iloc[0]
-        return float(today_open)
-    except Exception:
-        return None
-
-
-def get_first_buy_timestamp(symbol):
-    """
-    Look in the 'simulation_trades' (or however you named your trades table)
-    for the earliest BUY for this symbol. Return a datetime object.
-    If no BUYs exist, return None.
-    """
-    conn = sqlite3.connect(SIM_DB)
+    holdings = []
+    conn = _connect()
     conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    c.execute("""
-        SELECT trade_time 
-          FROM simulation_trades 
-         WHERE symbol = ? AND action = 'BUY'
-         ORDER BY trade_time ASC
-         LIMIT 1
-    """, (symbol,))
-    row = c.fetchone()
+    cur = conn.cursor()
+
+    # 1) Grab symbol, qty, avg_cost from the SQLite table
+    cur.execute("SELECT symbol, qty, avg_cost FROM holdings;")
+    rows = cur.fetchall()
     conn.close()
 
-    if not row or row["trade_time"] is None:
-        return None
+    for r in rows:
+        symbol   = r["symbol"]
+        qty      = int(r["qty"])
+        avg_cost = float(r["avg_cost"])
 
-    # Assuming you stored trade_time as a text like "YYYY-MM-DD HH:MM:SS"
-    ts_str = row["trade_time"]
-    try:
-        return datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
-    except ValueError:
-        return None
+        # 2) Fetch the live price (using yfinance); if it fails, fall back to avg_cost
+        try:
+            df = yf.download(symbol, period="1d", interval="1d", progress=False)
+            last_price = float(df["Open"].iloc[0]) if not df.empty else avg_cost
+        except Exception:
+            last_price = avg_cost
 
-import sqlite3
-from datetime import datetime
+        # 3) Calculate change from cost and percent
+        change_amount  = last_price - avg_cost
+        change_pct     = (change_amount / avg_cost * 100) if avg_cost != 0 else 0.0
 
-SIM_DB = "simulation.db"   # adjust if your DB file has a different name or path
+        # 4) Calculate day_gain and total_gain
+        #    (Here we approximate day_gain = total_gain since we don't track previous_close separately)
+        day_gain       = change_amount * qty
+        total_gain     = change_amount * qty
+        value          = last_price * qty
 
-def buy_stock(symbol, quantity, price):
+        # 5) Build the exact dict your template needs:
+        holdings.append({
+            "symbol":      symbol,
+            "qty":         qty,
+            "price_paid":  avg_cost,        # TEMPLATE uses {{ h.price_paid }}
+            "last_price":  last_price,      # TEMPLATE uses {{ h.last_price }}
+            "change":      change_amount,   # TEMPLATE uses {{ h.change }}
+            "change_pct":  change_pct,      # TEMPLATE uses {{ h.change_pct }}
+            "day_gain":    day_gain,        # TEMPLATE uses {{ h.day_gain }}
+            "total_gain":  total_gain,      # TEMPLATE uses {{ h.total_gain }}
+            "value":       value            # TEMPLATE uses {{ h.value }}
+        })
+
+    return holdings
+
+
+def buy_stock(symbol: str, quantity: int, price: float):
     """
-    Record a BUY trade in the simulation database and update holdings.
-    - Inserts a new row into `simulation_trades` with action='BUY'
-    - Increases (or creates) the row in `holdings` for this symbol.
+    1) Insert a new BUY into simulation_trades (pnl=NULL)
+    2) Deduct cash = price * quantity from state.cash
+    3) Add or update holdings (recompute avg_cost)
     """
-    conn = sqlite3.connect(SIM_DB)
-    c = conn.cursor()
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    conn = _connect()
+    cur = conn.cursor()
 
-    # 1) Insert a new BUY trade
-    trade_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    c.execute("""
-        INSERT INTO simulation_trades (symbol, action, price, qty, trade_time, pnl)
-        VALUES (?, 'BUY', ?, ?, ?, NULL)
-    """, (symbol, price, quantity, trade_time))
+    total_cost = price * quantity
 
-    # 2) Update holdings table: if symbol exists, adjust qty and average cost; otherwise insert new
-    #    We assume `holdings` has columns: symbol (TEXT PRIMARY KEY), qty (REAL), avg_cost (REAL)
-    c.execute("SELECT qty, avg_cost FROM holdings WHERE symbol = ?", (symbol,))
-    row = c.fetchone()
-    if row:
-        old_qty, old_avg = row
-        # new total quantity
+    # 1) Check current cash
+    cur.execute("SELECT cash FROM state WHERE id = 1;")
+    row = cur.fetchone()
+    if not row or float(row[0]) < total_cost:
+        conn.close()
+        raise ValueError("Insufficient cash to buy.")
+
+    # 2) Insert trade
+    cur.execute(
+        "INSERT INTO simulation_trades (symbol, action, price, qty, trade_time, pnl) "
+        "VALUES (?, 'BUY', ?, ?, ?, NULL);",
+        (symbol, price, quantity, timestamp)
+    )
+
+    # 3) Subtract cash
+    new_cash = float(row[0]) - total_cost
+    cur.execute("UPDATE state SET cash = ? WHERE id = 1;", (new_cash,))
+
+    # 4) Update / insert holding
+    cur.execute("SELECT qty, avg_cost FROM holdings WHERE symbol = ?;", (symbol,))
+    hold = cur.fetchone()
+    if hold:
+        old_qty, old_avg = int(hold[0]), float(hold[1])
         new_qty = old_qty + quantity
-        # new average cost = (old_avg*old_qty + price*quantity) / new_qty
         new_avg = ((old_avg * old_qty) + (price * quantity)) / new_qty
-        c.execute("""
-            UPDATE holdings
-               SET qty = ?, avg_cost = ?
-             WHERE symbol = ?
-        """, (new_qty, new_avg, symbol))
+        cur.execute(
+            "UPDATE holdings SET qty = ?, avg_cost = ?, last_price = ? WHERE symbol = ?;",
+            (new_qty, new_avg, price, symbol)
+        )
     else:
-        # no existing row, so insert brand-new holding
-        c.execute("""
-            INSERT INTO holdings (symbol, qty, avg_cost)
-            VALUES (?, ?, ?)
-        """, (symbol, quantity, price))
+        cur.execute(
+            "INSERT INTO holdings (symbol, qty, avg_cost, last_price) VALUES (?, ?, ?, ?);",
+            (symbol, quantity, price, price)
+        )
 
     conn.commit()
     conn.close()
 
-def get_holdings():
+
+def sell_stock(symbol: str, quantity: int, price: float):
     """
-    Return a list of dicts for each holding with its live last_price + computed gains.
-    All numeric fields are floats.  
-    Each dict has keys:
-      'symbol', 'qty', 'avg_cost', 'last_price',
-      'day_gain', 'total_gain', 'value'
+    1) Lookup existing holding; if not enough qty, error out.
+    2) Compute realized_pl = (price - avg_cost) * quantity.
+    3) Insert SELL into simulation_trades with pnl.
+    4) Subtract that qty from holdings (or delete if qty→0).
+    5) Add proceeds = price * quantity back into state.cash.
+    6) Add realized_pl to state.realized_pl.
     """
-    holdings = []
-    today = date.today()   # today’s date (to compare to buy timestamp)
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    conn = _connect()
+    cur = conn.cursor()
 
-    with sqlite3.connect(SIM_DB) as conn:
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute("SELECT symbol, qty, avg_cost FROM holdings").fetchall()
-        for row in rows:
-            symbol = row["symbol"]
-            qty = float(row["qty"])
-            avg_cost = float(row["avg_cost"])
+    # 1) Get current cash + realized_pl
+    cur.execute("SELECT cash, realized_pl FROM state WHERE id = 1;")
+    state_row = cur.fetchone()
+    if not state_row:
+        conn.close()
+        raise Exception("No state row found.")
+    cash_now, realized = float(state_row[0]), float(state_row[1])
 
-            # 1) Get the real-time (last) price; cast it to float
-            raw_price = get_realtime_price(symbol)
-            try:
-                last_price = float(raw_price)
-            except (TypeError, ValueError):
-                last_price = 0.0
+    # 2) Get holding
+    cur.execute("SELECT qty, avg_cost FROM holdings WHERE symbol = ?;", (symbol,))
+    hold = cur.fetchone()
+    if not hold:
+        conn.close()
+        raise Exception(f"No holdings for {symbol}.")
+    old_qty, avg_cost = int(hold[0]), float(hold[1])
+    if quantity > old_qty:
+        conn.close()
+        raise Exception(f"Cannot sell {quantity} {symbol}; only {old_qty} held.")
 
-            # 2) Determine whether our first BUY for this symbol was before today's open
-            first_buy_ts = get_first_buy_timestamp(symbol)
-            held_at_open = False
-            if first_buy_ts:
-                held_at_open = (first_buy_ts.date() < today) or (first_buy_ts.date() == today and first_buy_ts.time() < datetime.strptime("09:30:00", "%H:%M:%S").time())
-                # In other words: if the first BUY was on an earlier date, OR if it was today but before 9:30 AM, we consider "held_at_open=True".
+    # 3) Compute realized P/L
+    proceeds     = price * quantity
+    realized_pl  = (price - avg_cost) * quantity
 
-            # 3) Fetch today's actual open price if needed
-            if held_at_open:
-                # We only fetch yfinance once per symbol per call
-                open_price = get_today_open(symbol) or avg_cost
-                # If we can't fetch today's open, we fallback to avg_cost (so day_gain = 0)
-            else:
-                # Bought after the market opened today, so open_for_day = purchase price
-                open_price = avg_cost
+    # 4) Insert SELL trade
+    cur.execute(
+        "INSERT INTO simulation_trades (symbol, action, price, qty, trade_time, pnl) "
+        "VALUES (?, 'SELL', ?, ?, ?, ?);",
+        (symbol, price, quantity, timestamp, realized_pl)
+    )
 
-            # 4) Compute Day Gain: (last_price - open_price) * qty
-            day_gain = (last_price - open_price) * qty
+    # 5) Update holdings
+    new_qty = old_qty - quantity
+    if new_qty > 0:
+        cur.execute(
+            "UPDATE holdings SET qty = ?, last_price = ? WHERE symbol = ?;",
+            (new_qty, price, symbol)
+        )
+    else:
+        cur.execute("DELETE FROM holdings WHERE symbol = ?;", (symbol,))
 
-            # 5) Compute Total Gain: (last_price - avg_cost) * qty
-            total_gain = (last_price - avg_cost) * qty
+    # 6) Update cash + realized_pl in state
+    new_cash     = cash_now + proceeds
+    new_realized = realized + realized_pl
+    cur.execute(
+        "UPDATE state SET cash = ?, realized_pl = ? WHERE id = 1;",
+        (new_cash, new_realized)
+    )
 
-            # 6) Current value (market value) = last_price * qty
-            value = last_price * qty
-
-            holdings.append({
-                "symbol": symbol,
-                "qty": qty,
-                "avg_cost": avg_cost,
-                "last_price": last_price,
-                "day_gain": day_gain,
-                "total_gain": total_gain,
-                "value": value
-            })
-
-    return holdings
+    conn.commit()
+    conn.close()
