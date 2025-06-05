@@ -3,8 +3,10 @@ from datetime import datetime
 import yfinance as yf
 from pathlib import Path
 
-# Now ALWAYS points to C:\TradeAlerts\simulation.db (wherever your project root is)
 SIM_DB = str(Path(__file__).resolve().parent.parent / "simulation.db")
+
+def _connect():
+    return sqlite3.connect(SIM_DB, detect_types=sqlite3.PARSE_DECLTYPES)
 
 def _connect():
     return sqlite3.connect(SIM_DB, detect_types=sqlite3.PARSE_DECLTYPES)
@@ -64,47 +66,52 @@ def get_trades():
 
 def get_holdings():
     """
-    Return a list of holdings dictionaries. Each one has:
-      symbol, qty, avg_cost, last_price, day_gain, total_gain, value
-    where:
-      - last_price comes from yfinance (or could be taken from holdings.last_price)
-      - day_gain = (last_price - today_open) * qty
-      - total_gain = (last_price - avg_cost) * qty
-      - value = last_price * qty
+    Return a list of holdings dictionaries. Each one has keys matching the template:
+      symbol, qty, price_paid, last_price, change, change_pct, day_gain, total_gain, value
     """
     holdings = []
     conn = _connect()
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
+
+    # 1) Grab symbol, qty, avg_cost from the SQLite table
     cur.execute("SELECT symbol, qty, avg_cost FROM holdings;")
     rows = cur.fetchall()
     conn.close()
 
     for r in rows:
-        symbol  = r["symbol"]
-        qty     = int(r["qty"])
+        symbol   = r["symbol"]
+        qty      = int(r["qty"])
         avg_cost = float(r["avg_cost"])
 
-        # Fetch the live price (we’ll just grab “Open” for today)
+        # 2) Fetch the live price (using yfinance); if it fails, fall back to avg_cost
         try:
             df = yf.download(symbol, period="1d", interval="1d", progress=False)
             last_price = float(df["Open"].iloc[0]) if not df.empty else avg_cost
         except Exception:
             last_price = avg_cost
 
-        # Day gain can be approximated as last_price - avg_cost for now:
-        day_gain   = (last_price - avg_cost) * qty
-        total_gain = (last_price - avg_cost) * qty
-        value      = last_price * qty
+        # 3) Calculate change from cost and percent
+        change_amount  = last_price - avg_cost
+        change_pct     = (change_amount / avg_cost * 100) if avg_cost != 0 else 0.0
 
+        # 4) Calculate day_gain and total_gain
+        #    (Here we approximate day_gain = total_gain since we don't track previous_close separately)
+        day_gain       = change_amount * qty
+        total_gain     = change_amount * qty
+        value          = last_price * qty
+
+        # 5) Build the exact dict your template needs:
         holdings.append({
-            "symbol":     symbol,
-            "qty":        qty,
-            "avg_cost":   avg_cost,
-            "last_price": last_price,
-            "day_gain":   day_gain,
-            "total_gain": total_gain,
-            "value":      value
+            "symbol":      symbol,
+            "qty":         qty,
+            "price_paid":  avg_cost,        # TEMPLATE uses {{ h.price_paid }}
+            "last_price":  last_price,      # TEMPLATE uses {{ h.last_price }}
+            "change":      change_amount,   # TEMPLATE uses {{ h.change }}
+            "change_pct":  change_pct,      # TEMPLATE uses {{ h.change_pct }}
+            "day_gain":    day_gain,        # TEMPLATE uses {{ h.day_gain }}
+            "total_gain":  total_gain,      # TEMPLATE uses {{ h.total_gain }}
+            "value":       value            # TEMPLATE uses {{ h.value }}
         })
 
     return holdings

@@ -133,7 +133,7 @@ def reset_simulation():
 
 def nuke_simulation_db():
     try:
-        with sqlite3.connect('C:/TradeAlerts/simulation.db') as conn:
+        with sqlite3.connect(str(Path(__file__).resolve().parent.parent / 'simulation.db')) as conn:
             c = conn.cursor()
             c.execute("DELETE FROM holdings;")
             c.execute("DELETE FROM simulation_trades;")
@@ -168,21 +168,21 @@ def simulation():
         realized_pnl  = get_realized_pl()   # ← newly added line
 
         # 2) Gather and format holdings for the template
-        raw_holdings = get_holdings()
-        unrealized_pnl = 0.0
-        for h in raw_holdings:
-            unrealized_pnl += h['total_gain']
-            formatted_holdings.append({
-                'symbol':     h['symbol'],
-                'last_price': h['last_price'],
-                'change':     h['change'],
-                'change_pct': h['change_percent'],
-                'qty':        h['qty'],
-                'price_paid': h['avg_cost'],
-                'day_gain':   h['day_gain'],
-                'total_gain': h['total_gain'],
-                'value':      h['value']
-            })
+raw_holdings = get_holdings()
+unrealized_pnl = 0.0
+for h in raw_holdings:
+    unrealized_pnl += h['total_gain']
+    formatted_holdings.append({
+        'symbol':     h['symbol'],
+        'last_price': h['last_price'],
+        'change':     h['change'],
+        'change_pct': h['change_pct'],
+        'qty':        h['qty'],
+        'price_paid': h['price_paid'],
+        'day_gain':   h['day_gain'],
+        'total_gain': h['total_gain'],
+        'value':      h['value']
+    })
 
         # 3) Gather and format trade history for the template
         raw_trades = get_trades()
@@ -198,6 +198,7 @@ def simulation():
             })
 
     except Exception as e:
+        import traceback; traceback.print_exc()
         print(f"[Simulation Error] {e}")
 
     return render_template(
@@ -263,8 +264,10 @@ if __name__ == '__main__':
 import sqlite3
 from datetime import datetime
 import yfinance as yf
+from pathlib import Path
 
-SIM_DB = "simulation.db"
+# Always point to the correct absolute path for simulation.db
+SIM_DB = str(Path(__file__).resolve().parent.parent / "simulation.db")
 
 
 def _connect():
@@ -324,15 +327,8 @@ def get_trades():
 
 def get_holdings():
     """
-    Return a list of holdings dictionaries. Each one has:
-      symbol, qty, avg_cost, last_price, change, change_percent, day_gain, total_gain, value
-    where:
-      - last_price comes from yfinance (or could be taken from holdings.last_price)
-      - change = last_price - avg_cost
-      - change_percent = change / avg_cost * 100
-      - day_gain = (last_price - avg_cost) * qty (approximation)
-      - total_gain = (last_price - avg_cost) * qty
-      - value = last_price * qty
+    Return a list of holdings dictionaries. Each one has keys matching the template:
+      symbol, qty, price_paid, last_price, change, change_pct, day_gain, total_gain, value
     """
     holdings = []
     conn = _connect()
@@ -356,25 +352,24 @@ def get_holdings():
 
         # Compute change from cost and percent
         change_amount  = last_price - avg_cost
-        change_percent = (change_amount / avg_cost * 100) if avg_cost != 0 else 0.0
+        change_pct     = (change_amount / avg_cost * 100) if avg_cost != 0 else 0.0
 
         # Day gain approximation and total gain
-        day_gain       = (last_price - avg_cost) * qty
-        total_gain     = (last_price - avg_cost) * qty
+        day_gain       = change_amount * qty
+        total_gain     = change_amount * qty
         value          = last_price * qty
 
         holdings.append({
-    "symbol":        symbol,
-    "qty":           qty,
-    "price_paid":    avg_cost,                    # was "avg_cost"
-    "last_price":    last_price,
-    "change":        (last_price - avg_cost),     # dollars change from cost
-    "change_percent": ((last_price - avg_cost) / avg_cost * 100) if avg_cost != 0 else 0.0,
-    "day_gain":      (last_price - avg_cost) * qty,
-    "total_gain":    (last_price - avg_cost) * qty,
-    "value":         last_price * qty
-})
-
+            "symbol":        symbol,
+            "qty":           qty,
+            "price_paid":    avg_cost,
+            "last_price":    last_price,
+            "change":        change_amount,
+            "change_pct":    change_pct,
+            "day_gain":      day_gain,
+            "total_gain":    total_gain,
+            "value":         value
+        })
 
     return holdings
 
