@@ -19,7 +19,8 @@ from services.simulation_service import (
     get_holdings,
     get_cash,
     get_realized_pl,
-    get_trades
+    get_trades,
+    sell_stock
 )
 from services.backtest_service import backtest
 
@@ -129,12 +130,13 @@ def reset_simulation():
     else:
         return "Failed to reset simulation database.", 500
 
+
 def nuke_simulation_db():
     try:
-        with sqlite3.connect('C:/TradeAlerts/simulation.db') as conn:
+        with sqlite3.connect(str(Path(__file__).resolve().parent.parent / 'simulation.db')) as conn:
             c = conn.cursor()
             c.execute("DELETE FROM holdings;")
-            c.execute("DELETE FROM trades;")
+            c.execute("DELETE FROM simulation_trades;")
             # Try to reset realized_pl in state
             try:
                 c.execute("UPDATE state SET realized_pl = 0.0 WHERE id = 1;")
@@ -149,7 +151,6 @@ def nuke_simulation_db():
     except Exception as e:
         print(f"Failed to nuke simulation DB: {e}")
         return False
-
 
 
 @app.route('/simulation')
@@ -172,12 +173,12 @@ def simulation():
         for h in raw_holdings:
             unrealized_pnl += h['total_gain']
             formatted_holdings.append({
-                'symbol':    h['symbol'],
+                'symbol':     h['symbol'],
                 'last_price': h['last_price'],
                 'change':     h['change'],
-                'change_pct': h['change_percent'],
+                'change_pct': h['change_pct'],
                 'qty':        h['qty'],
-                'price_paid': h['avg_cost'],
+                'price_paid': h['price_paid'],
                 'day_gain':   h['day_gain'],
                 'total_gain': h['total_gain'],
                 'value':      h['value']
@@ -186,17 +187,18 @@ def simulation():
         # 3) Gather and format trade history for the template
         raw_trades = get_trades()
         for t in raw_trades:
-            pl_display = f"${t['pl']:.2f}" if t['pl'] is not None else "-"
+            pl_display = f"${t['pnl']:.2f}" if t['pnl'] is not None else "-"
             formatted_trades.append({
-                'time':     t['timestamp'],
+                'time':     t['trade_time'],
                 'symbol':   t['symbol'],
                 'action':   t['action'],
-                'qty':      t['quantity'],
+                'qty':      t['qty'],
                 'price':    f"${t['price']:.2f}",
                 'pl':       pl_display
             })
 
     except Exception as e:
+        import traceback; traceback.print_exc()
         print(f"[Simulation Error] {e}")
 
     return render_template(
@@ -209,76 +211,42 @@ def simulation():
     )
 
 
-
-@app.route('/simulation/sell', methods=['POST'])
-def route_sell_stock():
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "Missing JSON payload"}), 400
-
-    symbol = data.get("symbol")
-    try:
-        qty = int(data.get("qty", 0))
-    except (ValueError, TypeError):
-        return jsonify({"error": "Invalid qty"}), 400
-
-    if not symbol or qty <= 0:
-        return jsonify({"error": "Symbol and qty must be provided"}), 400
-
-    try:
-        price = get_etrade_price(symbol)  # Fetch real-time price on the backend!
-    except Exception as e:
-        return jsonify({"error": f"Failed to fetch price for {symbol}: {e}"}), 400
-
-    if price is None or price <= 0:
-        return jsonify({"error": f"Failed to fetch a valid price for {symbol}"}), 400
-
-    try:
-        sell_stock(symbol, qty, price)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-    # If successful, return updated cash & realized P/L
-    new_cash = get_cash()
-    new_realized = get_realized_pl()
-    return jsonify({
-        "success": True,
-        "cash": new_cash,
-        "realized_pl": new_realized
-    }), 200
-
-
-
 @app.route("/simulation/buy", methods=["POST"])
 def simulation_buy():
-    """
-    Expects JSON: { "symbol": "...", "qty": N }
-    Uses E*TRADE price as `price` for the buy.
-    Returns JSON: { "success": true, "cash": <new_cash> }
-    """
     data = request.get_json()
-    if not data:
-        return jsonify({"error": "Missing JSON payload"}), 400
-
     symbol = data.get("symbol")
+    qty    = int(data.get("qty", 0))
+    if not symbol or qty <= 0:
+        return jsonify({"error": "Invalid symbol or quantity"}), 400
+
     try:
-        qty = int(data.get("qty", 1))
-    except (ValueError, TypeError):
-        return jsonify({"error": "Invalid qty"}), 400
-
-    # Fetch E*TRADE price
-    price = get_etrade_price(symbol)
-    if price is None:
-        return jsonify({"error": "Could not fetch price"}), 400
-
-
+        price = get_etrade_price(symbol)  # or however you fetch a live price
         buy_stock(symbol, qty, price)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
-        return jsonify({"error": str(e)}), 500
+    return jsonify({"success": True, "cash": get_cash()}), 200
 
-    new_cash = get_cash()
-    return jsonify({"success": True, "cash": new_cash}), 200
 
+@app.route("/simulation/sell", methods=["POST"])
+def simulation_sell():
+    data = request.get_json()
+    symbol = data.get("symbol")
+    qty    = int(data.get("qty", 0))
+    if not symbol or qty <= 0:
+        return jsonify({"error": "Invalid symbol or quantity"}), 400
+
+    try:
+        price = get_etrade_price(symbol)
+        sell_stock(symbol, qty, price)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+    return jsonify({
+        "success": True,
+        "cash": get_cash(),
+        "realized_pl": get_realized_pl()
+    }), 200
 
 @app.route('/news/<symbol>')
 def news_for_symbol(symbol):
@@ -289,3 +257,234 @@ def news_for_symbol(symbol):
 
 if __name__ == '__main__':
     app.run(debug=True)
+
+
+# File: services/simulation_service.py
+
+import sqlite3
+from datetime import datetime
+import yfinance as yf
+from pathlib import Path
+
+# Always point to the correct absolute path for simulation.db
+SIM_DB = str(Path(__file__).resolve().parent.parent / "simulation.db")
+
+
+def _connect():
+    return sqlite3.connect(SIM_DB, detect_types=sqlite3.PARSE_DECLTYPES)
+
+
+def get_cash():
+    """Return the single row `state.cash` (or 0.0 if missing)."""
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("SELECT cash FROM state WHERE id = 1;")
+    row = cur.fetchone()
+    conn.close()
+    return float(row[0]) if row else 0.0
+
+
+def get_realized_pl():
+    """Return state.realized_pl (or 0.0)."""
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("SELECT realized_pl FROM state WHERE id = 1;")
+    row = cur.fetchone()
+    conn.close()
+    return float(row[0]) if row else 0.0
+
+
+def get_trades():
+    """
+    Return a list of all trades (newest first).
+    Each trade is a dict with keys:
+      id, symbol, action, price, qty, trade_time, pnl
+    """
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("""
+      SELECT id, symbol, action, price, qty, trade_time, pnl
+        FROM simulation_trades
+       ORDER BY id DESC;
+    """)
+    rows = cur.fetchall()
+    conn.close()
+
+    trades = []
+    for r in rows:
+        trades.append({
+            "id":         r["id"],
+            "symbol":     r["symbol"],
+            "action":     r["action"],
+            "price":      float(r["price"]),
+            "qty":        int(r["qty"]),
+            "trade_time": r["trade_time"],
+            "pnl":        float(r["pnl"]) if r["pnl"] is not None else None
+        })
+    return trades
+
+
+def get_holdings():
+    """
+    Return a list of holdings dictionaries. Each one has keys matching the template:
+      symbol, qty, price_paid, last_price, change, change_pct, day_gain, total_gain, value
+    """
+    holdings = []
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT symbol, qty, avg_cost FROM holdings;")
+    rows = cur.fetchall()
+    conn.close()
+
+    for r in rows:
+        symbol   = r["symbol"]
+        qty      = int(r["qty"])
+        avg_cost = float(r["avg_cost"])
+
+        # Fetch the live price (we’ll just grab "Open" for today)
+        try:
+            df = yf.download(symbol, period="1d", interval="1d", progress=False)
+            last_price = float(df["Open"].iloc[0]) if not df.empty else avg_cost
+        except Exception:
+            last_price = avg_cost
+
+        # Compute change from cost and percent
+        change_amount  = last_price - avg_cost
+        change_pct     = (change_amount / avg_cost * 100) if avg_cost != 0 else 0.0
+
+        # Day gain approximation and total gain
+        day_gain       = change_amount * qty
+        total_gain     = change_amount * qty
+        value          = last_price * qty
+
+        holdings.append({
+            "symbol":        symbol,
+            "qty":           qty,
+            "price_paid":    avg_cost,
+            "last_price":    last_price,
+            "change":        change_amount,
+            "change_pct":    change_pct,
+            "day_gain":      day_gain,
+            "total_gain":    total_gain,
+            "value":         value
+        })
+
+    return holdings
+
+
+def buy_stock(symbol: str, quantity: int, price: float):
+    """
+    1) Insert a new BUY into simulation_trades (pnl=NULL)
+    2) Deduct cash = price * quantity from state.cash
+    3) Add or update holdings (recompute avg_cost)
+    """
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    conn = _connect()
+    cur = conn.cursor()
+
+    total_cost = price * quantity
+
+    # 1) Check current cash
+    cur.execute("SELECT cash FROM state WHERE id = 1;")
+    row = cur.fetchone()
+    if not row or float(row[0]) < total_cost:
+        conn.close()
+        raise ValueError("Insufficient cash to buy.")
+
+    # 2) Insert trade
+    cur.execute(
+        "INSERT INTO simulation_trades (symbol, action, price, qty, trade_time, pnl) "
+        "VALUES (?, 'BUY', ?, ?, ?, NULL);",
+        (symbol, price, quantity, timestamp)
+    )
+
+    # 3) Subtract cash
+    new_cash = float(row[0]) - total_cost
+    cur.execute("UPDATE state SET cash = ? WHERE id = 1;", (new_cash,))
+
+    # 4) Update / insert holding
+    cur.execute("SELECT qty, avg_cost FROM holdings WHERE symbol = ?;", (symbol,))
+    hold = cur.fetchone()
+    if hold:
+        old_qty, old_avg = int(hold[0]), float(hold[1])
+        new_qty = old_qty + quantity
+        new_avg = ((old_avg * old_qty) + (price * quantity)) / new_qty
+        cur.execute(
+            "UPDATE holdings SET qty = ?, avg_cost = ?, last_price = ? WHERE symbol = ?;",
+            (new_qty, new_avg, price, symbol)
+        )
+    else:
+        cur.execute(
+            "INSERT INTO holdings (symbol, qty, avg_cost, last_price) VALUES (?, ?, ?, ?);",
+            (symbol, quantity, price, price)
+        )
+
+    conn.commit()
+    conn.close()
+
+
+def sell_stock(symbol: str, quantity: int, price: float):
+    """
+    1) Lookup existing holding; if not enough qty, error out.
+    2) Compute realized_pl = (price - avg_cost) * quantity.
+    3) Insert SELL into simulation_trades with pnl.
+    4) Subtract that qty from holdings (or delete if qty→0).
+    5) Add proceeds = price * quantity back into state.cash.
+    6) Add realized_pl to state.realized_pl.
+    """
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    conn = _connect()
+    cur = conn.cursor()
+
+    # 1) Get current cash + realized_pl
+    cur.execute("SELECT cash, realized_pl FROM state WHERE id = 1;")
+    state_row = cur.fetchone()
+    if not state_row:
+        conn.close()
+        raise Exception("No state row found.")
+    cash_now, realized = float(state_row[0]), float(state_row[1])
+
+    # 2) Get holding
+    cur.execute("SELECT qty, avg_cost FROM holdings WHERE symbol = ?;", (symbol,))
+    hold = cur.fetchone()
+    if not hold:
+        conn.close()
+        raise Exception(f"No holdings for {symbol}.")
+    old_qty, avg_cost = int(hold[0]), float(hold[1])
+    if quantity > old_qty:
+        conn.close()
+        raise Exception(f"Cannot sell {quantity} {symbol}; only {old_qty} held.")
+
+    # 3) Compute realized P/L
+    proceeds     = price * quantity
+    realized_pl  = (price - avg_cost) * quantity
+
+    # 4) Insert SELL trade
+    cur.execute(
+        "INSERT INTO simulation_trades (symbol, action, price, qty, trade_time, pnl) "
+        "VALUES (?, 'SELL', ?, ?, ?, ?);",
+        (symbol, price, quantity, timestamp, realized_pl)
+    )
+
+    # 5) Update holdings
+    new_qty = old_qty - quantity
+    if new_qty > 0:
+        cur.execute(
+            "UPDATE holdings SET qty = ?, last_price = ? WHERE symbol = ?;",
+            (new_qty, price, symbol)
+        )
+    else:
+        cur.execute("DELETE FROM holdings WHERE symbol = ?;", (symbol,))
+
+    # 6) Update cash + realized_pl in state
+    new_cash     = cash_now + proceeds
+    new_realized = realized + realized_pl
+    cur.execute(
+        "UPDATE state SET cash = ?, realized_pl = ? WHERE id = 1;",
+        (new_cash, new_realized)
+    )
+
+    conn.commit()
+    conn.close()
