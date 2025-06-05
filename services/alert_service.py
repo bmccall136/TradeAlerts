@@ -4,10 +4,147 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import io
+from datetime import datetime
 
 ALERTS_DB = 'alerts.db'
+DB_PATH = 'alerts.db'   # <-- adjust if your path is different
+
+# ------------------------------------------------------------------------------
+#  1) Make sure you have this table in alerts.db (run this once, e.g. in init_alerts_db.py):
+#
+#  CREATE TABLE IF NOT EXISTS indicator_settings (
+#      id                INTEGER PRIMARY KEY CHECK(id = 1),  -- exactly one row
+#      match_count       INTEGER NOT NULL DEFAULT 1,
+#      sma_length        INTEGER NOT NULL DEFAULT 20,
+#      rsi_len           INTEGER NOT NULL DEFAULT 14,
+#      rsi_overbought    INTEGER NOT NULL DEFAULT 70,
+#      rsi_oversold      INTEGER NOT NULL DEFAULT 30,
+#      macd_fast         INTEGER NOT NULL DEFAULT 12,
+#      macd_slow         INTEGER NOT NULL DEFAULT 26,
+#      macd_signal       INTEGER NOT NULL DEFAULT 9,
+#      bb_length         INTEGER NOT NULL DEFAULT 20,
+#      bb_std            REAL    NOT NULL DEFAULT 2.0,
+#      vol_multiplier    REAL    NOT NULL DEFAULT 1.0,   -- new: volume as multiple of avg.
+#      vwap_threshold    REAL    NOT NULL DEFAULT 0.0,   -- new: VWAP diff threshold (0=only up)
+#      news_on           INTEGER NOT NULL DEFAULT 0      -- 0 = off, 1 = on
+#  );
+#
+#  Note: Once you run the above CREATE TABLE, insert a single dummy row with id=1:
+#      INSERT OR IGNORE INTO indicator_settings (id) VALUES (1);
+#  Then your save/get functions will always operate on that row.
+# ------------------------------------------------------------------------------
+
+def save_indicator_settings(
+    match_count,
+    sma_length,
+    rsi_len, rsi_overbought, rsi_oversold,
+    macd_fast, macd_slow, macd_signal,
+    bb_length, bb_std,
+    vol_multiplier,
+    vwap_threshold,
+    news_on
+):
+    """
+    Insert or update the single row (id=1) in indicator_settings with all 12 columns:
+      - match_count:     how many of [SMA, RSI, MACD, BB, Volume, VWAP] to match
+      - sma_length:      period for SMA
+      - rsi_len:         period for RSI
+      - rsi_overbought:  RSI overbought threshold
+      - rsi_oversold:    RSI oversold threshold
+      - macd_fast:       MACD fast EMA period
+      - macd_slow:       MACD slow EMA period
+      - macd_signal:     MACD signal EMA period
+      - bb_length:       Bollinger Bands window
+      - bb_std:          Bollinger Bands std‐dev multiplier
+      - vol_multiplier:  Volume needs to be ≥ vol_multiplier × avg(volume)
+      - vwap_threshold:  VWAP diff must be ≥ this threshold (e.g. 0.0 means price>VWAP only)
+      - news_on:         0 or 1
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    # Ensure that row #1 exists
+    cur.execute("INSERT OR IGNORE INTO indicator_settings (id) VALUES (1);")
+
+    # Update that one row
+    cur.execute("""
+        UPDATE indicator_settings
+           SET match_count    = ?,
+               sma_length     = ?,
+               rsi_len        = ?,
+               rsi_overbought = ?,
+               rsi_oversold   = ?,
+               macd_fast      = ?,
+               macd_slow      = ?,
+               macd_signal    = ?,
+               bb_length      = ?,
+               bb_std         = ?,
+               vol_multiplier = ?,
+               vwap_threshold = ?,
+               news_on        = ?
+         WHERE id = 1;
+    """, (
+        match_count,
+        sma_length,
+        rsi_len, rsi_overbought, rsi_oversold,
+        macd_fast, macd_slow, macd_signal,
+        bb_length, bb_std,
+        vol_multiplier,
+        vwap_threshold,
+        1 if news_on else 0
+    ))
+    conn.commit()
+    conn.close()
 
 
+def get_all_indicator_settings():
+    """
+    Return a dict of all indicator settings from the one row in indicator_settings.
+    If no row exists, returns sensible defaults.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM indicator_settings WHERE id = 1;")
+    row = cur.fetchone()
+    conn.close()
+
+    if row:
+        return {
+            'match_count':    row['match_count'],
+            'sma_length':     row['sma_length'],
+            'rsi_len':        row['rsi_len'],
+            'rsi_overbought': row['rsi_overbought'],
+            'rsi_oversold':   row['rsi_oversold'],
+            'macd_fast':      row['macd_fast'],
+            'macd_slow':      row['macd_slow'],
+            'macd_signal':    row['macd_signal'],
+            'bb_length':      row['bb_length'],
+            'bb_std':         row['bb_std'],
+            'vol_multiplier': row['vol_multiplier'],
+            'vwap_threshold': row['vwap_threshold'],
+            'news_on':        bool(row['news_on'])
+        }
+    else:
+        # No row yet → return defaults to match your template defaults
+        return {
+            'match_count':    1,
+            'sma_length':     20,
+            'rsi_len':        14,
+            'rsi_overbought': 70,
+            'rsi_oversold':   30,
+            'macd_fast':      12,
+            'macd_slow':      26,
+            'macd_signal':    9,
+            'bb_length':      20,
+            'bb_std':         2.0,
+            'vol_multiplier': 1.0,
+            'vwap_threshold': 0.0,
+            'news_on':        False
+        }
+
+
+# -------------------------------------------------------------------------------
 def generate_sparkline(prices):
     """
     Given a list of prices, produce a tiny black-background sparkline (yellow line)

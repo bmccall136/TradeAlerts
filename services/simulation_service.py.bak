@@ -66,15 +66,18 @@ def get_trades():
 
 def get_holdings():
     """
-    Return a list of holdings dictionaries. Each one has keys matching the template:
+    Return a list of holdings dicts with exactly these keys for the template:
       symbol, qty, price_paid, last_price, change, change_pct, day_gain, total_gain, value
+
+    - price_paid : pulled from the database (avg_cost at the time of purchase)
+    - last_price : fetched live from E*TRADE via get_etrade_price()
     """
     holdings = []
     conn = _connect()
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    # 1) Grab symbol, qty, avg_cost from the SQLite table
+    # 1) Read each holding's cost basis (which we call avg_cost in the table)
     cur.execute("SELECT symbol, qty, avg_cost FROM holdings;")
     rows = cur.fetchall()
     conn.close()
@@ -82,40 +85,35 @@ def get_holdings():
     for r in rows:
         symbol   = r["symbol"]
         qty      = int(r["qty"])
-        avg_cost = float(r["avg_cost"])
+        price_paid = float(r["avg_cost"])  # THIS IS the cost at purchase
 
-        # 2) Fetch the live price (using yfinance); if it fails, fall back to avg_cost
+        # 2) Fetch the latest quote from E*TRADE
         try:
-            df = yf.download(symbol, period="1d", interval="1d", progress=False)
-            last_price = float(df["Open"].iloc[0]) if not df.empty else avg_cost
+            last_price = float(get_etrade_price(symbol))
         except Exception:
-            last_price = avg_cost
+            # Fallback: if E*TRADE call fails, just use the price_paid
+            last_price = price_paid
 
-        # 3) Calculate change from cost and percent
-        change_amount  = last_price - avg_cost
-        change_pct     = (change_amount / avg_cost * 100) if avg_cost != 0 else 0.0
+        # 3) Calculate the various P/L fields
+        change_amount = last_price - price_paid
+        change_pct    = (change_amount / price_paid * 100) if price_paid != 0 else 0.0
+        day_gain      = change_amount * qty       # approximating day_gain = total_gain
+        total_gain    = change_amount * qty
+        market_value  = last_price * qty
 
-        # 4) Calculate day_gain and total_gain
-        #    (Here we approximate day_gain = total_gain since we don't track previous_close separately)
-        day_gain       = change_amount * qty
-        total_gain     = change_amount * qty
-        value          = last_price * qty
-
-        # 5) Build the exact dict your template needs:
         holdings.append({
             "symbol":      symbol,
             "qty":         qty,
-            "price_paid":  avg_cost,        # TEMPLATE uses {{ h.price_paid }}
-            "last_price":  last_price,      # TEMPLATE uses {{ h.last_price }}
-            "change":      change_amount,   # TEMPLATE uses {{ h.change }}
-            "change_pct":  change_pct,      # TEMPLATE uses {{ h.change_pct }}
-            "day_gain":    day_gain,        # TEMPLATE uses {{ h.day_gain }}
-            "total_gain":  total_gain,      # TEMPLATE uses {{ h.total_gain }}
-            "value":       value            # TEMPLATE uses {{ h.value }}
+            "price_paid":  price_paid,     # matches {{ h.price_paid }} in template
+            "last_price":  last_price,     # matches {{ h.last_price }}
+            "change":      change_amount,  # matches {{ h.change }}
+            "change_pct":  change_pct,     # matches {{ h.change_pct }}
+            "day_gain":    day_gain,       # matches {{ h.day_gain }}
+            "total_gain":  total_gain,     # matches {{ h.total_gain }}
+            "value":       market_value    # matches {{ h.value }}
         })
 
     return holdings
-
 
 def buy_stock(symbol: str, quantity: int, price: float):
     """
