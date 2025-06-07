@@ -5,7 +5,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import io
 from datetime import datetime
-from services.alert_service import save_indicator_settings, get_all_indicator_settings
+from services.etrade_service import get_quote
 
 ALERTS_DB = 'alerts.db'
 DB_PATH = 'alerts.db'   # <-- adjust if your path is different

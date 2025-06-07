@@ -2,6 +2,7 @@ import sqlite3
 from datetime import datetime
 import yfinance as yf
 from pathlib import Path
+from services.etrade_service import get_etrade_price
 
 SIM_DB = str(Path(__file__).resolve().parent.parent / "simulation.db")
 

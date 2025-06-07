@@ -252,8 +252,8 @@ def news_for_symbol(symbol):
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    # 1) Read filter‐bar parameters from query string (if provided), else defaults
-    match_count    = int(request.args.get('match_count',     1))
+    # 1) Read filter‐bar parameters from query string (if provided), else new defaults
+    match_count    = int(request.args.get('match_count',     6))      # default 6 of 6
     sma_length     = int(request.args.get('sma_length',     20))
     rsi_len        = int(request.args.get('rsi_len',        14))
     rsi_overbought = int(request.args.get('rsi_overbought', 70))
@@ -265,7 +265,8 @@ def index():
     bb_std         = float(request.args.get('bb_std',       2.0))
     vol_multiplier = float(request.args.get('vol_multiplier', 1.0))
     vwap_threshold = float(request.args.get('vwap_threshold', 0.0))
-    news_on        = (request.args.get('news_on') == '1')
+    # Default news_on to '1' so that news is on by default
+    news_on        = (request.args.get('news_on', '1') == '1')
 
     # 2) Persist all twelve values into indicator_settings (alerts.db)
     save_indicator_settings(
@@ -274,8 +275,7 @@ def index():
         rsi_len, rsi_overbought, rsi_oversold,
         macd_fast, macd_slow, macd_signal,
         bb_length, bb_std,
-        vol_multiplier,
-        vwap_threshold,
+        vol_multiplier, vwap_threshold,
         news_on
     )
 
@@ -290,7 +290,6 @@ def index():
         alerts=alerts,
         settings=settings
     )
-
 
 if __name__ == '__main__':
     app.run(debug=True)

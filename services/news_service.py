@@ -9,6 +9,13 @@ nltk.download('vader_lexicon', quiet=True)
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
 NEWSAPI_URL = "https://newsapi.org/v2/everything"
 
+def fetch_sentiment_for(symbol, count=3):
+    """
+    Alias for news_sentiment(), so scanners importing
+    fetch_sentiment_for() continue to work.
+    """
+    return news_sentiment(symbol, count)
+
 def fetch_latest_headlines(symbol, count=3):
     """
     Fetch the latest 'count' headlines for a given symbol via NewsAPI.org.
