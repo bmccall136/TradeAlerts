@@ -1,207 +1,306 @@
 {# File: templates/alerts.html #}
 {% extends "layout.html" %}
 {% block content %}
+<style>
+  /* 1) Shrink overall font and padding for alerts table */
+  table.alerts-table th,
+  table.alerts-table td {
+    padding: 2px 4px;
+    font-size: 12px;
+    white-space: nowrap;          /* Prevent multi‐line wrapping */
+    overflow: hidden;             /* Ensure overflow text can be truncated */
+    text-overflow: ellipsis;      /* Show “…” for overflowed text */
+  }
+
+  /* 2) Force fixed layout so columns use percentage widths */
+  table.alerts-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+  }
+
+  /* 3) Assign approximate percentages to each column (adjust as needed) */
+  table.alerts-table th:nth-child(1),  /* Time */
+  table.alerts-table td:nth-child(1)   { width: 14%; }
+
+  table.alerts-table th:nth-child(2),  /* Symbol */
+  table.alerts-table td:nth-child(2)   { width: 6%; }
+
+  table.alerts-table th:nth-child(3),  /* Name */
+  table.alerts-table td:nth-child(3)   { width: 18%; }
+
+  table.alerts-table th:nth-child(4),  /* Price */
+  table.alerts-table td:nth-child(4)   { width: 8%; }
+
+  table.alerts-table th:nth-child(5),  /* VWAP */
+  table.alerts-table td:nth-child(5)   { width: 8%; }
+
+  table.alerts-table th:nth-child(6),  /* VWAP Diff */
+  table.alerts-table td:nth-child(6)   { width: 8%; }
+
+  table.alerts-table th:nth-child(7),  /* News */
+  table.alerts-table td:nth-child(7)   { width: 6%; }
+
+  table.alerts-table th:nth-child(8),  /* Spark */
+  table.alerts-table td:nth-child(8)   { width: 20%; }
+
+  table.alerts-table th:nth-child(9),  /* Triggers */
+  table.alerts-table td:nth-child(9)   { width: 12%; }
+</style>
 
 <div class="container">
-  <!-- ─── FILTER BAR ─── -->
-  <form id="indicator-form" method="GET" action="{{ url_for('index') }}">
-    <div class="row g-2 align-items-end mb-4">
+{# Friendly labels for all indicator dropdowns #}
+{% set sma_labels = {
+     10: "Short SMA (10)",
+     20: "Standard SMA (20)",
+     50: "Long SMA (50)",
+    100: "100-Day SMA (100)",
+    200: "200-Day SMA (200)"
+} %}
+{% set rsi_len_labels = {
+      7: "Fast RSI (7)",
+     14: "Std RSI (14)",
+     21: "Slow RSI (21)",
+     28: "Very Slow RSI (28)"
+} %}
+{% set rsi_ob_labels = {
+     70: "Overbought (70)",
+     75: "Very Overbought (75)",
+     80: "Extreme Overbought (80)",
+     85: "Max Overbought (85)"
+} %}
+{% set rsi_os_labels = {
+     20: "Oversold (20)",
+     25: "Very Oversold (25)",
+     30: "Extreme Oversold (30)",
+     35: "Max Oversold (35)"
+} %}
+{% set macd_fast_labels = {
+      8: "Fast EMA (8)",
+     12: "Fast EMA (12)",
+     16: "Fast EMA (16)"
+} %}
+{% set macd_slow_labels = {
+     18: "Slow EMA (18)",
+     26: "Slow EMA (26)",
+     34: "Slow EMA (34)"
+} %}
+{% set macd_signal_labels = {
+      6: "Signal SMA (6)",
+      9: "Signal SMA (9)",
+     12: "Signal SMA (12)"
+} %}
+{% set bb_length_labels = {
+     10: "BB Short (10)",
+     20: "BB Std (20)",
+     30: "BB Long (30)"
+} %}
+{% set bb_std_labels = {
+     1.5: "1.5σ",
+     2.0: "2σ",
+     2.5: "2.5σ"
+} %}
+{% set vol_mult_labels = {
+     1.0: "Normal ×1.0",
+     1.5: "High ×1.5",
+     2.0: "Very High ×2.0",
+     2.5: "Extreme ×2.5"
+} %}
+{% set vwap_labels = {
+     0.0: "No VWAP",
+     0.5: "≥ $0.5",
+     1.0: "≥ $1.0",
+     2.0: "≥ $2.0"
+} %}
 
-      <!-- 1) Match “N of 6” -->
-      <div class="col-6 col-md-2">
-        <label for="match_count" class="form-label">
-          <i class="bi bi-funnel-fill"></i> Match
-        </label>
-        <select id="match_count" name="match_count" class="form-select">
-          {% for i in range(1, 7) %}
-            <option value="{{ i }}"
-              {% if settings.match_count == i %}selected{% endif %}>
-              {{ i }} of 6
-            </option>
-          {% endfor %}
-        </select>
-      </div>
+<form id="indicator-form" method="GET" action="{{ url_for('index') }}">
+  <div class="row g-2 align-items-end mb-4">
 
-      <!-- 2) SMA length -->
-      <div class="col-6 col-md-2">
-        <label for="sma_length" class="form-label">
-          <i class="bi bi-graph-up-arrow"></i> SMA
-        </label>
-        <select id="sma_length" name="sma_length" class="form-select">
-          {% for length in [10, 20, 50, 100, 200] %}
-            <option value="{{ length }}"
-              {% if settings.sma_length == length %}selected{% endif %}>
-              {{ length }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <!-- 3a) RSI length -->
-      <div class="col-6 col-md-1">
-        <label for="rsi_len" class="form-label">
-          <i class="bi bi-speedometer2"></i> RSI
-        </label>
-        <select id="rsi_len" name="rsi_len" class="form-select">
-          {% for length in [7, 14, 21, 28] %}
-            <option value="{{ length }}"
-              {% if settings.rsi_len == length %}selected{% endif %}>
-              {{ length }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-      <!-- 3b) RSI overbought -->
-      <div class="col-6 col-md-1">
-        <label for="rsi_overbought" class="form-label">&nbsp;</label>
-        <select id="rsi_overbought" name="rsi_overbought" class="form-select">
-          {% for ob in [70, 75, 80, 85] %}
-            <option value="{{ ob }}"
-              {% if settings.rsi_overbought == ob %}selected{% endif %}>
-              {{ ob }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-      <!-- 3c) RSI oversold -->
-      <div class="col-6 col-md-1">
-        <label for="rsi_oversold" class="form-label">&nbsp;</label>
-        <select id="rsi_oversold" name="rsi_oversold" class="form-select">
-          {% for os in [20, 25, 30, 35] %}
-            <option value="{{ os }}"
-              {% if settings.rsi_oversold == os %}selected{% endif %}>
-              {{ os }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <!-- 4a) MACD fast -->
-      <div class="col-6 col-md-1">
-        <label for="macd_fast" class="form-label">
-          <i class="bi bi-triangle-fill"></i> MACD
-        </label>
-        <select id="macd_fast" name="macd_fast" class="form-select">
-          {% for fast in [8, 12, 16] %}
-            <option value="{{ fast }}"
-              {% if settings.macd_fast == fast %}selected{% endif %}>
-              {{ fast }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-      <!-- 4b) MACD slow -->
-      <div class="col-6 col-md-1">
-        <label for="macd_slow" class="form-label">&nbsp;</label>
-        <select id="macd_slow" name="macd_slow" class="form-select">
-          {% for slow in [18, 26, 34] %}
-            <option value="{{ slow }}"
-              {% if settings.macd_slow == slow %}selected{% endif %}>
-              {{ slow }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-      <!-- 4c) MACD signal -->
-      <div class="col-6 col-md-1">
-        <label for="macd_signal" class="form-label">&nbsp;</label>
-        <select id="macd_signal" name="macd_signal" class="form-select">
-          {% for sig in [6, 9, 12] %}
-            <option value="{{ sig }}"
-              {% if settings.macd_signal == sig %}selected{% endif %}>
-              {{ sig }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <!-- 5a) Bollinger Bands length -->
-      <div class="col-6 col-md-1">
-        <label for="bb_length" class="form-label">
-          <i class="bi bi-bar-chart-fill"></i> BB
-        </label>
-        <select id="bb_length" name="bb_length" class="form-select">
-          {% for length in [10, 20, 30] %}
-            <option value="{{ length }}"
-              {% if settings.bb_length == length %}selected{% endif %}>
-              {{ length }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-      <!-- 5b) Bollinger Bands stddev -->
-      <div class="col-6 col-md-1">
-        <label for="bb_std" class="form-label">&nbsp;</label>
-        <select id="bb_std" name="bb_std" class="form-select">
-          {% for σ in [1.5, 2.0, 2.5] %}
-            <option value="{{ σ }}"
-              {% if settings.bb_std == σ %}selected{% endif %}>
-              {{ σ }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <!-- 6) Volume multiplier dropdown -->
-      <div class="col-6 col-md-1">
-        <label for="vol_multiplier" class="form-label">
-          <i class="bi bi-bar-chart-lines"></i> Vol
-        </label>
-        <select id="vol_multiplier" name="vol_multiplier" class="form-select">
-          {% for vm in [1.0, 1.5, 2.0, 2.5] %}
-            <option value="{{ vm }}"
-              {% if settings.vol_multiplier == vm %}selected{% endif %}>
-              ×{{ vm }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <!-- 7) VWAP threshold dropdown -->
-      <div class="col-6 col-md-1">
-        <label for="vwap_threshold" class="form-label">
-          <i class="bi bi-calculator"></i> VWAP
-        </label>
-        <select id="vwap_threshold" name="vwap_threshold" class="form-select">
-          {% for vt in [0.0, 0.5, 1.0, 2.0] %}
-            <option value="{{ vt }}"
-              {% if settings.vwap_threshold == vt %}selected{% endif %}>
-              ≥${{ '%.1f'|format(vt) }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <!-- 8) News toggle -->
-      <div class="col-6 col-md-1">
-        <label class="form-label">
-          <i class="bi bi-newspaper"></i> News
-        </label>
-        <div class="form-check form-switch">
-          <input
-            class="form-check-input"
-            type="checkbox"
-            id="news_on"
-            name="news_on"
-            value="1"
-            {% if settings.news_on %}checked{% endif %} />
-          <label class="form-check-label" for="news_on">On/Off</label>
-        </div>
-      </div>
-
-      <!-- 9) Apply button -->
-      <div class="col-6 col-md-1 text-end">
-        <button
-          type="submit"
-          class="btn btn-success w-100"
-        >
-          <i class="bi bi-arrow-repeat"></i> Apply
-        </button>
-      </div>
-
+    <!-- 1) Match “N of 6” (unchanged) -->
+    <div class="col-6 col-md-2">
+      <label for="match_count" class="form-label">
+        <i class="bi bi-funnel-fill"></i> Match
+      </label>
+      <select id="match_count" name="match_count" class="form-select">
+        {% for i in range(1,7) %}
+          <option value="{{ i }}" {% if settings.match_count==i %}selected{% endif %}>
+            {{ i }} of 6
+          </option>
+        {% endfor %}
+      </select>
     </div>
-  </form>
-  <!-- ─────────────────────────────────────────────────────────────────────── #}
+
+    <!-- 2) SMA length -->
+    <div class="col-6 col-md-2">
+      <label for="sma_length" class="form-label">
+        <i class="bi bi-graph-up-arrow"></i> SMA
+      </label>
+      <select id="sma_length" name="sma_length" class="form-select">
+        {% for value,label in sma_labels.items() %}
+          <option value="{{ value }}" {% if settings.sma_length==value %}selected{% endif %}>
+            {{ label }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- 3a) RSI length -->
+    <div class="col-6 col-md-1">
+      <label for="rsi_len" class="form-label">
+        <i class="bi bi-speedometer2"></i> RSI
+      </label>
+      <select id="rsi_len" name="rsi_len" class="form-select">
+        {% for value,label in rsi_len_labels.items() %}
+          <option value="{{ value }}" {% if settings.rsi_len==value %}selected{% endif %}>
+            {{ label }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- 3b) RSI overbought -->
+    <div class="col-6 col-md-1">
+      <label for="rsi_overbought" class="form-label">&nbsp;</label>
+      <select id="rsi_overbought" name="rsi_overbought" class="form-select">
+        {% for value,label in rsi_ob_labels.items() %}
+          <option value="{{ value }}" {% if settings.rsi_overbought==value %}selected{% endif %}>
+            {{ label }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- 3c) RSI oversold -->
+    <div class="col-6 col-md-1">
+      <label for="rsi_oversold" class="form-label">&nbsp;</label>
+      <select id="rsi_oversold" name="rsi_oversold" class="form-select">
+        {% for value,label in rsi_os_labels.items() %}
+          <option value="{{ value }}" {% if settings.rsi_oversold==value %}selected{% endif %}>
+            {{ label }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- 4a) MACD fast -->
+    <div class="col-6 col-md-1">
+      <label for="macd_fast" class="form-label">
+        <i class="bi bi-triangle-fill"></i> MACD
+      </label>
+      <select id="macd_fast" name="macd_fast" class="form-select">
+        {% for value,label in macd_fast_labels.items() %}
+          <option value="{{ value }}" {% if settings.macd_fast==value %}selected{% endif %}>
+            {{ label }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- 4b) MACD slow -->
+    <div class="col-6 col-md-1">
+      <label for="macd_slow" class="form-label">&nbsp;</label>
+      <select id="macd_slow" name="macd_slow" class="form-select">
+        {% for value,label in macd_slow_labels.items() %}
+          <option value="{{ value }}" {% if settings.macd_slow==value %}selected{% endif %}>
+            {{ label }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- 4c) MACD signal -->
+    <div class="col-6 col-md-1">
+      <label for="macd_signal" class="form-label">&nbsp;</label>
+      <select id="macd_signal" name="macd_signal" class="form-select">
+        {% for value,label in macd_signal_labels.items() %}
+          <option value="{{ value }}" {% if settings.macd_signal==value %}selected{% endif %}>
+            {{ label }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- 5a) BB length -->
+    <div class="col-6 col-md-1">
+      <label for="bb_length" class="form-label">
+        <i class="bi bi-bar-chart-fill"></i> BB
+      </label>
+      <select id="bb_length" name="bb_length" class="form-select">
+        {% for value,label in bb_length_labels.items() %}
+          <option value="{{ value }}" {% if settings.bb_length==value %}selected{% endif %}>
+            {{ label }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- 5b) BB stddev -->
+    <div class="col-6 col-md-1">
+      <label for="bb_std" class="form-label">&nbsp;</label>
+      <select id="bb_std" name="bb_std" class="form-select">
+        {% for value,label in bb_std_labels.items() %}
+          <option value="{{ value }}" {% if settings.bb_std==value %}selected{% endif %}>
+            {{ label }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- 6) Volume multiplier -->
+    <div class="col-6 col-md-1">
+      <label for="vol_multiplier" class="form-label">
+        <i class="bi bi-bar-chart-lines"></i> Vol
+      </label>
+      <select id="vol_multiplier" name="vol_multiplier" class="form-select">
+        {% for value,label in vol_mult_labels.items() %}
+          <option value="{{ value }}" {% if settings.vol_multiplier==value %}selected{% endif %}>
+            {{ label }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- 7) VWAP threshold -->
+    <div class="col-6 col-md-1">
+      <label for="vwap_threshold" class="form-label">
+        <i class="bi bi-calculator"></i> VWAP
+      </label>
+      <select id="vwap_threshold" name="vwap_threshold" class="form-select">
+        {% for value,label in vwap_labels.items() %}
+          <option value="{{ value }}" {% if settings.vwap_threshold==value %}selected{% endif %}>
+            {{ label }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- 8) News toggle (unchanged) -->
+    <div class="col-6 col-md-1">
+      <label class="form-label">
+        <i class="bi bi-newspaper"></i> News
+      </label>
+      <div class="form-check form-switch">
+        <input
+          class="form-check-input"
+          type="checkbox"
+          id="news_on"
+          name="news_on"
+          value="1"
+          {% if settings.news_on %}checked{% endif %}
+        />
+        <label class="form-check-label" for="news_on">On/Off</label>
+      </div>
+    </div>
+
+    <!-- 9) Apply button -->
+    <div class="col-6 col-md-1 text-end">
+      <button type="submit" class="btn btn-success w-100">
+        <i class="bi bi-arrow-repeat"></i> Apply
+      </button>
+    </div>
+
+  </div>
+</form>
 
 
   <!-- ─── “Clear All” & Alerts Table (unchanged) ─── #-->

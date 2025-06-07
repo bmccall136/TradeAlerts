@@ -1,168 +1,203 @@
-{# File: templates/simulation.html #}
+{# templates/simulation.html #}
+
 {% extends "layout.html" %}
 {% block content %}
-{% for h in holdings %}
-  <!-- DEBUG: {{ h }} -->
-{% endfor %}
 
-<div class="container">
+  <!-- ── CONTAINER ── everything must be inside this div ── -->
+  <div class="container">
 
-  <!-- 1) Center the title + “Reset Simulation” button -->
-  <div class="simulation-header" style="text-align:center; margin-bottom: 20px;">
-    <h1>Simulation Dashboard</h1>
-    <form action="{{ url_for('reset_simulation') }}" method="post" style="display:inline;">
-      <button class="reset-btn" type="submit">Reset Simulation</button>
-    </form>
-  </div>
+    <!-- ── 1) PAGE HEADER & RESET BUTTON ── -->
+    <div class="simulation-header" style="text-align:center; margin:20px 0;">
+      <h1>Simulation Dashboard</h1>
+      <form action="{{ url_for('reset_simulation') }}" method="post" style="display:inline;">
+        <button class="reset-btn" type="submit">Reset Simulation</button>
+      </form>
+    </div>
 
-  <!-- 2) Show Cash, Unrealized P&L, Realized P&L -->
-  <div class="simulation-summary" style="text-align:center; margin-bottom: 30px;">
-    <p><strong>Cash:</strong> ${{ '%.2f'|format(cash) }}</p>
-    <p><strong>Unrealized P&amp;L:</strong> ${{ '%.2f'|format(unrealized_pnl) }}</p>
-    <p><strong>Realized P&amp;L:</strong> ${{ '%.2f'|format(realized_pnl) }}</p>
-  </div>
+    <!-- ── 2) CASH SUMMARY ── -->
+    <div class="simulation-summary" style="text-align:center; margin-bottom:30px;">
+      <p>
+        <strong>Cash:</strong>
+        ${{ (cash.current | default(0) | float) | round(2) }}
+      </p>
+      <p>
+        <strong>Unrealized P&L:</strong>
+        ${{ (cash.unrealized | default(0) | float) | round(2) }}
+      </p>
+      <p>
+        <strong>Realized P&L:</strong>
+        ${{ (cash.realized | default(0) | float) | round(2) }}
+      </p>
+    </div>
 
-  <!-- 3) Holdings Table -->
-  <h2>Holdings</h2>
-  <table class="alerts-table simulation-table">
-    <colgroup>
-      <col style="width: 8%;" />   <!-- Symbol -->
-      <col style="width: 10%;" />  <!-- Last Price -->
-      <col style="width: 8%;" />   <!-- Change -->
-      <col style="width: 8%;" />   <!-- Change % -->
-      <col style="width: 6%;" />   <!-- Qty -->
-      <col style="width: 10%;" />  <!-- Price Paid -->
-      <col style="width: 10%;" />  <!-- Day Gain/Loss -->
-      <col style="width: 10%;" />  <!-- Total Gain/Loss -->
-      <col style="width: 10%;" />  <!-- Value -->
-      <col style="width: 10%;" />  <!-- Action -->
-    </colgroup>
-    <thead>
-      <tr>
-        <th>Symbol</th>
-        <th>Last Price</th>
-        <th>Change</th>
-        <th>Change %</th>
-        <th>Qty</th>
-        <th>Price Paid</th>
-        <th>Day Gain/Loss</th>
-        <th>Total Gain/Loss</th>
-        <th>Value</th>
-        <th>Action</th>
-      </tr>
-    </thead>
-    <tbody>
-{% for h in holdings %}
-<tr>
-  <td>{{ h.symbol }}</td>
-  <td>${{ '%.2f'|format(h.last_price) }}</td>
-  <td>${{ '%.2f'|format(h.change) }}</td>
-  <td>{{ '%.2f'|format(h.change_pct) }}%</td>
-  <td>{{ h.qty }}</td>
-  <td>${{ '%.2f'|format(h.price_paid) }}</td>
-  <td class="{% if h.day_gain < 0 %}gain-negative{% else %}gain-positive{% endif %}">
-    ${{ '%.2f'|format(h.day_gain) }}
-  </td>
-  <td>${{ '%.2f'|format(h.total_gain) }}</td>
-  <td>${{ '%.2f'|format(h.value) }}</td>
-  <td>
-    <input type="number" name="qty" value="1" min="1" class="qty-input">
-    <button class="btn-clear" onclick="sellStock('{{ h.symbol }}', this)">Sell</button>
-  </td>
-</tr>
-{% endfor %}
+    <!-- ── 3) HOLDINGS TABLE ── -->
+    <h2 style="margin-top:40px;">Holdings</h2>
+    <table class="alerts-table simulation-table" style="width:100%; border-collapse:collapse;">
+      <thead>
+        <tr>
+          <th>Symbol</th>
+          <th>Last Price</th>
+          <th>Change</th>
+          <th>Change %</th>
+          <th>Qty</th>
+          <th>Price Paid</th>
+          <th>Day Gain/Loss</th>
+          <th>Total Gain/Loss</th>
+          <th>Value</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for h in holdings %}
+          <tr>
+            <!-- 1) SYMBOL -->
+            <td>{{ h.symbol }}</td>
 
-    </tbody>
-  </table>
+            <!-- 2) LAST PRICE -->
+            <td>
+              ${{ '%.2f'|format((h.last_price | default(0) | float)) }}
+            </td>
 
-  <!-- 4) Trade History -->
-  <h2 style="margin-top: 40px;">Trade History</h2>
-  <table class="alerts-table trade-history-table">
-    <thead>
-      <tr>
-        <th>Time</th>
-        <th>Symbol</th>
-        <th>Action</th>
-        <th>Qty</th>
-        <th>Price</th>
-        <th>P/L</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for t in history %}
-      <tr>
-        <td>{{ t.time }}</td>
-        <td>{{ t.symbol }}</td>
-        <td>{{ t.action }}</td>
-        <td>{{ t.qty }}</td>
-        <td>{{ t.price }}</td>
-        <td>
-          {% if t.pl != "-" %}
-            {{ t.pl }}
-          {% else %}
-            -
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+            <!-- 3) CHANGE -->
+            <td>
+              ${{ '%.2f'|format((h.change | default(0) | float)) }}
+            </td>
 
-</div>
+            <!-- 4) CHANGE % -->
+            <td>
+              {{ '%.2f'|format((h.change_pct | default(0) | float)) }}%
+            </td>
 
-<script>
-function buyStock(symbol, button) {
-  const row = button.closest('tr');
-  const qtyInput = row.querySelector('.qty-input');
-  const qty = qtyInput ? parseInt(qtyInput.value) : 1;
+            <!-- 5) QTY -->
+            <td>{{ (h.qty | default(0) | float) | round(0) }}</td>
 
-  fetch('/simulation/buy', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ symbol: symbol, qty: qty })
-  })
-  .then(response => response.json())
-  .then(data => {
-    if (data.success) {
-      alert(`Bought ${symbol} x${qty}\nNew cash balance: $${data.cash.toFixed(2)}`);
-      location.reload();
-    } else {
-      alert(`Buy failed: ${data.error}`);
+            <!-- 6) PRICE PAID -->
+            <td>
+              ${{ '%.2f'|format((h.price_paid | default(0) | float)) }}
+            </td>
+
+            <!-- 7) DAY GAIN/LOSS -->
+            <td>
+              <span
+                class="{% if (h.day_gain | default(0) | float) < 0 %}gain-negative{% else %}gain-positive{% endif %}"
+              >
+                ${{ '%.2f'|format((h.day_gain | default(0) | float)) }}
+              </span>
+            </td>
+
+            <!-- 8) TOTAL GAIN/LOSS -->
+            <td>
+              ${{ '%.2f'|format((h.total_gain | default(0) | float)) }}
+            </td>
+
+            <!-- 9) VALUE -->
+            <td>
+              ${{ '%.2f'|format((h.value | default(0) | float)) }}
+            </td>
+
+            <!-- 10) ACTION (qty input + Sell button) -->
+            <td>
+              <input
+                type="number"
+                name="qty"
+                value="1"
+                min="1"
+                class="qty-input"
+                style="width: 40px; padding: 2px; font-size: 12px;"
+              >
+		<button
+		  class="btn-clear"
+		  style="
+			display: inline-block !important;
+			background-color: #e74c3c !important;  /* red */
+			color: #fff !important;                 /* white text */
+			border: 1px solid #fff !important;
+			padding: 4px 8px !important;
+			font-size: 12px !important;
+			border-radius: 4px !important;
+			cursor: pointer !important;
+			white-space: nowrap;
+		  "
+		  onclick="sellStock('{{ h.symbol }}', this)"
+		>
+		  Sell
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- ── 4) TRADE HISTORY TABLE ── -->
+    <h2 style="margin-top:40px;">Trade History</h2>
+    <table class="alerts-table trade-history-table" style="width:100%; border-collapse:collapse;">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Symbol</th>
+          <th>Action</th>
+          <th>Qty</th>
+          <th>Price</th>
+          <th>P/L</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in history %}
+          <tr>
+            <td>{{ t.time }}</td>
+            <td>{{ t.symbol }}</td>
+            <td>{{ t.action }}</td>
+            <td>{{ (t.qty | default(0) | float) | round(0) }}</td>
+            <td>
+              ${{ '%.2f'|format((t.price | default(0) | float)) }}
+            </td>
+            <td>
+              {% if t.pl is not none %}
+                ${{ '%.2f'|format((t.pl | default(0) | float)) }}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+  </div> {# end of .container #}
+
+  <!-- ── 5) JavaScript for Sell button ── -->
+  <script>
+    function sellStock(symbol, btn) {
+      const qtyInput = btn.previousElementSibling;
+      const qty = parseInt(qtyInput.value);
+
+      // Grab the “Last Price” cell (which is the 2nd <td> in this <tr>)
+      const priceCell = btn.closest("tr").querySelector("td:nth-child(2)");
+      const priceText = priceCell.textContent.replace('$', '');
+      const price = parseFloat(priceText);
+
+      fetch('/simulation/sell', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: symbol, qty: qty, price: price })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          alert(
+            `Sold ${symbol} x${qty}\n` +
+            `New Cash: $${data.cash.toFixed(2)}\n` +
+            `Realized P/L: $${data.realized_pl.toFixed(2)}`
+          );
+          location.reload();
+        } else {
+          alert(`Sell failed: ${data.error}`);
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        alert('Sell request error');
+      });
     }
-  })
-  .catch(err => {
-    alert('Buy request error');
-    console.error(err);
-  });
-}
+  </script>
 
-function sellStock(symbol, button) {
-  const row = button.closest('tr');
-  const qtyInput = row.querySelector('.qty-input');
-  const qty = qtyInput ? parseInt(qtyInput.value) : 1;
-
-  // Grab the “Last Price” from the 2nd <td> in this <tr> (strip out the “$”)
-  const priceStr = row.querySelector('td:nth-child(2)').textContent.replace('$','');
-  const price = parseFloat(priceStr) || 0.0;
-
-  fetch('/simulation/sell', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ symbol: symbol, qty: qty, price: price })
-  })
-  .then(response => response.json())
-  .then(data => {
-    if (data.success) {
-      alert(`Sold ${symbol} x${qty}\nNew cash: $${data.cash.toFixed(2)}\nRealized P/L: $${data.realized_pl.toFixed(2)}`);
-      location.reload();
-    } else {
-      alert(`Sell failed: ${data.error}`);
-    }
-  })
-  .catch(err => {
-    alert('Sell request error');
-    console.error(err);
-  });
-}
-</script>
 {% endblock %}

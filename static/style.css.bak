@@ -24,6 +24,20 @@ select {
     outline: none;
     cursor: pointer;
 }
+<style>
+  /* Force .btn-clear to be a visible red button with white text */
+  .btn-clear {
+    display: inline-block !important;
+    background-color: #e74c3c !important;
+    color: #fff !important;
+    border: 1px solid #fff !important;
+    padding: 4px 8px !important;
+    font-size: 12px !important;
+    border-radius: 4px !important;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+</style>
 
 /*— Container to center content and limit width —*/
 .container {
@@ -93,7 +107,7 @@ button.news-btn:hover {
    Enlarge the TradeAlerts title in the navbar
    ============================================================================= */
 .trade-alerts-title {
-  font-size: 3.75rem;   /* about 28px on most screens */
+  font-size: 1.75rem;   /* about 28px on most screens */
   letter-spacing: 1px;  /* a little breathing room between letters */
   color: #ffe900;       /* keep it bright yellow */
   text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
