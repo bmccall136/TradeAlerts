@@ -9,38 +9,41 @@ nltk.download('vader_lexicon', quiet=True)
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
 NEWSAPI_URL = "https://newsapi.org/v2/everything"
 
+def fetch_sentiment_for(symbol, count=3):
+    """
+    Alias for news_sentiment(), so scanners importing
+    fetch_sentiment_for() continue to work.
+    """
+    return news_sentiment(symbol, count)
+
+--- services/news_service.py
++++ services/news_service.py
 def fetch_latest_headlines(symbol, count=3):
     """
-    Fetch the latest 'count' headlines for a given symbol via NewsAPI.org.
-    Returns an empty list on any error (e.g., unauthorized).
+    Fetch the latest `count` headlines for a given symbol via NewsAPI.org.
+    Returns a list of dicts with `title` and `url` keys, or an empty list on error.
     """
     try:
         params = {
-            "q": symbol,
-            "apiKey": NEWSAPI_KEY,
+            "q":        symbol,
+            "apiKey":   NEWSAPI_KEY,
             "language": "en",
-            "sortBy": "publishedAt",
+            "sortBy":   "publishedAt",
             "pageSize": count
         }
         resp = requests.get(NEWSAPI_URL, params=params, timeout=5)
         resp.raise_for_status()
         data = resp.json()
-        return [article["title"] for article in data.get("articles", [])]
+        # Return structured headlines instead of plain strings
+        return [
+            {
+                "title": article.get("title", ""),
+                "url":   article.get("url", "")
+            }
+            for article in data.get("articles", [])
+        ]
     except Exception:
-        # On error, return no headlines
         return []
-
-def news_sentiment(symbol, count=3):
-    """
-    Return the average VADER sentiment compound score for recent headlines.
-    If fetching headlines fails or none are found, returns 0.0.
-    """
-    headlines = fetch_latest_headlines(symbol, count)
-    if not headlines:
-        return 0.0
-    analyzer = SentimentIntensityAnalyzer()
-    scores = [analyzer.polarity_scores(headline)["compound"] for headline in headlines]
-    return sum(scores) / len(scores)
 
 # Add to services/news_service.py
 

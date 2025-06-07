@@ -252,8 +252,8 @@ def news_for_symbol(symbol):
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    # 1) Read filter‐bar parameters from query string (if provided), else defaults
-    match_count    = int(request.args.get('match_count',     1))
+    # 1) Read filter‐bar parameters from query string (if provided), else new defaults
+    match_count    = int(request.args.get('match_count',     6))      # default 6 of 6
     sma_length     = int(request.args.get('sma_length',     20))
     rsi_len        = int(request.args.get('rsi_len',        14))
     rsi_overbought = int(request.args.get('rsi_overbought', 70))
@@ -265,7 +265,8 @@ def index():
     bb_std         = float(request.args.get('bb_std',       2.0))
     vol_multiplier = float(request.args.get('vol_multiplier', 1.0))
     vwap_threshold = float(request.args.get('vwap_threshold', 0.0))
-    news_on        = (request.args.get('news_on') == '1')
+    # Default news_on to '1' so that news is on by default
+    news_on        = (request.args.get('news_on', '1') == '1')
 
     # 2) Persist all twelve values into indicator_settings (alerts.db)
     save_indicator_settings(
@@ -274,8 +275,7 @@ def index():
         rsi_len, rsi_overbought, rsi_oversold,
         macd_fast, macd_slow, macd_signal,
         bb_length, bb_std,
-        vol_multiplier,
-        vwap_threshold,
+        vol_multiplier, vwap_threshold,
         news_on
     )
 
@@ -290,62 +290,6 @@ def index():
         alerts=alerts,
         settings=settings
     )
-@alerts_bp.route("/alerts", methods=["GET"])
-def show_alerts():
-    # 1) Read filter values, with new defaults
-    match_count    = int(request.values.get("match_count", 6))      # default to 6 of 6
-    sma_length     = int(request.values.get("sma_length", 20))
-    rsi_len        = int(request.values.get("rsi_len", 14))
-    rsi_overbought = int(request.values.get("rsi_overbought", 80))
-    rsi_oversold   = int(request.values.get("rsi_oversold", 20))
-    macd_fast      = int(request.values.get("macd_fast", 12))
-    macd_slow      = int(request.values.get("macd_slow", 26))
-    macd_signal    = int(request.values.get("macd_signal", 9))
-    bb_length      = int(request.values.get("bb_length", 20))
-    bb_std         = float(request.values.get("bb_std", 2.0))
-    vol_multiplier = float(request.values.get("vol_multiplier", 1.0))
-    vwap_threshold = float(request.values.get("vwap_threshold", 0.0))
-    news_on        = request.values.get("news_on", "on") == "on"    # default ON
-
-    # 2) Query alerts using these settings
-    alerts = query_alerts(
-        match_count=match_count,
-        sma_length=sma_length,
-        rsi_len=rsi_len,
-        rsi_overbought=rsi_overbought,
-        rsi_oversold=rsi_oversold,
-        macd_fast=macd_fast,
-        macd_slow=macd_slow,
-        macd_signal=macd_signal,
-        bb_length=bb_length,
-        bb_std=bb_std,
-        vol_multiplier=vol_multiplier,
-        vwap_threshold=vwap_threshold,
-        news_on=news_on,
-    )
-
-    # 3) Render template with these defaults
-    return render_template(
-        "alerts.html",
-        alerts=alerts,
-        settings={
-          "match_count":    match_count,
-          "sma_length":     sma_length,
-          "rsi_len":        rsi_len,
-          "rsi_overbought": rsi_overbought,
-          "rsi_oversold":   rsi_oversold,
-          "macd_fast":      macd_fast,
-          "macd_slow":      macd_slow,
-          "macd_signal":    macd_signal,
-          "bb_length":      bb_length,
-          "bb_std":         bb_std,
-          "vol_multiplier": vol_multiplier,
-          "vwap_threshold": vwap_threshold,
-          "news_on":        news_on,
-        },
-        # …any other context you were passing…
-    )
-
 
 if __name__ == '__main__':
     app.run(debug=True)

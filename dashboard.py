@@ -19,7 +19,7 @@ from services.alert_service import (
 )
 
 # NEWS
-from services.news_service import fetch_latest_headlines, news_sentiment
+from services.news_service import fetch_latest_headlines, fetch_sentiment_for
 
 # E*TRADE
 from services.etrade_service import get_etrade_price
