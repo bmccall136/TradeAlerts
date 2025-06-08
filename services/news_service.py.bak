@@ -1,59 +1,64 @@
 import os
 import requests
+import logging
+
 import nltk
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 
 # Ensure VADER lexicon is available
 nltk.download('vader_lexicon', quiet=True)
 
+# NewsAPI configuration
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
 NEWSAPI_URL = "https://newsapi.org/v2/everything"
 
-def fetch_sentiment_for(symbol, count=3):
-    """
-    Alias for news_sentiment(), so scanners importing
-    fetch_sentiment_for() continue to work.
-    """
-    return news_sentiment(symbol, count)
-
---- services/news_service.py
-+++ services/news_service.py
-def fetch_latest_headlines(symbol, count=3):
+def fetch_latest_headlines(symbol: str, count: int = 3) -> list[dict]:
     """
     Fetch the latest `count` headlines for a given symbol via NewsAPI.org.
-    Returns a list of dicts with `title` and `url` keys, or an empty list on error.
+    Returns a list of dicts with 'title' and 'url' keys, or an empty list on error.
     """
+    if not NEWSAPI_KEY:
+        logging.error("NEWSAPI_KEY not set; cannot fetch headlines.")
+        return []
+
+    params = {
+        "q":        symbol,
+        "apiKey":   NEWSAPI_KEY,
+        "language": "en",
+        "sortBy":   "publishedAt",
+        "pageSize": count
+    }
     try:
-        params = {
-            "q":        symbol,
-            "apiKey":   NEWSAPI_KEY,
-            "language": "en",
-            "sortBy":   "publishedAt",
-            "pageSize": count
-        }
         resp = requests.get(NEWSAPI_URL, params=params, timeout=5)
         resp.raise_for_status()
         data = resp.json()
-        # Return structured headlines instead of plain strings
         return [
             {
-                "title": article.get("title", ""),
+                "title": article.get("title", "").strip(),
                 "url":   article.get("url", "")
             }
             for article in data.get("articles", [])
+            if article.get("title")
         ]
-    except Exception:
+    except Exception as e:
+        logging.error(f"Error fetching news for {symbol}: {e}")
         return []
 
-# Add to services/news_service.py
+def news_sentiment(symbol: str, count: int = 3) -> float:
+    """
+    Compute average VADER compound sentiment over the latest headlines.
+    Returns a float in [-1.0, 1.0], or 0.0 if no headlines.
+    """
+    headlines = fetch_latest_headlines(symbol, count)
+    if not headlines:
+        return 0.0
 
-def get_latest_news_for_symbol(symbol):
+    sia = SentimentIntensityAnalyzer()
+    scores = [sia.polarity_scores(item["title"])["compound"] for item in headlines]
+    return sum(scores) / len(scores)
+
+def fetch_sentiment_for(symbol: str, count: int = 3) -> float:
     """
-    Returns a dummy news dict for testing.
-    Replace with real implementation to fetch news.
+    Alias for news_sentiment(), preserving backwards compatibility.
     """
-    # Example: you could integrate with Yahoo, Finnhub, or NewsAPI here
-    return {
-        'url': f'https://www.google.com/search?q={symbol}+stock+news',
-        'headline': f'Latest news for {symbol}'
-    }
+    return news_sentiment(symbol, count)
