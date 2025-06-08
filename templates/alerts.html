@@ -37,7 +37,6 @@
 
 <div class="container">
   {# ─── Indicator Settings Form ─── #}
-  {# Friendly labels for dropdowns #}
   {% set sma_labels = {10: "Short SMA (10)", 20: "Standard SMA (20)", 50: "Long SMA (50)", 100: "100-Day SMA (100)", 200: "200-Day SMA (200)"} %}
   {% set rsi_len_labels = {7: "Fast RSI (7)", 14: "Std RSI (14)", 21: "Slow RSI (21)", 28: "Very Slow RSI (28)"} %}
   {% set rsi_ob_labels = {70: "Overbought (70)", 75: "Very Overbought (75)", 80: "Extreme Overbought (80)", 85: "Max Overbought (85)"} %}
@@ -52,140 +51,267 @@
 
   <form id="indicator-form" method="GET" action="{{ url_for('index') }}">
     <div class="row g-2 align-items-end mb-4">
+
+      <!-- 1) Match count -->
       <div class="col-6 col-md-2">
-        <label for="match_count" class="form-label"><i class="bi bi-funnel-fill"></i> Match</label>
+        <label for="match_count" class="form-label">
+          <i class="bi bi-funnel-fill"></i> Match
+          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                title="Match Count"
+                data-bs-content="Number of indicators that must be met before triggering an alert."
+          ><i class="bi bi-info-circle-fill"></i></span>
+        </label>
         <select id="match_count" name="match_count" class="form-select">
           {% for i in range(1,7) %}
             <option value="{{ i }}" {% if settings.match_count==i %}selected{% endif %}>{{ i }} of 6</option>
           {% endfor %}
         </select>
       </div>
+
+      <!-- 2) SMA length -->
       <div class="col-6 col-md-2">
-        <label for="sma_length" class="form-label"><i class="bi bi-graph-up-arrow"></i> SMA</label>
+        <label for="sma_length" class="form-label">
+          <i class="bi bi-graph-up-arrow"></i> SMA
+          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                title="Simple Moving Average (SMA)"
+                data-bs-content="Average of the last N closing prices, showing trend direction and dynamic support/resistance."
+          ><i class="bi bi-info-circle-fill"></i></span>
+        </label>
         <select id="sma_length" name="sma_length" class="form-select">
           {% for value,label in sma_labels.items() %}
             <option value="{{ value }}" {% if settings.sma_length==value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </div>
+
+      <!-- 3) RSI length -->
       <div class="col-6 col-md-1">
-        <label for="rsi_len" class="form-label"><i class="bi bi-speedometer2"></i> RSI</label>
+        <label for="rsi_len" class="form-label">
+          <i class="bi bi-speedometer2"></i> RSI
+          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                title="Relative Strength Index (RSI)"
+                data-bs-content="Momentum oscillator comparing recent gains vs. losses over N periods. Overbought > threshold; oversold < threshold."
+          ><i class="bi bi-info-circle-fill"></i></span>
+        </label>
         <select id="rsi_len" name="rsi_len" class="form-select">
           {% for value,label in rsi_len_labels.items() %}
             <option value="{{ value }}" {% if settings.rsi_len==value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </div>
+
+      <!-- 4) RSI overbought -->
       <div class="col-6 col-md-1">
-        <label for="rsi_overbought" class="form-label">&nbsp;</label>
+        <label for="rsi_overbought" class="form-label">
+          <span class="visually-hidden">RSI Overbought</span>
+          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                title="RSI Overbought Threshold"
+                data-bs-content="Above this value RSI is in overbought territory and may pull back."
+          ><i class="bi bi-info-circle-fill"></i></span>
+        </label>
         <select id="rsi_overbought" name="rsi_overbought" class="form-select">
           {% for value,label in rsi_ob_labels.items() %}
             <option value="{{ value }}" {% if settings.rsi_overbought==value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </div>
+
+      <!-- 5) RSI oversold -->
       <div class="col-6 col-md-1">
-        <label for="rsi_oversold" class="form-label">&nbsp;</label>
+        <label for="rsi_oversold" class="form-label">
+          <span class="visually-hidden">RSI Oversold</span>
+          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                title="RSI Oversold Threshold"
+                data-bs-content="Below this value RSI is in oversold territory and may rebound."
+          ><i class="bi bi-info-circle-fill"></i></span>
+        </label>
         <select id="rsi_oversold" name="rsi_oversold" class="form-select">
           {% for value,label in rsi_os_labels.items() %}
             <option value="{{ value }}" {% if settings.rsi_oversold==value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </div>
+
+      <!-- 6) MACD fast -->
       <div class="col-6 col-md-1">
-        <label for="macd_fast" class="form-label"><i class="bi bi-triangle-fill"></i> MACD</label>
+        <label for="macd_fast" class="form-label">
+          <i class="bi bi-triangle-fill"></i> MACD
+          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                title="MACD Fast" data-bs-content="Fast EMA period for MACD calculation. Paired with slow EMA and signal line to generate crossover signals."
+          ><i class="bi bi-info-circle-fill"></i></span>
+        </label>
         <select id="macd_fast" name="macd_fast" class="form-select">
           {% for value,label in macd_fast_labels.items() %}
             <option value="{{ value }}" {% if settings.macd_fast==value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </div>
+
+      <!-- 7) MACD slow -->
       <div class="col-6 col-md-1">
-        <label for="macd_slow" class="form-label">&nbsp;</label>
+        <label for="macd_slow" class="form-label">
+          <span class="visually-hidden">MACD Slow</span>
+          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                title="MACD Slow" data-bs-content="Slow EMA period for MACD. A longer period smooths out more noise."
+          ><i class="bi bi-info-circle-fill"></i></span>
+        </label>
         <select id="macd_slow" name="macd_slow" class="form-select">
           {% for value,label in macd_slow_labels.items() %}
             <option value="{{ value }}" {% if settings.macd_slow==value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </div>
+
+      <!-- 8) MACD signal -->
       <div class="col-6 col-md-1">
-        <label for="macd_signal" class="form-label">&nbsp;</label>
+        <label for="macd_signal" class="form-label">
+          <span class="visually-hidden">MACD Signal</span>
+          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                title="MACD Signal" data-bs-content="Signal line period (SMA of MACD). Crossovers with MACD line generate buy/sell signals."
+          ><i class="bi bi-info-circle-fill"></i></span>
+        </label>
         <select id="macd_signal" name="macd_signal" class="form-select">
           {% for value,label in macd_signal_labels.items() %}
             <option value="{{ value }}" {% if settings.macd_signal==value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </div>
+
+      <!-- 9) BB length -->
       <div class="col-6 col-md-1">
-        <label for="bb_length" class="form-label"><i class="bi bi-bar-chart-fill"></i> BB</label>
+        <label for="bb_length" class="form-label">
+          <i class="bi bi-bar-chart-fill"></i> BB
+          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                title="Bollinger Band Length" data-bs-content="Window length for moving average in Bollinger Bands. Determines centerline period."
+          ><i class="bi bi-info-circle-fill"></i></span>
+        </label>
         <select id="bb_length" name="bb_length" class="form-select">
           {% for value,label in bb_length_labels.items() %}
             <option value="{{ value }}" {% if settings.bb_length==value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </div>
+
+      <!-- 10) BB std -->
       <div class="col-6 col-md-1">
-        <label for="bb_std" class="form-label">&nbsp;</label>
+        <label for="bb_std" class="form-label">
+          <span class="visually-hidden">BB Std Dev</span>
+          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                title="Bollinger Band Std Dev" data-bs-content="Number of standard deviations from moving average for upper/lower bands."
+          ><i class="bi bi-info-circle-fill"></i></span>
+        </label>
         <select id="bb_std" name="bb_std" class="form-select">
           {% for value,label in bb_std_labels.items() %}
             <option value="{{ value }}" {% if settings.bb_std==value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </div>
+
+      <!-- 11) Volume multiplier -->
       <div class="col-6 col-md-1">
-        <label for="vol_multiplier" class="form-label"><i class="bi bi-bar-chart-lines"></i> Vol</label>
+        <label for="vol_multiplier" class="form-label">
+          <i class="bi bi-bar-chart-lines"></i> Vol
+          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                title="Volume Multiplier" data-bs-content="Current volume must exceed (multiplier × 20-period average volume) to trigger."
+          ><i class="bi bi-info-circle-fill"></i></span>
+        </label>
         <select id="vol_multiplier" name="vol_multiplier" class="form-select">
           {% for value,label in vol_mult_labels.items() %}
             <option value="{{ value }}" {% if settings.vol_multiplier==value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </div>
+
+      <!-- 12) VWAP threshold -->
       <div class="col-6 col-md-1">
-        <label for="vwap_threshold" class="form-label"><i class="bi bi-calculator"></i> VWAP</label>
+        <label for="vwap_threshold" class="form-label">
+          <i class="bi bi-calculator"></i> VWAP
+          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                title="VWAP Threshold" data-bs-content="Price must exceed (live price - VVAP) ≥ threshold to trigger."
+          ><i class="bi bi-info-circle-fill"></i></span>
+        </label>
         <select id="vwap_threshold" name="vwap_threshold" class="form-select">
           {% for value,label in vwap_labels.items() %}
             <option value="{{ value }}" {% if settings.vwap_threshold==value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </div>
+
+      <!-- 13) News toggle -->
       <div class="col-6 col-md-1">
-        <label class="form-label"><i class="bi bi-newspaper"></i> News</label>
+        <label class="form-label">
+          <i class="bi bi-newspaper"></i> News
+          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                title="News Toggle" data-bs-content="Enable to include news sentiment as part of the primary triggers."
+          ><i class="bi bi-info-circle-fill"></i></span>
+        </label>
         <div class="form-check form-switch">
-          <input class="form-check-input" type="checkbox" id="news_on" name="news_on" value="1" {% if settings.news_on %}checked{% endif %} />
+          <input class="form-check-input" type="checkbox" id="news_on" name="news_on" value="1" {% if settings.news_on %}checked{% endif %}/>
           <label class="form-check-label" for="news_on">On/Off</label>
         </div>
       </div>
+
       <div class="col-6 col-md-1 text-end">
         <button type="submit" class="btn btn-success w-100"><i class="bi bi-arrow-repeat"></i> Apply</button>
       </div>
+
     </div>
   </form>
 
+  <!-- ─── Alerts table ─── -->
   <div class="d-flex justify-content-end mb-2">
     <form action="{{ url_for('clear_all_alerts') }}" method="post" class="d-inline">
       <button class="btn btn-sm btn-outline-warning" type="submit">✏️ Clear All</button>
     </form>
   </div>
-
   <div class="table-responsive">
     <table class="table table-striped table-bordered alerts-table text-white">
       <thead class="table-light">
         <tr>
-          <th>Time</th><th>Symbol</th><th>Name</th><th>Price</th><th>VWAP</th><th>VWAP Diff</th><th>News</th><th>Spark</th><th>Triggers</th><th>Qty</th><th>Buy</th><th>Clear</th>
+          <th>Time</th>
+          <th>Symbol</th>
+          <th>Name</th>
+          <th>Price</th>
+          <th>VWAP</th>
+          <th>VWAP Diff</th>
+          <th>News</th>
+          <th>Spark</th>
+          <th>Triggers</th>
+          <th>Qty</th>
+          <th>Buy</th>
+          <th>Clear</th>
         </tr>
       </thead>
       <tbody>
         {% for alert in alerts %}
         <tr class="alert-row">
-          <td>{{ alert.timestamp }}</td><td>{{ alert.symbol }}</td><td>{{ alert.name }}</td>
-          <td>${{ '%.2f'|format(alert.price) }}</td><td>${{ '%.2f'|format(alert.vwap) }}</td>
-          <td>{% if alert.vwap_diff<0 %}<span class="text-success">${{ '%.2f'|format(alert.vwap_diff) }}</span>{% else %}<span class="text-danger">+${{ '%.2f'|format(alert.vwap_diff) }}</span>{% endif %}</td>
-          <td class="text-center">{% if alert.has_news %}<button class="news-btn" onclick="showNews('{{ alert.symbol }}')">📰</button><div id="news-{{ alert.symbol }}" class="news-container"></div>{% else %}&mdash;{% endif %}</td>
+          <td>{{ alert.timestamp }}</td>
+          <td>{{ alert.symbol }}</td>
+          <td>{{ alert.name }}</td>
+          <td>${{ '%.2f'|format(alert.price) }}</td>
+          <td>${{ '%.2f'|format(alert.vwap) }}</td>
+          <td>
+            {% if alert.vwap_diff < 0 %}
+              <span class="text-success">${{ '%.2f'|format(alert.vwap_diff) }}</span>
+            {% else %}
+              <span class="text-danger">+${{ '%.2f'|format(alert.vwap_diff) }}</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if alert.has_news %}
+              <button class="news-btn" onclick="showNews('{{ alert.symbol }}')">📰</button>
+              <div id="news-{{ alert.symbol }}" class="news-container"></div>
+            {% else %}&mdash;{% endif %}
+          </td>
           <td>{% if alert.sparkline %}{{ alert.sparkline|safe }}{% else %}&mdash;{% endif %}</td>
           <td>{{ alert.triggers }}</td>
           <td><input type="number" name="qty" value="1" min="1" class="form-control form-control-sm qty-input"/></td>
           <td><button class="btn-buy btn btn-sm w-100" onclick="buyStock('{{ alert.symbol }}', this)">Buy</button></td>
-          <td><form action="{{ url_for('clear_alert', id=alert.id) }}" method="post" class="d-inline"><button class="btn-clear btn btn-sm w-100" type="submit">Clear</button></form></td>
+          <td>
+            <form action="{{ url_for('clear_alert', id=alert.id) }}" method="post" class="d-inline">
+              <button class="btn-clear btn btn-sm w-100" type="submit">Clear</button>
+            </form>
+          </td>
         </tr>
         {% else %}
         <tr><td colspan="12" class="text-center">No alerts to display.</td></tr>
@@ -193,29 +319,15 @@
       </tbody>
     </table>
   </div>
+
 </div>
 
 <script>
-function buyStock(symbol, button) {
-  const row = button.closest('tr');
-  const qtyInput = row.querySelector('.qty-input');
-  const qty = qtyInput ? parseInt(qtyInput.value) : 1;
-
-  fetch('/simulation/buy', {
-    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({symbol, qty})
-  }).then(r => r.ok ? alert(`Buy sent for ${symbol} x${qty}`) : alert('Buy failed'));
-}
-</script>
-<script>
-function showNews(symbol) {
-  const c = document.getElementById(`news-${symbol}`);
-  c.innerHTML = 'Loading...';
-  fetch(`/news/${symbol}`).then(r=>r.json()).then(data=>{
-    let html='<ul>'; data.headlines.forEach(h=>html+=`<li><a href="${h.url}" target="_blank">${h.title}</a></li>`);
-    html+='</ul><p><strong>Sentiment:</strong>'+data.sentiment+'</p>';
-    c.innerHTML=html;
-  }).catch(_=>c.innerHTML='<p style="color:red;">Error loading news.</p>');
-}
+  // Initialize all Bootstrap popovers
+  var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
+  var popoverList = popoverTriggerList.map(function (el) {
+    return new bootstrap.Popover(el);
+  });
 </script>
 
 {% endblock %}
