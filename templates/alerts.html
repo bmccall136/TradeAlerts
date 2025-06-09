@@ -51,21 +51,6 @@
 
   <form id="indicator-form" method="GET" action="{{ url_for('index') }}">
     <div class="row g-2 align-items-end mb-4">
-      <!-- 1) Match count -->
-      <div class="col-6 col-md-2">
-        <label for="match_count" class="form-label">
-          <i class="bi bi-funnel-fill"></i> Match
-          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
-                title="Match Count"
-                data-bs-content="Number of indicators that must be met before triggering an alert."
-          ><i class="bi bi-info-circle-fill"></i></span>
-        </label>
-        <select id="match_count" name="match_count" class="form-select">
-          {% for i in range(1,7) %}
-            <option value="{{ i }}" {% if settings.match_count==i %}selected{% endif %}>{{ i }} of 6</option>
-          {% endfor %}
-        </select>
-      </div>
       <!-- 2) SMA length -->
       <div class="col-6 col-md-2">
         <label for="sma_length" class="form-label">

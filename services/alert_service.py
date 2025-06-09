@@ -60,17 +60,26 @@ def save_indicator_settings(
       - vwap_threshold:  VWAP diff must be ≥ this threshold (e.g. 0.0 means price>VWAP only)
       - news_on:         0 or 1
     """
-    conn = sqlite3.connect(DB_PATH)
+def update_indicator_settings(settings: dict):
+    """
+    Persist all indicator lengths/thresholds + on/off toggles.
+    Must be called after the one‐time migration above.
+    """
+    import sqlite3
+    from pathlib import Path
+
+    DB = Path(__file__).parent.parent / 'alerts.db'
+    conn = sqlite3.connect(DB, timeout=30)
+    conn.execute("PRAGMA journal_mode = WAL;")
     cur = conn.cursor()
 
-    # Ensure that row #1 exists
+    # ensure row #1 exists
     cur.execute("INSERT OR IGNORE INTO indicator_settings (id) VALUES (1);")
 
-    # Update that one row
+    # one‐shot update of everything:
     cur.execute("""
         UPDATE indicator_settings
-           SET match_count    = ?,
-               sma_length     = ?,
+           SET sma_length     = ?,
                rsi_len        = ?,
                rsi_overbought = ?,
                rsi_oversold   = ?,
@@ -81,18 +90,35 @@ def save_indicator_settings(
                bb_std         = ?,
                vol_multiplier = ?,
                vwap_threshold = ?,
-               news_on        = ?
-         WHERE id = 1;
+               news_on        = ?,
+               sma_on         = ?,
+               rsi_on         = ?,
+               macd_on        = ?,
+               bb_on          = ?,
+               vol_on         = ?,
+               vwap_on        = ?
+         WHERE id = 1
     """, (
-        match_count,
-        sma_length,
-        rsi_len, rsi_overbought, rsi_oversold,
-        macd_fast, macd_slow, macd_signal,
-        bb_length, bb_std,
-        vol_multiplier,
-        vwap_threshold,
-        1 if news_on else 0
+        settings["sma_length"],
+        settings["rsi_len"],
+        settings["rsi_overbought"],
+        settings["rsi_oversold"],
+        settings["macd_fast"],
+        settings["macd_slow"],
+        settings["macd_signal"],
+        settings["bb_length"],
+        settings["bb_std"],
+        settings["vol_multiplier"],
+        settings["vwap_threshold"],
+        1 if settings["news_on"] else 0,
+        1 if settings["sma_on"] else 0,
+        1 if settings["rsi_on"] else 0,
+        1 if settings["macd_on"] else 0,
+        1 if settings["bb_on"] else 0,
+        1 if settings["vol_on"] else 0,
+        1 if settings["vwap_on"] else 0,
     ))
+
     conn.commit()
     conn.close()
 

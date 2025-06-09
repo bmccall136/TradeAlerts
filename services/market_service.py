@@ -48,13 +48,21 @@ def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
 
 def analyze_symbol(sym):
     """
-    Load settings, fetch data, compute indicators, count primary triggers,
-    build display triggers, and insert an alert if conditions are met.
-    Returns the alert payload dict or None if skipped.
+    Load settings (including on/off toggles), fetch data, compute indicators,
+    require all enabled triggers, build display list, insert alert if passed.
+    Returns alert_payload or None.
     """
     # ── A) Load settings ──
     settings       = get_all_indicator_settings()
-    match_count    = settings['match_count']
+    # toggles
+    sma_on         = bool(settings.get('sma_on',    1))
+    rsi_on         = bool(settings.get('rsi_on',    1))
+    macd_on        = bool(settings.get('macd_on',   1))
+    bb_on          = bool(settings.get('bb_on',     1))
+    vol_on         = bool(settings.get('vol_on',    1))
+    vwap_on        = bool(settings.get('vwap_on',   1))
+    news_on        = bool(settings.get('news_on',   0))
+    # core thresholds/lengths
     sma_length     = settings['sma_length']
     rsi_len        = settings['rsi_len']
     rsi_ob         = settings['rsi_overbought']
@@ -66,7 +74,6 @@ def analyze_symbol(sym):
     bb_std         = settings['bb_std']
     vol_multiplier = settings['vol_multiplier']
     vwap_threshold = settings['vwap_threshold']
-    news_on        = settings['news_on']
 
     # ── B) Fetch price data ──
     df = fetch_data_with_timeout(sym)
@@ -87,131 +94,79 @@ def analyze_symbol(sym):
 
     # ── D) Company name ──
     try:
-        info = yf.Ticker(sym).info
+        info    = yf.Ticker(sym).info
         company = info.get('longName') or info.get('shortName') or sym
-    except Exception:
+    except:
         company = sym
 
-    # ── E) Prepare series ──
-    try:
-        close_col = df['Close']
-        price_series = close_col.iloc[:,0] if isinstance(close_col, pd.DataFrame) else close_col
-    except Exception as e:
-        logger.error(f"[SKIP] {sym}: cannot extract Close series: {e}")
-        return None
+    # ── E) Prepare close series ──
+    close_col    = df['Close']
+    price_series = close_col.iloc[:,0] if isinstance(close_col, pd.DataFrame) else close_col
+    last_price   = price_series.iloc[-1]
 
     # ── F) Compute indicators ──
-    sma_val = compute_sma(price_series, length=sma_length)
-    rsi_val = compute_rsi(price_series, period=rsi_len).iloc[-1]
-    macd_line, sig_line = calculate_macd(
-        price_series, fast=macd_fast, slow=macd_slow, signal=macd_signal
-    )
-    bb_up, bb_mid, bb_dn = compute_bollinger(
-        price_series, window=bb_length, num_std=bb_std
-    )
+    sma_val        = compute_sma(price_series, length=sma_length)
+    rsi_val        = compute_rsi(price_series, period=rsi_len).iloc[-1]
+    macd_line, sig = calculate_macd(price_series, fast=macd_fast, slow=macd_slow, signal=macd_signal)
+    bb_up, *_     = compute_bollinger(price_series, window=bb_length, num_std=bb_std)
 
     # Volume trigger
-    try:
-        vol_col = df['Volume']
-        vol_series = vol_col.iloc[:,0] if isinstance(vol_col, pd.DataFrame) else vol_col
-        vol_current = vol_series.iloc[-1]
-        avg_vol20   = vol_series.rolling(window=20).mean().iloc[-1]
-        vol_trigger = vol_current >= vol_multiplier * avg_vol20
-    except Exception:
-        vol_trigger = False
-        vol_current = 0.0
-        avg_vol20   = 0.0
+    vol_col    = df['Volume']
+    vol_series = vol_col.iloc[:,0] if isinstance(vol_col, pd.DataFrame) else vol_col
+    vol_current = vol_series.iloc[-1]
+    avg_vol20   = vol_series.rolling(20).mean().iloc[-1]
+    vol_trigger = (vol_current >= vol_multiplier * avg_vol20)
 
     # VWAP trigger
-    try:
-        high = df['High']; low = df['Low'];
-        high = high.iloc[:,0] if isinstance(high, pd.DataFrame) else high
-        low  = low.iloc[:,0] if isinstance(low, pd.DataFrame) else low
-        tp  = (high + low + price_series) / 3.0
-        tpv = tp * vol_series
-        vwap_series = tpv.cumsum() / vol_series.cumsum()
-        latest_vwap = vwap_series.iloc[-1]
-        vwap_diff   = price_live - latest_vwap
-        vwap_trigger = vwap_diff >= vwap_threshold
-    except Exception:
-        latest_vwap = 0.0
-        vwap_diff   = 0.0
-        vwap_trigger = False
+    tp         = (df['High'] + df['Low'] + df['Close']) / 3
+    tp         = tp.iloc[:,0] if isinstance(tp, pd.DataFrame) else tp
+    tpv        = tp * vol_series
+    vwap_ser   = tpv.cumsum() / vol_series.cumsum()
+    latest_vwap= vwap_ser.iloc[-1]
+    vwap_diff  = price_live - latest_vwap
+    vwap_trigger = (vwap_diff >= vwap_threshold)
 
-    # ── G) Count primary triggers ──
+    # ── G) Build primary only for enabled indicators ──
     primary = []
-    if price_series.iloc[-1] > sma_val:
-        primary.append('SMA')
-    if rsi_val > rsi_ob:
-        primary.append('RSI_OB')
-    elif rsi_val < rsi_os:
-        primary.append('RSI_OS')
-    if macd_line.iloc[-1] > sig_line.iloc[-1]:
-        primary.append('MACD')
-    if price_series.iloc[-1] > bb_up.iloc[-1] or price_series.iloc[-1] < bb_dn.iloc[-1]:
-        primary.append('BB')
-    if vol_trigger:
-        primary.append('VOLUME')
-    if vwap_trigger:
-        primary.append('VWAP')
-    if news_on and fetch_latest_headlines(sym):
-        primary.append('NEWS')
+    if sma_on    and last_price > sma_val:           primary.append('SMA')
+    if rsi_on    and rsi_val > rsi_ob:               primary.append('RSI_OB')
+    elif rsi_on  and rsi_val < rsi_os:               primary.append('RSI_OS')
+    if macd_on   and macd_line.iloc[-1] > sig.iloc[-1]: primary.append('MACD')
+    if bb_on     and last_price > bb_up.iloc[-1]:    primary.append('BB')
+    if vol_on    and vol_trigger:                    primary.append('VOLUME')
+    if vwap_on   and vwap_trigger:                   primary.append('VWAP')
+    if news_on   and fetch_latest_headlines(sym):    primary.append('NEWS')
 
-    logger.info(f"{sym}: primary triggers = {len(primary)}, required = {match_count}")
-    if len(primary) < match_count:
-        logger.info(f"[SKIP] {sym}: only {len(primary)} < {match_count}, skipping alert")
+    # require _all_ enabled triggers
+    required = sum([sma_on, rsi_on, macd_on, bb_on, vol_on, vwap_on]) + (1 if news_on else 0)
+    if len(primary) < required:
+        logger.info(f"[SKIP] {sym}: only {len(primary)}/{required} enabled triggers")
         return None
-    # ── H) Build display triggers & insert alert ──
-    last_price = price_series.iloc[-1]
-    display_triggers = []
 
-    # 1) Bullish-only SMA display
-    if last_price > sma_val:
-        display_triggers.append(f"SMA 📈 ({sma_length})")
+    # ── H) Build display_triggers (bullish only) ──
+    display = []
+    if sma_on  and last_price > sma_val:           display.append(f"SMA 📈 ({sma_length})")
+    if rsi_on  and rsi_val > rsi_ob:               display.append('RSI 📈')
+    if macd_on and macd_line.iloc[-1] > sig.iloc[-1]: display.append('MACD 🚀')
+    if bb_on   and last_price > bb_up.iloc[-1]:    display.append('BB 📈')
+    if vol_on  and vol_trigger:                    display.append(f"VOL 🔊 ({vol_current/avg_vol20:.2f}×)")
+    if vwap_on and vwap_trigger:                   display.append(f"VWAP+ (${vwap_diff:.2f})")
+    if news_on and 'NEWS' in primary:              display.append('📰')
 
-    # 2) Bullish-only RSI display
-    if rsi_val > rsi_ob:
-        display_triggers.append('RSI 📈')
-
-    # 3) Bullish-only MACD
-    if macd_line.iloc[-1] > sig_line.iloc[-1]:
-        display_triggers.append('MACD 🚀')
-
-    # 4) Bullish-only Bollinger Bands
-    if last_price > bb_up.iloc[-1]:
-        display_triggers.append('BB 📈')
-
-    # 5) Volume
-    if vol_trigger:
-        display_triggers.append(f"VOL 🔊 ({vol_current/avg_vol20:.2f}×)")
-
-    # 6) VWAP
-    if vwap_trigger:
-        display_triggers.append(f"VWAP+ (${vwap_diff:.2f})")
-
-    # Optional: News icon
-    if news_on and 'NEWS' in primary:
-        display_triggers.append('📰')
-
-    # Strip any stray gold-dot
-    display_triggers = [t for t in display_triggers if '🟡' not in t]
-
-    # Pack up and insert
-    alert_payload = {
-        'symbol':    sym,
-        'price':     price_live,
-        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'name':      company,
-        'vwap':      round(latest_vwap, 2),
-        'vwap_diff': round(vwap_diff, 2),
-        'triggers':  ','.join(display_triggers),
-        'sparkline': generate_sparkline(price_series.tolist())
+    # ── I) Insert and return ──
+    payload = {
+      'symbol':    sym,
+      'price':     price_live,
+      'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+      'name':      company,
+      'vwap':      round(latest_vwap, 2),
+      'vwap_diff': round(vwap_diff, 2),
+      'triggers':  ','.join(display),
+      'sparkline': generate_sparkline(price_series.tolist())
     }
-    insert_alert(**alert_payload)
-    logger.info(f"[ALERT] {sym}: {display_triggers}")
-
-    return alert_payload
-
+    insert_alert(**payload)
+    logger.info(f"[ALERT] {sym}: {display}")
+    return payload
 
 def get_symbols(simulation=False):
     """
