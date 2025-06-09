@@ -49,110 +49,99 @@
   {% set vol_mult_labels = {1.0: "Normal ×1.0", 1.5: "High ×1.5", 2.0: "Very High ×2.0", 2.5: "Extreme ×2.5"} %}
   {% set vwap_labels = {0.0: "No VWAP", 0.5: "≥ $0.5", 1.0: "≥ $1.0", 2.0: "≥ $2.0"} %}
 
-  <form id="indicator-form" method="GET" action="{{ url_for('index') }}">
-    <div class="row g-2 align-items-end mb-4">
-      <!-- 2) SMA length -->
-      <div class="col-6 col-md-2">
-        <label for="sma_length" class="form-label">
-          <i class="bi bi-graph-up-arrow"></i> SMA
-          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
-                title="Simple Moving Average (SMA)"
-                data-bs-content="Average of the last N closing prices, showing trend direction and dynamic support/resistance."
-          ><i class="bi bi-info-circle-fill"></i></span>
-        </label>
-        <select id="sma_length" name="sma_length" class="form-select">
-          {% for value,label in sma_labels.items() %}
-            <option value="{{ value }}" {% if settings.sma_length==value %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <!-- 3) RSI length -->
-      <div class="col-6 col-md-1">
-        <label for="rsi_len" class="form-label">
-          <i class="bi bi-speedometer2"></i> RSI
-          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
-                title="Relative Strength Index (RSI)"
-                data-bs-content="Momentum oscillator comparing recent gains vs. losses over N periods. Overbought > threshold; oversold < threshold."
-          ><i class="bi bi-info-circle-fill"></i></span>
-        </label>
-        <select id="rsi_len" name="rsi_len" class="form-select">
-          {% for value,label in rsi_len_labels.items() %}
-            <option value="{{ value }}" {% if settings.rsi_len==value %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <!-- 4) RSI overbought -->
-      <div class="col-6 col-md-1">
-        <label for="rsi_overbought" class="form-label">
-          <span class="visually-hidden">RSI Overbought</span>
-          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
-                title="RSI Overbought Threshold"
-                data-bs-content="Above this value RSI is in overbought territory and may pull back."
-          ><i class="bi bi-info-circle-fill"></i></span>
-        </label>
-        <select id="rsi_overbought" name="rsi_overbought" class="form-select">
-          {% for value,label in rsi_ob_labels.items() %}
-            <option value="{{ value }}" {% if settings.rsi_overbought==value %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <!-- 5) RSI oversold -->
-      <div class="col-6 col-md-1">
-        <label for="rsi_oversold" class="form-label">
-          <span class="visually-hidden">RSI Oversold</span>
-          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
-                title="RSI Oversold Threshold"
-                data-bs-content="Below this value RSI is in oversold territory and may rebound."
-          ><i class="bi bi-info-circle-fill"></i></span>
-        </label>
-        <select id="rsi_oversold" name="rsi_oversold" class="form-select">
-          {% for value,label in rsi_os_labels.items() %}
-            <option value="{{ value }}" {% if settings.rsi_oversold==value %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <!-- 6) MACD fast -->
-      <div class="col-6 col-md-1">
-        <label for="macd_fast" class="form-label">
-          <i class="bi bi-triangle-fill"></i> MACD
-          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
-                title="MACD Fast" data-bs-content="Fast EMA period for MACD calculation. Paired with slow EMA and signal line to generate crossover signals."
-          ><i class="bi bi-info-circle-fill"></i></span>
-        </label>
-        <select id="macd_fast" name="macd_fast" class="form-select">
-          {% for value,label in macd_fast_labels.items() %}
-            <option value="{{ value }}" {% if settings.macd_fast==value %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-            <!-- 7) MACD slow -->
-      <div class="col-6 col-md-1">
-        <label for="macd_slow" class="form-label">
-          <span class="visually-hidden">MACD Slow</span>
-          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
-                title="MACD Slow" data-bs-content="Slow EMA period for MACD. A longer period smooths out more noise."
-          ><i class="bi bi-info-circle-fill"></i></span>
-        </label>
-        <select id="macd_slow" name="macd_slow" class="form-select">
-          {% for value,label in macd_slow_labels.items() %}
-            <option value="{{ value }}" {% if settings.macd_slow==value %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <!-- 8) MACD signal -->
-      <div class="col-6 col-md-1">
-        <label for="macd_signal" class="form-label">
-          <span class="visually-hidden">MACD Signal</span>
-          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
-                title="MACD Signal" data-bs-content="Signal line period (SMA of MACD). Crossovers with MACD line generate buy/sell signals."
-          ><i class="bi bi-info-circle-fill"></i></span>
-        </label>
-        <select id="macd_signal" name="macd_signal" class="form-select">
-          {% for value,label in macd_signal_labels.items() %}
-            <option value="{{ value }}" {% if settings.macd_signal==value %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </div>
+<form id="indicator-form" method="GET" action="{{ url_for('index') }}">
+  <!-- Toggle row -->
+  <div class="filter-toggle-group mb-4">
+    {% set toggles = [
+      {'name':'sma_on',  'label':'SMA',  'icon':'bi-graph-up-arrow'},
+      {'name':'rsi_on',  'label':'RSI',  'icon':'bi-speedometer2'},
+      {'name':'macd_on', 'label':'MACD', 'icon':'bi-triangle-fill'},
+      {'name':'bb_on',   'label':'BB',   'icon':'bi-bar-chart-fill'},
+      {'name':'vol_on',  'label':'Vol',  'icon':'bi-bar-chart-lines'},
+      {'name':'vwap_on', 'label':'VWAP', 'icon':'bi-calculator'},
+      {'name':'news_on', 'label':'News', 'icon':'bi-newspaper'}
+    ] %}
+    <div class="d-flex align-items-center w-100">
+      {% for t in toggles %}
+        <div class="form-check form-switch me-3">
+          <input class="form-check-input" type="checkbox" id="{{t.name}}" name="{{t.name}}"
+                 {% if settings[t.name] %}checked{% endif %}>
+          <label class="form-check-label" for="{{t.name}}">
+            <i class="bi {{t.icon}}"></i> {{t.label}}
+          </label>
+        </div>
+      {% endfor %}
+      <button type="submit" class="btn btn-success ms-auto">
+        <i class="bi bi-arrow-repeat"></i> Apply
+      </button>
+    </div>
+  </div>
+
+  <!-- Numeric‐filters row -->
+  <div class="row g-2 align-items-end mb-4">
+    <!-- SMA -->
+    <div class="col-6 col-md-2">
+      <label for="sma_length" class="form-label"><i class="bi bi-graph-up-arrow"></i> SMA</label>
+      <select id="sma_length" name="sma_length" class="form-select">
+        {% for v,l in sma_labels.items() %}
+          <option value="{{v}}" {% if settings.sma_length==v %}selected{% endif %}>{{l}}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <!-- RSI Len -->
+    <div class="col-6 col-md-1">
+      <label for="rsi_len" class="form-label"><i class="bi bi-speedometer2"></i> RSI Len</label>
+      <select id="rsi_len" name="rsi_len" class="form-select">
+        {% for v,l in rsi_len_labels.items() %}
+          <option value="{{v}}" {% if settings.rsi_len==v %}selected{% endif %}>{{l}}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <!-- RSI OB -->
+    <div class="col-6 col-md-1">
+      <label for="rsi_overbought" class="form-label">OB</label>
+      <select id="rsi_overbought" name="rsi_overbought" class="form-select">
+        {% for v,l in rsi_ob_labels.items() %}
+          <option value="{{v}}" {% if settings.rsi_overbought==v %}selected{% endif %}>{{l}}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <!-- RSI OS -->
+    <div class="col-6 col-md-1">
+      <label for="rsi_oversold" class="form-label">OS</label>
+      <select id="rsi_oversold" name="rsi_oversold" class="form-select">
+        {% for v,l in rsi_os_labels.items() %}
+          <option value="{{v}}" {% if settings.rsi_oversold==v %}selected{% endif %}>{{l}}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <!-- MACD Fast -->
+    <div class="col-6 col-md-1">
+      <label for="macd_fast" class="form-label"><i class="bi bi-triangle-fill"></i> Fast</label>
+      <select id="macd_fast" name="macd_fast" class="form-select">
+        {% for v,l in macd_fast_labels.items() %}
+          <option value="{{v}}" {% if settings.macd_fast==v %}selected{% endif %}>{{l}}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <!-- MACD Slow -->
+    <div class="col-6 col-md-1">
+      <label for="macd_slow" class="form-label">Slow</label>
+      <select id="macd_slow" name="macd_slow" class="form-select">
+        {% for v,l in macd_slow_labels.items() %}
+          <option value="{{v}}" {% if settings.macd_slow==v %}selected{% endif %}>{{l}}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <!-- MACD Signal -->
+    <div class="col-6 col-md-1">
+      <label for="macd_signal" class="form-label">Signal</label>
+      <select id="macd_signal" name="macd_signal" class="form-select">
+        {% for v,l in macd_signal_labels.items() %}
+          <option value="{{v}}" {% if settings.macd_signal==v %}selected{% endif %}>{{l}}</option>
+        {% endfor %}
+      </select>
+    </div>
       <!-- 9) BB length -->
       <div class="col-6 col-md-1">
         <label for="bb_length" class="form-label">
@@ -237,7 +226,14 @@
           <td>{{ alert.timestamp }}</td><td>{{ alert.symbol }}</td><td>{{ alert.name }}</td>
           <td>${{ '%.2f'|format(alert.price) }}</td><td>${{ '%.2f'|format(alert.vwap) }}</td>
           <td>{% if alert.vwap_diff<0 %}<span class="text-success">${{ '%.2f'|format(alert.vwap_diff) }}</span>{% else %}<span class="text-danger">+${{ '%.2f'|format(alert.vwap_diff) }}</span>{% endif %}</td>
-          <td class="text-center">{% if alert.has_news %}<button class="news-btn" onclick="showNews('{{ alert.symbol }}')">📰</button><div id="news-{{ alert.symbol }}" class="news-container"></div>{% else %}&mdash;{% endif %}</td>
+			<td class="text-center">
+			  {% if alert.has_news %}
+				<button class="news-btn" onclick="showNews('{{alert.symbol}}')">📰</button>
+				<div id="news-{{alert.symbol}}" class="news-container"></div>
+			  {% else %}
+				&mdash;
+			  {% endif %}
+			</td>
           <td>{% if alert.sparkline %}{{ alert.sparkline|safe }}{% else %}&mdash;{% endif %}</td>
           <td>{{ alert.triggers }}</td>
           <td><input type="number" name="qty" value="1" min="1" class="form-control form-control-sm qty-input"/></td>
@@ -293,6 +289,21 @@ function showNews(symbol) {
       container.innerHTML=html;
     }).catch(_=> container.innerHTML='<p style="color:red;">Error loading news.</p>');
 }
+function clearAlert(button) {
+  const row = button.closest('tr');
+  const id  = row.getAttribute('data-id');
+
+  fetch(`/clear/${id}`, { method: 'POST' })
+    .then(response => {
+      if (!response.ok) throw new Error(response.statusText);
+      window.location.reload();
+    })
+    .catch(err => {
+      console.error('Clear error:', err);
+      alert('Failed to clear alert.');
+    });
+}
+
 </script>
 
 {% endblock %}

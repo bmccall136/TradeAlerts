@@ -566,3 +566,12 @@ h2 {
 .table-bordered {
   border: 1px solid #333 !important;
 }
+.filter-toggle-group {
+  display: flex !important;
+  align-items: center;
+  gap: 1rem;
+  overflow-x: auto;
+  white-space: nowrap;
+  margin-bottom: 1rem;
+}
+

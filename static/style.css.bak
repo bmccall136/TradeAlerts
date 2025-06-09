@@ -24,20 +24,6 @@ select {
     outline: none;
     cursor: pointer;
 }
-<style>
-  /* Force .btn-clear to be a visible red button with white text */
-  .btn-clear {
-    display: inline-block !important;
-    background-color: #e74c3c !important;
-    color: #fff !important;
-    border: 1px solid #fff !important;
-    padding: 4px 8px !important;
-    font-size: 12px !important;
-    border-radius: 4px !important;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-</style>
 
 /*— Container to center content and limit width —*/
 .container {
@@ -579,4 +565,12 @@ h2 {
 /* 4) If you have any “.table” class defaults leftover, force that to no border or dark border */
 .table-bordered {
   border: 1px solid #333 !important;
+}
+.filter-toggle-group {
+  display: flex !important;
+  align-items: center;
+  gap: 1rem;
+  overflow-x: auto;
+  white-space: nowrap;
+  margin-bottom: 1rem;
 }

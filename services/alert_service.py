@@ -34,16 +34,51 @@ DB_PATH = 'alerts.db'   # <-- adjust if your path is different
 #  Then your save/get functions will always operate on that row.
 # ------------------------------------------------------------------------------
 
+# services/alert_service.py
+
 def save_indicator_settings(
     match_count,
-    sma_length,
-    rsi_len, rsi_overbought, rsi_oversold,
-    macd_fast, macd_slow, macd_signal,
-    bb_length, bb_std,
-    vol_multiplier,
-    vwap_threshold,
+    sma_on,     sma_length,
+    rsi_on,     rsi_len,      rsi_overbought,    rsi_oversold,
+    macd_on,    macd_fast,    macd_slow,         macd_signal,
+    bb_on,      bb_length,    bb_std,
+    vol_on,     vol_multiplier,
+    vwap_on,    vwap_threshold,
     news_on
 ):
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn.execute("PRAGMA journal_mode = WAL;")
+    cur = conn.cursor()
+    # ensure row #1 exists
+    cur.execute("INSERT OR IGNORE INTO indicator_settings (id) VALUES (1);")
+
+    cur.execute("""
+        UPDATE indicator_settings
+           SET match_count      = ?,
+               sma_on           = ?, sma_length      = ?,
+               rsi_on           = ?, rsi_len         = ?, rsi_overbought = ?, rsi_oversold = ?,
+               macd_on          = ?, macd_fast       = ?, macd_slow      = ?, macd_signal  = ?,
+               bb_on            = ?, bb_length      = ?, bb_std         = ?,
+               vol_on           = ?, vol_multiplier = ?,
+               vwap_on          = ?, vwap_threshold = ?,
+               news_on          = ?
+         WHERE id = 1;
+    """, (
+        match_count,
+        int(sma_on),    sma_length,
+        int(rsi_on),    rsi_len,        rsi_overbought,   rsi_oversold,
+        int(macd_on),   macd_fast,      macd_slow,        macd_signal,
+        int(bb_on),     bb_length,      bb_std,
+        int(vol_on),    vol_multiplier,
+        int(vwap_on),   vwap_threshold,
+        int(news_on)
+    ))
+    conn.commit()
+    conn.close()
+
+
+
+
     """
     Insert or update the single row (id=1) in indicator_settings with all 12 columns:
       - match_count:     how many of [SMA, RSI, MACD, BB, Volume, VWAP] to match
@@ -123,52 +158,52 @@ def update_indicator_settings(settings: dict):
     conn.close()
 
 
+# services/alert_service.py
+
 def get_all_indicator_settings():
-    """
-    Return a dict of all indicator settings from the one row in indicator_settings.
-    If no row exists, returns sensible defaults.
-    """
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM indicator_settings WHERE id = 1;")
-    row = cur.fetchone()
+    row = conn.execute("SELECT * FROM indicator_settings WHERE id = 1;").fetchone()
     conn.close()
 
-    if row:
-        return {
-            'match_count':    row['match_count'],
-            'sma_length':     row['sma_length'],
-            'rsi_len':        row['rsi_len'],
-            'rsi_overbought': row['rsi_overbought'],
-            'rsi_oversold':   row['rsi_oversold'],
-            'macd_fast':      row['macd_fast'],
-            'macd_slow':      row['macd_slow'],
-            'macd_signal':    row['macd_signal'],
-            'bb_length':      row['bb_length'],
-            'bb_std':         row['bb_std'],
-            'vol_multiplier': row['vol_multiplier'],
-            'vwap_threshold': row['vwap_threshold'],
-            'news_on':        bool(row['news_on'])
-        }
-    else:
-        # No row yet → return defaults to match your template defaults
-        return {
-            'match_count':    1,
-            'sma_length':     20,
-            'rsi_len':        14,
-            'rsi_overbought': 70,
-            'rsi_oversold':   30,
-            'macd_fast':      12,
-            'macd_slow':      26,
-            'macd_signal':    9,
-            'bb_length':      20,
-            'bb_std':         2.0,
-            'vol_multiplier': 1.0,
-            'vwap_threshold': 0.0,
-            'news_on':        False
-        }
+    # If we haven’t saved anything yet, return these defaults:
+    defaults = {
+        'match_count':    0,
+        'sma_on':         True,  'sma_length':     20,
+        'rsi_on':         True,  'rsi_len':        14,
+        'rsi_overbought': 70,    'rsi_oversold':   30,
+        'macd_on':        True,  'macd_fast':      12,
+        'macd_slow':      26,    'macd_signal':    9,
+        'bb_on':          True,  'bb_length':      20,
+        'bb_std':         2.0,
+        'vol_on':         False, 'vol_multiplier': 1.0,
+        'vwap_on':        True,  'vwap_threshold': 1.0,
+        'news_on':        False
+    }
+    if not row:
+        return defaults
 
+    return {
+        'match_count':    row['match_count'],
+        'sma_on':         bool(row['sma_on']),
+        'sma_length':     row['sma_length'],
+        'rsi_on':         bool(row['rsi_on']),
+        'rsi_len':        row['rsi_len'],
+        'rsi_overbought': row['rsi_overbought'],
+        'rsi_oversold':   row['rsi_oversold'],
+        'macd_on':        bool(row['macd_on']),
+        'macd_fast':      row['macd_fast'],
+        'macd_slow':      row['macd_slow'],
+        'macd_signal':    row['macd_signal'],
+        'bb_on':          bool(row['bb_on']),
+        'bb_length':      row['bb_length'],
+        'bb_std':         row['bb_std'],
+        'vol_on':         bool(row['vol_on']),
+        'vol_multiplier': row['vol_multiplier'],
+        'vwap_on':        bool(row['vwap_on']),        # ← make sure this is here
+        'vwap_threshold': row['vwap_threshold'],       # ← and this
+        'news_on':        bool(row['news_on'])         # ← and this
+    }
 
 # -------------------------------------------------------------------------------
 def generate_sparkline(prices):
@@ -195,9 +230,14 @@ def generate_sparkline(prices):
 
 def get_active_alerts():
     """
-    Return a list of dictionaries for all alerts where cleared=0,
-    deduplicated so only the newest entry per symbol remains.
+    Return a list of dicts for all alerts where cleared=0,
+    deduplicated so only the newest entry per symbol remains,
+    and with a `has_news` flag set to True if there are any headlines.
     """
+    import sqlite3
+    from services.news_service import fetch_latest_headlines
+
+    # 1) grab all uncleared alerts
     conn = sqlite3.connect(ALERTS_DB)
     c = conn.cursor()
     c.execute(
@@ -210,16 +250,25 @@ def get_active_alerts():
     columns = [desc[0] for desc in c.description]
     conn.close()
 
+    # 2) dedupe by symbol, keeping only the newest
     seen = set()
-    deduped_rows = []
+    deduped = []
     for row in rows:
         symbol = row[1]
         if symbol not in seen:
             seen.add(symbol)
-            deduped_rows.append(row)
+            deduped.append(row)
 
-    alerts = [dict(zip(columns, row)) for row in deduped_rows]
+    # 3) build alert dicts and add `has_news`
+    alerts = []
+    for row in deduped:
+        d = dict(zip(columns, row))
+        # only mark has_news if there are any headlines
+        d['has_news'] = bool(fetch_latest_headlines(d['symbol']))
+        alerts.append(d)
+
     return alerts
+
 
 
 def insert_alert(symbol, price, timestamp, name, vwap, vwap_diff, triggers, sparkline):
