@@ -1,5 +1,9 @@
 # File: dashboard.py
-from services.alert_service import save_indicator_settings, get_all_indicator_settings, get_alerts
+from services.alert_service import (
+    save_indicator_settings,
+    get_all_indicator_settings,
+    get_alerts,
+)
 from pathlib import Path
 import os
 import subprocess

@@ -199,12 +199,24 @@
         </select>
       </div>
 
-  <!-- Single Clear All button -->
-  <div class="d-flex justify-content-end mb-2">
-    <form action="{{ url_for('clear_all_alerts') }}" method="post" class="d-inline">
-      <button class="btn btn-sm btn-outline-warning" type="submit">✏️ Clear All</button>
-    </form>
-  </div>
+
+	  <!-- 13) News toggle + Apply button -->
+	  <div class="col-6 col-md-1 text-end">
+		<button type="submit" class="btn btn-success w-100">
+		  <i class="bi bi-arrow-repeat"></i> Apply
+		</button>
+	  </div>
+	</div>    {# close .row #}
+	</form>  {# close your GET form #}
+
+	<!-- now that GET form is closed, we can safely put Clear All -->
+	<div class="d-flex justify-content-end mb-2">
+	  <form action="{{ url_for('clear_all_alerts') }}" method="post" class="d-inline">
+		<button type="submit" class="btn btn-sm btn-outline-warning">
+		  ✏️ Clear All
+		</button>
+	  </form>
+	</div>
 
   <!-- ─── Alerts Table ─── -->
   <div class="table-responsive">
