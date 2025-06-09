@@ -254,7 +254,16 @@ from flask import redirect, url_for, render_template
 from services.alert_service import get_alerts
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    # 1) Read filter-bar parameters
+    # 1) Read on/off toggles
+    sma_on   = (request.args.get('sma_on')   == 'on')
+    rsi_on   = (request.args.get('rsi_on')   == 'on')
+    macd_on  = (request.args.get('macd_on')  == 'on')
+    bb_on    = (request.args.get('bb_on')    == 'on')
+    vol_on   = (request.args.get('vol_on')   == 'on')
+    vwap_on  = (request.args.get('vwap_on')  == 'on')
+    news_on  = (request.args.get('news_on')  == 'on')
+    print("VWAP_ON:", vwap_on, "NEWS_ON:", news_on)
+    # 2) Read numeric filter values
     sma_length     = int(request.args.get('sma_length',     20))
     rsi_len        = int(request.args.get('rsi_len',        14))
     rsi_overbought = int(request.args.get('rsi_overbought', 70))
@@ -266,39 +275,36 @@ def index():
     bb_std         = float(request.args.get('bb_std',       2.0))
     vol_multiplier = float(request.args.get('vol_multiplier', 1.0))
     vwap_threshold = float(request.args.get('vwap_threshold', 0.0))
-    news_on        = (request.args.get('news_on', '1') == '1')
 
-    # 2) Load current alerts and count them
+    # 3) Load alerts & compute how many matched
     alerts = get_alerts()
     match_count = len(alerts)
 
-    # 3) Persist all indicator settings (including match_count)
+    # 4) Persist *all* settings, in the exact order your service expects:
     save_indicator_settings(
         match_count,
-        sma_length,
-        rsi_len,
-        rsi_overbought,
-        rsi_oversold,
-        macd_fast,
-        macd_slow,
-        macd_signal,
-        bb_length,
-        bb_std,
-        vol_multiplier,
-        vwap_threshold,
+        sma_on,     sma_length,
+        rsi_on,     rsi_len,        rsi_overbought,    rsi_oversold,
+        macd_on,    macd_fast,      macd_slow,         macd_signal,
+        bb_on,      bb_length,      bb_std,
+        vol_on,     vol_multiplier,
+        vwap_on,    vwap_threshold,
         news_on
     )
 
-    # 4) Reload settings for the template dropdowns
+    # 5) Read them back so template can pre-select everything
     settings = get_all_indicator_settings()
 
-    # 5) Render
+
+    # 6) Render your alerts page
     return render_template(
         'alerts.html',
         alerts=alerts,
         settings=settings,
         match_count=match_count
     )
+
+
 
 
 if __name__ == '__main__':
