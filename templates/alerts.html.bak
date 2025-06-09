@@ -198,12 +198,6 @@
           {% endfor %}
         </select>
       </div>
-      <!-- 13) News toggle -->
-      <div class="col-6 col-md-1 text-end">
-        <button type="submit" class="btn btn-success w-100"><i class="bi bi-arrow-repeat"></i> Apply</button>
-      </div>
-    </div>
-  </form>
 
   <!-- Single Clear All button -->
   <div class="d-flex justify-content-end mb-2">
@@ -220,23 +214,49 @@
           <th>Time</th><th>Symbol</th><th>Name</th><th>Price</th><th>VWAP</th><th>VWAP Diff</th><th>News</th><th>Spark</th><th>Triggers</th><th>Qty</th><th>Buy</th><th>Clear</th>
         </tr>
       </thead>
-      <tbody>
-        {% for alert in alerts %}
-        <tr data-id="{{ alert.id }}" class="alert-row">
-          <td>{{ alert.timestamp }}</td><td>{{ alert.symbol }}</td><td>{{ alert.name }}</td>
-          <td>${{ '%.2f'|format(alert.price) }}</td><td>${{ '%.2f'|format(alert.vwap) }}</td>
-          <td>{% if alert.vwap_diff<0 %}<span class="text-success">${{ '%.2f'|format(alert.vwap_diff) }}</span>{% else %}<span class="text-danger">+${{ '%.2f'|format(alert.vwap_diff) }}</span>{% endif %}</td>
-          <td class="text-center">{% if alert.has_news %}<button class="news-btn" onclick="showNews('{{ alert.symbol }}')">📰</button><div id="news-{{ alert.symbol }}" class="news-container"></div>{% else %}&mdash;{% endif %}</td>
-          <td>{% if alert.sparkline %}{{ alert.sparkline|safe }}{% else %}&mdash;{% endif %}</td>
-          <td>{{ alert.triggers }}</td>
-          <td><input type="number" name="qty" value="1" min="1" class="form-control form-control-sm qty-input"/></td>
-          <td><button class="btn-buy btn btn-sm w-100" onclick="buyStock(this)">Buy</button></td>
-          <td><button class="btn-clear btn btn-sm w-100" onclick="clearAlert(this)">Clear</button></td>
-        </tr>
-        {% else %}
-        <tr><td colspan="12" class="text-center">No alerts to display.</td></tr>
-        {% endfor %}
-      </tbody>
+<tbody>
+  {% for alert in alerts %}
+  <tr data-id="{{ alert.id }}" class="alert-row">
+    <td>{{ alert.timestamp }}</td>
+    <td>{{ alert.symbol }}</td>
+    <td>{{ alert.name }}</td>
+    <td>${{ '%.2f'|format(alert.price) }}</td>
+    <td>${{ '%.2f'|format(alert.vwap) }}</td>
+
+    <!-- VWAP Diff column (6th) -->
+    <td>
+      {% if alert.vwap_diff < 0 %}
+        <span class="text-danger">${{ '%.2f'|format(alert.vwap_diff) }}</span>
+      {% else %}
+        <span class="text-success">+${{ '%.2f'|format(alert.vwap_diff) }}</span>
+      {% endif %}
+    </td>
+
+    <!-- News column (7th) -->
+    <td class="text-center">
+      {% if alert.has_news %}
+        <button class="news-btn" onclick="showNews('{{ alert.symbol }}')">📰</button>
+        <div id="news-{{ alert.symbol }}" class="news-container"></div>
+      {% else %}
+        &mdash;
+      {% endif %}
+    </td>
+
+    <td>{% if alert.sparkline %}{{ alert.sparkline|safe }}{% else %}&mdash;{% endif %}</td>
+    <td>{{ alert.triggers }}</td>
+    <td><input type="number" name="qty" value="1" min="1" class="form-control form-control-sm qty-input"/></td>
+    <td><button class="btn-buy btn btn-sm w-100" onclick="buyStock(this)">Buy</button></td>
+	<td>
+	  <form method="post" action="{{ url_for('clear_alert', id=alert.id) }}">
+		<button type="submit" class="btn btn-sm btn-outline-danger w-100">Clear</button>
+	  </form>
+	</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="12" class="text-center">No alerts to display.</td></tr>
+  {% endfor %}
+</tbody>
+
     </table>
   </div>
 </div>

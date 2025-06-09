@@ -184,26 +184,26 @@ def get_all_indicator_settings():
         return defaults
 
     return {
-        'match_count':    row['match_count'],
-        'sma_on':         bool(row['sma_on']),
-        'sma_length':     row['sma_length'],
-        'rsi_on':         bool(row['rsi_on']),
-        'rsi_len':        row['rsi_len'],
-        'rsi_overbought': row['rsi_overbought'],
-        'rsi_oversold':   row['rsi_oversold'],
-        'macd_on':        bool(row['macd_on']),
-        'macd_fast':      row['macd_fast'],
-        'macd_slow':      row['macd_slow'],
-        'macd_signal':    row['macd_signal'],
-        'bb_on':          bool(row['bb_on']),
-        'bb_length':      row['bb_length'],
-        'bb_std':         row['bb_std'],
-        'vol_on':         bool(row['vol_on']),
-        'vol_multiplier': row['vol_multiplier'],
-        'vwap_on':        bool(row['vwap_on']),        # ← make sure this is here
-        'vwap_threshold': row['vwap_threshold'],       # ← and this
-        'news_on':        bool(row['news_on'])         # ← and this
-    }
+            'match_count':    1,
+            'sma_on':         True,      # ← default on
+            'rsi_on':         False,
+            'macd_on':        False,
+            'bb_on':          False,
+            'vol_on':         False,
+            'vwap_on':        True,      # ← default on
+            'news_on':        True,      # ← default on
+            'sma_length':     20,
+            'rsi_len':        14,
+            'rsi_overbought': 70,
+            'rsi_oversold':   30,
+            'macd_fast':      12,
+            'macd_slow':      26,
+            'macd_signal':    9,
+            'bb_length':      20,
+            'bb_std':         2.0,
+            'vol_multiplier': 1.0,
+            'vwap_threshold': 1.0       # ← start at $1
+        }
 
 # -------------------------------------------------------------------------------
 def generate_sparkline(prices):
