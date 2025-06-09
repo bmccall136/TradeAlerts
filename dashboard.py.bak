@@ -1,5 +1,9 @@
 # File: dashboard.py
-from services.alert_service import save_indicator_settings, get_all_indicator_settings, get_alerts
+from services.alert_service import (
+    save_indicator_settings,
+    get_all_indicator_settings,
+    get_alerts,
+)
 from pathlib import Path
 import os
 import subprocess
@@ -115,13 +119,46 @@ def launch_auth():
 
 ### ────────────── BACKTEST VIEW ────────────── ###
 
-@app.route("/backtest")
+@app.route("/backtest", methods=["GET"])
 def backtest_view():
-    symbol = "AAPL"
-    start_date = "2024-01-01"
-    end_date = "2024-06-01"
-    trades, pnl = backtest(symbol, start_date, end_date)
-    return render_template("backtest.html", trades=trades, pnl=pnl)
+     # 1) Hard-code symbol & dates (or read from args if you like)
+     symbol     = request.args.get("symbol",    "AAPL")
+     start_date = request.args.get("start",     "2024-01-01")
+     end_date   = request.args.get("end",       "2024-06-01")
+
+     # 2) Read *backtest-only* indicator settings from GET (prefix bt_)
+     bt_sma_on   = request.args.get("bt_sma_on")   == "on"
+     bt_vwap_on  = request.args.get("bt_vwap_on")  == "on"
+     bt_news_on  = request.args.get("bt_news_on")  == "on"
+     bt_sma_len  = int(request.args.get("bt_sma_len", 20))
+     bt_vwap_thr = float(request.args.get("bt_vwap_thr", 1.0))
+
+     # 3) Pass those into your backtest() call
+     trades, pnl = backtest(
+         symbol,
+         start_date,
+         end_date,
+         sma_on=bt_sma_on,
+         sma_length=bt_sma_len,
+         vwap_on=bt_vwap_on,
+         vwap_threshold=bt_vwap_thr,
+         news_on=bt_news_on,
+     )
+
+     # 4) Render, passing the backtest-form settings back for the template
+     return render_template(
+         "backtest.html",
+         trades=trades,
+         pnl=pnl,
+         bt_settings={
+             "sma_on": bt_sma_on,
+             "sma_len": bt_sma_len,
+             "vwap_on": bt_vwap_on,
+             "vwap_thr": bt_vwap_thr,
+             "news_on": bt_news_on,
+         }
+     )
+
 
 
 @app.route('/config')

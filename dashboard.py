@@ -119,13 +119,48 @@ def launch_auth():
 
 ### ────────────── BACKTEST VIEW ────────────── ###
 
-@app.route("/backtest")
+from flask import request
+
+@app.route('/backtest')
 def backtest_view():
-    symbol = "AAPL"
-    start_date = "2024-01-01"
-    end_date = "2024-06-01"
-    trades, pnl = backtest(symbol, start_date, end_date)
-    return render_template("backtest.html", trades=trades, pnl=pnl)
+    # Pull your form values (defaults if missing)
+    bt_sma_on   = (request.args.get('bt_sma_on') == 'on')
+    bt_sma_len  = int(request.args.get('bt_sma_len', 20))
+    bt_vwap_on  = (request.args.get('bt_vwap_on') == 'on')
+    bt_vwap_thr = float(request.args.get('bt_vwap_thr', 1.0))
+    bt_news_on  = (request.args.get('bt_news_on') == 'on')
+
+    # Run backtest with those flags
+    trades, pnl = backtest(
+        symbol="AAPL",
+        start_date="2024-01-01",
+        end_date="2024-06-01",
+        initial_cash=10000,
+        sma_on=bt_sma_on,
+        sma_length=bt_sma_len,
+        vwap_on=bt_vwap_on,
+        vwap_threshold=bt_vwap_thr,
+        news_on=bt_news_on,
+        log_to_db=False
+    )
+
+    # Package your form state back to the template
+    bt_settings = {
+        'sma_on':   bt_sma_on,
+        'sma_len':  bt_sma_len,
+        'vwap_on':  bt_vwap_on,
+        'vwap_thr': bt_vwap_thr,
+        'news_on':  bt_news_on
+    }
+
+    return render_template(
+        'backtest.html',
+        trades=trades,
+        pnl=pnl,
+        bt_settings=bt_settings
+    )
+
+
 
 
 @app.route('/config')

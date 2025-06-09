@@ -1,38 +1,81 @@
 {% extends "layout.html" %}
 {% block content %}
-<div class="container">
-  <h2>Backtest Results</h2>
-  <table class="backtest-table">
-    <thead>
-      <tr>
-        <th>Date</th>
-        <th>Type</th>
-        <th>Price</th>
-        <th>Qty</th>
-        <th>P/L</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for t in trades %}
-      <tr>
-        <td>{{ t.Date }}</td>
-        <td>{{ t.Type }}</td>
-        <td>${{ '%.2f'|format(t.Price) }}</td>
-        <td>{{ t.Qty }}</td>
-        <td>
-          {% if t['P/L'] is not none %}
-            ${{ '%.2f'|format(t['P/L']) }}
-          {% else %}
-            &mdash;
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  <p>
+<div class="container py-4">
+  <h2 class="mb-4">Backtest Configuration &amp; Results</h2>
+
+  <form method="GET" action="{{ url_for('backtest_view') }}" class="row g-3 align-items-end mb-5">
+    {# Toggles: SMA, VWAP, News #}
+    {% set toggles = [
+      {'name':'bt_sma_on',  'label':'SMA',  'icon':'bi-graph-up-arrow'},
+      {'name':'bt_vwap_on', 'label':'VWAP', 'icon':'bi-calculator'},
+      {'name':'bt_news_on', 'label':'News', 'icon':'bi-newspaper'}
+    ] %}
+    {% for t in toggles %}
+      <div class="form-check form-switch col-auto">
+        <input class="form-check-input"
+               type="checkbox"
+               id="{{ t.name }}"
+               name="{{ t.name }}"
+               {% if bt_settings[t.name.replace('bt_','')] %}checked{% endif %}>
+        <label class="form-check-label" for="{{ t.name }}">
+          <i class="bi {{ t.icon }}"></i> {{ t.label }}
+        </label>
+      </div>
+    {% endfor %}
+
+    {# Numeric filters #}
+    <div class="col-auto">
+      <label for="bt_sma_len" class="form-label">SMA Length</label>
+      <select id="bt_sma_len" name="bt_sma_len" class="form-select form-select-sm">
+        {% for v in [10,20,50,100,200] %}
+          <option value="{{ v }}" {% if bt_settings.sma_len == v %}selected{% endif %}>{{ v }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <label for="bt_vwap_thr" class="form-label">VWAP Threshold</label>
+      <select id="bt_vwap_thr" name="bt_vwap_thr" class="form-select form-select-sm">
+        {% for v in [0.0,0.5,1.0,2.0] %}
+          <option value="{{ v }}" {% if bt_settings.vwap_thr == v %}selected{% endif %}>≥ ${{ v }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-auto ms-auto">
+      <button type="submit" class="btn btn-primary">Run Backtest</button>
+    </div>
+  </form>
+
+  <div class="table-responsive mb-3">
+    <table class="table table-striped backtest-table">
+      <thead class="table-light">
+        <tr>
+          <th>Date</th><th>Type</th><th>Price</th><th>Qty</th><th>P/L</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in trades %}
+        <tr>
+          <td>{{ t.Date }}</td>
+          <td>{{ t.Type }}</td>
+          <td>${{ '%.2f'|format(t.Price) }}</td>
+          <td>{{ t.Qty }}</td>
+          <td>
+            {% if t['P/L'] is not none %}
+              ${{ '%.2f'|format(t['P/L']) }}
+            {% else %}
+              &mdash;
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div>
     <strong>Net Return:</strong>
     ${{ '%.2f'|format(pnl) }}
-  </p>
+  </div>
 </div>
 {% endblock %}

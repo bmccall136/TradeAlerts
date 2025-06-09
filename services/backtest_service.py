@@ -135,19 +135,80 @@ def calculate_indicators(df):
     df['LB'] = mb - 2 * std20
 
     return df
-
-def backtest(symbol, start, end, initial_cash=10000, log_to_db=False):
+def backtest(symbol,
+             start_date,
+             end_date,
+             initial_cash=10000,
+             sma_on=False,
+             sma_length=20,
+             vwap_on=False,
+             vwap_threshold=0.0,
+             news_on=False,
+             log_to_db=False):
     """
-    Run a basic RSI+MACD crossover backtest on 'symbol' from 'start' to 'end'.
+    Run a basic RSI+MACD crossover backtest on `symbol` from `start_date` to `end_date`.
     Buys when MACD crosses above its Signal (and RSI < 30),
     sells when it crosses below (and RSI > 70).
     Trades execute at the NEXT BAR’s Open price.
     If log_to_db=True, runs and trades are recorded in SQLite.
     Returns (trades_list, net_return).
     """
+    # 1) Download historical data
+    df = yf.download(symbol,
+                     start=start_date,
+                     end=end_date,
+                     progress=False)
+    if df.empty:
+        raise ValueError(f"No data for {symbol} in {start_date}–{end_date}.")
+
+    # 2) Flatten & compute your RSI/MACD/Bollinger indicator columns
+    df = calculate_indicators(df)
+
+    # 3) Initialize your backtest state
+    cash     = initial_cash
+    position = 0
+    trades   = []
+    run_id   = None
+
+    if log_to_db:
+        config  = {'symbol': symbol, 'start': start_date, 'end': end_date, 'initial_cash': initial_cash}
+        summary = {'net_return': None}
+        run_id  = log_backtest_run(config, summary)
+
+    # 4) Iterate row by row
+    for i in range(1, len(df)):
+        yesterday = df.iloc[i - 1]
+        today     = df.iloc[i]
+
+        # BUY signal
+        if (
+            sma_on  and today['Close'] > compute_sma(df['Close'], length=sma_length).iloc[i] and
+            today['MACD'] > today['Signal'] and
+            position == 0
+        ):
+            price = today['Open']
+            qty   = int(cash // price)
+            if qty:
+                cash     -= qty * price
+                position  = qty
+                trades.append({...})
+                if log_to_db: log_backtest_trade(...)
+
+        # SELL signal
+        # … same pattern for vwap_on or news_on …
+
+    # 5) Force‐sell at end if still long, compute net_return
+    # …
+
+    net_return = cash - initial_cash
+    # 6) Finalize DB summary if needed
+    # …
+
+    return trades, float(net_return)
+
 
     # Download historical data (yfinance may return MultiIndex columns)
-    df = yf.download(symbol, start=start, end=end, progress=False)
+    df = yf.download(symbol, start=start_date, end=end_date, progress=False)
     if df.empty:
         raise ValueError(f"No data for {symbol} in {start}–{end}.")
 
