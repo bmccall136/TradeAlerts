@@ -281,19 +281,20 @@ def index():
     match_count = len(alerts)
 
     # 4) Persist *all* settings, in the exact order your service expects:
-save_indicator_settings(
-    match_count,
-    sma_on,     sma_length,
-    rsi_on,     rsi_len,        rsi_overbought,    rsi_oversold,
-    macd_on,    macd_fast,      macd_slow,         macd_signal,
-    bb_on,      bb_length,      bb_std,
-    vol_on,     vol_multiplier,  # ← note vol_on comes *before* vol_multiplier
-    vwap_on,    vwap_threshold,  # ← then the VWAP toggle + its threshold
-    news_on                     # ← last, the News toggle
-)
+    save_indicator_settings(
+        match_count,
+        sma_on,     sma_length,
+        rsi_on,     rsi_len,        rsi_overbought,    rsi_oversold,
+        macd_on,    macd_fast,      macd_slow,         macd_signal,
+        bb_on,      bb_length,      bb_std,
+        vol_on,     vol_multiplier,
+        vwap_on,    vwap_threshold,
+        news_on
+    )
 
     # 5) Read them back so template can pre-select everything
     settings = get_all_indicator_settings()
+
 
     # 6) Render your alerts page
     return render_template(
