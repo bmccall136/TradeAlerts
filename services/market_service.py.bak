@@ -52,6 +52,23 @@ def analyze_symbol(sym):
     build display triggers, and insert an alert if conditions are met.
     Returns the alert payload dict or None if skipped.
     """
+    if sma_on and last_price > sma_val:
+        primary.append('SMA')
+    if rsi_on and rsi_val > rsi_ob:
+        primary.append('RSI_OB')
+    elif rsi_on and rsi_val < rsi_os:
+        primary.append('RSI_OS')
+    if macd_on and macd_line.iloc[-1] > sig_line.iloc[-1]:
+        primary.append('MACD')
+    if bb_on and last_price > bb_up.iloc[-1]:
+        primary.append('BB')
+    if vol_on and vol_trigger:
+        primary.append('VOLUME')
+    if vwap_on and vwap_diff >= 0:
+        primary.append('VWAP')
+    if news_on and fetch_latest_headlines(sym):
+        primary.append('NEWS')
+
     # ── A) Load settings ──
     settings       = get_all_indicator_settings()
     match_count    = settings['match_count']
@@ -67,7 +84,14 @@ def analyze_symbol(sym):
     vol_multiplier = settings['vol_multiplier']
     vwap_threshold = settings['vwap_threshold']
     news_on        = settings['news_on']
-
+    # load six toggles instead of match_count
+    sma_on         = settings['sma_on']
+    rsi_on         = settings['rsi_on']
+    macd_on        = settings['macd_on']
+    bb_on          = settings['bb_on']
+    vol_on         = settings['vol_on']
+    vwap_on        = settings['vwap_on']
+    news_on        = settings['news_on']  # unchanged
     # ── B) Fetch price data ──
     df = fetch_data_with_timeout(sym)
     if df is None or df.empty:
@@ -138,51 +162,48 @@ def analyze_symbol(sym):
         vwap_diff   = 0.0
         vwap_trigger = False
 
-    # ── G) Count primary triggers ──
-    primary = []
-    if price_series.iloc[-1] > sma_val:
-        primary.append('SMA')
-    if rsi_val > rsi_ob:
-        primary.append('RSI_OB')
-    elif rsi_val < rsi_os:
-        primary.append('RSI_OS')
-    if macd_line.iloc[-1] > sig_line.iloc[-1]:
-        primary.append('MACD')
-    if price_series.iloc[-1] > bb_up.iloc[-1] or price_series.iloc[-1] < bb_dn.iloc[-1]:
-        primary.append('BB')
-    if vol_trigger:
-        primary.append('VOLUME')
-    if vwap_trigger:
-        primary.append('VWAP')
-    if news_on and fetch_latest_headlines(sym):
-        primary.append('NEWS')
+primary = []
 
-    logger.info(f"{sym}: primary triggers = {len(primary)}, required = {match_count}")
-    if len(primary) < match_count:
-        logger.info(f"[SKIP] {sym}: only {len(primary)} < {match_count}, skipping alert")
-        return None
-
+# require *all* enabled ones
+required = sum([sma_on, rsi_on, macd_on, bb_on, vol_on, vwap_on]) + (1 if news_on else 0)
+if len(primary) < required:
+    # skip until every enabled indicator has fired
     # ── H) Build display triggers & insert alert ──
     last_price = price_series.iloc[-1]
     display_triggers = []
+
+    # 1) Bullish-only SMA display
     if last_price > sma_val:
         display_triggers.append(f"SMA 📈 ({sma_length})")
+
+    # 2) Bullish-only RSI display
     if rsi_val > rsi_ob:
         display_triggers.append('RSI 📈')
+
+    # 3) Bullish-only MACD
     if macd_line.iloc[-1] > sig_line.iloc[-1]:
         display_triggers.append('MACD 🚀')
-    if last_price > bb_up.iloc[-1] or last_price < bb_dn.iloc[-1]:
+
+    # 4) Bullish-only Bollinger Bands
+    if last_price > bb_up.iloc[-1]:
         display_triggers.append('BB 📈')
+
+    # 5) Volume
     if vol_trigger:
         display_triggers.append(f"VOL 🔊 ({vol_current/avg_vol20:.2f}×)")
+
+    # 6) VWAP
     if vwap_trigger:
         display_triggers.append(f"VWAP+ (${vwap_diff:.2f})")
+
+    # Optional: News icon
     if news_on and 'NEWS' in primary:
         display_triggers.append('📰')
 
-    # Strip any gold-dot
+    # Strip any stray gold-dot
     display_triggers = [t for t in display_triggers if '🟡' not in t]
 
+    # Pack up and insert
     alert_payload = {
         'symbol':    sym,
         'price':     price_live,
@@ -195,9 +216,6 @@ def analyze_symbol(sym):
     }
     insert_alert(**alert_payload)
     logger.info(f"[ALERT] {sym}: {display_triggers}")
-
-    return alert_payload
-
 
 def get_symbols(simulation=False):
     """

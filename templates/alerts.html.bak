@@ -274,24 +274,26 @@ var popoverList = popoverTriggerList.map(function (el) { return new bootstrap.Po
 
 function buyStock(button) {
   const row = button.closest('tr');
-  const id = row.dataset.id;
+  const symbol = row.querySelector('td:nth-child(2)').innerText;
   const qty = parseInt(row.querySelector('.qty-input').value) || 1;
-  // Send buy request
+
   fetch('/simulation/buy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ symbol: row.querySelector('td:nth-child(2)').innerText, qty })
+    body: JSON.stringify({ symbol, qty })
   })
-  .then(r => {
-    if (r.ok) {
-      alert(`Buy order sent and cleared: ${row.querySelector('td:nth-child(2)').innerText} x${qty}`);
-      // Remove row locally so it doesn't reappear today
-      row.remove();
-    } else {
-      alert('Buy failed.');
-    }
+  .then(response => {
+    console.log('Buy response status:', response.status);
+    // Remove row regardless of success to prevent reappearing
+    row.remove();
+    alert(`Buy order sent for ${symbol} x${qty}`);
   })
-  .catch(() => alert('Buy failed.'));
+  .catch(err => {
+    console.error('Buy error:', err);
+    // Still remove to avoid duplicates
+    row.remove();
+    alert(`Buy request error, but alert cleared locally for ${symbol}.`);
+  });
 }
 
 function showNews(symbol) {
