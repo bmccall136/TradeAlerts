@@ -1,0 +1,236 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container py-4">
+  <h2 class="mb-4">Backtest Configuration &amp; Results</h2>
+
+  <form method="GET" action="{{ url_for('backtest_view') }}" class="row g-3 align-items-end mb-5">
+  {# Backtester toggles #}
+  {% set toggles = [
+    {'name':'sma_on', 'label':'SMA',  'icon':'bi-graph-up-arrow'},
+    {'name':'vwap_on','label':'VWAP', 'icon':'bi-calculator'},
+    {'name':'news_on','label':'News', 'icon':'bi-newspaper'}
+  ] %}
+  {% for t in toggles %}
+    <div class="form-check form-switch col-auto">
+      <input class="form-check-input"
+             type="checkbox"
+             id="bt_{{ t.name }}"
+             name="bt_{{ t.name }}"
+             {% if bt_settings[t.name] %}checked{% endif %}>
+      <label class="form-check-label" for="bt_{{ t.name }}">
+        <i class="bi {{ t.icon }}"></i> {{ t.label }}
+      </label>
+    </div>
+  {% endfor %}
+
+  {# Numeric filters #}
+  <div class="col-auto">
+    <label for="bt_sma_len" class="form-label">Length</label>
+    <select id="bt_sma_len" name="bt_sma_len" class="form-select form-select-sm">
+      {% for v in [10,20,50,100,200] %}
+        <option value="{{ v }}" {% if bt_settings.sma_len == v %}selected{% endif %}>{{ v }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <label for="bt_vwap_thr" class="form-label">Threshold</label>
+    <select id="bt_vwap_thr" name="bt_vwap_thr" class="form-select form-select-sm">
+      {% for v in [0.0,0.5,1.0,2.0] %}
+        <option value="{{ v }}" {% if bt_settings.vwap_thr == v %}selected{% endif %}>≥ ${{ v }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col-auto ms-auto">
+    <button type="submit" class="btn btn-primary">Run Backtest</button>
+  </div>
+</form>
+
+  <!-- Results Table -->
+  <div class="table-responsive mb-3">
+    <table class="table table-striped backtest-table">
+      <thead class="table-light">
+        <tr>
+          <th>Date</th><th>Type</th><th>Price</th><th>Qty</th><th>P/L</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in trades %}
+        <tr>
+          <td>{{ t.Date }}</td>
+          <td>{{ t.Type }}</td>
+          <td>${{ '%.2f'|format(t.Price) }}</td>
+          <td>{{ t.Qty }}</td>
+          <td>
+            {% if t['P/L'] is not none %}
+              ${{ '%.2f'|format(t['P/L']) }}
+            {% else %}
+              &mdash;
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div>
+    <strong>Net Return:</strong>
+    ${{ '%.2f'|format(pnl) }}
+  </div>
+</div>
+{% endblock %}
+
+
+
+  {# ─── Indicator Settings Form ─── #}
+  {% set sma_labels = {10: "Short SMA (10)", 20: "Standard SMA (20)", 50: "Long SMA (50)", 100: "100-Day SMA (100)", 200: "200-Day SMA (200)"} %}
+  {% set rsi_len_labels = {7: "Fast RSI (7)", 14: "Std RSI (14)", 21: "Slow RSI (21)", 28: "Very Slow RSI (28)"} %}
+  {% set rsi_ob_labels = {70: "Overbought (70)", 75: "Very Overbought (75)", 80: "Extreme Overbought (80)", 85: "Max Overbought (85)"} %}
+  {% set rsi_os_labels = {20: "Oversold (20)", 25: "Very Oversold (25)", 30: "Extreme Oversold (30)", 35: "Max Oversold (35)"} %}
+  {% set macd_fast_labels = {8: "Fast EMA (8)", 12: "Fast EMA (12)", 16: "Fast EMA (16)"} %}
+  {% set macd_slow_labels = {18: "Slow EMA (18)", 26: "Slow EMA (26)", 34: "Slow EMA (34)"} %}
+  {% set macd_signal_labels = {6: "Signal SMA (6)", 9: "Signal SMA (9)", 12: "Signal SMA (12)"} %}
+  {% set bb_length_labels = {10: "BB Short (10)", 20: "BB Std (20)", 30: "BB Long (30)"} %}
+  {% set bb_std_labels = {1.5: "1.5σ", 2.0: "2σ", 2.5: "2.5σ"} %}
+  {% set vol_mult_labels = {1.0: "Normal ×1.0", 1.5: "High ×1.5", 2.0: "Very High ×2.0", 2.5: "Extreme ×2.5"} %}
+  {% set vwap_labels = {0.0: "No VWAP", 0.5: "≥ $0.5", 1.0: "≥ $1.0", 2.0: "≥ $2.0"} %}
+
+  <form method="GET" action="{{ url_for('backtest_view') }}" class="row g-2 align-items-end mb-4">
+    {# Toggles #}
+    {% set toggles = [
+      {'name':'sma_on', 'label':'SMA', 'icon':'bi-graph-up-arrow'},
+      {'name':'rsi_on', 'label':'RSI', 'icon':'bi-speedometer2'},
+      {'name':'macd_on','label':'MACD','icon':'bi-triangle-fill'},
+      {'name':'bb_on',  'label':'BB',  'icon':'bi-bar-chart-fill'},
+      {'name':'vol_on','label':'Vol','icon':'bi-bar-chart-lines'},
+      {'name':'vwap_on','label':'VWAP','icon':'bi-calculator'},
+      {'name':'news_on','label':'News','icon':'bi-newspaper'}
+    ] %}
+    {% for t in toggles %}
+      <div class="form-check form-switch col-auto">
+        <input class="form-check-input" type="checkbox" id="{{ t.name }}" name="{{ t.name }}" {% if settings[t.name] %}checked{% endif %}>
+        <label class="form-check-label" for="{{ t.name }}">
+          <i class="bi {{ t.icon }}"></i> {{ t.label }}
+        </label>
+      </div>
+    {% endfor %}
+
+    {# Numeric selects #}
+    <div class="col-auto">
+      <label class="form-label" for="sma_length">SMA Length</label>
+      <select id="sma_length" name="sma_length" class="form-select form-select-sm">
+        {% for v,l in sma_labels.items() %}
+          <option value="{{ v }}" {% if settings.sma_length == v %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <label class="form-label" for="rsi_len">RSI Length</label>
+      <select id="rsi_len" name="rsi_len" class="form-select form-select-sm">
+        {% for v,l in rsi_len_labels.items() %}
+          <option value="{{ v }}" {% if settings.rsi_len == v %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <label class="form-label" for="rsi_overbought">RSI OB</label>
+      <select id="rsi_overbought" name="rsi_overbought" class="form-select form-select-sm">
+        {% for v,l in rsi_ob_labels.items() %}
+          <option value="{{ v }}" {% if settings.rsi_overbought == v %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <label class="form-label" for="rsi_oversold">RSI OS</label>
+      <select id="rsi_oversold" name="rsi_oversold" class="form-select form-select-sm">
+        {% for v,l in rsi_os_labels.items() %}
+          <option value="{{ v }}" {% if settings.rsi_oversold == v %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <label class="form-label" for="macd_fast">MACD Fast</label>
+      <select id="macd_fast" name="macd_fast" class="form-select form-select-sm">
+        {% for v,l in macd_fast_labels.items() %}
+          <option value="{{ v }}" {% if settings.macd_fast == v %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <label class="form-label" for="macd_slow">MACD Slow</label>
+      <select id="macd_slow" name="macd_slow" class="form-select form-select-sm">
+        {% for v,l in macd_slow_labels.items() %}
+          <option value="{{ v }}" {% if settings.macd_slow == v %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <label class="form-label" for="macd_signal">MACD Signal</label>
+      <select id="macd_signal" name="macd_signal" class="form-select form-select-sm">
+        {% for v,l in macd_signal_labels.items() %}
+          <option value="{{ v }}" {% if settings.macd_signal == v %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <label class="form-label" for="bb_length">BB Length</label>
+      <select id="bb_length" name="bb_length" class="form-select form-select-sm">
+        {% for v,l in bb_length_labels.items() %}
+          <option value="{{ v }}" {% if settings.bb_length == v %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <label class="form-label" for="bb_std">BB Std</label>
+      <select id="bb_std" name="bb_std" class="form-select form-select-sm">
+        {% for v,l in bb_std_labels.items() %}
+          <option value="{{ v }}" {% if settings.bb_std == v %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <label class="form-label" for="vol_multiplier">Vol Mult</label>
+      <select id="vol_multiplier" name="vol_multiplier" class="form-select form-select-sm">
+        {% for v,l in vol_mult_labels.items() %}
+          <option value="{{ v }}" {% if settings.vol_multiplier == v %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <label class="form-label" for="vwap_threshold">VWAP Thr</label>
+      <select id="vwap_threshold" name="vwap_threshold" class="form-select form-select-sm">
+        {% for v,l in vwap_labels.items() %}
+          <option value="{{ v }}" {% if settings.vwap_threshold == v %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary btn-sm">Run Backtest</button>
+    </div>
+  </form>
+
+  <h3>Results</h3>
+  <table class="table table-striped backtest-table">
+    <thead>
+      <tr>
+        <th>Date</th><th>Type</th><th>Price</th><th>Qty</th><th>P/L</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in trades %}
+      <tr>
+        <td>{{ t.Date }}</td>
+        <td>{{ t.Type }}</td>
+        <td>${{ '%.2f'|format(t.Price) }}</td>
+        <td>{{ t.Qty }}</td>
+        <td>
+          {% if t['P/L'] is not none %}${{ '%.2f'|format(t['P/L']) }}{% else %}&mdash;{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p><strong>Net Return:</strong> ${{ '%.2f'|format(pnl) }}</p>
+</div>
