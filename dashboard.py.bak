@@ -129,30 +129,36 @@ def launch_auth():
 
 from flask import request, render_template
 
-@app.route("/backtest", methods=["GET"])
+@app.route('/backtest')
 def backtest_view():
-    # 1) Read backtest‐only toggles (default “on”)
-    bt_sma_on   = request.args.get("bt_sma_on",  "on") == "on"
-    bt_vwap_on  = request.args.get("bt_vwap_on", "on") == "on"
-    bt_news_on  = request.args.get("bt_news_on", "on") == "on"
+    # Example default settings
+    settings = {
+        'sma_on': True,
+        'rsi_on': False,
+        'macd_on': False,
+        'bb_on': False,
+        'vol_on': False,
+        'vwap_on': True,
+        'news_on': False,
+        'sma_length': 20,
+        'rsi_len': 14,
+        'rsi_overbought': 70,
+        'rsi_oversold': 30,
+        'macd_fast': 12,
+        'macd_slow': 26,
+        'macd_signal': 9,
+        'bb_length': 20,
+        'bb_std': 2.0,
+        'vol_multiplier': 1.5,
+        'vwap_threshold': 1.0
+        'starting_cash': 10000,
+        'max_per_trade': 1000,
+        'timeframe': '3mo'
 
-    # 2) Read backtest‐only parameters
-    bt_sma_len  = int(request.args.get("bt_sma_len",  20))
-    bt_vwap_thr = float(request.args.get("bt_vwap_thr", 1.0))
+    }
 
-    # 3) Call your backtest routine with those flags
-    trades, pnl = backtest(
-        symbol         = "AAPL",
-        start_date     = "2024-01-01",
-        end_date       = "2024-06-01",
-        initial_cash   = 10000,
-        sma_on         = bt_sma_on,
-        sma_length     = bt_sma_len,
-        vwap_on        = bt_vwap_on,
-        vwap_threshold = bt_vwap_thr,
-        news_on        = bt_news_on,
-        log_to_db      = False
-    )
+    return render_template('backtest.html', settings=settings)
+
 
     # 4) Pass them back into the template for pre‐checking
     bt_settings = {

@@ -3,10 +3,10 @@
 {% extends "layout.html" %}
 {% block content %}
 
-  <!-- ── CONTAINER ── everything must be inside this div ── -->
+  <!-- ── CONTAINER ── everything in here stays properly nested ── -->
   <div class="container">
 
-    <!-- ── 1) PAGE HEADER & RESET BUTTON ── -->
+    <!-- 1) PAGE HEADER & RESET BUTTON -->
     <div class="simulation-header" style="text-align:center; margin:20px 0;">
       <h1>Simulation Dashboard</h1>
       <form action="{{ url_for('reset_simulation') }}" method="post" style="display:inline;">
@@ -14,23 +14,14 @@
       </form>
     </div>
 
-    <!-- ── 2) CASH SUMMARY ── -->
+    <!-- 2) CASH SUMMARY -->
     <div class="simulation-summary" style="text-align:center; margin-bottom:30px;">
-      <p>
-        <strong>Cash:</strong>
-        ${{ (cash.current | default(0) | float) | round(2) }}
-      </p>
-      <p>
-        <strong>Unrealized P&L:</strong>
-        ${{ (cash.unrealized | default(0) | float) | round(2) }}
-      </p>
-      <p>
-        <strong>Realized P&L:</strong>
-        ${{ (cash.realized | default(0) | float) | round(2) }}
-      </p>
+      <p><strong>Cash:</strong> ${{ '%.2f'|format(cash) }}</p>
+      <p><strong>Unrealized P&L:</strong> ${{ '%.2f'|format(unrealized_pnl) }}</p>
+      <p><strong>Realized P&L:</strong> ${{ '%.2f'|format(realized_pnl) }}</p>
     </div>
 
-    <!-- ── 3) HOLDINGS TABLE ── -->
+    <!-- 3) HOLDINGS TABLE -->
     <h2 style="margin-top:40px;">Holdings</h2>
     <table class="alerts-table simulation-table" style="width:100%; border-collapse:collapse;">
       <thead>
@@ -50,52 +41,38 @@
       <tbody>
         {% for h in holdings %}
           <tr>
-            <!-- 1) SYMBOL -->
+            <!-- Symbol -->
             <td>{{ h.symbol }}</td>
 
-            <!-- 2) LAST PRICE -->
-            <td>
-              ${{ '%.2f'|format((h.last_price | default(0) | float)) }}
-            </td>
+            <!-- Last Price -->
+            <td>${{ '%.2f'|format((h.last_price | default(0) | float)) }}</td>
 
-            <!-- 3) CHANGE -->
-            <td>
-              ${{ '%.2f'|format((h.change | default(0) | float)) }}
-            </td>
+            <!-- Change -->
+            <td>${{ '%.2f'|format((h.change | default(0) | float)) }}</td>
 
-            <!-- 4) CHANGE % -->
-            <td>
-              {{ '%.2f'|format((h.change_pct | default(0) | float)) }}%
-            </td>
+            <!-- Change % -->
+            <td>{{ '%.2f'|format((h.change_pct | default(0) | float)) }}%</td>
 
-            <!-- 5) QTY -->
+            <!-- Qty -->
             <td>{{ (h.qty | default(0) | float) | round(0) }}</td>
 
-            <!-- 6) PRICE PAID -->
-            <td>
-              ${{ '%.2f'|format((h.price_paid | default(0) | float)) }}
-            </td>
+            <!-- Price Paid -->
+            <td>${{ '%.2f'|format((h.price_paid | default(0) | float)) }}</td>
 
-            <!-- 7) DAY GAIN/LOSS -->
+            <!-- Day Gain/Loss -->
             <td>
-              <span
-                class="{% if (h.day_gain | default(0) | float) < 0 %}gain-negative{% else %}gain-positive{% endif %}"
-              >
+              <span class="{% if (h.day_gain | default(0) | float) < 0 %}gain-negative{% else %}gain-positive{% endif %}">
                 ${{ '%.2f'|format((h.day_gain | default(0) | float)) }}
               </span>
             </td>
 
-            <!-- 8) TOTAL GAIN/LOSS -->
-            <td>
-              ${{ '%.2f'|format((h.total_gain | default(0) | float)) }}
-            </td>
+            <!-- Total Gain/Loss -->
+            <td>${{ '%.2f'|format((h.total_gain | default(0) | float)) }}</td>
 
-            <!-- 9) VALUE -->
-            <td>
-              ${{ '%.2f'|format((h.value | default(0) | float)) }}
-            </td>
+            <!-- Value -->
+            <td>${{ '%.2f'|format((h.value | default(0) | float)) }}</td>
 
-            <!-- 10) ACTION (qty input + Sell button) -->
+            <!-- Action (quantity input + Sell button) -->
             <td>
               <input
                 type="number"
@@ -105,29 +82,30 @@
                 class="qty-input"
                 style="width: 40px; padding: 2px; font-size: 12px;"
               >
-		<button
-		  class="btn-clear"
-		  style="
-			display: inline-block !important;
-			background-color: #e74c3c !important;  /* red */
-			color: #fff !important;                 /* white text */
-			border: 1px solid #fff !important;
-			padding: 4px 8px !important;
-			font-size: 12px !important;
-			border-radius: 4px !important;
-			cursor: pointer !important;
-			white-space: nowrap;
-		  "
-		  onclick="sellStock('{{ h.symbol }}', this)"
-		>
-		  Sell
+              <button
+                class="btn-clear"
+                style="
+                  display: inline-block !important;
+                  background-color: #e74c3c !important;
+                  color: #fff !important;
+                  border: 1px solid #fff !important;
+                  padding: 4px 8px !important;
+                  font-size: 12px !important;
+                  border-radius: 4px !important;
+                  cursor: pointer !important;
+                  white-space: nowrap;
+                "
+                onclick="sellStock('{{ h.symbol }}', this)"
+              >
+                Sell
+              </button>
             </td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
 
-    <!-- ── 4) TRADE HISTORY TABLE ── -->
+    <!-- 4) TRADE HISTORY TABLE -->
     <h2 style="margin-top:40px;">Trade History</h2>
     <table class="alerts-table trade-history-table" style="width:100%; border-collapse:collapse;">
       <thead>
@@ -147,9 +125,7 @@
             <td>{{ t.symbol }}</td>
             <td>{{ t.action }}</td>
             <td>{{ (t.qty | default(0) | float) | round(0) }}</td>
-            <td>
-              ${{ '%.2f'|format((t.price | default(0) | float)) }}
-            </td>
+            <td>${{ '%.2f'|format((t.price | default(0) | float)) }}</td>
             <td>
               {% if t.pl is not none %}
                 ${{ '%.2f'|format((t.pl | default(0) | float)) }}
@@ -164,13 +140,11 @@
 
   </div> {# end of .container #}
 
-  <!-- ── 5) JavaScript for Sell button ── -->
+  <!-- 5) JavaScript for Sell button -->
   <script>
     function sellStock(symbol, btn) {
       const qtyInput = btn.previousElementSibling;
       const qty = parseInt(qtyInput.value);
-
-      // Grab the “Last Price” cell (which is the 2nd <td> in this <tr>)
       const priceCell = btn.closest("tr").querySelector("td:nth-child(2)");
       const priceText = priceCell.textContent.replace('$', '');
       const price = parseFloat(priceText);
