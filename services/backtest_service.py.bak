@@ -142,7 +142,7 @@ def backtest(
     buy_price = 0
 
     for i, row in df.iterrows():
-        if row['Signal'] and cash >= row['Close']:
+    if bool(row['Signal']) and cash >= row['Close']:
             qty = int(min(cash, max_trade_amount) // row['Close'])
             if qty > 0:
                 cost = qty * row['Close']

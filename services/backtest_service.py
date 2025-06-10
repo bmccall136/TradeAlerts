@@ -107,68 +107,92 @@ def backtest(
     Returns a tuple (trades_list, net_return).
     """
 
-    import yfinance as yf
-    import pandas as pd
-    from datetime import datetime
-
-    df = yf.download(symbol, start=start_date, end=end_date, interval='1d')
+    df = yf.download(symbol, start=start_date, end=end_date, interval='1d', progress=False)
 
     if df.empty:
-        return [], 0
+        return [], 0.0
 
-    df['Date'] = df.index
-    df['Signal'] = False
-    df['Buy_Price'] = None
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
 
-    if sma_on:
-        df['SMA'] = df['Close'].rolling(window=sma_length).mean()
-        df['Signal'] = df['Close'] > df['SMA']
+    df = calculate_indicators(df)
 
-    if vwap_on:
-        df['VWAP'] = (df['Volume'] * (df['High'] + df['Low'] + df['Close']) / 3).cumsum() / df['Volume'].cumsum()
-        df['VWAP_Diff'] = df['Close'] - df['VWAP']
-        if 'Signal' in df:
-            df['Signal'] &= df['VWAP_Diff'] >= vwap_threshold
-        else:
-            df['Signal'] = df['VWAP_Diff'] >= vwap_threshold
-
-    # Example news_on logic placeholder
-    if news_on:
-        pass  # You can add custom logic if you have access to news sentiment
+    tp = (df['High'] + df['Low'] + df['Close']) / 3
+    vwap_series = (tp * df['Volume']).cumsum() / df['Volume'].cumsum()
+    df['VWAP'] = vwap_series
+    df['VWAP_Diff'] = df['Close'] - df['VWAP']
 
     trades = []
     cash = initial_cash
     position = 0
-    buy_price = 0
+    run_id = None
 
-    for i, row in df.iterrows():
-        if row['Signal'] and cash >= row['Close']:
-            qty = int(min(cash, max_trade_amount) // row['Close'])
-            if qty > 0:
-                cost = qty * row['Close']
-                cash -= cost
-                position += qty
-                buy_price = row['Close']
-                trades.append({
-                    'action': 'BUY',
-                    'date': row['Date'],
-                    'qty': qty,
-                    'price': row['Close']
-                })
+    if log_to_db:
+        run_id = log_backtest_run(
+            {
+                'symbol': symbol,
+                'start': start_date,
+                'end': end_date,
+                'initial_cash': initial_cash,
+                'sma_on': sma_on,
+                'vwap_on': vwap_on,
+                'vwap_threshold': vwap_threshold,
+                'news_on': news_on
+            },
+            {'net_return': None}
+        )
+
+    for i in range(1, len(df)):
+        today = df.iloc[i]
+        price = today['Open'] if 'Open' in today else today['Close']
+
+        if sma_on:
+            sma_val = df['Close'].iloc[:i+1].rolling(window=sma_length).mean().iloc[-1]
+            if price <= sma_val:
+                continue
+
+        if vwap_on and df['VWAP_Diff'].iloc[i] < vwap_threshold:
+            continue
+
+        if news_on and not fetch_latest_headlines(symbol):
+            continue
+
+        qty = int(min(cash, max_trade_amount) // price)
+        if qty > 0:
+            cost = qty * price
+            cash -= cost
+            position += qty
+            trades.append({
+                'action': 'BUY',
+                'date': str(today.name),
+                'qty': qty,
+                'price': price
+            })
+            if log_to_db:
+                log_backtest_trade(run_id, symbol, 'BUY', price, qty, str(today.name), None)
 
     # Sell all at end
     if position > 0:
-        proceeds = position * df['Close'].iloc[-1]
-        cash += proceeds
+        final_price = df['Close'].iloc[-1]
+        cash += position * final_price
         trades.append({
             'action': 'SELL',
-            'date': df['Date'].iloc[-1],
+            'date': str(df.index[-1]),
             'qty': position,
-            'price': df['Close'].iloc[-1]
+            'price': final_price
         })
+        if log_to_db:
+            log_backtest_trade(run_id, symbol, 'SELL', final_price, position, str(df.index[-1]), None)
 
     net_return = cash - initial_cash
-    return trades, net_return
+    if log_to_db:
+        conn = sqlite3.connect(BACKTEST_DB)
+        conn.execute("UPDATE backtest_runs SET summary_json=? WHERE id=?", (json.dumps({'net_return': net_return}), run_id))
+        conn.commit()
+        conn.close()
+
+    return trades, float(net_return)
+
 
     # ← EVERYTHING FROM HERE MUST BE INDENTED INSIDE THIS FUNCTION!
 
