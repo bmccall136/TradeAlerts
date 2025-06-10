@@ -52,6 +52,13 @@ app.secret_key = "replace_with_your_secret_key"
 DB_PATH  = 'alerts.db'
 SIM_DB   = 'simulation.db'  # Must match SIM_DB in simulation_service.py
 
+@app.route('/run-checkpoint')
+def run_checkpoint():
+    try:
+        subprocess.Popen(['cmd', '/c', 'checkpoint.bat'], shell=True)
+        return redirect(url_for('index'))  # Redirect to your main page
+    except Exception as e:
+        return str(e), 500
 
 ### ────────────── PRELOAD BACKTEST DATA (optional) ────────────── ###
 # If you want to run a backtest when the server starts, uncomment below:

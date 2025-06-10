@@ -574,12 +574,12 @@ h2 {
   white-space: nowrap;
   margin-bottom: 1rem;
 }
-.btn-info {
-    background-color: #17a2b8;
-    color: white;
+.btn-warning {
+    background-color: #ffc107;
+    color: black;
     padding: 8px 12px;
     border-radius: 5px;
     text-decoration: none;
     margin-left: 5px;
+    font-weight: bold;
 }
-
