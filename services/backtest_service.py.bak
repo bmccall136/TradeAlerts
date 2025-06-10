@@ -106,7 +106,9 @@ def backtest(
     Returns a tuple (trades_list, net_return).
     """
     # 1) Download & prepare data
+    df.columns = [col.title() for col in df.columns]
     df = yf.download(symbol, start=start_date, end=end_date, progress=False)
+    tp = (df['High'] + df['Low'] + df['Close']) / 3
     if df.empty:
         raise ValueError(f"No data for {symbol} from {start_date} to {end_date}")
     df = calculate_indicators(df)
