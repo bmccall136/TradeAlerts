@@ -52,7 +52,7 @@
         >
           Backtest
         </a>
-      </div>
+     </div>
 
       {# 2) Spacer: this pushes the title to the center #}
       <div class="mx-auto"></div>
@@ -69,6 +69,7 @@
 				<button type="submit" class="btn btn-sm btn-danger btn-fixed">💣 Nuke DB</button>
 			</form>
 		</div>
+
 
 
       {# 4) Centered Title (absolute positioned over the navbar) #}
