@@ -52,6 +52,13 @@ app.secret_key = "replace_with_your_secret_key"
 DB_PATH  = 'alerts.db'
 SIM_DB   = 'simulation.db'  # Must match SIM_DB in simulation_service.py
 
+@app.route('/run-checkpoint')
+def run_checkpoint():
+    try:
+        subprocess.Popen(['cmd', '/c', 'checkpoint.bat'], shell=True)
+        return redirect(url_for('index'))  # Redirect to your main page
+    except Exception as e:
+        return str(e), 500
 
 ### ────────────── PRELOAD BACKTEST DATA (optional) ────────────── ###
 # If you want to run a backtest when the server starts, uncomment below:
@@ -119,45 +126,47 @@ def launch_auth():
 
 ### ────────────── BACKTEST VIEW ────────────── ###
 
-from flask import request
+from flask import request, render_template
 
-@app.route('/backtest')
+@app.route("/backtest", methods=["GET"])
 def backtest_view():
-    # Pull your form values (defaults if missing)
-    bt_sma_on   = (request.args.get('bt_sma_on') == 'on')
-    bt_sma_len  = int(request.args.get('bt_sma_len', 20))
-    bt_vwap_on  = (request.args.get('bt_vwap_on') == 'on')
-    bt_vwap_thr = float(request.args.get('bt_vwap_thr', 1.0))
-    bt_news_on  = (request.args.get('bt_news_on') == 'on')
+    # 1) Read backtest‐only toggles (default “on”)
+    bt_sma_on   = request.args.get("bt_sma_on",  "on") == "on"
+    bt_vwap_on  = request.args.get("bt_vwap_on", "on") == "on"
+    bt_news_on  = request.args.get("bt_news_on", "on") == "on"
 
-    # Run backtest with those flags
+    # 2) Read backtest‐only parameters
+    bt_sma_len  = int(request.args.get("bt_sma_len",  20))
+    bt_vwap_thr = float(request.args.get("bt_vwap_thr", 1.0))
+
+    # 3) Call your backtest routine with those flags
     trades, pnl = backtest(
-        symbol="AAPL",
-        start_date="2024-01-01",
-        end_date="2024-06-01",
-        initial_cash=10000,
-        sma_on=bt_sma_on,
-        sma_length=bt_sma_len,
-        vwap_on=bt_vwap_on,
-        vwap_threshold=bt_vwap_thr,
-        news_on=bt_news_on,
-        log_to_db=False
+        symbol         = "AAPL",
+        start_date     = "2024-01-01",
+        end_date       = "2024-06-01",
+        initial_cash   = 10000,
+        sma_on         = bt_sma_on,
+        sma_length     = bt_sma_len,
+        vwap_on        = bt_vwap_on,
+        vwap_threshold = bt_vwap_thr,
+        news_on        = bt_news_on,
+        log_to_db      = False
     )
 
-    # Package your form state back to the template
+    # 4) Pass them back into the template for pre‐checking
     bt_settings = {
-        'sma_on':   bt_sma_on,
-        'sma_len':  bt_sma_len,
-        'vwap_on':  bt_vwap_on,
-        'vwap_thr': bt_vwap_thr,
-        'news_on':  bt_news_on
+        "sma_on":   bt_sma_on,
+        "sma_len":  bt_sma_len,
+        "vwap_on":  bt_vwap_on,
+        "vwap_thr": bt_vwap_thr,
+        "news_on":  bt_news_on
     }
 
     return render_template(
-        'backtest.html',
-        trades=trades,
-        pnl=pnl,
-        bt_settings=bt_settings
+        "backtest.html",
+        trades      = trades,
+        pnl         = pnl,
+        bt_settings = bt_settings
     )
 
 
