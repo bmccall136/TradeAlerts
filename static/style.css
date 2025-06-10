@@ -583,3 +583,16 @@ h2 {
     margin-left: 5px;
     font-weight: bold;
 }
+.btn-fixed {
+    width: 120px;         /* Adjust width to match Nuke DB exactly */
+    padding: 4px 6px;     /* Match small button padding */
+    font-size: 0.85rem;   /* Small font size like btn-sm */
+    text-align: center;
+    vertical-align: middle;
+    font-weight: bold;
+    display: inline-block;
+    white-space: nowrap;  /* Prevents wrapping text */
+    overflow: hidden;     /* Keeps overflow hidden neatly */
+    text-overflow: ellipsis; /* Adds ellipsis if too long */
+}
+

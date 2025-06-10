@@ -110,14 +110,14 @@ def backtest(
     if df is None or df.empty:
         raise ValueError(f"No data for {symbol} from {start_date} to {end_date}")
 
-    # 2) Normalize column names so we know 'High', 'Low', 'Close' exist
-    df.columns = [col.title() for col in df.columns]
+    # flatten + normalize column names
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(-1)
+    df.columns = [str(col).title() for col in df.columns]
 
-    # 3) Compute typical price now that High/Low/Close are guaranteed
     tp = (df['High'] + df['Low'] + df['Close']) / 3
-
-    # 4) Compute indicators
     df = calculate_indicators(df)
+
 
     # … the rest of your position/trade loop …
 
