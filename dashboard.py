@@ -87,13 +87,12 @@ def nuke_db():
 
 @app.route('/clear_all', methods=['POST'])
 def clear_all_alerts():
+    print("✅ /clear_all route hit")
     conn = sqlite3.connect(DB_PATH)
     conn.execute("DELETE FROM alerts")
     conn.commit()
     conn.close()
-    flash('✅ All alerts cleared!', 'info')
     return redirect(url_for('index'))
-
 
 @app.route('/clear/<int:id>', methods=['POST'])
 def clear_alert(id):
@@ -329,6 +328,7 @@ def index():
     vwap_on  = (request.args.get('vwap_on')  == 'on')
     news_on  = (request.args.get('news_on')  == 'on')
     print("VWAP_ON:", vwap_on, "NEWS_ON:", news_on)
+
     # 2) Read numeric filter values
     sma_length     = int(request.args.get('sma_length',     20))
     rsi_len        = int(request.args.get('rsi_len',        14))
@@ -342,11 +342,11 @@ def index():
     vol_multiplier = float(request.args.get('vol_multiplier', 1.0))
     vwap_threshold = float(request.args.get('vwap_threshold', 0.0))
 
-    # 3) Load alerts & compute how many matched
+    # 3) Load alerts
     alerts = get_alerts()
     match_count = len(alerts)
 
-    # 4) Persist *all* settings, in the exact order your service expects:
+    # 4) Save settings
     save_indicator_settings(
         match_count,
         sma_on,     sma_length,
@@ -358,17 +358,36 @@ def index():
         news_on
     )
 
-    # 5) Read them back so template can pre-select everything
-    settings = get_all_indicator_settings()
+    # 5) Rebuild settings from current request for template
+    settings = {
+        'sma_on': sma_on,
+        'sma_length': sma_length,
+        'rsi_on': rsi_on,
+        'rsi_len': rsi_len,
+        'rsi_overbought': rsi_overbought,
+        'rsi_oversold': rsi_oversold,
+        'macd_on': macd_on,
+        'macd_fast': macd_fast,
+        'macd_slow': macd_slow,
+        'macd_signal': macd_signal,
+        'bb_on': bb_on,
+        'bb_length': bb_length,
+        'bb_std': bb_std,
+        'vol_on': vol_on,
+        'vol_multiplier': vol_multiplier,
+        'vwap_on': vwap_on,
+        'vwap_threshold': vwap_threshold,
+        'news_on': news_on,
+    }
 
-
-    # 6) Render your alerts page
+    # 6) Render template
     return render_template(
         'alerts.html',
         alerts=alerts,
         settings=settings,
         match_count=match_count
     )
+
 
 
 

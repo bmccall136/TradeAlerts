@@ -1,80 +1,321 @@
+{# File: templates/alerts.html #}
 {% extends "layout.html" %}
 {% block content %}
-<div class="container py-4">
-  <h2 class="mb-4">Backtest Configuration &amp; Results</h2>
 
-  <form method="GET" action="{{ url_for('backtest_view') }}" class="mb-4">
-    <div class="row g-2 align-items-end">
-      <!-- Indicator Toggles -->
-      {% set toggles = [
-        {'name':'bt_sma_on', 'label':'SMA',  'icon':'bi-graph-up-arrow'},
-        {'name':'bt_rsi_on', 'label':'RSI',  'icon':'bi-speedometer2'},
-        {'name':'bt_macd_on','label':'MACD','icon':'bi-triangle-fill'},
-        {'name':'bt_bb_on',  'label':'BB',   'icon':'bi-bar-chart-fill'},
-        {'name':'bt_vol_on','label':'Vol',  'icon':'bi-bar-chart-lines'},
-        {'name':'bt_vwap_on','label':'VWAP','icon':'bi-calculator'},
-        {'name':'bt_news_on','label':'News','icon':'bi-newspaper'}
-      ] %}
-      <div class="col-12 d-flex flex-wrap align-items-center mb-3">
-        {% for t in toggles %}
-          <div class="form-check form-switch me-3">
-            <input class="form-check-input" type="checkbox" id="{{t.name}}" name="{{t.name}}" {% if bt_settings[t.name.replace('bt_','')] %}checked{% endif %}>
-            <label class="form-check-label" for="{{t.name}}">
-              <i class="bi {{t.icon}}"></i> {{t.label}}
-            </label>
-          </div>
-        {% endfor %}
-      </div>
+<style>
+  /* 1) Shrink overall font and padding for alerts table */
+  table.alerts-table th,
+  table.alerts-table td {
+    padding: 2px 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 
-      <!-- Numeric Filters -->
-      {% set sma_labels = {10:'Short SMA (10)',20:'Standard SMA (20)',50:'Long SMA (50)',100:'100‑Day SMA (100)',200:'200‑Day SMA (200)'} %}
-      <div class="col-6 col-md-2">
-        <label for="bt_sma_len" class="form-label">SMA Length</label>
-        <select id="bt_sma_len" name="bt_sma_len" class="form-select">
-          {% for v,l in sma_labels.items() %}
-            <option value="{{v}}" {% if bt_settings.sma_len==v %}selected{% endif %}>{{l}}</option>
-          {% endfor %}
-        </select>
-      </div>
+  /* 2) Fixed layout and full width */
+  table.alerts-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+  }
 
-      {% set vwap_labels = {0.0:'No VWAP',0.5:'≥ $0.5',1.0:'≥ $1.0',2.0:'≥ $2.0'} %}
-      <div class="col-6 col-md-2">
-        <label for="bt_vwap_thr" class="form-label">VWAP Threshold</label>
-        <select id="bt_vwap_thr" name="bt_vwap_thr" class="form-select">
-          {% for v,l in vwap_labels.items() %}
-            <option value="{{v}}" {% if bt_settings.vwap_thr==v %}selected{% endif %}>{{l}}</option>
-          {% endfor %}
-        </select>
-      </div>
+  /* 3) Column widths */
+  table.alerts-table th:nth-child(1), table.alerts-table td:nth-child(1) { width: 14%; }
+  table.alerts-table th:nth-child(2), table.alerts-table td:nth-child(2) { width: 6%; }
+  table.alerts-table th:nth-child(3), table.alerts-table td:nth-child(3) { width: 18%; }
+  table.alerts-table th:nth-child(4), table.alerts-table td:nth-child(4) { width: 8%; }
+  table.alerts-table th:nth-child(5), table.alerts-table td:nth-child(5) { width: 8%; }
+  table.alerts-table th:nth-child(6), table.alerts-table td:nth-child(6) { width: 8%; }
+  table.alerts-table th:nth-child(7), table.alerts-table td:nth-child(7) { width: 6%; }
+  table.alerts-table th:nth-child(8), table.alerts-table td:nth-child(8) { width: 20%; }
+  table.alerts-table th:nth-child(9), table.alerts-table td:nth-child(9) { width: 12%; white-space: normal; }
+  table.alerts-table th:nth-child(10), table.alerts-table td:nth-child(10) { width: 5%; }
+  table.alerts-table th:nth-child(11), table.alerts-table td:nth-child(11) { width: 3%; }
+  table.alerts-table th:nth-child(12), table.alerts-table td:nth-child(12) { width: 3%; }
+</style>
 
-      <div class="col-auto ms-auto">
-        <button type="submit" class="btn btn-primary">Run Backtest</button>
-      </div>
+<div class="container">
+  {# ─── Indicator Settings Form ─── #}
+  {% set sma_labels = {10: "Short SMA (10)", 20: "Standard SMA (20)", 50: "Long SMA (50)", 100: "100-Day SMA (100)", 200: "200-Day SMA (200)"} %}
+  {% set rsi_len_labels = {7: "Fast RSI (7)", 14: "Std RSI (14)", 21: "Slow RSI (21)", 28: "Very Slow RSI (28)"} %}
+  {% set rsi_ob_labels = {70: "Overbought (70)", 75: "Very Overbought (75)", 80: "Extreme Overbought (80)", 85: "Max Overbought (85)"} %}
+  {% set rsi_os_labels = {20: "Oversold (20)", 25: "Very Oversold (25)", 30: "Extreme Oversold (30)", 35: "Max Oversold (35)"} %}
+  {% set macd_fast_labels = {8: "Fast EMA (8)", 12: "Fast EMA (12)", 16: "Fast EMA (16)"} %}
+  {% set macd_slow_labels = {18: "Slow EMA (18)", 26: "Slow EMA (26)", 34: "Slow EMA (34)"} %}
+  {% set macd_signal_labels = {6: "Signal SMA (6)", 9: "Signal SMA (9)", 12: "Signal SMA (12)"} %}
+  {% set bb_length_labels = {10: "BB Short (10)", 20: "BB Std (20)", 30: "BB Long (30)"} %}
+  {% set bb_std_labels = {1.5: "1.5σ", 2.0: "2σ", 2.5: "2.5σ"} %}
+  {% set vol_mult_labels = {1.0: "Normal ×1.0", 1.5: "High ×1.5", 2.0: "Very High ×2.0", 2.5: "Extreme ×2.5"} %}
+  {% set vwap_labels = {0.0: "No VWAP", 0.5: "≥ $0.5", 1.0: "≥ $1.0", 2.0: "≥ $2.0"} %}
+
+<form id="indicator-form" method="GET" action="{{ url_for('index') }}">
+  <!-- Toggle row -->
+  <div class="filter-toggle-group mb-4">
+    {% set toggles = [
+      {'name':'sma_on',  'label':'SMA',  'icon':'bi-graph-up-arrow'},
+      {'name':'rsi_on',  'label':'RSI',  'icon':'bi-speedometer2'},
+      {'name':'macd_on', 'label':'MACD', 'icon':'bi-triangle-fill'},
+      {'name':'bb_on',   'label':'BB',   'icon':'bi-bar-chart-fill'},
+      {'name':'vol_on',  'label':'Vol',  'icon':'bi-bar-chart-lines'},
+      {'name':'vwap_on', 'label':'VWAP', 'icon':'bi-calculator'},
+      {'name':'news_on', 'label':'News', 'icon':'bi-newspaper'}
+    ] %}
+    <div class="d-flex align-items-center w-100">
+      {% for t in toggles %}
+        <div class="form-check form-switch me-3">
+          <input class="form-check-input" type="checkbox" id="{{t.name}}" name="{{t.name}}"
+                 {% if settings[t.name] %}checked{% endif %}>
+          <label class="form-check-label" for="{{t.name}}">
+            <i class="bi {{t.icon}}"></i> {{t.label}}
+          </label>
+        </div>
+      {% endfor %}
+      <button type="submit" class="btn btn-success ms-auto">
+        <i class="bi bi-arrow-repeat"></i> Apply
+      </button>
     </div>
-  </form>
+  </div>
 
-  <!-- Results Table -->
-  <div class="table-responsive mb-3">
-    <table class="table table-striped backtest-table">
-      <thead class="table-light">
-        <tr><th>Date</th><th>Type</th><th>Price</th><th>Qty</th><th>P/L</th></tr>
-      </thead>
-      <tbody>
-        {% for t in trades %}
-        <tr>
-          <td>{{ t.Date }}</td>
-          <td>{{ t.Type }}</td>
-          <td>${{ '%.2f'|format(t.Price) }}</td>
-          <td>{{ t.Qty }}</td>
-          <td>{% if t['P/L'] is not none %}${{ '%.2f'|format(t['P/L']) }}{% else %}&mdash;{% endif %}</td>
-        </tr>
+  <!-- Numeric‐filters row -->
+  <div class="row g-2 align-items-end mb-4">
+    <!-- SMA -->
+    <div class="col-6 col-md-2">
+      <label for="sma_length" class="form-label"><i class="bi bi-graph-up-arrow"></i> SMA</label>
+      <select id="sma_length" name="sma_length" class="form-select">
+        {% for v,l in sma_labels.items() %}
+          <option value="{{v}}" {% if settings.sma_length==v %}selected{% endif %}>{{l}}</option>
         {% endfor %}
-      </tbody>
+      </select>
+    </div>
+    <!-- RSI Len -->
+    <div class="col-6 col-md-1">
+      <label for="rsi_len" class="form-label"><i class="bi bi-speedometer2"></i> RSI Len</label>
+      <select id="rsi_len" name="rsi_len" class="form-select">
+        {% for v,l in rsi_len_labels.items() %}
+          <option value="{{v}}" {% if settings.rsi_len==v %}selected{% endif %}>{{l}}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <!-- RSI OB -->
+    <div class="col-6 col-md-1">
+      <label for="rsi_overbought" class="form-label">OB</label>
+      <select id="rsi_overbought" name="rsi_overbought" class="form-select">
+        {% for v,l in rsi_ob_labels.items() %}
+          <option value="{{v}}" {% if settings.rsi_overbought==v %}selected{% endif %}>{{l}}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <!-- RSI OS -->
+    <div class="col-6 col-md-1">
+      <label for="rsi_oversold" class="form-label">OS</label>
+      <select id="rsi_oversold" name="rsi_oversold" class="form-select">
+        {% for v,l in rsi_os_labels.items() %}
+          <option value="{{v}}" {% if settings.rsi_oversold==v %}selected{% endif %}>{{l}}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <!-- MACD Fast -->
+    <div class="col-6 col-md-1">
+      <label for="macd_fast" class="form-label"><i class="bi bi-triangle-fill"></i> Fast</label>
+      <select id="macd_fast" name="macd_fast" class="form-select">
+        {% for v,l in macd_fast_labels.items() %}
+          <option value="{{v}}" {% if settings.macd_fast==v %}selected{% endif %}>{{l}}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <!-- MACD Slow -->
+    <div class="col-6 col-md-1">
+      <label for="macd_slow" class="form-label">Slow</label>
+      <select id="macd_slow" name="macd_slow" class="form-select">
+        {% for v,l in macd_slow_labels.items() %}
+          <option value="{{v}}" {% if settings.macd_slow==v %}selected{% endif %}>{{l}}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <!-- MACD Signal -->
+    <div class="col-6 col-md-1">
+      <label for="macd_signal" class="form-label">Signal</label>
+      <select id="macd_signal" name="macd_signal" class="form-select">
+        {% for v,l in macd_signal_labels.items() %}
+          <option value="{{v}}" {% if settings.macd_signal==v %}selected{% endif %}>{{l}}</option>
+        {% endfor %}
+      </select>
+    </div>
+      <!-- 9) BB length -->
+      <div class="col-6 col-md-1">
+        <label for="bb_length" class="form-label">
+          <i class="bi bi-bar-chart-fill"></i> BB
+          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                title="Bollinger Band Length" data-bs-content="Window length for moving average in Bollinger Bands. Determines centerline period."
+          ><i class="bi bi-info-circle-fill"></i></span>
+        </label>
+        <select id="bb_length" name="bb_length" class="form-select">
+          {% for value,label in bb_length_labels.items() %}
+            <option value="{{ value }}" {% if settings.bb_length==value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <!-- 10) BB std -->
+      <div class="col-6 col-md-1">
+        <label for="bb_std" class="form-label">
+          <span class="visually-hidden">BB Std Dev</span>
+          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                title="Bollinger Band Std Dev" data-bs-content="Number of standard deviations from moving average for upper/lower bands."
+          ><i class="bi bi-info-circle-fill"></i></span>
+        </label>
+        <select id="bb_std" name="bb_std" class="form-select">
+          {% for value,label in bb_std_labels.items() %}
+            <option value="{{ value }}" {% if settings.bb_std==value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <!-- 11) Volume multiplier -->
+      <div class="col-6 col-md-1">
+        <label for="vol_multiplier" class="form-label">
+          <i class="bi bi-bar-chart-lines"></i> Vol
+          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                title="Volume Multiplier" data-bs-content="Current volume must exceed (multiplier × 20-period average volume) to trigger."
+          ><i class="bi bi-info-circle-fill"></i></span>
+        </label>
+        <select id="vol_multiplier" name="vol_multiplier" class="form-select">
+          {% for value,label in vol_mult_labels.items() %}
+            <option value="{{ value }}" {% if settings.vol_multiplier==value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <!-- 12) VWAP threshold -->
+      <div class="col-6 col-md-1">
+        <label for="vwap_threshold" class="form-label">
+          <i class="bi bi-calculator"></i> VWAP
+          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                title="VWAP Threshold" data-bs-content="Price must exceed (live price - VWAP) ≥ threshold to trigger."
+          ><i class="bi bi-info-circle-fill"></i></span>
+        </label>
+        <select id="vwap_threshold" name="vwap_threshold" class="form-select">
+          {% for value,label in vwap_labels.items() %}
+            <option value="{{ value }}" {% if settings.vwap_threshold==value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+		<div class="d-flex justify-content-end mb-2">
+		  <form action="{{ url_for('clear_all_alerts') }}" method="post" class="d-inline">
+			<button type="submit" class="btn btn-sm btn-outline-warning">
+			  🧹 Clear All
+			</button>
+		  </form>
+		</div>
+  <!-- ─── Alerts Table ─── -->
+  <div class="table-responsive">
+    <table class="table table-striped table-bordered alerts-table text-white">
+      <thead class="table-light">
+        <tr>
+          <th>Time</th><th>Symbol</th><th>Name</th><th>Price</th><th>VWAP</th><th>VWAP Diff</th><th>News</th><th>Spark</th><th>Triggers</th><th>Qty</th><th>Buy</th><th>Clear</th>
+        </tr>
+      </thead>
+<tbody>
+  {% for alert in alerts %}
+  <tr data-id="{{ alert.id }}" class="alert-row">
+    <td>{{ alert.timestamp }}</td>
+    <td>{{ alert.symbol }}</td>
+    <td>{{ alert.name }}</td>
+    <td>${{ '%.2f'|format(alert.price) }}</td>
+    <td>${{ '%.2f'|format(alert.vwap) }}</td>
+
+    <!-- VWAP Diff column (6th) -->
+    <td>
+      {% if alert.vwap_diff < 0 %}
+        <span class="text-danger">${{ '%.2f'|format(alert.vwap_diff) }}</span>
+      {% else %}
+        <span class="text-success">+${{ '%.2f'|format(alert.vwap_diff) }}</span>
+      {% endif %}
+    </td>
+
+    <!-- News column (7th) -->
+    <td class="text-center">
+      {% if alert.has_news %}
+        <button class="news-btn" onclick="showNews('{{ alert.symbol }}')">📰</button>
+        <div id="news-{{ alert.symbol }}" class="news-container"></div>
+      {% else %}
+        &mdash;
+      {% endif %}
+    </td>
+
+    <td>{% if alert.sparkline %}{{ alert.sparkline|safe }}{% else %}&mdash;{% endif %}</td>
+    <td>{{ alert.triggers }}</td>
+    <td><input type="number" name="qty" value="1" min="1" class="form-control form-control-sm qty-input"/></td>
+    <td><button class="btn-buy btn btn-sm w-100" onclick="buyStock(this)">Buy</button></td>
+	<td>
+	  <form method="post" action="{{ url_for('clear_alert', id=alert.id) }}">
+		<button type="submit" class="btn btn-sm btn-outline-danger w-100">Clear</button>
+	  </form>
+	</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="12" class="text-center">No alerts to display.</td></tr>
+  {% endfor %}
+</tbody>
+
     </table>
   </div>
-
-  <div>
-    <strong>Net Return:</strong> ${{ '%.2f'|format(pnl) }}
-  </div>
 </div>
+
+<script>
+// Initialize Bootstrap popovers
+var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
+var popoverList = popoverTriggerList.map(function (el) { return new bootstrap.Popover(el); });
+
+function buyStock(button) {
+  const row = button.closest('tr');
+  const symbol = row.querySelector('td:nth-child(2)').innerText;
+  const qty = parseInt(row.querySelector('.qty-input').value) || 1;
+
+  fetch('/simulation/buy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbol, qty })
+  })
+  .then(response => {
+    console.log('Buy response status:', response.status);
+    // Remove row regardless of success to prevent reappearing
+    row.remove();
+    alert(`Buy order sent for ${symbol} x${qty}`);
+  })
+  .catch(err => {
+    console.error('Buy error:', err);
+    // Still remove to avoid duplicates
+    row.remove();
+    alert(`Buy request error, but alert cleared locally for ${symbol}.`);
+  });
+}
+
+function showNews(symbol) {
+  const container = document.getElementById(`news-${symbol}`);
+  container.innerHTML = 'Loading...';
+  fetch(`/news/${symbol}`)
+    .then(r=>r.json())
+    .then(data=>{
+      let html='<ul>';
+      data.headlines.forEach(h=> html+=`<li><a href="${h.url}" target="_blank">${h.title}</a></li>`);
+      html+='</ul><p><strong>Sentiment:</strong>'+data.sentiment+'</p>';
+      container.innerHTML=html;
+    }).catch(_=> container.innerHTML='<p style="color:red;">Error loading news.</p>');
+}
+function clearAlert(button) {
+  const row = button.closest('tr');
+  const id  = row.getAttribute('data-id');
+
+  fetch(`/clear/${id}`, { method: 'POST' })
+    .then(response => {
+      if (!response.ok) throw new Error(response.statusText);
+      window.location.reload();
+    })
+    .catch(err => {
+      console.error('Clear error:', err);
+      alert('Failed to clear alert.');
+    });
+}
+
+</script>
+
 {% endblock %}

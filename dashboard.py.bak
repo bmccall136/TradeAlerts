@@ -87,13 +87,12 @@ def nuke_db():
 
 @app.route('/clear_all', methods=['POST'])
 def clear_all_alerts():
+    print("✅ /clear_all route hit")
     conn = sqlite3.connect(DB_PATH)
     conn.execute("DELETE FROM alerts")
     conn.commit()
     conn.close()
-    flash('✅ All alerts cleared!', 'info')
     return redirect(url_for('index'))
-
 
 @app.route('/clear/<int:id>', methods=['POST'])
 def clear_alert(id):
@@ -129,16 +128,16 @@ def launch_auth():
 
 from flask import request, render_template
 
-@app.route('/backtest')
+@app.route('/backtest', methods=['GET', 'POST'])
 def backtest_view():
     settings = {
-        'sma_on': request.args.get('sma_on') == 'on',
-        'rsi_on': request.args.get('rsi_on') == 'on',
-        'macd_on': request.args.get('macd_on') == 'on',
-        'bb_on': request.args.get('bb_on') == 'on',
-        'vol_on': request.args.get('vol_on') == 'on',
-        'vwap_on': request.args.get('vwap_on') == 'on',
-        'news_on': request.args.get('news_on') == 'on',
+        'sma_on': 'sma_on' in request.args,
+        'rsi_on': 'rsi_on' in request.args,
+        'macd_on': 'macd_on' in request.args,
+        'bb_on': 'bb_on' in request.args,
+        'vol_on': 'vol_on' in request.args,
+        'vwap_on': 'vwap_on' in request.args,
+        'news_on': 'news_on' in request.args,
         'sma_length': int(request.args.get('sma_length', 20)),
         'rsi_len': int(request.args.get('rsi_len', 14)),
         'rsi_overbought': int(request.args.get('rsi_overbought', 70)),
@@ -150,12 +149,26 @@ def backtest_view():
         'bb_std': float(request.args.get('bb_std', 2.0)),
         'vol_multiplier': float(request.args.get('vol_multiplier', 1.5)),
         'vwap_threshold': float(request.args.get('vwap_threshold', 1.0)),
-        'max_cash': float(request.args.get('max_cash', 10000)),
-        'max_trade_amount': float(request.args.get('max_trade_amount', 1000)),
-        'timeframe': request.args.get('timeframe', '6mo'),
+        'initial_cash': float(request.args.get('initial_cash', 10000)),
+        'trade_limit': float(request.args.get('trade_limit', 1000)),
+        'timeframe': request.args.get('timeframe', '6mo')
     }
 
-    return render_template('backtest.html', settings=settings)
+    # Temporary backtest call for a hardcoded symbol, e.g., 'AAPL'
+    trades, net_return = backtest(
+        symbol='AAPL',
+        start_date='2023-01-01',
+        end_date='2023-12-31',
+        initial_cash=settings['initial_cash'],
+        sma_on=settings['sma_on'],
+        sma_length=settings['sma_length'],
+        vwap_on=settings['vwap_on'],
+        vwap_threshold=settings['vwap_threshold'],
+        news_on=settings['news_on'],
+        log_to_db=False
+    )
+
+    return render_template('backtest.html', settings=settings, trades=trades, net_return=net_return)
 
     # 4) Pass them back into the template for pre‐checking
     bt_settings = {
