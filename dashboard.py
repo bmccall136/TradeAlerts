@@ -150,7 +150,11 @@ def backtest_view():
         'bb_length': 20,
         'bb_std': 2.0,
         'vol_multiplier': 1.5,
-        'vwap_threshold': 1.0
+        'vwap_threshold': 1.0,
+        'starting_cash': 10000,
+        'max_per_trade': 1000,
+        'timeframe': '3mo'
+
     }
 
     return render_template('backtest.html', settings=settings)

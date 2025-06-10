@@ -18,7 +18,7 @@
   {% set vol_mult_labels = {1.0: "Normal ×1.0", 1.5: "High ×1.5", 2.0: "Very High ×2.0", 2.5: "Extreme ×2.5"} %}
   {% set vwap_labels = {0.0: "No VWAP", 0.5: "≥ $0.5", 1.0: "≥ $1.0", 2.0: "≥ $2.0"} %}
 
-  <form id="backtest-form" method="GET" action="{{ url_for('backtest') }}">
+    <form id="backtest-form" method="GET" action="{{ url_for('backtest_view') }}">
     <div class="filter-toggle-group mb-4 d-flex align-items-center w-100">
       {% set toggles = [
         {'name':'sma_on',  'label':'SMA',  'icon':'bi-graph-up-arrow'},
@@ -130,14 +130,45 @@
             <option value="{{v}}" {% if settings.vwap_threshold==v %}selected{% endif %}>{{l}}</option>
           {% endfor %}
         </select>
-      </div>
+		<div class="row g-3 mb-4 justify-content-start">
+		  <!-- Starting Cash -->
+		  <div class="col-6 col-md-3">
+			<label for="starting_cash" class="form-label"><i class="bi bi-currency-dollar"></i> Starting Cash</label>
+			<select id="starting_cash" name="starting_cash" class="form-select">
+			  {% for value in [1000, 5000, 10000, 25000, 50000] %}
+				<option value="{{ value }}" {% if settings.starting_cash == value %}selected{% endif %}>${{ value }}</option>
+			  {% endfor %}
+			</select>
+		  </div>
+
+		  <!-- Max Per Trade -->
+		  <div class="col-6 col-md-3">
+			<label for="max_per_trade" class="form-label"><i class="bi bi-arrow-up-right-circle"></i> Max Per Trade</label>
+			<select id="max_per_trade" name="max_per_trade" class="form-select">
+			  {% for value in [100, 250, 500, 1000, 2500, 5000] %}
+				<option value="{{ value }}" {% if settings.max_per_trade == value %}selected{% endif %}>${{ value }}</option>
+			  {% endfor %}
+			</select>
+		  </div>
+
+		  <!-- Timeframe -->
+		  <div class="col-6 col-md-3>
+			<label for="timeframe" class="form-label"><i class="bi bi-calendar-range"></i> Timeframe</label>
+			<select id="timeframe" name="timeframe" class="form-select">
+			  {% for value, label in [('1mo', '1 Month'), ('3mo', '3 Months'), ('6mo', '6 Months'), ('1y', '1 Year')] %}
+				<option value="{{ value }}" {% if settings.timeframe == value %}selected{% endif %}>{{ label }}</option>
+			  {% endfor %}
+			</select>
+		  </div>
+		</div>
+
+	  </div>
     </div>
   </form>
 
   <div class="table-responsive">
-    <table class="table table-striped table-dark table-bordered text-white">
-      <thead class="table-warning text-dark">
-        <tr>
+    <table class="table table.alerts-table th">
+	<thead class="table-light">
           <th style="width: 20%">Date</th>
           <th style="width: 15%">Type</th>
           <th style="width: 20%">Price</th>
