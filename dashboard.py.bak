@@ -54,11 +54,12 @@ SIM_DB   = 'simulation.db'  # Must match SIM_DB in simulation_service.py
 
 @app.route('/run-checkpoint')
 def run_checkpoint():
+    bat_path = os.path.join(os.getcwd(), 'checkpoint.bat')  # Adjust path if needed
     try:
-        subprocess.Popen(['cmd', '/c', 'checkpoint.bat'], shell=True)
-        return redirect(url_for('index'))  # Redirect to your main page
+        subprocess.Popen(['cmd.exe', '/c', 'start', 'cmd.exe', '/k', bat_path], shell=True)
+        return redirect(url_for('index'))
     except Exception as e:
-        return str(e), 500
+        return f"Error executing batch: {e}", 500
 
 ### ────────────── PRELOAD BACKTEST DATA (optional) ────────────── ###
 # If you want to run a backtest when the server starts, uncomment below:
