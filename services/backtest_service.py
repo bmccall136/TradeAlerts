@@ -93,6 +93,7 @@ def backtest(
     start_date,
     end_date,
     initial_cash=10000,
+    max_trade_amount=1000,
     sma_on=False,
     sma_length=20,
     vwap_on=False,
@@ -105,23 +106,69 @@ def backtest(
     applying optional filters for SMA, VWAP, and News.
     Returns a tuple (trades_list, net_return).
     """
-def backtest(
-    symbol,
-    start_date,
-    end_date,
-    initial_cash=10000,
-    sma_on=False,
-    sma_length=20,
-    vwap_on=False,
-    vwap_threshold=0.0,
-    news_on=False,
-    log_to_db=False
-):
-    """
-    Run a backtest on `symbol` from `start_date` to `end_date`,
-    applying optional filters for SMA, VWAP, and News.
-    Returns a tuple (trades_list, net_return).
-    """
+
+    import yfinance as yf
+    import pandas as pd
+    from datetime import datetime
+
+    df = yf.download(symbol, start=start_date, end=end_date, interval='1d')
+
+    if df.empty:
+        return [], 0
+
+    df['Date'] = df.index
+    df['Signal'] = False
+    df['Buy_Price'] = None
+
+    if sma_on:
+        df['SMA'] = df['Close'].rolling(window=sma_length).mean()
+        df['Signal'] = df['Close'] > df['SMA']
+
+    if vwap_on:
+        df['VWAP'] = (df['Volume'] * (df['High'] + df['Low'] + df['Close']) / 3).cumsum() / df['Volume'].cumsum()
+        df['VWAP_Diff'] = df['Close'] - df['VWAP']
+        if 'Signal' in df:
+            df['Signal'] &= df['VWAP_Diff'] >= vwap_threshold
+        else:
+            df['Signal'] = df['VWAP_Diff'] >= vwap_threshold
+
+    # Example news_on logic placeholder
+    if news_on:
+        pass  # You can add custom logic if you have access to news sentiment
+
+    trades = []
+    cash = initial_cash
+    position = 0
+    buy_price = 0
+
+    for i, row in df.iterrows():
+        if row['Signal'] and cash >= row['Close']:
+            qty = int(min(cash, max_trade_amount) // row['Close'])
+            if qty > 0:
+                cost = qty * row['Close']
+                cash -= cost
+                position += qty
+                buy_price = row['Close']
+                trades.append({
+                    'action': 'BUY',
+                    'date': row['Date'],
+                    'qty': qty,
+                    'price': row['Close']
+                })
+
+    # Sell all at end
+    if position > 0:
+        proceeds = position * df['Close'].iloc[-1]
+        cash += proceeds
+        trades.append({
+            'action': 'SELL',
+            'date': df['Date'].iloc[-1],
+            'qty': position,
+            'price': df['Close'].iloc[-1]
+        })
+
+    net_return = cash - initial_cash
+    return trades, net_return
 
     # ← EVERYTHING FROM HERE MUST BE INDENTED INSIDE THIS FUNCTION!
 
