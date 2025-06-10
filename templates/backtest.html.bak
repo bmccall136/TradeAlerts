@@ -1,76 +1,80 @@
 {% extends "layout.html" %}
 {% block content %}
-<div class="container py-4">
-  <h2 class="mb-4">Backtest Configuration &amp; Results</h2>
 
-  <form method="GET" action="{{ url_for('backtest_view') }}" class="row g-3 align-items-end mb-5">
-    {# Toggles #}
-    {% set toggles = [
-      {'name':'bt_sma_on',  'label':'SMA',  'icon':'bi-graph-up-arrow'},
-      {'name':'bt_vwap_on', 'label':'VWAP', 'icon':'bi-calculator'},
-      {'name':'bt_news_on', 'label':'News', 'icon':'bi-newspaper'}
-    ] %}
-    <div class="col-12 d-flex flex-wrap align-items-center mb-3">
-      {% for t in toggles %}
-        <div class="form-check form-switch me-3">
-          <input class="form-check-input" type="checkbox"
-                 id="{{ t.name }}" name="{{ t.name }}"
-                 {% if bt_settings[t.name.replace('bt_','')] %}checked{% endif %}>
-          <label class="form-check-label" for="{{ t.name }}">
-            <i class="bi {{ t.icon }}"></i> {{ t.label }}
-          </label>
-        </div>
-      {% endfor %}
-    </div>
 
-    {# Numeric selectors #}
-    <div class="col-auto">
-      <label for="bt_sma_len" class="form-label">SMA Length</label>
-      <select id="bt_sma_len" name="bt_sma_len" class="form-select form-select-sm">
-        {% for v in [10,20,50,100,200] %}
-          <option value="{{ v }}" {% if bt_settings.sma_len==v %}selected{% endif %}>{{ v }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="col-auto">
-      <label for="bt_vwap_thr" class="form-label">VWAP Threshold</label>
-      <select id="bt_vwap_thr" name="bt_vwap_thr" class="form-select form-select-sm">
-        {% for v in [0.0,0.5,1.0,2.0] %}
-          <option value="{{ v }}" {% if bt_settings.vwap_thr==v %}selected{% endif %}>≥ ${{ v }}</option>
-        {% endfor %}
-      </select>
-    </div>
+<div class="container text-center">
+  <h2 class="text-warning mb-4">Backtest Configuration & Results</h2>
 
-    <div class="col-auto ms-auto">
-      <button type="submit" class="btn btn-primary">Run Backtest</button>
+  <div class="d-flex flex-wrap justify-content-center align-items-center mb-4">
+    <div class="form-check form-switch mx-2">
+      <input class="form-check-input" type="checkbox" id="smaToggle" checked>
+      <label class="form-check-label text-light" for="smaToggle">SMA</label>
     </div>
-  </form>
-
-  <div class="table-responsive mb-3">
-    <table class="table table-striped backtest-table">
-      <thead class="table-light">
-        <tr>
-          <th>Date</th><th>Type</th><th>Price</th><th>Qty</th><th>P/L</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for t in trades %}
-        <tr>
-          <td>{{ t.Date }}</td>
-          <td>{{ t.Type }}</td>
-          <td>${{ '%.2f'|format(t.Price) }}</td>
-          <td>{{ t.Qty }}</td>
-          <td>
-            {% if t['P/L'] is not none %}${{ '%.2f'|format(t['P/L']) }}{% else %}&mdash;{% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="form-check form-switch mx-2">
+      <input class="form-check-input" type="checkbox" id="rsiToggle">
+      <label class="form-check-label text-light" for="rsiToggle">RSI</label>
+    </div>
+    <div class="form-check form-switch mx-2">
+      <input class="form-check-input" type="checkbox" id="macdToggle">
+      <label class="form-check-label text-light" for="macdToggle">MACD</label>
+    </div>
+    <div class="form-check form-switch mx-2">
+      <input class="form-check-input" type="checkbox" id="bbToggle">
+      <label class="form-check-label text-light" for="bbToggle">BB</label>
+    </div>
+    <div class="form-check form-switch mx-2">
+      <input class="form-check-input" type="checkbox" id="volToggle">
+      <label class="form-check-label text-light" for="volToggle">Vol</label>
+    </div>
+    <div class="form-check form-switch mx-2">
+      <input class="form-check-input" type="checkbox" id="vwapToggle" checked>
+      <label class="form-check-label text-light" for="vwapToggle">VWAP</label>
+    </div>
+    <div class="form-check form-switch mx-2">
+      <input class="form-check-input" type="checkbox" id="newsToggle">
+      <label class="form-check-label text-light" for="newsToggle">News</label>
+    </div>
   </div>
 
-  <div>
-    <strong>Net Return:</strong> ${{ '%.2f'|format(pnl) }}
+  <div class="row mb-4 justify-content-center">
+    <div class="col-auto">
+      <label for="smaLength" class="form-label text-warning">SMA Length</label>
+      <select id="smaLength" class="form-select bg-dark text-light border-warning">
+        <option value="20" selected>Standard SMA (20)</option>
+        <option value="50">Medium SMA (50)</option>
+        <option value="100">Long SMA (100)</option>
+      </select>
+    </div>
+    <div class="col-auto">
+      <label for="vwapThreshold" class="form-label text-warning">VWAP Threshold</label>
+      <select id="vwapThreshold" class="form-select bg-dark text-light border-warning">
+        <option value="1" selected>&ge; $1.0</option>
+        <option value="0.5">&ge; $0.50</option>
+        <option value="0.1">&ge; $0.10</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="text-center mb-4">
+    <button id="runBacktest" class="btn btn-primary px-4">Run Backtest</button>
+  </div>
+
+  <table class="table table-dark table-bordered text-center">
+    <thead class="table-warning">
+      <tr>
+        <th class="text-dark">Date</th>
+        <th class="text-dark">Type</th>
+        <th class="text-dark">Price</th>
+        <th class="text-dark">Qty</th>
+        <th class="text-dark">P/L</th>
+      </tr>
+    </thead>
+    <tbody id="resultsBody">
+      <!-- Results will populate here -->
+    </tbody>
+  </table>
+
+  <div class="text-end text-light me-3">
+    <strong>Net Return:</strong> <span id="netReturn">$0.00</span>
   </div>
 </div>
-{% endblock %}
