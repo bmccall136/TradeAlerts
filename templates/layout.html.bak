@@ -80,9 +80,11 @@
       </div>
 
       {# 4) Centered Title (absolute positioned over the navbar) #}
-      <div class="position-absolute top-50 start-50 translate-middle text-center">
-        🚀 <b>TradeAlerts</b> 🚀
-      </div>
+<!-- In layout.html, replace the centered title DIV with this: -->
+		<div class="trade-alerts-title position-absolute top-50 start-50 translate-middle text-center">
+		  🚀 <b>TradeAlerts</b> 🚀
+		</div>
+
 
     </div>
   </nav>

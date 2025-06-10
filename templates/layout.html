@@ -59,7 +59,8 @@
 
       {# 3) Right side shortcut buttons #}
       <div class="d-flex">
-        <form action="{{ url_for('launch_auth') }}" method="post" class="me-2">
+        <a href="{{ url_for('run_checkpoint') }}" class="btn btn-info">✅ Checkpoint</a>
+		<form action="{{ url_for('launch_auth') }}" method="post" class="me-2">
           <button
             type="submit"
             class="btn btn-sm btn-warning"
