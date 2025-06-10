@@ -131,34 +131,31 @@ from flask import request, render_template
 
 @app.route('/backtest')
 def backtest_view():
-    # Example default settings
     settings = {
-        'sma_on': True,
-        'rsi_on': False,
-        'macd_on': False,
-        'bb_on': False,
-        'vol_on': False,
-        'vwap_on': True,
-        'news_on': False,
-        'sma_length': 20,
-        'rsi_len': 14,
-        'rsi_overbought': 70,
-        'rsi_oversold': 30,
-        'macd_fast': 12,
-        'macd_slow': 26,
-        'macd_signal': 9,
-        'bb_length': 20,
-        'bb_std': 2.0,
-        'vol_multiplier': 1.5,
-        'vwap_threshold': 1.0,
-        'starting_cash': 10000,
-        'max_per_trade': 1000,
-        'timeframe': '3mo'
-
+        'sma_on': request.args.get('sma_on') == 'on',
+        'rsi_on': request.args.get('rsi_on') == 'on',
+        'macd_on': request.args.get('macd_on') == 'on',
+        'bb_on': request.args.get('bb_on') == 'on',
+        'vol_on': request.args.get('vol_on') == 'on',
+        'vwap_on': request.args.get('vwap_on') == 'on',
+        'news_on': request.args.get('news_on') == 'on',
+        'sma_length': int(request.args.get('sma_length', 20)),
+        'rsi_len': int(request.args.get('rsi_len', 14)),
+        'rsi_overbought': int(request.args.get('rsi_overbought', 70)),
+        'rsi_oversold': int(request.args.get('rsi_oversold', 30)),
+        'macd_fast': int(request.args.get('macd_fast', 12)),
+        'macd_slow': int(request.args.get('macd_slow', 26)),
+        'macd_signal': int(request.args.get('macd_signal', 9)),
+        'bb_length': int(request.args.get('bb_length', 20)),
+        'bb_std': float(request.args.get('bb_std', 2.0)),
+        'vol_multiplier': float(request.args.get('vol_multiplier', 1.5)),
+        'vwap_threshold': float(request.args.get('vwap_threshold', 1.0)),
+        'max_cash': float(request.args.get('max_cash', 10000)),
+        'max_trade_amount': float(request.args.get('max_trade_amount', 1000)),
+        'timeframe': request.args.get('timeframe', '6mo'),
     }
 
     return render_template('backtest.html', settings=settings)
-
 
     # 4) Pass them back into the template for pre‐checking
     bt_settings = {
