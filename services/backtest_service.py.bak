@@ -106,12 +106,20 @@ def backtest(
     Returns a tuple (trades_list, net_return).
     """
     # 1) Download & prepare data
-    df.columns = [col.title() for col in df.columns]
     df = yf.download(symbol, start=start_date, end=end_date, progress=False)
-    tp = (df['High'] + df['Low'] + df['Close']) / 3
-    if df.empty:
+    if df is None or df.empty:
         raise ValueError(f"No data for {symbol} from {start_date} to {end_date}")
+
+    # 2) Normalize column names so we know 'High', 'Low', 'Close' exist
+    df.columns = [col.title() for col in df.columns]
+
+    # 3) Compute typical price now that High/Low/Close are guaranteed
+    tp = (df['High'] + df['Low'] + df['Close']) / 3
+
+    # 4) Compute indicators
     df = calculate_indicators(df)
+
+    # … the rest of your position/trade loop …
 
     cash, position = initial_cash, 0
     trades = []
