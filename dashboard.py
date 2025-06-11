@@ -114,14 +114,6 @@ def clear_alert(id):
     flash(f'ℹ️ Alert #{id} cleared.', 'info')
     return redirect(url_for('index'))
 
-
-@app.route('/buy/<symbol>', methods=['POST'])
-def buy_stock_route(symbol):
-    # “Buy” route just flashes a message on the Alerts page
-    flash(f'🟢 Simulated BUY for {symbol}', 'success')
-    return redirect(url_for('index'))
-
-
 @app.route('/launch_auth', methods=['POST'])
 def launch_auth():
     try:
