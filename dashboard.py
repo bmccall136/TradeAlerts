@@ -48,6 +48,20 @@ app.secret_key = "replace_with_your_secret_key"
 
 DB_PATH  = 'alerts.db'
 SIM_DB   = 'simulation.db'  # Must match SIM_DB in simulation_service.py
+import subprocess
+import platform
+
+@app.route("/start_scanner", methods=["POST"])
+def start_scanner():
+    if platform.system() == "Windows":
+        subprocess.Popen(["start", "start_scanner.bat"], shell=True)
+    return redirect(url_for('index'))
+
+@app.route("/stop_scanner", methods=["POST"])
+def stop_scanner():
+    if platform.system() == "Windows":
+        subprocess.call(["stop_scanner.bat"], shell=True)
+    return redirect(url_for('index'))
 
 @app.route('/run-checkpoint')
 def run_checkpoint():
@@ -474,9 +488,9 @@ def index():
         match_count=match_count
     )
 
+import os
 
-
-
-
-if __name__ == '__main__':
-    app.run(debug=True)
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))  # Render sets PORT
+    host = "0.0.0.0" if os.environ.get("RENDER") else "127.0.0.1"
+    app.run(host=host, port=port, debug=True)
