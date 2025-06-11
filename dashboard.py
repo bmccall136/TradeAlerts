@@ -42,6 +42,7 @@ from services.backtest_service import backtest
 # MARKET SCANNER
 from services.market_service import analyze_symbol, get_symbols
 
+print(f"🌐 Starting app on host={host} port={port}")
 
 app = Flask(__name__)
 app.secret_key = "replace_with_your_secret_key"
@@ -347,9 +348,9 @@ def simulation():
 
 @app.route("/simulation/buy", methods=["POST"])
 def simulation_buy():
+    print("📥 Incoming /simulation/buy request")
     data = request.get_json()
-    print("Received buy request:", data)  # 👈 add this
-    symbol = data.get("symbol")
+    print("Payload:", data)
     qty    = int(data.get("qty", 0))
 
     if not symbol or qty <= 0:
@@ -483,6 +484,7 @@ def index():
 import os
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", "5000"))  # Always pulls a string first
+    port = int(os.environ.get("PORT", "5000"))
     app.run(host="0.0.0.0", port=port, debug=True)
+
 
