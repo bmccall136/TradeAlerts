@@ -2,7 +2,7 @@ import os
 import logging
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from datetime import datetime
-
+from dotenv import load_dotenv; load_dotenv(override=True)
 import yfinance as yf
 import pandas as pd
 
@@ -52,7 +52,8 @@ def analyze_symbol(sym):
     Returns alert_payload or None.
     """
     # ── A) Load settings ──
-    settings       = get_all_indicator_settings()
+    settings = get_all_indicator_settings()
+    match_count = settings.get('match_count', 0)
     sma_on         = bool(settings.get('sma_on', 1))
     rsi_on         = bool(settings.get('rsi_on', 1))
     macd_on        = bool(settings.get('macd_on', 1))
@@ -60,6 +61,9 @@ def analyze_symbol(sym):
     vol_on         = bool(settings.get('vol_on', 1))
     vwap_on        = bool(settings.get('vwap_on', 1))
     news_on        = bool(settings.get('news_on', 0))
+    rsi_slope_on   = bool(settings.get('rsi_slope_on', 0))
+    macd_hist_on   = bool(settings.get('macd_hist_on', 0))
+    bb_breakout_on = bool(settings.get('bb_breakout_on', 0))
 
     sma_length     = settings['sma_length']
     rsi_len        = settings['rsi_len']
@@ -107,6 +111,11 @@ def analyze_symbol(sym):
     rsi_val        = compute_rsi(price_series, period=rsi_len).iloc[-1]
     macd_line, sig = calculate_macd(price_series, fast=macd_fast, slow=macd_slow, signal=macd_signal)
     bb_up, *_      = compute_bollinger(price_series, window=bb_length, num_std=bb_std)
+    rsi_series     = compute_rsi(price_series, period=rsi_len)
+    rsi_slope      = rsi_series.diff().iloc[-1] if rsi_series is not None else 0
+    macd_hist      = (macd_line - sig).iloc[-1] if macd_line is not None else 0
+    bb_mid         = compute_sma(price_series, bb_length)
+    bb_breakout    = (last_price > bb_up.iloc[-1]) and (price_series.iloc[-2] <= bb_up.iloc[-2])
 
     # Volume trigger
     vol_col    = df['Volume']
@@ -124,7 +133,11 @@ def analyze_symbol(sym):
     vwap_diff    = price_live - latest_vwap
     vwap_trigger = (vwap_diff >= vwap_threshold)
 
-    # ── G) Build primary for indicators (exclude news) ──
+    
+    logger.debug(f"{sym} Indicators — Price: {last_price:.2f}, SMA: {sma_val:.2f}, RSI: {rsi_val:.1f}, RSI Slope: {rsi_slope:.3f}, MACD: {macd_line.iloc[-1]:.3f}, Signal: {sig.iloc[-1]:.3f}, MACD Hist: {macd_hist:.3f}, BB Upper: {bb_up.iloc[-1]:.2f}, BB Breakout: {bb_breakout}, VWAP Diff: {vwap_diff:.2f}")
+    logger.debug(f"{sym} Enabled: SMA={sma_on}, RSI={rsi_on}, MACD={macd_on}, BB={bb_on}, VOL={vol_on}, VWAP={vwap_on}, RSI_SLOPE={rsi_slope_on}, MACD_HIST={macd_hist_on}, BB_BREAK={bb_breakout_on}")
+
+# ── G) Build primary for indicators (exclude news) ──
     primary = []
     if sma_on and last_price > sma_val:
         primary.append('SMA')
@@ -140,12 +153,24 @@ def analyze_symbol(sym):
         primary.append('VOLUME')
     if vwap_on and vwap_trigger:
         primary.append('VWAP')
+    if rsi_slope_on and rsi_slope > 0:
+        primary.append('RSI_SLOPE')
+    if macd_hist_on and macd_hist > 0:
+        primary.append('MACD_HIST')
+    if bb_breakout_on and bb_breakout:
+        primary.append('BB_BREAK')
 
-    # ── H) Require all enabled triggers (excluding news) ──
-    required = sum([sma_on, rsi_on, macd_on, bb_on, vol_on, vwap_on])
+    # ── H) Require enabled trigger match ──
+    toggles_enabled = sum([
+        sma_on, rsi_on, macd_on, bb_on, vol_on, vwap_on,
+        rsi_slope_on, macd_hist_on, bb_breakout_on
+    ])
+    required = toggles_enabled if match_count <= 0 else min(match_count, toggles_enabled)
+
     if len(primary) < required:
         logger.info(f"[SKIP] {sym}: only {len(primary)}/{required} enabled triggers")
         return None
+
 
     # ── I) Fetch news only if enabled ──
     headlines = []
@@ -173,6 +198,12 @@ def analyze_symbol(sym):
         display.append(f"VWAP+ (${vwap_diff:.2f})")
     if news_on and headlines:
         display.append('📰')
+    if rsi_slope_on and rsi_slope > 0:
+        display.append("RSI Slope ⤴")
+    if macd_hist_on and macd_hist > 0:
+        display.append("MACD Hist 📊")
+    if bb_breakout_on and bb_breakout:
+        display.append("BB Breakout 💥")
 
     # ── K) Insert and return ──
     payload = {

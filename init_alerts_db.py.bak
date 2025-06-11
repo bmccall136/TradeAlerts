@@ -37,7 +37,7 @@ CREATE TABLE alerts (
 );
 """)
 
-# Create indicator_settings table (FIXED triple-quoted string)
+# Create indicator_settings table (includes match_count now)
 c.execute("""
 CREATE TABLE indicator_settings (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,11 +59,13 @@ CREATE TABLE indicator_settings (
     bb_std             REAL    DEFAULT 2.0,
     vol_multiplier     REAL    DEFAULT 1.5,
     vwap_threshold     REAL    DEFAULT 1.0,
+    match_count        INTEGER DEFAULT 2,
     max_cash           REAL    DEFAULT 10000.0,
     max_trade_amount   REAL    DEFAULT 1000.0,
     timeframe          TEXT    DEFAULT '1d'
 );
 """)
+
 
 # Insert default row
 c.execute("INSERT INTO indicator_settings (id) VALUES (1);")

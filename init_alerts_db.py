@@ -62,7 +62,10 @@ CREATE TABLE indicator_settings (
     match_count        INTEGER DEFAULT 2,
     max_cash           REAL    DEFAULT 10000.0,
     max_trade_amount   REAL    DEFAULT 1000.0,
-    timeframe          TEXT    DEFAULT '1d'
+    timeframe          TEXT    DEFAULT '1d',
+    rsi_slope_on       INTEGER DEFAULT 0,
+    macd_hist_on       INTEGER DEFAULT 0,
+    bb_breakout_on     INTEGER DEFAULT 0
 );
 """)
 

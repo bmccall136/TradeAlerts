@@ -5,6 +5,18 @@ import requests
 from dotenv import load_dotenv
 from requests_oauthlib import OAuth1
 
+# ✅ Force overwrite environment variables
+load_dotenv(override=True)
+
+CONSUMER_KEY        = os.getenv("ETRADE_API_KEY", "").strip()
+CONSUMER_SECRET     = os.getenv("ETRADE_API_SECRET", "").strip()
+OAUTH_TOKEN         = os.getenv("OAUTH_TOKEN", "").strip()
+OAUTH_TOKEN_SECRET  = os.getenv("OAUTH_TOKEN_SECRET", "").strip()
+ETRADE_ENV          = os.getenv("ETRADE_ENV", "production").strip()
+
+print("OAUTH_TOKEN =", OAUTH_TOKEN)
+print("OAUTH_TOKEN_SECRET =", OAUTH_TOKEN_SECRET)
+
 load_dotenv(".env")
 
 auth = OAuth1(
