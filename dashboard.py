@@ -42,8 +42,6 @@ from services.backtest_service import backtest
 # MARKET SCANNER
 from services.market_service import analyze_symbol, get_symbols
 
-print(f"🌐 Starting app on host={host} port={port}")
-
 app = Flask(__name__)
 app.secret_key = "replace_with_your_secret_key"
 
@@ -485,6 +483,9 @@ import os
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    host = "0.0.0.0"
+    print(f"🌐 Starting app on host={host} port={port}")
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")), debug=True)
+
 
 
