@@ -1,15 +1,10 @@
-# File: dashboard.py
-from services.alert_service import (
-    save_indicator_settings,
-    get_all_indicator_settings,
-    get_alerts,
-)
 from pathlib import Path
 import os
 import subprocess
 import sqlite3
-from datetime import datetime, timedelta
 
+from datetime import datetime, timedelta
+from flask import request, render_template
 from flask import (
     Flask, render_template, redirect, url_for,
     request, flash, jsonify
@@ -19,7 +14,9 @@ from flask import (
 from services.alert_service import (
     save_indicator_settings,
     get_all_indicator_settings,
-    get_alerts
+    get_alerts,
+    clear_all_alerts,
+    insert_alert,
 )
 
 # NEWS
@@ -127,64 +124,138 @@ def launch_auth():
 ### ────────────── BACKTEST VIEW ────────────── ###
 
 from flask import request, render_template
+from scanner_backtest_service import backtest_scanner
+from collections import namedtuple
 
-@app.route('/backtest', methods=['GET', 'POST'])
+BacktestSettings = namedtuple('BacktestSettings', [
+    'start_date', 'end_date', 'starting_cash', 'max_per_trade',
+    'trailing_stop_pct', 'sell_after_days',
+    'sma_on', 'rsi_on', 'macd_on', 'bb_on', 'vwap_on', 'news_on'
+])
+
+def extract_backtest_settings(args):
+    return BacktestSettings(
+        start_date=args.get('start_date', '2023-01-01'),
+        end_date=args.get('end_date', '2024-01-01'),
+        starting_cash=int(args.get('starting_cash', 10000)),
+        max_per_trade=int(args.get('max_per_trade', 1000)),
+        trailing_stop_pct=float(args.get('trailing_stop_pct', 0.05)),
+        sell_after_days=int(args.get('sell_after_days')) if args.get('sell_after_days') else None,
+        sma_on='sma_on' in args,
+        rsi_on='rsi_on' in args,
+        macd_on='macd_on' in args,
+        bb_on='bb_on' in args,
+        vwap_on='vwap_on' in args,
+        news_on='news_on' in args
+    )
+
+from flask import request, render_template
+from scanner_backtest_service import backtest_scanner
+from services.backtest_service import backtest
+@app.route('/backtest', methods=['GET'])
 def backtest_view():
+    args = request.args
     settings = {
-        'sma_on': 'sma_on' in request.args,
-        'rsi_on': 'rsi_on' in request.args,
-        'macd_on': 'macd_on' in request.args,
-        'bb_on': 'bb_on' in request.args,
-        'vol_on': 'vol_on' in request.args,
-        'vwap_on': 'vwap_on' in request.args,
-        'news_on': 'news_on' in request.args,
-        'sma_length': int(request.args.get('sma_length', 20)),
-        'rsi_len': int(request.args.get('rsi_len', 14)),
-        'rsi_overbought': int(request.args.get('rsi_overbought', 70)),
-        'rsi_oversold': int(request.args.get('rsi_oversold', 30)),
-        'macd_fast': int(request.args.get('macd_fast', 12)),
-        'macd_slow': int(request.args.get('macd_slow', 26)),
-        'macd_signal': int(request.args.get('macd_signal', 9)),
-        'bb_length': int(request.args.get('bb_length', 20)),
-        'bb_std': float(request.args.get('bb_std', 2.0)),
-        'vol_multiplier': float(request.args.get('vol_multiplier', 1.5)),
-        'vwap_threshold': float(request.args.get('vwap_threshold', 1.0)),
-        'initial_cash': float(request.args.get('initial_cash', 10000)),
-        'trade_limit': float(request.args.get('trade_limit', 1000)),
-        'timeframe': request.args.get('timeframe', '6mo')
+        "start_date": args.get("start_date", "2023-01-01"),
+        "end_date": args.get("end_date", "2024-01-01"),
+        "starting_cash": int(args.get("starting_cash", 10000)),
+        "max_per_trade": int(args.get("max_per_trade", 1000)),
+        "trailing_stop_pct": float(args.get("trailing_stop_pct", 0.05)),
+        "sell_after_days": int(args.get("sell_after_days")) if args.get("sell_after_days") else None,
+        "sma_on": 'sma_on' in args,
+        "rsi_on": 'rsi_on' in args,
+        "macd_on": 'macd_on' in args,
+        "bb_on": 'bb_on' in args,
+        "vwap_on": 'vwap_on' in args,
+        "news_on": 'news_on' in args,
+        "rsi_slope_on": 'rsi_slope_on' in args,
+        "macd_hist_on": 'macd_hist_on' in args,
+        "bb_breakout_on": 'bb_breakout_on' in args,
+        "run_full_scan": 'run_full_scan' in args,
+        "timeframe": args.get("timeframe", "6mo")
     }
 
-    # Temporary backtest call for a hardcoded symbol, e.g., 'AAPL'
-    trades, net_return = backtest(
-        symbol='AAPL',
-        start_date='2023-01-01',
-        end_date='2023-12-31',
-        initial_cash=settings['initial_cash'],
-        sma_on=settings['sma_on'],
-        sma_length=settings['sma_length'],
-        vwap_on=settings['vwap_on'],
-        vwap_threshold=settings['vwap_threshold'],
-        news_on=settings['news_on'],
-        log_to_db=False
-    )
+    trades = []
+    net_return = 0
 
-    return render_template('backtest.html', settings=settings, trades=trades, net_return=net_return)
+    if settings["run_full_scan"]:
+        trades = backtest_scanner(
+            start_date=settings["start_date"],
+            end_date=settings["end_date"],
+            initial_cash=settings["starting_cash"],
+            max_trade_per_stock=settings["max_per_trade"],
+            trailing_stop_pct=settings["trailing_stop_pct"],
+            sell_after_days=settings["sell_after_days"],
+            sma_on=settings["sma_on"],
+            rsi_on=settings["rsi_on"],
+            macd_on=settings["macd_on"],
+            bb_on=settings["bb_on"],
+            vwap_on=settings["vwap_on"],
+            news_on=settings["news_on"],
+            rsi_slope_on=settings["rsi_slope_on"],
+            macd_hist_on=settings["macd_hist_on"],
+            bb_breakout_on=settings["bb_breakout_on"]
+        )
+        net_return = sum(t["pnl"] for t in trades)
+    else:
+        trades, net_return = backtest(
+            symbol="AAPL",
+            start_date=settings["start_date"],
+            end_date=settings["end_date"],
+            initial_cash=settings["starting_cash"],
+            max_trade_amount=settings["max_per_trade"],
+            sma_on=settings["sma_on"],
+            vwap_on=settings["vwap_on"],
+            news_on=settings["news_on"]
+        )
 
-    # 4) Pass them back into the template for pre‐checking
-    bt_settings = {
-        "sma_on":   bt_sma_on,
-        "sma_len":  bt_sma_len,
-        "vwap_on":  bt_vwap_on,
-        "vwap_thr": bt_vwap_thr,
-        "news_on":  bt_news_on
-    }
+    return render_template("backtest.html", trades=trades, net_return=net_return, settings=settings)
 
-    return render_template(
-        "backtest.html",
-        trades      = trades,
-        pnl         = pnl,
-        bt_settings = bt_settings
-    )
+@app.route('/scanner_backtest', methods=['GET', 'POST'])
+def scanner_backtest_view():
+    from scanner_backtest_service import backtest_scanner
+    trades = []
+    summary = None
+
+    if request.method == 'POST':
+        form = request.form
+        start_date = form.get('start_date')
+        end_date = form.get('end_date')
+        initial_cash = float(form.get('initial_cash', 10000))
+        max_trade = float(form.get('max_trade_per_stock', 1000))
+        trailing_stop = float(form.get('trailing_stop_pct', 0.05))
+        sell_after_days = int(form.get('sell_after_days')) if form.get('sell_after_days') else None
+
+        sma_on = 'sma_on' in form
+        rsi_on = 'rsi_on' in form
+        macd_on = 'macd_on' in form
+        bb_on = 'bb_on' in form
+        vwap_on = 'vwap_on' in form
+        news_on = 'news_on' in form
+
+        trades = backtest_scanner(
+            start_date=start_date,
+            end_date=end_date,
+            initial_cash=initial_cash,
+            max_trade_per_stock=max_trade,
+            trailing_stop_pct=trailing_stop,
+            sell_after_days=sell_after_days,
+            sma_on=sma_on,
+            rsi_on=rsi_on,
+            macd_on=macd_on,
+            bb_on=bb_on,
+            vwap_on=vwap_on,
+            news_on=news_on
+        )
+     
+        summary = {
+            'total_pnl': round(sum(t['pnl'] for t in trades), 2),
+            'num_trades': len(trades),
+            'wins': sum(1 for t in trades if t['pnl'] > 0),
+            'losses': sum(1 for t in trades if t['pnl'] < 0),
+        }
+
+    return render_template('scanner_backtest.html', trades=trades, summary=summary)
 
 
 
@@ -271,15 +342,20 @@ def simulation():
 @app.route("/simulation/buy", methods=["POST"])
 def simulation_buy():
     data = request.get_json()
+    print("Received buy request:", data)  # 👈 add this
     symbol = data.get("symbol")
     qty    = int(data.get("qty", 0))
+
     if not symbol or qty <= 0:
+        print("Invalid symbol or qty")  # 👈
         return jsonify({"error": "Invalid symbol or quantity"}), 400
 
     try:
         price = get_etrade_price(symbol)
         buy_stock(symbol, qty, price)
+        print(f"Buy executed: {symbol} x{qty} at ${price}")
     except Exception as e:
+        print(f"Buy error for {symbol}: {e}")  # 👈
         return jsonify({"error": str(e)}), 400
 
     return jsonify({"success": True, "cash": get_cash()}), 200
@@ -327,6 +403,10 @@ def index():
     vol_on   = (request.args.get('vol_on')   == 'on')
     vwap_on  = (request.args.get('vwap_on')  == 'on')
     news_on  = (request.args.get('news_on')  == 'on')
+    rsi_slope_on     = (request.args.get('rsi_slope_on')     == 'on')
+    macd_hist_on     = (request.args.get('macd_hist_on')     == 'on')
+    bb_breakout_on   = (request.args.get('bb_breakout_on')   == 'on')
+
     print("VWAP_ON:", vwap_on, "NEWS_ON:", news_on)
 
     # 2) Read numeric filter values
@@ -355,8 +435,10 @@ def index():
         bb_on,      bb_length,      bb_std,
         vol_on,     vol_multiplier,
         vwap_on,    vwap_threshold,
-        news_on
+        news_on,
+        rsi_slope_on, macd_hist_on, bb_breakout_on   # ← added new toggle parameters
     )
+
 
     # 5) Rebuild settings from current request for template
     settings = {
@@ -378,7 +460,11 @@ def index():
         'vwap_on': vwap_on,
         'vwap_threshold': vwap_threshold,
         'news_on': news_on,
-    }
+        'news_on': news_on,
+        'rsi_slope_on': rsi_slope_on,
+        'macd_hist_on': macd_hist_on,
+        'bb_breakout_on': bb_breakout_on,
+}
 
     # 6) Render template
     return render_template(

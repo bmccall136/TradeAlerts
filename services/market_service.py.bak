@@ -1,10 +1,8 @@
-# File: services/market_service.py
-
 import os
 import logging
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from datetime import datetime
-
+from dotenv import load_dotenv; load_dotenv(override=True)
 import yfinance as yf
 import pandas as pd
 
@@ -46,23 +44,26 @@ def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
             return None
 
 
- def analyze_symbol(sym):
+def analyze_symbol(sym):
     """
     Load settings (including on/off toggles), fetch data, compute indicators,
-    require all enabled triggers, build display list, insert alert if passed.
+    require all enabled triggers (excluding news), fetch news if enabled,
+    build display list, insert alert if passed.
     Returns alert_payload or None.
     """
     # ── A) Load settings ──
     settings       = get_all_indicator_settings()
-    # toggles
-    sma_on         = bool(settings.get('sma_on',    1))
-    rsi_on         = bool(settings.get('rsi_on',    1))
-    macd_on        = bool(settings.get('macd_on',   1))
-    bb_on          = bool(settings.get('bb_on',     1))
-    vol_on         = bool(settings.get('vol_on',    1))
-    vwap_on        = bool(settings.get('vwap_on',   1))
-    news_on        = bool(settings.get('news_on',   0))
-    # core thresholds/lengths
+    sma_on         = bool(settings.get('sma_on', 1))
+    rsi_on         = bool(settings.get('rsi_on', 1))
+    macd_on        = bool(settings.get('macd_on', 1))
+    bb_on          = bool(settings.get('bb_on', 1))
+    vol_on         = bool(settings.get('vol_on', 1))
+    vwap_on        = bool(settings.get('vwap_on', 1))
+    news_on        = bool(settings.get('news_on', 0))
+    rsi_slope_on   = bool(settings.get('rsi_slope_on', 0))
+    macd_hist_on   = bool(settings.get('macd_hist_on', 0))
+    bb_breakout_on = bool(settings.get('bb_breakout_on', 0))
+
     sma_length     = settings['sma_length']
     rsi_len        = settings['rsi_len']
     rsi_ob         = settings['rsi_overbought']
@@ -94,9 +95,9 @@ def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
 
     # ── D) Company name ──
     try:
-        info    = yf.Ticker(sym).info
+        info = yf.Ticker(sym).info
         company = info.get('longName') or info.get('shortName') or sym
-    except:
+    except Exception:
         company = sym
 
     # ── E) Prepare close series ──
@@ -109,6 +110,11 @@ def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
     rsi_val        = compute_rsi(price_series, period=rsi_len).iloc[-1]
     macd_line, sig = calculate_macd(price_series, fast=macd_fast, slow=macd_slow, signal=macd_signal)
     bb_up, *_      = compute_bollinger(price_series, window=bb_length, num_std=bb_std)
+    rsi_series     = compute_rsi(price_series, period=rsi_len)
+    rsi_slope      = rsi_series.diff().iloc[-1] if rsi_series is not None else 0
+    macd_hist      = (macd_line - sig).iloc[-1] if macd_line is not None else 0
+    bb_mid         = compute_sma(price_series, bb_length)
+    bb_breakout    = (last_price > bb_up.iloc[-1]) and (price_series.iloc[-2] <= bb_up.iloc[-2])
 
     # Volume trigger
     vol_col    = df['Volume']
@@ -118,61 +124,96 @@ def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
     vol_trigger = (vol_current >= vol_multiplier * avg_vol20)
 
     # VWAP trigger
-    tp         = (df['High'] + df['Low'] + df['Close']) / 3
-    tp         = tp.iloc[:,0] if isinstance(tp, pd.DataFrame) else tp
-    tpv        = tp * vol_series
-    vwap_ser   = tpv.cumsum() / vol_series.cumsum()
-    latest_vwap= vwap_ser.iloc[-1]
-    vwap_diff  = price_live - latest_vwap
+    tp           = (df['High'] + df['Low'] + df['Close']) / 3
+    tp           = tp.iloc[:,0] if isinstance(tp, pd.DataFrame) else tp
+    tpv          = tp * vol_series
+    vwap_ser     = tpv.cumsum() / vol_series.cumsum()
+    latest_vwap  = vwap_ser.iloc[-1]
+    vwap_diff    = price_live - latest_vwap
     vwap_trigger = (vwap_diff >= vwap_threshold)
 
-    # ── G) Build primary for indicators (exclude news) ──
-    primary = []
-    if sma_on   and last_price > sma_val:            primary.append('SMA')
-    if rsi_on   and rsi_val > rsi_ob:                primary.append('RSI_OB')
-    elif rsi_on and rsi_val < rsi_os:                primary.append('RSI_OS')
-    if macd_on  and macd_line.iloc[-1] > sig.iloc[-1]: primary.append('MACD')
-    if bb_on    and last_price > bb_up.iloc[-1]:     primary.append('BB')
-    if vol_on   and vol_trigger:                     primary.append('VOLUME')
-    if vwap_on  and vwap_trigger:                    primary.append('VWAP')
+    
+    logger.debug(f"{sym} Indicators — Price: {last_price:.2f}, SMA: {sma_val:.2f}, RSI: {rsi_val:.1f}, RSI Slope: {rsi_slope:.3f}, MACD: {macd_line.iloc[-1]:.3f}, Signal: {sig.iloc[-1]:.3f}, MACD Hist: {macd_hist:.3f}, BB Upper: {bb_up.iloc[-1]:.2f}, BB Breakout: {bb_breakout}, VWAP Diff: {vwap_diff:.2f}")
+    logger.debug(f"{sym} Enabled: SMA={sma_on}, RSI={rsi_on}, MACD={macd_on}, BB={bb_on}, VOL={vol_on}, VWAP={vwap_on}, RSI_SLOPE={rsi_slope_on}, MACD_HIST={macd_hist_on}, BB_BREAK={bb_breakout_on}")
 
-    # require _all_ enabled triggers (excluding news)
-    required = sum([sma_on, rsi_on, macd_on, bb_on, vol_on, vwap_on])
+# ── G) Build primary for indicators (exclude news) ──
+    primary = []
+    if sma_on and last_price > sma_val:
+        primary.append('SMA')
+    if rsi_on and rsi_val > rsi_ob:
+        primary.append('RSI_OB')
+    elif rsi_on and rsi_val < rsi_os:
+        primary.append('RSI_OS')
+    if macd_on and macd_line.iloc[-1] > sig.iloc[-1]:
+        primary.append('MACD')
+    if bb_on and last_price > bb_up.iloc[-1]:
+        primary.append('BB')
+    if vol_on and vol_trigger:
+        primary.append('VOLUME')
+    if vwap_on and vwap_trigger:
+        primary.append('VWAP')
+    if rsi_slope_on and rsi_slope > 0:
+        primary.append('RSI_SLOPE')
+    if macd_hist_on and macd_hist > 0:
+        primary.append('MACD_HIST')
+    if bb_breakout_on and bb_breakout:
+        primary.append('BB_BREAK')
+
+    # ── H) Require enabled trigger match ──
+    toggles_enabled = sum([
+        sma_on, rsi_on, macd_on, bb_on, vol_on, vwap_on,
+        rsi_slope_on, macd_hist_on, bb_breakout_on
+    ])
+    required = toggles_enabled if match_count <= 0 else min(match_count, toggles_enabled)
+
     if len(primary) < required:
         logger.info(f"[SKIP] {sym}: only {len(primary)}/{required} enabled triggers")
         return None
 
-    # ── H) Fetch news only if alert and news_on ──
+
+    # ── I) Fetch news only if enabled ──
     headlines = []
     if news_on:
         try:
             headlines = fetch_latest_headlines(sym)
         except Exception as e:
-            logger.warning(f"{sym}: news error {e}; skipping news until reset.")
-            headlines = []
+            logger.warning(f"[NEWS] {sym}: {e}")
         if headlines:
             primary.append('NEWS')
 
-    # ── I) Build display triggers ──
+    # ── J) Build display triggers ──
     display = []
-    if sma_on   and last_price > sma_val:            display.append(f"SMA 📈 ({sma_length})")
-    if rsi_on   and rsi_val > rsi_ob:                display.append('RSI 📈')
-    if macd_on  and macd_line.iloc[-1] > sig.iloc[-1]: display.append('MACD 🚀')
-    if bb_on    and last_price > bb_up.iloc[-1]:     display.append('BB 📈')
-    if vol_on   and vol_trigger:                     display.append(f"VOL 🔊 ({vol_current/avg_vol20:.2f}×)")
-    if vwap_on  and vwap_trigger:                    display.append(f"VWAP+ (${vwap_diff:.2f})")
-    if news_on  and headlines:                      display.append('📰')
+    if sma_on and last_price > sma_val:
+        display.append(f"SMA 📈 ({sma_length})")
+    if rsi_on and rsi_val > rsi_ob:
+        display.append('RSI 📈')
+    if macd_on and macd_line.iloc[-1] > sig.iloc[-1]:
+        display.append('MACD 🚀')
+    if bb_on and last_price > bb_up.iloc[-1]:
+        display.append('BB 📈')
+    if vol_on and vol_trigger:
+        display.append(f"VOL 🔊 ({vol_current/avg_vol20:.2f}×)")
+    if vwap_on and vwap_trigger:
+        display.append(f"VWAP+ (${vwap_diff:.2f})")
+    if news_on and headlines:
+        display.append('📰')
+    if rsi_slope_on and rsi_slope > 0:
+        display.append("RSI Slope ⤴")
+    if macd_hist_on and macd_hist > 0:
+        display.append("MACD Hist 📊")
+    if bb_breakout_on and bb_breakout:
+        display.append("BB Breakout 💥")
 
-    # ── J) Insert and return ──
+    # ── K) Insert and return ──
     payload = {
-      'symbol':    sym,
-      'price':     price_live,
-      'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-      'name':      company,
-      'vwap':      round(latest_vwap, 2),
-      'vwap_diff': round(vwap_diff, 2),
-      'triggers':  ','.join(display),
-      'sparkline': generate_sparkline(price_series.tolist())
+        'symbol':    sym,
+        'price':     price_live,
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'name':      company,
+        'vwap':      round(latest_vwap, 2),
+        'vwap_diff': round(vwap_diff, 2),
+        'triggers':  ','.join(display),
+        'sparkline': generate_sparkline(price_series.tolist())
     }
     insert_alert(**payload)
     logger.info(f"[ALERT] {sym}: {display}")
@@ -181,7 +222,7 @@ def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
 
 def get_symbols(simulation=False):
     """
-    Return a list of tickers (S&P 500 or fallback).
+    Return a list of tickers (S&P 500 or fallback).
     """
     try:
         tables = pd.read_html(
@@ -189,7 +230,7 @@ def get_symbols(simulation=False):
             header=0
         )
         df_sp = tables[0]
-        col = 'Symbol' if 'Symbol' in df_sp.columns else df_sp.columns[0]
+        col   = 'Symbol' if 'Symbol' in df_sp.columns else df_sp.columns[0]
         return df_sp[col].astype(str).str.replace('.', '-', regex=False).str.upper().tolist()
     except Exception:
         path = os.path.join(__file__, '..', 'symbols.txt')

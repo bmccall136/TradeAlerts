@@ -44,14 +44,13 @@ def save_indicator_settings(
     bb_on,      bb_length,    bb_std,
     vol_on,     vol_multiplier,
     vwap_on,    vwap_threshold,
-    news_on
+    news_on,
+    rsi_slope_on, macd_hist_on, bb_breakout_on    
 ):
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.execute("PRAGMA journal_mode = WAL;")
     cur = conn.cursor()
-    # ensure row #1 exists
     cur.execute("INSERT OR IGNORE INTO indicator_settings (id) VALUES (1);")
-
     cur.execute("""
         UPDATE indicator_settings
            SET match_count      = ?,
@@ -61,7 +60,8 @@ def save_indicator_settings(
                bb_on            = ?, bb_length      = ?, bb_std         = ?,
                vol_on           = ?, vol_multiplier = ?,
                vwap_on          = ?, vwap_threshold = ?,
-               news_on          = ?
+               news_on          = ?,
+               rsi_slope_on     = ?, macd_hist_on   = ?, bb_breakout_on = ?   
          WHERE id = 1;
     """, (
         match_count,
@@ -71,10 +71,12 @@ def save_indicator_settings(
         int(bb_on),     bb_length,      bb_std,
         int(vol_on),    vol_multiplier,
         int(vwap_on),   vwap_threshold,
-        int(news_on)
+        int(news_on),
+        int(rsi_slope_on), int(macd_hist_on), int(bb_breakout_on)  
     ))
     conn.commit()
     conn.close()
+
 
 
 
@@ -96,22 +98,7 @@ def save_indicator_settings(
       - news_on:         0 or 1
     """
 def update_indicator_settings(settings: dict):
-    """
-    Persist all indicator lengths/thresholds + on/off toggles.
-    Must be called after the one‐time migration above.
-    """
-    import sqlite3
-    from pathlib import Path
-
-    DB = Path(__file__).parent.parent / 'alerts.db'
-    conn = sqlite3.connect(DB, timeout=30)
-    conn.execute("PRAGMA journal_mode = WAL;")
-    cur = conn.cursor()
-
-    # ensure row #1 exists
-    cur.execute("INSERT OR IGNORE INTO indicator_settings (id) VALUES (1);")
-
-    # one‐shot update of everything:
+    # ... ensure id=1 row exists ...
     cur.execute("""
         UPDATE indicator_settings
            SET sma_length     = ?,
@@ -131,7 +118,8 @@ def update_indicator_settings(settings: dict):
                macd_on        = ?,
                bb_on          = ?,
                vol_on         = ?,
-               vwap_on        = ?
+               vwap_on        = ?,
+               rsi_slope_on   = ?, macd_hist_on = ?, bb_breakout_on = ?   # ← added columns
          WHERE id = 1
     """, (
         settings["sma_length"],
@@ -152,7 +140,9 @@ def update_indicator_settings(settings: dict):
         1 if settings["bb_on"] else 0,
         1 if settings["vol_on"] else 0,
         1 if settings["vwap_on"] else 0,
+        1 if settings["rsi_slope_on"] else 0,  1 if settings["macd_hist_on"] else 0,  1 if settings["bb_breakout_on"] else 0   # ← added params
     ))
+
 
     conn.commit()
     conn.close()
@@ -166,44 +156,46 @@ def get_all_indicator_settings():
     row = conn.execute("SELECT * FROM indicator_settings WHERE id = 1;").fetchone()
     conn.close()
 
-    # If we haven’t saved anything yet, return these defaults:
+    # Default values
     defaults = {
         'match_count':    0,
-        'sma_on':         True,  'sma_length':     20,
-        'rsi_on':         True,  'rsi_len':        14,
-        'rsi_overbought': 70,    'rsi_oversold':   30,
-        'macd_on':        True,  'macd_fast':      12,
-        'macd_slow':      26,    'macd_signal':    9,
-        'bb_on':          True,  'bb_length':      20,
+        'sma_on':         True,   'sma_length':     20,
+        'rsi_on':         True,   'rsi_len':        14,
+        'rsi_overbought': 70,     'rsi_oversold':   30,
+        'macd_on':        True,   'macd_fast':      12,
+        'macd_slow':      26,     'macd_signal':    9,
+        'bb_on':          True,   'bb_length':      20,
         'bb_std':         2.0,
-        'vol_on':         False, 'vol_multiplier': 1.0,
-        'vwap_on':        True,  'vwap_threshold': 1.0,
-        'news_on':        False
+        'vol_on':         False,  'vol_multiplier': 1.0,
+        'vwap_on':        True,   'vwap_threshold': 1.0,
+        'news_on':        False,
+        'rsi_slope_on':   False,  'macd_hist_on':   False,  'bb_breakout_on': False
     }
+
+    # If no row found, just return the defaults
     if not row:
         return defaults
 
-    return {
-            'match_count':    1,
-            'sma_on':         True,      # ← default on
-            'rsi_on':         False,
-            'macd_on':        False,
-            'bb_on':          False,
-            'vol_on':         False,
-            'vwap_on':        True,      # ← default on
-            'news_on':        True,      # ← default on
-            'sma_length':     20,
-            'rsi_len':        14,
-            'rsi_overbought': 70,
-            'rsi_oversold':   30,
-            'macd_fast':      12,
-            'macd_slow':      26,
-            'macd_signal':    9,
-            'bb_length':      20,
-            'bb_std':         2.0,
-            'vol_multiplier': 1.0,
-            'vwap_threshold': 1.0       # ← start at $1
-        }
+    # Merge DB row into defaults
+    settings = defaults.copy()
+    for key in row.keys():
+        if key in settings:
+            settings[key] = row[key]
+
+    # Ensure toggles are converted to bool
+    toggle_fields = [
+        'sma_on', 'rsi_on', 'macd_on', 'bb_on', 'vol_on',
+        'vwap_on', 'news_on', 'rsi_slope_on', 'macd_hist_on', 'bb_breakout_on'
+    ]
+    for field in toggle_fields:
+        settings[field] = bool(settings.get(field, False))
+
+    # Ensure match_count is int
+    settings['match_count'] = int(settings.get('match_count', 0))
+
+    return settings
+
+
 
 # -------------------------------------------------------------------------------
 def generate_sparkline(prices):

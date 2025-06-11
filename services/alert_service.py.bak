@@ -1,206 +1,331 @@
-# File: services/market_service.py
-
-import os
-import logging
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+import sqlite3
+import matplotlib
+# Use the Agg backend so matplotlib never tries to open a GUI
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import io
 from datetime import datetime
 
-import yfinance as yf
-import pandas as pd
+ALERTS_DB = 'alerts.db'
+DB_PATH = 'alerts.db'   # <-- adjust if your path is different
 
-from services.etrade_service import fetch_etrade_quote
-from services.indicators import (
-    calculate_macd,
-    compute_rsi,
-    compute_bollinger,
-    compute_sma
-)
-from services.news_service import fetch_latest_headlines
+# ------------------------------------------------------------------------------
+#  1) Make sure you have this table in alerts.db (run this once, e.g. in init_alerts_db.py):
+#
+#  CREATE TABLE IF NOT EXISTS indicator_settings (
+#      id                INTEGER PRIMARY KEY CHECK(id = 1),  -- exactly one row
+#      match_count       INTEGER NOT NULL DEFAULT 1,
+#      sma_length        INTEGER NOT NULL DEFAULT 20,
+#      rsi_len           INTEGER NOT NULL DEFAULT 14,
+#      rsi_overbought    INTEGER NOT NULL DEFAULT 70,
+#      rsi_oversold      INTEGER NOT NULL DEFAULT 30,
+#      macd_fast         INTEGER NOT NULL DEFAULT 12,
+#      macd_slow         INTEGER NOT NULL DEFAULT 26,
+#      macd_signal       INTEGER NOT NULL DEFAULT 9,
+#      bb_length         INTEGER NOT NULL DEFAULT 20,
+#      bb_std            REAL    NOT NULL DEFAULT 2.0,
+#      vol_multiplier    REAL    NOT NULL DEFAULT 1.0,   -- new: volume as multiple of avg.
+#      vwap_threshold    REAL    NOT NULL DEFAULT 0.0,   -- new: VWAP diff threshold (0=only up)
+#      news_on           INTEGER NOT NULL DEFAULT 0      -- 0 = off, 1 = on
+#  );
+#
+#  Note: Once you run the above CREATE TABLE, insert a single dummy row with id=1:
+#      INSERT OR IGNORE INTO indicator_settings (id) VALUES (1);
+#  Then your save/get functions will always operate on that row.
+# ------------------------------------------------------------------------------
 
-logger = logging.getLogger(__name__)
+# services/alert_service.py
+
+def save_indicator_settings(
+    match_count,
+    sma_on,     sma_length,
+    rsi_on,     rsi_len,      rsi_overbought,    rsi_oversold,
+    macd_on,    macd_fast,    macd_slow,         macd_signal,
+    bb_on,      bb_length,    bb_std,
+    vol_on,     vol_multiplier,
+    vwap_on,    vwap_threshold,
+    news_on,
+    rsi_slope_on, macd_hist_on, bb_breakout_on    # ← added parameters
+):
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn.execute("PRAGMA journal_mode = WAL;")
+    cur = conn.cursor()
+    cur.execute("INSERT OR IGNORE INTO indicator_settings (id) VALUES (1);")
+    cur.execute("""
+        UPDATE indicator_settings
+           SET match_count      = ?,
+               sma_on           = ?, sma_length      = ?,
+               rsi_on           = ?, rsi_len         = ?, rsi_overbought = ?, rsi_oversold = ?,
+               macd_on          = ?, macd_fast       = ?, macd_slow      = ?, macd_signal  = ?,
+               bb_on            = ?, bb_length      = ?, bb_std         = ?,
+               vol_on           = ?, vol_multiplier = ?,
+               vwap_on          = ?, vwap_threshold = ?,
+               news_on          = ?,
+               rsi_slope_on     = ?, macd_hist_on   = ?, bb_breakout_on = ?   # ← added columns
+         WHERE id = 1;
+    """, (
+        match_count,
+        int(sma_on),    sma_length,
+        int(rsi_on),    rsi_len,        rsi_overbought,   rsi_oversold,
+        int(macd_on),   macd_fast,      macd_slow,        macd_signal,
+        int(bb_on),     bb_length,      bb_std,
+        int(vol_on),    vol_multiplier,
+        int(vwap_on),   vwap_threshold,
+        int(news_on),
+        int(rsi_slope_on), int(macd_hist_on), int(bb_breakout_on)  # ← added params
+    ))
+    conn.commit()
+    conn.close()
 
 
-def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
+
+
+
     """
-    Fetch intraday data from Yahoo Finance with a timeout.
-    Returns a DataFrame or None on failure.
+    Insert or update the single row (id=1) in indicator_settings with all 12 columns:
+      - match_count:     how many of [SMA, RSI, MACD, BB, Volume, VWAP] to match
+      - sma_length:      period for SMA
+      - rsi_len:         period for RSI
+      - rsi_overbought:  RSI overbought threshold
+      - rsi_oversold:    RSI oversold threshold
+      - macd_fast:       MACD fast EMA period
+      - macd_slow:       MACD slow EMA period
+      - macd_signal:     MACD signal EMA period
+      - bb_length:       Bollinger Bands window
+      - bb_std:          Bollinger Bands std‐dev multiplier
+      - vol_multiplier:  Volume needs to be ≥ vol_multiplier × avg(volume)
+      - vwap_threshold:  VWAP diff must be ≥ this threshold (e.g. 0.0 means price>VWAP only)
+      - news_on:         0 or 1
     """
-    def _fetch():
-        try:
-            return yf.download(sym, period=period, interval=interval, progress=False, threads=False)
-        except Exception as e:
-            logger.error(f"[ERROR] Yahoo download {sym} failed: {e}")
-            return None
+def update_indicator_settings(settings: dict):
+    # ... ensure id=1 row exists ...
+    cur.execute("""
+        UPDATE indicator_settings
+           SET sma_length     = ?,
+               rsi_len        = ?,
+               rsi_overbought = ?,
+               rsi_oversold   = ?,
+               macd_fast      = ?,
+               macd_slow      = ?,
+               macd_signal    = ?,
+               bb_length      = ?,
+               bb_std         = ?,
+               vol_multiplier = ?,
+               vwap_threshold = ?,
+               news_on        = ?,
+               sma_on         = ?,
+               rsi_on         = ?,
+               macd_on        = ?,
+               bb_on          = ?,
+               vol_on         = ?,
+               vwap_on        = ?,
+               rsi_slope_on   = ?, macd_hist_on = ?, bb_breakout_on = ?   # ← added columns
+         WHERE id = 1
+    """, (
+        settings["sma_length"],
+        settings["rsi_len"],
+        settings["rsi_overbought"],
+        settings["rsi_oversold"],
+        settings["macd_fast"],
+        settings["macd_slow"],
+        settings["macd_signal"],
+        settings["bb_length"],
+        settings["bb_std"],
+        settings["vol_multiplier"],
+        settings["vwap_threshold"],
+        1 if settings["news_on"] else 0,
+        1 if settings["sma_on"] else 0,
+        1 if settings["rsi_on"] else 0,
+        1 if settings["macd_on"] else 0,
+        1 if settings["bb_on"] else 0,
+        1 if settings["vol_on"] else 0,
+        1 if settings["vwap_on"] else 0,
+        1 if settings["rsi_slope_on"] else 0,  1 if settings["macd_hist_on"] else 0,  1 if settings["bb_breakout_on"] else 0   # ← added params
+    ))
 
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(_fetch)
-        try:
-            return future.result(timeout=timeout)
-        except FuturesTimeout:
-            logger.error(f"[ERROR] Yahoo download {sym} timed out after {timeout}s")
-            return None
+
+    conn.commit()
+    conn.close()
 
 
-def analyze_symbol(sym):
-    """
-    Load settings (including on/off toggles), fetch data, compute indicators,
-    require all enabled triggers (excluding news), fetch news if enabled,
-    build display list, insert alert if passed.
-    Returns alert_payload or None.
-    """
-    # ── A) Load settings ──
-    settings       = get_all_indicator_settings()
-    sma_on         = bool(settings.get('sma_on', 1))
-    rsi_on         = bool(settings.get('rsi_on', 1))
-    macd_on        = bool(settings.get('macd_on', 1))
-    bb_on          = bool(settings.get('bb_on', 1))
-    vol_on         = bool(settings.get('vol_on', 1))
-    vwap_on        = bool(settings.get('vwap_on', 1))
-    news_on        = bool(settings.get('news_on', 0))
+# services/alert_service.py
 
-    sma_length     = settings['sma_length']
-    rsi_len        = settings['rsi_len']
-    rsi_ob         = settings['rsi_overbought']
-    rsi_os         = settings['rsi_oversold']
-    macd_fast      = settings['macd_fast']
-    macd_slow      = settings['macd_slow']
-    macd_signal    = settings['macd_signal']
-    bb_length      = settings['bb_length']
-    bb_std         = settings['bb_std']
-    vol_multiplier = settings['vol_multiplier']
-    vwap_threshold = settings['vwap_threshold']
+def get_all_indicator_settings():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT * FROM indicator_settings WHERE id = 1;").fetchone()
+    conn.close()
 
-    # ── B) Fetch price data ──
-    df = fetch_data_with_timeout(sym)
-    if df is None or df.empty:
-        logger.error(f"[SKIP] {sym}: no price data")
-        return None
-
-    # ── C) Fetch live price ──
-    try:
-        price_live = fetch_etrade_quote(sym)
-    except Exception as e:
-        logger.error(f"[SKIP] {sym}: E*TRADE error {e}")
-        return None
-    if price_live is None:
-        logger.error(f"[SKIP] {sym}: invalid live price")
-        return None
-    logger.info(f"{sym}: Price = ${price_live:.2f}")
-
-    # ── D) Company name ──
-    try:
-        info = yf.Ticker(sym).info
-        company = info.get('longName') or info.get('shortName') or sym
-    except Exception:
-        company = sym
-
-    # ── E) Prepare close series ──
-    close_col    = df['Close']
-    price_series = close_col.iloc[:,0] if isinstance(close_col, pd.DataFrame) else close_col
-    last_price   = price_series.iloc[-1]
-
-    # ── F) Compute indicators ──
-    sma_val        = compute_sma(price_series, length=sma_length)
-    rsi_val        = compute_rsi(price_series, period=rsi_len).iloc[-1]
-    macd_line, sig = calculate_macd(price_series, fast=macd_fast, slow=macd_slow, signal=macd_signal)
-    bb_up, *_      = compute_bollinger(price_series, window=bb_length, num_std=bb_std)
-
-    # Volume trigger
-    vol_col    = df['Volume']
-    vol_series = vol_col.iloc[:,0] if isinstance(vol_col, pd.DataFrame) else vol_col
-    vol_current = vol_series.iloc[-1]
-    avg_vol20   = vol_series.rolling(20).mean().iloc[-1]
-    vol_trigger = (vol_current >= vol_multiplier * avg_vol20)
-
-    # VWAP trigger
-    tp           = (df['High'] + df['Low'] + df['Close']) / 3
-    tp           = tp.iloc[:,0] if isinstance(tp, pd.DataFrame) else tp
-    tpv          = tp * vol_series
-    vwap_ser     = tpv.cumsum() / vol_series.cumsum()
-    latest_vwap  = vwap_ser.iloc[-1]
-    vwap_diff    = price_live - latest_vwap
-    vwap_trigger = (vwap_diff >= vwap_threshold)
-
-    # ── G) Build primary for indicators (exclude news) ──
-    primary = []
-    if sma_on and last_price > sma_val:
-        primary.append('SMA')
-    if rsi_on and rsi_val > rsi_ob:
-        primary.append('RSI_OB')
-    elif rsi_on and rsi_val < rsi_os:
-        primary.append('RSI_OS')
-    if macd_on and macd_line.iloc[-1] > sig.iloc[-1]:
-        primary.append('MACD')
-    if bb_on and last_price > bb_up.iloc[-1]:
-        primary.append('BB')
-    if vol_on and vol_trigger:
-        primary.append('VOLUME')
-    if vwap_on and vwap_trigger:
-        primary.append('VWAP')
-
-    # ── H) Require all enabled triggers (excluding news) ──
-    required = sum([sma_on, rsi_on, macd_on, bb_on, vol_on, vwap_on])
-    if len(primary) < required:
-        logger.info(f"[SKIP] {sym}: only {len(primary)}/{required} enabled triggers")
-        return None
-
-    # ── I) Fetch news only if enabled ──
-    headlines = []
-    if news_on:
-        try:
-            headlines = fetch_latest_headlines(sym)
-        except Exception as e:
-            logger.warning(f"[NEWS] {sym}: {e}")
-        if headlines:
-            primary.append('NEWS')
-
-    # ── J) Build display triggers ──
-    display = []
-    if sma_on and last_price > sma_val:
-        display.append(f"SMA 📈 ({sma_length})")
-    if rsi_on and rsi_val > rsi_ob:
-        display.append('RSI 📈')
-    if macd_on and macd_line.iloc[-1] > sig.iloc[-1]:
-        display.append('MACD 🚀')
-    if bb_on and last_price > bb_up.iloc[-1]:
-        display.append('BB 📈')
-    if vol_on and vol_trigger:
-        display.append(f"VOL 🔊 ({vol_current/avg_vol20:.2f}×)")
-    if vwap_on and vwap_trigger:
-        display.append(f"VWAP+ (${vwap_diff:.2f})")
-    if news_on and headlines:
-        display.append('📰')
-
-    # ── K) Insert and return ──
-    payload = {
-        'symbol':    sym,
-        'price':     price_live,
-        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'name':      company,
-        'vwap':      round(latest_vwap, 2),
-        'vwap_diff': round(vwap_diff, 2),
-        'triggers':  ','.join(display),
-        'sparkline': generate_sparkline(price_series.tolist())
+    # Default values
+    defaults = {
+        'match_count':    0,
+        'sma_on':         True,   'sma_length':     20,
+        'rsi_on':         True,   'rsi_len':        14,
+        'rsi_overbought': 70,     'rsi_oversold':   30,
+        'macd_on':        True,   'macd_fast':      12,
+        'macd_slow':      26,     'macd_signal':    9,
+        'bb_on':          True,   'bb_length':      20,
+        'bb_std':         2.0,
+        'vol_on':         False,  'vol_multiplier': 1.0,
+        'vwap_on':        True,   'vwap_threshold': 1.0,
+        'news_on':        False,
+        'rsi_slope_on':   False,  'macd_hist_on':   False,  'bb_breakout_on': False
     }
-    insert_alert(**payload)
-    logger.info(f"[ALERT] {sym}: {display}")
-    return payload
+
+    # If no row found, just return the defaults
+    if not row:
+        return defaults
+
+    # Merge DB row into defaults
+    settings = defaults.copy()
+    for key in row.keys():
+        if key in settings:
+            settings[key] = row[key]
+
+    # Ensure toggles are converted to bool
+    toggle_fields = [
+        'sma_on', 'rsi_on', 'macd_on', 'bb_on', 'vol_on',
+        'vwap_on', 'news_on', 'rsi_slope_on', 'macd_hist_on', 'bb_breakout_on'
+    ]
+    for field in toggle_fields:
+        settings[field] = bool(settings.get(field, False))
+
+    # Ensure match_count is int
+    settings['match_count'] = int(settings.get('match_count', 0))
+
+    return settings
 
 
-def get_symbols(simulation=False):
+
+# -------------------------------------------------------------------------------
+def generate_sparkline(prices):
     """
-    Return a list of tickers (S&P 500 or fallback).
+    Given a list of prices, produce a tiny black-background sparkline (yellow line)
+    and return it as an SVG string.
     """
-    try:
-        tables = pd.read_html(
-            "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
-            header=0
+    fig, ax = plt.subplots(figsize=(2.0, 0.4), dpi=100)
+    fig.patch.set_facecolor('black')
+    ax.set_facecolor('black')
+    ax.plot(prices, color='yellow', linewidth=1.25)
+    ax.axis('off')
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format='svg', bbox_inches='tight', pad_inches=0, transparent=True)
+    plt.close(fig)
+
+    svg_data = buf.getvalue().decode()
+    # Strip everything before the first <svg> tag
+    svg_data = svg_data.split('<svg', 1)[1]
+    svg_data = f'<svg{svg_data}'
+    return svg_data
+
+
+def get_active_alerts():
+    """
+    Return a list of dicts for all alerts where cleared=0,
+    deduplicated so only the newest entry per symbol remains,
+    and with a `has_news` flag set to True if there are any headlines.
+    """
+    import sqlite3
+    from services.news_service import fetch_latest_headlines
+
+    # 1) grab all uncleared alerts
+    conn = sqlite3.connect(ALERTS_DB)
+    c = conn.cursor()
+    c.execute(
+        "SELECT id, symbol, name, price, vwap, vwap_diff, triggers, sparkline, timestamp "
+        "FROM alerts "
+        "WHERE cleared=0 "
+        "ORDER BY timestamp DESC"
+    )
+    rows = c.fetchall()
+    columns = [desc[0] for desc in c.description]
+    conn.close()
+
+    # 2) dedupe by symbol, keeping only the newest
+    seen = set()
+    deduped = []
+    for row in rows:
+        symbol = row[1]
+        if symbol not in seen:
+            seen.add(symbol)
+            deduped.append(row)
+
+    # 3) build alert dicts and add `has_news`
+    alerts = []
+    for row in deduped:
+        d = dict(zip(columns, row))
+        # only mark has_news if there are any headlines
+        d['has_news'] = bool(fetch_latest_headlines(d['symbol']))
+        alerts.append(d)
+
+    return alerts
+
+
+
+def insert_alert(symbol, price, timestamp, name, vwap, vwap_diff, triggers, sparkline):
+    """
+    Delete any existing alert for this symbol, then insert the new one with cleared=0.
+    """
+    conn = sqlite3.connect(ALERTS_DB)
+    c = conn.cursor()
+    c.execute("DELETE FROM alerts WHERE symbol=?", (symbol,))
+    c.execute(
+        "INSERT INTO alerts "
+        "(symbol, price, timestamp, name, vwap, vwap_diff, triggers, sparkline, cleared) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)",
+        (symbol, price, timestamp, name, vwap, vwap_diff, triggers, sparkline)
+    )
+    conn.commit()
+    conn.close()
+
+
+def mark_alert_cleared(alert_id):
+    """
+    Mark a single alert row (by its id) as cleared=1.
+    """
+    conn = sqlite3.connect(ALERTS_DB)
+    c = conn.cursor()
+    c.execute("UPDATE alerts SET cleared=1 WHERE id=?", (alert_id,))
+    conn.commit()
+    conn.close()
+
+
+def clear_all_alerts():
+    """
+    Mark every alert in the DB as cleared=1.
+    """
+    conn = sqlite3.connect(ALERTS_DB)
+    c = conn.cursor()
+    c.execute("UPDATE alerts SET cleared=1")
+    conn.commit()
+    conn.close()
+
+
+def clear_alerts_by_filter(filter_type, value):
+    """
+    Clear alerts either by symbol or by trigger substring:
+      - If filter_type == 'symbol', set cleared=1 where symbol = value.
+      - If filter_type == 'trigger', set cleared=1 where triggers LIKE '%value%'.
+    """
+    conn = sqlite3.connect(ALERTS_DB)
+    c = conn.cursor()
+    if filter_type == 'symbol':
+        c.execute("UPDATE alerts SET cleared=1 WHERE symbol=?", (value,))
+    elif filter_type == 'trigger':
+        c.execute(
+            "UPDATE alerts SET cleared=1 WHERE triggers LIKE ?",
+            (f"%{value}%",)
         )
-        df_sp = tables[0]
-        col   = 'Symbol' if 'Symbol' in df_sp.columns else df_sp.columns[0]
-        return df_sp[col].astype(str).str.replace('.', '-', regex=False).str.upper().tolist()
-    except Exception:
-        path = os.path.join(__file__, '..', 'symbols.txt')
-        if os.path.exists(path):
-            return [l.strip().upper() for l in open(path) if l.strip()]
-        return ['AAPL', 'MSFT', 'GOOG', 'TSLA']
+    conn.commit()
+    conn.close()
+
+def clear_alert_by_id(alert_id):
+    conn = sqlite3.connect(ALERTS_DB)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM alerts WHERE id = ?", (alert_id,))
+    conn.commit()
+    conn.close()
+
+# Expose get_alerts under this name so api.py can import it
+get_alerts = get_active_alerts

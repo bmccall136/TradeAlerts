@@ -198,6 +198,38 @@
           {% endfor %}
         </select>
       </div>
+<hr class="my-3 border-secondary">
+<div class="row mb-4">
+  <div class="col-auto">
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" id="rsi_slope_on" name="rsi_slope_on"
+             {% if settings.rsi_slope_on %}checked{% endif %}>
+      <label class="form-check-label text-warning" for="rsi_slope_on">
+        📈 Require RSI Slope > 0
+      </label>
+    </div>
+  </div>
+  <div class="col-auto">
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" id="macd_hist_on" name="macd_hist_on"
+             {% if settings.macd_hist_on %}checked{% endif %}>
+      <label class="form-check-label text-warning" for="macd_hist_on">
+        📊 Require MACD Histogram > 0.5
+      </label>
+    </div>
+  </div>
+  <div class="col-auto">
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" id="bb_breakout_on" name="bb_breakout_on"
+             {% if settings.bb_breakout_on %}checked{% endif %}>
+      <label class="form-check-label text-warning" for="bb_breakout_on">
+        🚀 Require BB Breakout
+      </label>
+    </div>
+  </div>
+</div>
+
+	  </form>
 		<div class="d-flex justify-content-end mb-2">
 		  <form action="{{ url_for('clear_all_alerts') }}" method="post" class="d-inline">
 			<button type="submit" class="btn btn-sm btn-outline-warning">
@@ -205,6 +237,7 @@
 			</button>
 		  </form>
 		</div>
+		
   <!-- ─── Alerts Table ─── -->
   <div class="table-responsive">
     <table class="table table-striped table-bordered alerts-table text-white">
@@ -244,7 +277,7 @@
     <td>{% if alert.sparkline %}{{ alert.sparkline|safe }}{% else %}&mdash;{% endif %}</td>
     <td>{{ alert.triggers }}</td>
     <td><input type="number" name="qty" value="1" min="1" class="form-control form-control-sm qty-input"/></td>
-    <td><button class="btn-buy btn btn-sm w-100" onclick="buyStock(this)">Buy</button></td>
+    <td><button class="btn-buy btn btn-sm w-100">Buy</button></td>
 	<td>
 	  <form method="post" action="{{ url_for('clear_alert', id=alert.id) }}">
 		<button type="submit" class="btn btn-sm btn-outline-danger w-100">Clear</button>
@@ -254,6 +287,7 @@
   {% else %}
   <tr><td colspan="12" class="text-center">No alerts to display.</td></tr>
   {% endfor %}
+<script src="{{ url_for('static', filename='js/simulation.js') }}"></script>
 </tbody>
 
     </table>
@@ -261,6 +295,30 @@
 </div>
 
 <script>
+document.querySelectorAll(".buy-btn").forEach(button => {
+    button.addEventListener("click", () => {
+        const symbol = button.dataset.symbol;
+        const qty = parseInt(button.dataset.qty) || 1;
+
+        fetch("/simulation/buy", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ symbol, qty })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                alert(`Bought ${qty} shares of ${symbol}`);
+            } else {
+                alert(`Error: ${data.error}`);
+            }
+        })
+        .catch(err => {
+            alert("Request failed: " + err);
+        });
+    });
+});
+
 // Initialize Bootstrap popovers
 var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
 var popoverList = popoverTriggerList.map(function (el) { return new bootstrap.Popover(el); });

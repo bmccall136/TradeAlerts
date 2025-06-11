@@ -6,18 +6,6 @@
 <div class="container">
   <h2 class="text-warning text-center mb-4">Backtest Configuration & Results</h2>
 
-  {% set sma_labels = {10: "Short SMA (10)", 20: "Standard SMA (20)", 50: "Long SMA (50)", 100: "100-Day SMA (100)", 200: "200-Day SMA (200)"} %}
-  {% set rsi_len_labels = {7: "Fast RSI (7)", 14: "Std RSI (14)", 21: "Slow RSI (21)", 28: "Very Slow RSI (28)"} %}
-  {% set rsi_ob_labels = {70: "Overbought (70)", 75: "Very Overbought (75)", 80: "Extreme Overbought (80)", 85: "Max Overbought (85)"} %}
-  {% set rsi_os_labels = {20: "Oversold (20)", 25: "Very Oversold (25)", 30: "Extreme Oversold (30)", 35: "Max Oversold (35)"} %}
-  {% set macd_fast_labels = {8: "Fast EMA (8)", 12: "Fast EMA (12)", 16: "Fast EMA (16)"} %}
-  {% set macd_slow_labels = {18: "Slow EMA (18)", 26: "Slow EMA (26)", 34: "Slow EMA (34)"} %}
-  {% set macd_signal_labels = {6: "Signal SMA (6)", 9: "Signal SMA (9)", 12: "Signal SMA (12)"} %}
-  {% set bb_length_labels = {10: "BB Short (10)", 20: "BB Std (20)", 30: "BB Long (30)"} %}
-  {% set bb_std_labels = {1.5: "1.5σ", 2.0: "2σ", 2.5: "2.5σ"} %}
-  {% set vol_mult_labels = {1.0: "Normal ×1.0", 1.5: "High ×1.5", 2.0: "Very High ×2.0", 2.5: "Extreme ×2.5"} %}
-  {% set vwap_labels = {0.0: "No VWAP", 0.5: "≥ $0.5", 1.0: "≥ $1.0", 2.0: "≥ $2.0"} %}
-
   <form id="backtest-form" method="GET" action="{{ url_for('backtest_view') }}">
     <div class="filter-toggle-group mb-4 d-flex align-items-center w-100 flex-wrap">
       {% set toggles = [
@@ -37,10 +25,47 @@
           </label>
         </div>
       {% endfor %}
+      <div class="form-check form-switch me-3 mb-2">
+        <input class="form-check-input" type="checkbox" id="run_full_scan" name="run_full_scan">
+        <label class="form-check-label" for="run_full_scan">
+          <i class="bi bi-diagram-3"></i> Full Scanner Mode
+        </label>
+      </div>
       <button type="submit" class="btn btn-success ms-auto">
         <i class="bi bi-arrow-repeat"></i> Run Backtest
       </button>
     </div>
+<hr class="my-3 border-secondary">
+
+<div class="row mb-4">
+  <div class="col-auto">
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" id="rsi_slope_on" name="rsi_slope_on"
+             {% if settings.rsi_slope_on %}checked{% endif %}>
+      <label class="form-check-label text-warning" for="rsi_slope_on">
+        📈 Require RSI Slope > 0
+      </label>
+    </div>
+  </div>
+  <div class="col-auto">
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" id="macd_hist_on" name="macd_hist_on"
+             {% if settings.macd_hist_on %}checked{% endif %}>
+      <label class="form-check-label text-warning" for="macd_hist_on">
+        📊 Require MACD Histogram > 0.5
+      </label>
+    </div>
+  </div>
+  <div class="col-auto">
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" id="bb_breakout_on" name="bb_breakout_on"
+             {% if settings.bb_breakout_on %}checked{% endif %}>
+      <label class="form-check-label text-warning" for="bb_breakout_on">
+        🚀 Require BB Breakout
+      </label>
+    </div>
+  </div>
+</div>
 
     <div class="row g-3 mb-4 justify-content-start">
       <div class="col-md-3">
@@ -89,7 +114,7 @@
           <td>{{ t.action }}</td>
           <td>${{ t.price | round(2) }}</td>
           <td>{{ t.qty }}</td>
-		  <td>${{ t.pl | default(0) | round(2) }}</td>
+          <td>${{ t.pl | default(0) | round(2) }}</td>
         </tr>
         {% endfor %}
       </tbody>
