@@ -1,0 +1,23 @@
+function buyStock(button) {
+  const row = button.closest('tr');
+  const symbol = row.querySelector('td:nth-child(2)').innerText;
+  const qty = parseInt(row.querySelector('.qty-input').value) || 1;
+
+  fetch('/simulation/buy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbol, qty })
+  })
+  .then(response => {
+    console.log('Buy response status:', response.status);
+    row.remove();
+    alert(`Buy order sent for ${symbol} x${qty}`);
+  })
+ .catch(err => {
+  console.error('Buy fetch failed:', err);
+  console.log('Fetch body:', JSON.stringify({ symbol, qty }));
+  alert(`Buy request error, but alert cleared locally for ${symbol}.`);
+  row.remove();
+});
+
+}

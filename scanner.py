@@ -1,11 +1,25 @@
-from dotenv import load_dotenv
-load_dotenv()
+import os  # 👈 THIS was missing
 import time
 import json
 import logging
 from datetime import datetime, time as dt_time, timedelta
 from services.market_service import get_symbols, analyze_symbol
 from services.alert_service import insert_alert
+import sys
+
+# Ensure PID is saved relative to script location
+base_path = os.path.dirname(os.path.abspath(__file__))
+pid_file = os.path.join(base_path, "scanner.pid")
+
+try:
+    with open(pid_file, "w") as f:
+        f.write(str(os.getpid()))
+    print(f"[INIT] PID saved to {pid_file}")
+except Exception as e:
+    print(f"[ERROR] Could not write PID file: {e}")
+
+from dotenv import load_dotenv
+load_dotenv()
 
 
 logger = logging.getLogger(__name__)
