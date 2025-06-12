@@ -1,28 +1,29 @@
 document.addEventListener("DOMContentLoaded", function () {
+  // BUY button logic
   document.querySelectorAll(".buy-btn").forEach(button => {
-    button.addEventListener("click", function () {
-      const symbol = this.dataset.symbol;
-      const qty = parseInt(document.getElementById("qty").value) || 1;
+    button.addEventListener("click", () => {
+      const row = button.closest("tr");
+      const symbol = row.querySelector("td:nth-child(2)").textContent.trim();
+      const qty = parseInt(row.querySelector(".qty-input").value || "1");
 
-      fetch("/simulation/buy", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ symbol: symbol, qty: qty })
+      fetch('/simulation/buy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol, qty })
       })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          alert(`✅ Bought ${qty} share(s) of ${symbol}`);
-        } else {
-          alert(`❌ Buy failed: ${data.error}`);
-        }
-      })
-      .catch(err => {
-        console.error("Buy error:", err);
-        alert("Buy request failed.");
-      });
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            alert(`Buy order sent for ${symbol} x${qty}`);
+            row.remove();  // Now safe — row is defined
+          } else {
+            alert(`Buy failed: ${data.error}`);
+          }
+        })
+        .catch(err => {
+          console.error('Buy error:', err);
+          alert('Buy request error.');
+        });
     });
   });
 });

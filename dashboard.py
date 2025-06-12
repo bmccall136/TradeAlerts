@@ -2,6 +2,10 @@ from pathlib import Path
 import os
 import subprocess
 import sqlite3
+import threading
+import time
+
+scanner_active = False  # Global flag
 
 from datetime import datetime, timedelta
 from flask import request, render_template
@@ -18,6 +22,26 @@ from services.alert_service import (
     clear_all_alerts,
     insert_alert,
 )
+from functools import wraps
+from flask import request, Response
+
+USERNAME = os.environ.get("BASIC_AUTH_USER", "admin")
+PASSWORD = os.environ.get("BASIC_AUTH_PASS", "Shadow!")
+
+def check_auth(user, pw):
+    return user == USERNAME and pw == PASSWORD
+
+def authenticate():
+    return Response("⛔ Authentication Required", 401, {'WWW-Authenticate': 'Basic realm="Login Required"'})
+
+def require_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not check_auth(auth.username, auth.password):
+            return authenticate()
+        return f(*args, **kwargs)
+    return decorated
 
 # NEWS
 from services.news_service import fetch_latest_headlines, fetch_sentiment_for
@@ -50,6 +74,18 @@ SIM_DB   = 'simulation.db'  # Must match SIM_DB in simulation_service.py
 import subprocess
 import platform
 
+def scanner_loop():
+    global scanner_active
+    scanner_active = True
+    while True:
+        try:
+            from scanner import run_scan
+            run_scan()
+            print("[Scanner] ✅ Ran scan loop")
+        except Exception as e:
+            print(f"[Scanner] ❌ Error: {e}")
+        time.sleep(60)
+        
 @app.route("/start_scanner", methods=["POST"])
 def start_scanner():
     if platform.system() == "Windows":
@@ -262,6 +298,9 @@ def scanner_backtest_view():
 
     return render_template('scanner_backtest.html', trades=trades, summary=summary)
 
+@app.route("/health")
+def health_check():
+    return "OK", 200
 
 
 
@@ -346,25 +385,24 @@ def simulation():
 
 @app.route("/simulation/buy", methods=["POST"])
 def simulation_buy():
-    print("📥 Incoming /simulation/buy request")
     data = request.get_json()
-    print("Payload:", data)
-    qty    = int(data.get("qty", 0))
+    print("Received buy request:", data)
+    symbol = data.get("symbol")
+    qty = int(data.get("qty", 0))
 
     if not symbol or qty <= 0:
-        print("Invalid symbol or qty")  # 👈
+        print("Invalid symbol or qty:", symbol, qty)
         return jsonify({"error": "Invalid symbol or quantity"}), 400
 
     try:
         price = get_etrade_price(symbol)
         buy_stock(symbol, qty, price)
-        print(f"Buy executed: {symbol} x{qty} at ${price}")
+        print(f"✅ Buy executed: {symbol} x{qty} @ ${price}")
     except Exception as e:
-        print(f"Buy error for {symbol}: {e}")  # 👈
+        print(f"❌ Buy error for {symbol}: {e}")
         return jsonify({"error": str(e)}), 400
 
     return jsonify({"success": True, "cash": get_cash()}), 200
-
 
 @app.route("/simulation/sell", methods=["POST"])
 def simulation_sell():
@@ -478,14 +516,19 @@ def index():
         settings=settings,
         match_count=match_count
     )
+@app.before_request
+def secure_everything():
+    if request.path == "/health":
+        return  # Allow unauthenticated access to /health
+    return require_auth(lambda: None)()  # Apply auth to all other routes
 
-import os
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", "5000"))
-    host = "0.0.0.0"
-    print(f"🌐 Starting app on host={host} port={port}")
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")), debug=True)
+    # Local dev only
+    threading.Thread(target=scanner_loop, daemon=True).start()
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
 
 
 

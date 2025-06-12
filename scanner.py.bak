@@ -1,3 +1,4 @@
+import os  # 👈 THIS was missing
 from dotenv import load_dotenv
 load_dotenv()
 import time
@@ -6,6 +7,10 @@ import logging
 from datetime import datetime, time as dt_time, timedelta
 from services.market_service import get_symbols, analyze_symbol
 from services.alert_service import insert_alert
+
+# Save the PID so we can later kill it
+with open("scanner.pid", "w") as f:
+    f.write(str(os.getpid()))
 
 
 logger = logging.getLogger(__name__)
@@ -69,9 +74,9 @@ def main(simulation=False):
                 alert = analyze_symbol(sym)
                 if alert:
                     insert_alert(**alert)
-                    logger.info(f"→ [INSERTED] Alert for {sym} inserted successfully.")
+                    logger.info(f"→ Alert for {sym} inserted successfully.")
                 else:
-                    logger.info(f"→ [NO ALERT] {sym}: No alert generated this round.")
+                    logger.info(f"→ {sym}: No alert generated this round.")
             except Exception as e:
                 logger.error(f"Error scanning {sym}: {e}")
 

@@ -28,7 +28,7 @@
   table.alerts-table th:nth-child(5), table.alerts-table td:nth-child(5) { width: 8%; }
   table.alerts-table th:nth-child(6), table.alerts-table td:nth-child(6) { width: 8%; }
   table.alerts-table th:nth-child(7), table.alerts-table td:nth-child(7) { width: 6%; }
-  table.alerts-table th:nth-child(8), table.alerts-table td:nth-child(8) { width: 20%; }
+  table.alerts-table th:nth-child(8), table.alerts-table td:nth-child(8) { width: %; }
   table.alerts-table th:nth-child(9), table.alerts-table td:nth-child(9) { width: 12%; white-space: normal; }
   table.alerts-table th:nth-child(10), table.alerts-table td:nth-child(10) { width: 5%; }
   table.alerts-table th:nth-child(11), table.alerts-table td:nth-child(11) { width: 3%; }
@@ -225,12 +225,19 @@
       <label class="form-check-label text-warning" for="bb_breakout_on">
         🚀 Require BB Breakout
       </label>
-    </div>
+	</div>
   </div>
 </div>
-
 	  </form>
 		<div class="d-flex justify-content-end mb-2">
+	<form method="post" action="/start_scanner" style="display:inline;">
+		<button class="btn btn-success btn-sm">▶️ Start</button>
+	</form>
+	<form method="post" action="/stop_scanner" style="display:inline;">
+		<button class="btn btn-danger btn-sm">⛔ Stop</button>
+	</form>
+
+
 		  <form action="{{ url_for('clear_all_alerts') }}" method="post" class="d-inline">
 			<button type="submit" class="btn btn-sm btn-outline-warning">
 			  🧹 Clear All
@@ -248,66 +255,36 @@
       </thead>
 <tbody>
   {% for alert in alerts %}
-  <tr data-id="{{ alert.id }}" class="alert-row">
-    <td>{{ alert.timestamp }}</td>
+  <tr data-id="{{ alert.id }}">
+	<td>{{ alert.timestamp or "--" }}</td>
     <td>{{ alert.symbol }}</td>
     <td>{{ alert.name }}</td>
-	<td>
-	  {% if alert.price is not none %}
-		${{ '%.2f'|format(alert.price) }}
-	  {% else %}
-		&mdash;
-	  {% endif %}
-	</td>
-	<td>
-	  {% if alert.vwap is not none %}
-		${{ '%.2f'|format(alert.vwap) }}
-	  {% else %}
-		&mdash;
-	  {% endif %}
-	</td>
-	<td>
-	  {% if alert.vwap_diff is not none %}
-		{% if alert.vwap_diff < 0 %}
-		  <span class="text-danger">${{ '%.2f'|format(alert.vwap_diff) }}</span>
-		{% else %}
-		  <span class="text-success">+${{ '%.2f'|format(alert.vwap_diff) }}</span>
-		{% endif %}
-	  {% else %}
-		&mdash;
-	  {% endif %}
-	</td>
-
-
-    <!-- News column (7th) -->
-    <td class="text-center">
-      {% if alert.has_news %}
-        <button class="news-btn" onclick="showNews('{{ alert.symbol }}')">📰</button>
-        <div id="news-{{ alert.symbol }}" class="news-container"></div>
-      {% else %}
-        &mdash;
-      {% endif %}
-    </td>
-
-    <td>{% if alert.sparkline %}{{ alert.sparkline|safe }}{% else %}&mdash;{% endif %}</td>
+    <td>${{ "%.2f"|format(alert.price) }}</td>
+    <td>${{ "%.2f"|format(alert.vwap) }}</td>
+    <td>{{ alert.vwap_diff }}</td>
+    <td>{{ alert.news or "—" }}</td>
+	<td>{{ alert.sparkline|safe }}</td>
     <td>{{ alert.triggers }}</td>
-    <td><input type="number" name="qty" value="1" min="1" class="form-control form-control-sm qty-input"/></td>
-    <td><button class="btn-buy btn btn-sm w-100">Buy</button></td>
-	<td>
-	  <form method="post" action="{{ url_for('clear_alert', id=alert.id) }}">
-		<button type="submit" class="btn btn-sm btn-outline-danger w-100">Clear</button>
-	  </form>
-	</td>
+    <td>
+      <input type="number" class="qty-input" min="1" value="1" />
+    </td>
+    <td>
+<td>
+  <button class="btn btn-success btn-sm buy-btn">Buy</button>
+</td>
+    </td>
+    <td>
+      <button class="btn btn-danger btn-sm" onclick="clearAlert(this)">Clear</button>
+    </td>
   </tr>
-  {% else %}
-  <tr><td colspan="12" class="text-center">No alerts to display.</td></tr>
   {% endfor %}
-<script src="{{ url_for('static', filename='js/simulation.js') }}"></script>
 </tbody>
+
 
     </table>
   </div>
 </div>
+<script src="{{ url_for('static', filename='js/simulation.js') }}"></script>
 
 <script>
 document.querySelectorAll(".buy-btn").forEach(button => {
@@ -315,52 +292,28 @@ document.querySelectorAll(".buy-btn").forEach(button => {
         const symbol = button.dataset.symbol;
         const qty = parseInt(button.dataset.qty) || 1;
 
-        fetch("/simulation/buy", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ symbol, qty })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                alert(`Bought ${qty} shares of ${symbol}`);
-            } else {
-                alert(`Error: ${data.error}`);
-            }
-        })
-        .catch(err => {
-            alert("Request failed: " + err);
-        });
-    });
+fetch('/simulation/buy', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ symbol, qty })
+})
+.then(response => response.json())
+.then(data => {
+  if (data.success) {
+    alert(`Buy order sent for ${symbol} x${qty}`);
+    row.remove();  // ✅ Move inside the success block
+  } else {
+    alert(`Buy failed: ${data.error}`);
+  }
+})
+.catch(err => {
+  console.error('Buy error:', err);
+  alert('Buy request error.');
 });
 
 // Initialize Bootstrap popovers
 var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
 var popoverList = popoverTriggerList.map(function (el) { return new bootstrap.Popover(el); });
-
-function buyStock(button) {
-  const row = button.closest('tr');
-  const symbol = row.querySelector('td:nth-child(2)').innerText;
-  const qty = parseInt(row.querySelector('.qty-input').value) || 1;
-
-  fetch('/simulation/buy', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ symbol, qty })
-  })
-  .then(response => {
-    console.log('Buy response status:', response.status);
-    // Remove row regardless of success to prevent reappearing
-    row.remove();
-    alert(`Buy order sent for ${symbol} x${qty}`);
-  })
-  .catch(err => {
-    console.error('Buy error:', err);
-    // Still remove to avoid duplicates
-    row.remove();
-    alert(`Buy request error, but alert cleared locally for ${symbol}.`);
-  });
-}
 
 function showNews(symbol) {
   const container = document.getElementById(`news-${symbol}`);
@@ -374,6 +327,8 @@ function showNews(symbol) {
       container.innerHTML=html;
     }).catch(_=> container.innerHTML='<p style="color:red;">Error loading news.</p>');
 }
+</script>
+<script>
 function clearAlert(button) {
   const row = button.closest('tr');
   const id  = row.getAttribute('data-id');

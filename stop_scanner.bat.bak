@@ -1,0 +1,14 @@
+@echo off
+echo 🛑 Stopping scanner...
+
+if not exist scanner.pid (
+    echo ❌ No scanner.pid file found.
+    exit /b 1
+)
+
+set /p PID=<scanner.pid
+echo 🔪 Killing scanner process with PID: %PID%
+taskkill /PID %PID% /F
+
+del scanner.pid
+echo ✅ Done.

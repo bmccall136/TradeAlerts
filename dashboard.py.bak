@@ -2,6 +2,10 @@ from pathlib import Path
 import os
 import subprocess
 import sqlite3
+import threading
+import time
+
+scanner_active = False  # Global flag
 
 from datetime import datetime, timedelta
 from flask import request, render_template
@@ -18,6 +22,26 @@ from services.alert_service import (
     clear_all_alerts,
     insert_alert,
 )
+from functools import wraps
+from flask import request, Response
+
+USERNAME = os.environ.get("BASIC_AUTH_USER", "admin")
+PASSWORD = os.environ.get("BASIC_AUTH_PASS", "Shadow!")
+
+def check_auth(user, pw):
+    return user == USERNAME and pw == PASSWORD
+
+def authenticate():
+    return Response("⛔ Authentication Required", 401, {'WWW-Authenticate': 'Basic realm="Login Required"'})
+
+def require_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not check_auth(auth.username, auth.password):
+            return authenticate()
+        return f(*args, **kwargs)
+    return decorated
 
 # NEWS
 from services.news_service import fetch_latest_headlines, fetch_sentiment_for
@@ -42,12 +66,37 @@ from services.backtest_service import backtest
 # MARKET SCANNER
 from services.market_service import analyze_symbol, get_symbols
 
-
 app = Flask(__name__)
 app.secret_key = "replace_with_your_secret_key"
 
 DB_PATH  = 'alerts.db'
 SIM_DB   = 'simulation.db'  # Must match SIM_DB in simulation_service.py
+import subprocess
+import platform
+
+def scanner_loop():
+    global scanner_active
+    scanner_active = True
+    while True:
+        try:
+            from scanner import run_scan
+            run_scan()
+            print("[Scanner] ✅ Ran scan loop")
+        except Exception as e:
+            print(f"[Scanner] ❌ Error: {e}")
+        time.sleep(60)
+        
+@app.route("/start_scanner", methods=["POST"])
+def start_scanner():
+    if platform.system() == "Windows":
+        subprocess.Popen(["start", "start_scanner.bat"], shell=True)
+    return redirect(url_for('index'))
+
+@app.route("/stop_scanner", methods=["POST"])
+def stop_scanner():
+    if platform.system() == "Windows":
+        subprocess.call(["stop_scanner.bat"], shell=True)
+    return redirect(url_for('index'))
 
 @app.route('/run-checkpoint')
 def run_checkpoint():
@@ -99,14 +148,6 @@ def clear_alert(id):
     conn.close()
     flash(f'ℹ️ Alert #{id} cleared.', 'info')
     return redirect(url_for('index'))
-
-
-@app.route('/buy/<symbol>', methods=['POST'])
-def buy_stock_route(symbol):
-    # “Buy” route just flashes a message on the Alerts page
-    flash(f'🟢 Simulated BUY for {symbol}', 'success')
-    return redirect(url_for('index'))
-
 
 @app.route('/launch_auth', methods=['POST'])
 def launch_auth():
@@ -257,6 +298,9 @@ def scanner_backtest_view():
 
     return render_template('scanner_backtest.html', trades=trades, summary=summary)
 
+@app.route("/health")
+def health_check():
+    return "OK", 200
 
 
 
@@ -342,24 +386,23 @@ def simulation():
 @app.route("/simulation/buy", methods=["POST"])
 def simulation_buy():
     data = request.get_json()
-    print("Received buy request:", data)  # 👈 add this
+    print("Received buy request:", data)
     symbol = data.get("symbol")
-    qty    = int(data.get("qty", 0))
+    qty = int(data.get("qty", 0))
 
     if not symbol or qty <= 0:
-        print("Invalid symbol or qty")  # 👈
+        print("Invalid symbol or qty:", symbol, qty)
         return jsonify({"error": "Invalid symbol or quantity"}), 400
 
     try:
         price = get_etrade_price(symbol)
         buy_stock(symbol, qty, price)
-        print(f"Buy executed: {symbol} x{qty} at ${price}")
+        print(f"✅ Buy executed: {symbol} x{qty} @ ${price}")
     except Exception as e:
-        print(f"Buy error for {symbol}: {e}")  # 👈
+        print(f"❌ Buy error for {symbol}: {e}")
         return jsonify({"error": str(e)}), 400
 
     return jsonify({"success": True, "cash": get_cash()}), 200
-
 
 @app.route("/simulation/sell", methods=["POST"])
 def simulation_sell():
@@ -435,8 +478,10 @@ def index():
         bb_on,      bb_length,      bb_std,
         vol_on,     vol_multiplier,
         vwap_on,    vwap_threshold,
-        news_on
+        news_on,
+        rsi_slope_on, macd_hist_on, bb_breakout_on   # ← added new toggle parameters
     )
+
 
     # 5) Rebuild settings from current request for template
     settings = {
@@ -471,10 +516,17 @@ def index():
         settings=settings,
         match_count=match_count
     )
+@app.before_request
+@require_auth
+def secure_everything():
+    pass
+
+if __name__ == "__main__":
+    # Local dev only
+    threading.Thread(target=scanner_loop, daemon=True).start()
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
 
 
 
 
-
-if __name__ == '__main__':
-    app.run(debug=True)
