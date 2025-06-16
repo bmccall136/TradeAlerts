@@ -142,12 +142,16 @@ def clear_all_alerts():
 
 @app.route('/clear/<int:id>', methods=['POST'])
 def clear_alert(id):
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("DELETE FROM alerts WHERE id=?", (id,))
-    conn.commit()
-    conn.close()
-    flash(f'ℹ️ Alert #{id} cleared.', 'info')
-    return redirect(url_for('index'))
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("DELETE FROM alerts WHERE id=?", (id,))
+        conn.commit()
+        conn.close()
+        print(f"✅ Cleared alert #{id}")
+        return jsonify({"success": True})
+    except Exception as e:
+        print(f"❌ Error clearing alert #{id}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/launch_auth', methods=['POST'])
 def launch_auth():
@@ -385,24 +389,43 @@ def simulation():
 
 @app.route("/simulation/buy", methods=["POST"])
 def simulation_buy():
-    data = request.get_json()
-    print("Received buy request:", data)
-    symbol = data.get("symbol")
-    qty = int(data.get("qty", 0))
-
-    if not symbol or qty <= 0:
-        print("Invalid symbol or qty:", symbol, qty)
-        return jsonify({"error": "Invalid symbol or quantity"}), 400
-
+    from flask import current_app
     try:
-        price = get_etrade_price(symbol)
-        buy_stock(symbol, qty, price)
-        print(f"✅ Buy executed: {symbol} x{qty} @ ${price}")
-    except Exception as e:
-        print(f"❌ Buy error for {symbol}: {e}")
-        return jsonify({"error": str(e)}), 400
+        data   = request.get_json(force=True)
+        symbol = data.get("symbol")
+        qty    = int(data.get("qty", 1))
 
-    return jsonify({"success": True, "cash": get_cash()}), 200
+        # 1) Validate
+        if not symbol or qty <= 0:
+            return jsonify(success=False, error="Invalid symbol or quantity"), 400
+
+        # 2) Fetch current price from E*TRADE API
+        from services.etrade_service import fetch_etrade_quote
+        quote_data = fetch_etrade_quote(symbol)
+        if isinstance(quote_data, dict):
+            # tweak these keys if your API returns different field names
+            price = float(
+                quote_data.get("lastTrade") or
+                quote_data.get("closePrice") or
+                0
+            )
+        else:
+            price = float(quote_data)
+
+        current_app.logger.info(f"💲 Using E*TRADE price for {symbol}: {price}")
+
+        # 3) Perform the buy with the live price
+        result = buy_stock(symbol, qty, price)
+        if result:
+            return jsonify(success=True), 200
+        else:
+            current_app.logger.error("❌ buy_stock() returned False")
+            return jsonify(success=False, error="buy_stock() returned False"), 500
+
+    except Exception as e:
+        current_app.logger.exception("🚨 Exception in simulation_buy")
+        return jsonify(success=False, error=str(e)), 500
+
 
 @app.route("/simulation/sell", methods=["POST"])
 def simulation_sell():

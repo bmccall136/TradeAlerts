@@ -1,0 +1,31 @@
+    <tbody>
+      {% for alert in alerts %}
+      <tr>
+        <td>{{ alert.time }}</td>
+        <td>{{ alert.symbol }}</td>
+        <td>{{ alert.name }}</td>
+        <td>${{ "%.2f"|format(alert.price) }}</td>
+        <td>${{ "%.2f"|format(alert.vwap or 0) }}</td>
+        <td>${{ "%.2f"|format(alert.vwap_diff or 0) }}</td>
+        <td><input type="number" class="qty-input" min="1" value="1" /></td>
+        <td>
+          <button class="buy-btn btn btn-success btn-sm"
+            data-symbol="{{ alert.symbol }}"
+            data-price="{{ alert.price }}"
+            onclick="buyStock(this)">Buy</button>
+        </td>
+        <td>
+          <button class="btn btn-danger btn-sm"
+            onclick="clearAlert({{ alert.id }})">Clear</button>
+        </td>
+        <td>
+          {% if alert.sparkline %}
+            <img src="{{ alert.sparkline }}" class="sparkline-img" alt="sparkline">
+          {% endif %}
+        </td>
+        <td>
+          {{ alert.trigger }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>

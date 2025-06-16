@@ -92,6 +92,10 @@ def main(simulation=False):
         # pause between sweeps
         time.sleep(60)
 
+# At the bottom of scanner.py
+def run_scan():
+    # your scanning logic here
+    print("Running scan...")
 
 if __name__ == "__main__":
     main(simulation=False)
