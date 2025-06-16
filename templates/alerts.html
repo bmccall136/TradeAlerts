@@ -202,8 +202,14 @@
 <div class="row mb-4">
   <div class="col-auto">
     <div class="form-check">
-      <input class="form-check-input" type="checkbox" id="rsi_slope_on" name="rsi_slope_on"
-             {% if settings.rsi_slope_on %}checked{% endif %}>
+      <input
+        class="form-check-input indicator-setting"
+        type="checkbox"
+        id="rsi_slope_on"
+        name="rsi_slope_on"
+        value="1"
+        {% if settings.rsi_slope_on %}checked{% endif %}
+      >
       <label class="form-check-label text-warning" for="rsi_slope_on">
         📈 Require RSI Slope > 0
       </label>
@@ -211,8 +217,14 @@
   </div>
   <div class="col-auto">
     <div class="form-check">
-      <input class="form-check-input" type="checkbox" id="macd_hist_on" name="macd_hist_on"
-             {% if settings.macd_hist_on %}checked{% endif %}>
+      <input
+        class="form-check-input indicator-setting"
+        type="checkbox"
+        id="macd_hist_on"
+        name="macd_hist_on"
+        value="0"
+        {% if settings.macd_hist_on %}checked{% endif %}
+      >
       <label class="form-check-label text-warning" for="macd_hist_on">
         📊 Require MACD Histogram > 0.5
       </label>
@@ -220,14 +232,21 @@
   </div>
   <div class="col-auto">
     <div class="form-check">
-      <input class="form-check-input" type="checkbox" id="bb_breakout_on" name="bb_breakout_on"
-             {% if settings.bb_breakout_on %}checked{% endif %}>
+      <input
++        class="form-check-input indicator-setting"
++        type="checkbox"
++        id="bb_breakout_on"
++        name="bb_breakout_on"
++        value="1"
++        {% if settings.bb_breakout_on %}checked{% endif %}
++      >
       <label class="form-check-label text-warning" for="bb_breakout_on">
         🚀 Require BB Breakout
       </label>
-	</div>
+    </div>
   </div>
 </div>
+
 	  </form>
 		<div class="d-flex justify-content-end mb-2">
 	<form method="post" action="/start_scanner" style="display:inline;">
@@ -291,4 +310,29 @@
   <script src="{{ url_for('static', filename='js/simulation.js') }}"></script>
   -->
   <script src="{{ url_for('static', filename='js/alerts.js') }}"></script>
+  <script>
+  window.addEventListener('DOMContentLoaded',()=>{
+    document.querySelectorAll('.indicator-setting').forEach(el=>{
+      const key = el.name;
+      // 1) On load, rehydr ate from localStorage if present
+      const saved = localStorage.getItem(key);
+      if (saved !== null) {
+        if (el.type === 'checkbox') {
+          el.checked = saved === '1';
+        } else {
+          el.value = saved;
+        }
+      }
+      // 2) On each change, write back
+      el.addEventListener('change', ()=>{
+        if (el.type === 'checkbox') {
+          localStorage.setItem(key, el.checked ? '1':'0');
+        } else {
+          localStorage.setItem(key, el.value);
+        }
+      });
+    });
+  });
+</script>
+
 {% endblock %}
