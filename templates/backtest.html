@@ -35,13 +35,152 @@
         <i class="bi bi-arrow-repeat"></i> Run Backtest
       </button>
     </div>
+<div class="container">
+  {# ─── Indicator Settings Form ─── #}
+  {% set sma_labels = {10: "Short SMA (10)", 20: "Standard SMA (20)", 50: "Long SMA (50)", 100: "100-Day SMA (100)", 200: "200-Day SMA (200)"} %}
+  {% set rsi_len_labels = {7: "Fast RSI (7)", 14: "Std RSI (14)", 21: "Slow RSI (21)", 28: "Very Slow RSI (28)"} %}
+  {% set rsi_ob_labels = {70: "Overbought (70)", 75: "Very Overbought (75)", 80: "Extreme Overbought (80)", 85: "Max Overbought (85)"} %}
+  {% set rsi_os_labels = {20: "Oversold (20)", 25: "Very Oversold (25)", 30: "Extreme Oversold (30)", 35: "Max Oversold (35)"} %}
+  {% set macd_fast_labels = {8: "Fast EMA (8)", 12: "Fast EMA (12)", 16: "Fast EMA (16)"} %}
+  {% set macd_slow_labels = {18: "Slow EMA (18)", 26: "Slow EMA (26)", 34: "Slow EMA (34)"} %}
+  {% set macd_signal_labels = {6: "Signal SMA (6)", 9: "Signal SMA (9)", 12: "Signal SMA (12)"} %}
+  {% set bb_length_labels = {10: "BB Short (10)", 20: "BB Std (20)", 30: "BB Long (30)"} %}
+  {% set bb_std_labels = {1.5: "1.5σ", 2.0: "2σ", 2.5: "2.5σ"} %}
+  {% set vol_mult_labels = {1.0: "Normal ×1.0", 1.5: "High ×1.5", 2.0: "Very High ×2.0", 2.5: "Extreme ×2.5"} %}
+  {% set vwap_labels = {0.0: "No VWAP", 0.5: "≥ $0.5", 1.0: "≥ $1.0", 2.0: "≥ $2.0"} %}
+  <!-- Numeric‐filters row -->
+  <div class="row g-2 align-items-end mb-4">
+    <!-- SMA -->
+    <div class="col-6 col-md-2">
+      <label for="sma_length" class="form-label"><i class="bi bi-graph-up-arrow"></i> SMA</label>
+      <select id="sma_length" name="sma_length" class="form-select">
+        {% for v,l in sma_labels.items() %}
+          <option value="{{v}}" {% if settings.sma_length==v %}selected{% endif %}>{{l}}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <!-- RSI Len -->
+    <div class="col-6 col-md-1">
+      <label for="rsi_len" class="form-label"><i class="bi bi-speedometer2"></i> RSI Len</label>
+      <select id="rsi_len" name="rsi_len" class="form-select">
+        {% for v,l in rsi_len_labels.items() %}
+          <option value="{{v}}" {% if settings.rsi_len==v %}selected{% endif %}>{{l}}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <!-- RSI OB -->
+    <div class="col-6 col-md-1">
+      <label for="rsi_overbought" class="form-label">OB</label>
+      <select id="rsi_overbought" name="rsi_overbought" class="form-select">
+        {% for v,l in rsi_ob_labels.items() %}
+          <option value="{{v}}" {% if settings.rsi_overbought==v %}selected{% endif %}>{{l}}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <!-- RSI OS -->
+    <div class="col-6 col-md-1">
+      <label for="rsi_oversold" class="form-label">OS</label>
+      <select id="rsi_oversold" name="rsi_oversold" class="form-select">
+        {% for v,l in rsi_os_labels.items() %}
+          <option value="{{v}}" {% if settings.rsi_oversold==v %}selected{% endif %}>{{l}}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <!-- MACD Fast -->
+    <div class="col-6 col-md-1">
+      <label for="macd_fast" class="form-label"><i class="bi bi-triangle-fill"></i> Fast</label>
+      <select id="macd_fast" name="macd_fast" class="form-select">
+        {% for v,l in macd_fast_labels.items() %}
+          <option value="{{v}}" {% if settings.macd_fast==v %}selected{% endif %}>{{l}}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <!-- MACD Slow -->
+    <div class="col-6 col-md-1">
+      <label for="macd_slow" class="form-label">Slow</label>
+      <select id="macd_slow" name="macd_slow" class="form-select">
+        {% for v,l in macd_slow_labels.items() %}
+          <option value="{{v}}" {% if settings.macd_slow==v %}selected{% endif %}>{{l}}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <!-- MACD Signal -->
+    <div class="col-6 col-md-1">
+      <label for="macd_signal" class="form-label">Signal</label>
+      <select id="macd_signal" name="macd_signal" class="form-select">
+        {% for v,l in macd_signal_labels.items() %}
+          <option value="{{v}}" {% if settings.macd_signal==v %}selected{% endif %}>{{l}}</option>
+        {% endfor %}
+      </select>
+    </div>
+      <!-- 9) BB length -->
+      <div class="col-6 col-md-1">
+        <label for="bb_length" class="form-label">
+          <i class="bi bi-bar-chart-fill"></i> BB
+          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                title="Bollinger Band Length" data-bs-content="Window length for moving average in Bollinger Bands. Determines centerline period."
+          ><i class="bi bi-info-circle-fill"></i></span>
+        </label>
+        <select id="bb_length" name="bb_length" class="form-select">
+          {% for value,label in bb_length_labels.items() %}
+            <option value="{{ value }}" {% if settings.bb_length==value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <!-- 10) BB std -->
+      <div class="col-6 col-md-1">
+        <label for="bb_std" class="form-label">
+          <span class="visually-hidden">BB Std Dev</span>
+          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                title="Bollinger Band Std Dev" data-bs-content="Number of standard deviations from moving average for upper/lower bands."
+          ><i class="bi bi-info-circle-fill"></i></span>
+        </label>
+        <select id="bb_std" name="bb_std" class="form-select">
+          {% for value,label in bb_std_labels.items() %}
+            <option value="{{ value }}" {% if settings.bb_std==value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <!-- 11) Volume multiplier -->
+      <div class="col-6 col-md-1">
+        <label for="vol_multiplier" class="form-label">
+          <i class="bi bi-bar-chart-lines"></i> Vol
+          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                title="Volume Multiplier" data-bs-content="Current volume must exceed (multiplier × 20-period average volume) to trigger."
+          ><i class="bi bi-info-circle-fill"></i></span>
+        </label>
+        <select id="vol_multiplier" name="vol_multiplier" class="form-select">
+          {% for value,label in vol_mult_labels.items() %}
+            <option value="{{ value }}" {% if settings.vol_multiplier==value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <!-- 12) VWAP threshold -->
+      <div class="col-6 col-md-1">
+        <label for="vwap_threshold" class="form-label">
+          <i class="bi bi-calculator"></i> VWAP
+          <span tabindex="0" class="ms-1 text-muted" data-bs-toggle="popover" data-bs-trigger="hover focus" data-bs-placement="top"
+                title="VWAP Threshold" data-bs-content="Price must exceed (live price - VWAP) ≥ threshold to trigger."
+          ><i class="bi bi-info-circle-fill"></i></span>
+        </label>
+        <select id="vwap_threshold" name="vwap_threshold" class="form-select">
+          {% for value,label in vwap_labels.items() %}
+            <option value="{{ value }}" {% if settings.vwap_threshold==value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
 <hr class="my-3 border-secondary">
-
 <div class="row mb-4">
   <div class="col-auto">
     <div class="form-check">
-      <input class="form-check-input" type="checkbox" id="rsi_slope_on" name="rsi_slope_on"
-             {% if settings.rsi_slope_on %}checked{% endif %}>
+      <input
+        class="form-check-input indicator-setting"
+        type="checkbox"
+        id="rsi_slope_on"
+        name="rsi_slope_on"
+        value="1"
+        {% if settings.rsi_slope_on %}checked{% endif %}
+      >
       <label class="form-check-label text-warning" for="rsi_slope_on">
         📈 Require RSI Slope > 0
       </label>
@@ -49,8 +188,14 @@
   </div>
   <div class="col-auto">
     <div class="form-check">
-      <input class="form-check-input" type="checkbox" id="macd_hist_on" name="macd_hist_on"
-             {% if settings.macd_hist_on %}checked{% endif %}>
+      <input
+        class="form-check-input indicator-setting"
+        type="checkbox"
+        id="macd_hist_on"
+        name="macd_hist_on"
+        value="0"
+        {% if settings.macd_hist_on %}checked{% endif %}
+      >
       <label class="form-check-label text-warning" for="macd_hist_on">
         📊 Require MACD Histogram > 0.5
       </label>
@@ -58,8 +203,14 @@
   </div>
   <div class="col-auto">
     <div class="form-check">
-      <input class="form-check-input" type="checkbox" id="bb_breakout_on" name="bb_breakout_on"
-             {% if settings.bb_breakout_on %}checked{% endif %}>
+      <input
++        class="form-check-input indicator-setting"
++        type="checkbox"
++        id="bb_breakout_on"
++        name="bb_breakout_on"
++        value="1"
++        {% if settings.bb_breakout_on %}checked{% endif %}
++      >
       <label class="form-check-label text-warning" for="bb_breakout_on">
         🚀 Require BB Breakout
       </label>
