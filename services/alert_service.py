@@ -6,202 +6,200 @@ import matplotlib.pyplot as plt
 import io
 from datetime import datetime
 
+# Database paths
 ALERTS_DB = 'alerts.db'
-DB_PATH = 'alerts.db'   # <-- adjust if your path is different
+DB_PATH = 'alerts.db'
 
-# ------------------------------------------------------------------------------
-#  1) Make sure you have this table in alerts.db (run this once, e.g. in init_alerts_db.py):
+# ----------------------------------------------------------------------------
+# Indicator Settings Table (run once via init script):
 #
-#  CREATE TABLE IF NOT EXISTS indicator_settings (
-#      id                INTEGER PRIMARY KEY CHECK(id = 1),  -- exactly one row
-#      match_count       INTEGER NOT NULL DEFAULT 1,
-#      sma_length        INTEGER NOT NULL DEFAULT 20,
-#      rsi_len           INTEGER NOT NULL DEFAULT 14,
-#      rsi_overbought    INTEGER NOT NULL DEFAULT 70,
-#      rsi_oversold      INTEGER NOT NULL DEFAULT 30,
-#      macd_fast         INTEGER NOT NULL DEFAULT 12,
-#      macd_slow         INTEGER NOT NULL DEFAULT 26,
-#      macd_signal       INTEGER NOT NULL DEFAULT 9,
-#      bb_length         INTEGER NOT NULL DEFAULT 20,
-#      bb_std            REAL    NOT NULL DEFAULT 2.0,
-#      vol_multiplier    REAL    NOT NULL DEFAULT 1.0,   -- new: volume as multiple of avg.
-#      vwap_threshold    REAL    NOT NULL DEFAULT 0.0,   -- new: VWAP diff threshold (0=only up)
-#      news_on           INTEGER NOT NULL DEFAULT 0      -- 0 = off, 1 = on
-#  );
-#
-#  Note: Once you run the above CREATE TABLE, insert a single dummy row with id=1:
-#      INSERT OR IGNORE INTO indicator_settings (id) VALUES (1);
-#  Then your save/get functions will always operate on that row.
-# ------------------------------------------------------------------------------
-
-# services/alert_service.py
+# CREATE TABLE IF NOT EXISTS indicator_settings (
+#     id                INTEGER PRIMARY KEY CHECK(id = 1),
+#     match_count       INTEGER NOT NULL DEFAULT 1,
+#     sma_on            INTEGER NOT NULL DEFAULT 1,
+#     sma_length        INTEGER NOT NULL DEFAULT 20,
+#     rsi_on            INTEGER NOT NULL DEFAULT 1,
+#     rsi_len           INTEGER NOT NULL DEFAULT 14,
+#     rsi_overbought    INTEGER NOT NULL DEFAULT 70,
+#     rsi_oversold      INTEGER NOT NULL DEFAULT 30,
+#     macd_on           INTEGER NOT NULL DEFAULT 0,
+#     macd_fast         INTEGER NOT NULL DEFAULT 12,
+#     macd_slow         INTEGER NOT NULL DEFAULT 26,
+#     macd_signal       INTEGER NOT NULL DEFAULT 9,
+#     bb_on             INTEGER NOT NULL DEFAULT 0,
+#     bb_length         INTEGER NOT NULL DEFAULT 20,
+#     bb_std            REAL    NOT NULL DEFAULT 2.0,
+#     vol_on            INTEGER NOT NULL DEFAULT 0,
+#     vol_multiplier    REAL    NOT NULL DEFAULT 1.0,
+#     vwap_on           INTEGER NOT NULL DEFAULT 1,
+#     vwap_threshold    REAL    NOT NULL DEFAULT 0.5,
+#     news_on           INTEGER NOT NULL DEFAULT 0,
+#     rsi_slope_on      INTEGER NOT NULL DEFAULT 0,
+#     macd_hist_on      INTEGER NOT NULL DEFAULT 0,
+#     bb_breakout_on    INTEGER NOT NULL DEFAULT 0
+# );
+# INSERT OR IGNORE INTO indicator_settings (id) VALUES (1);
+# ---------------------------------------------------------------------------
 
 def save_indicator_settings(
     match_count,
     sma_on,     sma_length,
-    rsi_on,     rsi_len,      rsi_overbought,    rsi_oversold,
-    macd_on,    macd_fast,    macd_slow,         macd_signal,
+    rsi_on,     rsi_len,      rsi_overbought, rsi_oversold,
+    macd_on,    macd_fast,    macd_slow,     macd_signal,
     bb_on,      bb_length,    bb_std,
     vol_on,     vol_multiplier,
     vwap_on,    vwap_threshold,
     news_on,
-    rsi_slope_on, macd_hist_on, bb_breakout_on    
+    rsi_slope_on, macd_hist_on, bb_breakout_on
 ):
+    """
+    Insert or update the single row (id=1) in indicator_settings with all parameters.
+    """
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.execute("PRAGMA journal_mode = WAL;")
     cur = conn.cursor()
     cur.execute("INSERT OR IGNORE INTO indicator_settings (id) VALUES (1);")
-    cur.execute("""
-        UPDATE indicator_settings
-           SET match_count      = ?,
-               sma_on           = ?, sma_length      = ?,
-               rsi_on           = ?, rsi_len         = ?, rsi_overbought = ?, rsi_oversold = ?,
-               macd_on          = ?, macd_fast       = ?, macd_slow      = ?, macd_signal  = ?,
-               bb_on            = ?, bb_length      = ?, bb_std         = ?,
-               vol_on           = ?, vol_multiplier = ?,
-               vwap_on          = ?, vwap_threshold = ?,
-               news_on          = ?,
-               rsi_slope_on     = ?, macd_hist_on   = ?, bb_breakout_on = ?   
-         WHERE id = 1;
-    """, (
-        match_count,
-        int(sma_on),    sma_length,
-        int(rsi_on),    rsi_len,        rsi_overbought,   rsi_oversold,
-        int(macd_on),   macd_fast,      macd_slow,        macd_signal,
-        int(bb_on),     bb_length,      bb_std,
-        int(vol_on),    vol_multiplier,
-        int(vwap_on),   vwap_threshold,
-        int(news_on),
-        int(rsi_slope_on), int(macd_hist_on), int(bb_breakout_on)  
-    ))
+    cur.execute(
+        """
+        UPDATE indicator_settings SET
+            match_count      = ?,
+            sma_on           = ?, sma_length      = ?,
+            rsi_on           = ?, rsi_len         = ?, rsi_overbought = ?, rsi_oversold = ?,
+            macd_on          = ?, macd_fast       = ?, macd_slow      = ?, macd_signal  = ?,
+            bb_on            = ?, bb_length      = ?, bb_std         = ?,
+            vol_on           = ?, vol_multiplier = ?,
+            vwap_on          = ?, vwap_threshold = ?,
+            news_on          = ?,
+            rsi_slope_on     = ?, macd_hist_on   = ?, bb_breakout_on = ?
+        WHERE id = 1;
+        """,
+        (
+            match_count,
+            int(sma_on),    sma_length,
+            int(rsi_on),    rsi_len,        rsi_overbought,   rsi_oversold,
+            int(macd_on),   macd_fast,      macd_slow,        macd_signal,
+            int(bb_on),     bb_length,      bb_std,
+            int(vol_on),    vol_multiplier,
+            int(vwap_on),   vwap_threshold,
+            int(news_on),
+            int(rsi_slope_on), int(macd_hist_on), int(bb_breakout_on)
+        )
+    )
     conn.commit()
     conn.close()
 
-
-
-
-
-    """
-    Insert or update the single row (id=1) in indicator_settings with all 12 columns:
-      - match_count:     how many of [SMA, RSI, MACD, BB, Volume, VWAP] to match
-      - sma_length:      period for SMA
-      - rsi_len:         period for RSI
-      - rsi_overbought:  RSI overbought threshold
-      - rsi_oversold:    RSI oversold threshold
-      - macd_fast:       MACD fast EMA period
-      - macd_slow:       MACD slow EMA period
-      - macd_signal:     MACD signal EMA period
-      - bb_length:       Bollinger Bands window
-      - bb_std:          Bollinger Bands std‐dev multiplier
-      - vol_multiplier:  Volume needs to be ≥ vol_multiplier × avg(volume)
-      - vwap_threshold:  VWAP diff must be ≥ this threshold (e.g. 0.0 means price>VWAP only)
-      - news_on:         0 or 1
-    """
-def update_indicator_settings(settings: dict):
-    # ... ensure id=1 row exists ...
-    cur.execute("""
-        UPDATE indicator_settings
-           SET sma_length     = ?,
-               rsi_len        = ?,
-               rsi_overbought = ?,
-               rsi_oversold   = ?,
-               macd_fast      = ?,
-               macd_slow      = ?,
-               macd_signal    = ?,
-               bb_length      = ?,
-               bb_std         = ?,
-               vol_multiplier = ?,
-               vwap_threshold = ?,
-               news_on        = ?,
-               sma_on         = ?,
-               rsi_on         = ?,
-               macd_on        = ?,
-               bb_on          = ?,
-               vol_on         = ?,
-               vwap_on        = ?,
-               rsi_slope_on   = ?, macd_hist_on = ?, bb_breakout_on = ?   # ← added columns
-         WHERE id = 1
-    """, (
-        settings["sma_length"],
-        settings["rsi_len"],
-        settings["rsi_overbought"],
-        settings["rsi_oversold"],
-        settings["macd_fast"],
-        settings["macd_slow"],
-        settings["macd_signal"],
-        settings["bb_length"],
-        settings["bb_std"],
-        settings["vol_multiplier"],
-        settings["vwap_threshold"],
-        1 if settings["news_on"] else 0,
-        1 if settings["sma_on"] else 0,
-        1 if settings["rsi_on"] else 0,
-        1 if settings["macd_on"] else 0,
-        1 if settings["bb_on"] else 0,
-        1 if settings["vol_on"] else 0,
-        1 if settings["vwap_on"] else 0,
-        1 if settings["rsi_slope_on"] else 0,  1 if settings["macd_hist_on"] else 0,  1 if settings["bb_breakout_on"] else 0   # ← added params
-    ))
-
-
-    conn.commit()
-    conn.close()
-
-
-# services/alert_service.py
 
 def get_all_indicator_settings():
+    """
+    Fetch the single row (id=1) of indicator_settings,
+    merge with defaults, and convert toggles to bool.
+    """
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    row = conn.execute("SELECT * FROM indicator_settings WHERE id = 1;").fetchone()
+    row = conn.execute(
+        "SELECT * FROM indicator_settings WHERE id = 1;"
+    ).fetchone()
     conn.close()
 
-    # Default values
     defaults = {
-        'match_count':    0,
-        'sma_on':         True,   'sma_length':     20,
-        'rsi_on':         True,   'rsi_len':        14,
-        'rsi_overbought': 70,     'rsi_oversold':   30,
-        'macd_on':        True,   'macd_fast':      12,
-        'macd_slow':      26,     'macd_signal':    9,
-        'bb_on':          True,   'bb_length':      20,
-        'bb_std':         2.0,
-        'vol_on':         False,  'vol_multiplier': 1.0,
-        'vwap_on':        True,   'vwap_threshold': 1.0,
-        'news_on':        False,
-        'rsi_slope_on':   False,  'macd_hist_on':   False,  'bb_breakout_on': False
+        'match_count':     0,
+        'sma_on':          True,  'sma_length':     20,
+        'rsi_on':          True,  'rsi_len':        14,
+        'rsi_overbought':  70,    'rsi_oversold':   30,
+        'macd_on':         False, 'macd_fast':      12,
+        'macd_slow':       26,    'macd_signal':    9,
+        'bb_on':           False, 'bb_length':      20,
+        'bb_std':          2.0,
+        'vol_on':          False, 'vol_multiplier': 1.0,
+        'vwap_on':         True,  'vwap_threshold': 0.5,
+        'news_on':         False,
+        'rsi_slope_on':    False, 'macd_hist_on':   False, 'bb_breakout_on': False
     }
 
-    # If no row found, just return the defaults
     if not row:
         return defaults
 
-    # Merge DB row into defaults
     settings = defaults.copy()
     for key in row.keys():
         if key in settings:
             settings[key] = row[key]
 
-    # Ensure toggles are converted to bool
-    toggle_fields = [
+    for flag in [
         'sma_on', 'rsi_on', 'macd_on', 'bb_on', 'vol_on',
         'vwap_on', 'news_on', 'rsi_slope_on', 'macd_hist_on', 'bb_breakout_on'
-    ]
-    for field in toggle_fields:
-        settings[field] = bool(settings.get(field, False))
+    ]:
+        settings[flag] = bool(settings.get(flag, False))
 
-    # Ensure match_count is int
     settings['match_count'] = int(settings.get('match_count', 0))
-
     return settings
 
 
+# Alias for external import
+get_indicator_settings = get_all_indicator_settings
 
-# -------------------------------------------------------------------------------
+def update_indicator_settings(settings: dict):
+    """
+    Persist a full settings dict (toggling flags + numerics) into the single
+    row (id=1) of indicator_settings.
+    """
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn.execute("PRAGMA journal_mode = WAL;")
+    cur = conn.cursor()
+    # ensure our single‐row exists
+    cur.execute("INSERT OR IGNORE INTO indicator_settings (id) VALUES (1);")
+    cur.execute("""
+        UPDATE indicator_settings
+           SET sma_on           = ?,
+               sma_length       = ?,
+               rsi_on           = ?,
+               rsi_len          = ?,
+               rsi_overbought   = ?,
+               rsi_oversold     = ?,
+               macd_on          = ?,
+               macd_fast        = ?,
+               macd_slow        = ?,
+               macd_signal      = ?,
+               bb_on            = ?,
+               bb_length        = ?,
+               bb_std           = ?,
+               vol_on           = ?,
+               vol_multiplier   = ?,
+               vwap_on          = ?,
+               vwap_threshold   = ?,
+               news_on          = ?,
+               rsi_slope_on     = ?,
+               macd_hist_on     = ?,
+               bb_breakout_on   = ?
+         WHERE id = 1
+    """, (
+        1 if settings["sma_on"] else 0,
+        settings["sma_length"],
+        1 if settings["rsi_on"] else 0,
+        settings["rsi_len"],
+        settings["rsi_overbought"],
+        settings["rsi_oversold"],
+        1 if settings["macd_on"] else 0,
+        settings["macd_fast"],
+        settings["macd_slow"],
+        settings["macd_signal"],
+        1 if settings["bb_on"] else 0,
+        settings["bb_length"],
+        settings["bb_std"],
+        1 if settings["vol_on"] else 0,
+        settings["vol_multiplier"],
+        1 if settings["vwap_on"] else 0,
+        settings["vwap_threshold"],
+        1 if settings["news_on"] else 0,
+        1 if settings["rsi_slope_on"] else 0,
+        1 if settings["macd_hist_on"] else 0,
+        1 if settings["bb_breakout_on"] else 0
+    ))
+    conn.commit()
+    conn.close()
+
 def generate_sparkline(prices):
     """
-    Given a list of prices, produce a tiny black-background sparkline (yellow line)
-    and return it as an SVG string.
+    Return a tiny black-background sparkline (yellow line) as SVG.
     """
     fig, ax = plt.subplots(figsize=(2.0, 0.4), dpi=100)
     fig.patch.set_facecolor('black')
@@ -213,67 +211,45 @@ def generate_sparkline(prices):
     fig.savefig(buf, format='svg', bbox_inches='tight', pad_inches=0, transparent=True)
     plt.close(fig)
 
-    svg_data = buf.getvalue().decode()
-    # Strip everything before the first <svg> tag
-    svg_data = svg_data.split('<svg', 1)[1]
-    svg_data = f'<svg{svg_data}'
-    return svg_data
+    svg = buf.getvalue().decode().split('<svg', 1)[1]
+    return f'<svg{svg}'
 
 
 def get_active_alerts():
     """
-    Return a list of dicts for all alerts where cleared=0,
-    deduplicated so only the newest entry per symbol remains,
-    and with a `has_news` flag set to True if there are any headlines.
+    Return list of dicts for alerts where cleared=0, deduped by symbol.
     """
-    import sqlite3
-    from services.news_service import fetch_latest_headlines
-
-    # 1) grab all uncleared alerts
     conn = sqlite3.connect(ALERTS_DB)
     c = conn.cursor()
     c.execute(
-        "SELECT id, symbol, name, price, vwap, vwap_diff, triggers, sparkline, timestamp "
-        "FROM alerts "
-        "WHERE cleared=0 "
-        "ORDER BY timestamp DESC"
+        "SELECT id, symbol, name, price, vwap, vwap_diff, triggers, sparkline, timestamp"
+        " FROM alerts WHERE cleared=0 ORDER BY timestamp DESC"
     )
     rows = c.fetchall()
-    columns = [desc[0] for desc in c.description]
+    columns = [d[0] for d in c.description]
     conn.close()
 
-    # 2) dedupe by symbol, keeping only the newest
-    seen = set()
-    deduped = []
+    seen, alerts = set(), []
+    from services.news_service import fetch_latest_headlines
     for row in rows:
-        symbol = row[1]
-        if symbol not in seen:
-            seen.add(symbol)
-            deduped.append(row)
-
-    # 3) build alert dicts and add `has_news`
-    alerts = []
-    for row in deduped:
+        sym = row[1]
+        if sym in seen: continue
+        seen.add(sym)
         d = dict(zip(columns, row))
-        # only mark has_news if there are any headlines
-        d['has_news'] = bool(fetch_latest_headlines(d['symbol']))
+        d['has_news'] = bool(fetch_latest_headlines(sym))
         alerts.append(d)
-
     return alerts
 
 
-
 def insert_alert(symbol, price, timestamp, name, vwap, vwap_diff, triggers, sparkline):
-    """
-    Delete any existing alert for this symbol, then insert the new one with cleared=0.
-    """
+    """Insert a new alert, deleting any existing for the symbol."""
     conn = sqlite3.connect(ALERTS_DB)
     c = conn.cursor()
     c.execute("DELETE FROM alerts WHERE symbol=?", (symbol,))
     c.execute(
-        "INSERT INTO alerts "
-        "(symbol, price, timestamp, name, vwap, vwap_diff, triggers, sparkline, cleared) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)",
+        "INSERT INTO alerts"
+        " (symbol, price, timestamp, name, vwap, vwap_diff, triggers, sparkline, cleared)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)",
         (symbol, price, timestamp, name, vwap, vwap_diff, triggers, sparkline)
     )
     conn.commit()
@@ -281,51 +257,35 @@ def insert_alert(symbol, price, timestamp, name, vwap, vwap_diff, triggers, spar
 
 
 def mark_alert_cleared(alert_id):
-    """
-    Mark a single alert row (by its id) as cleared=1.
-    """
     conn = sqlite3.connect(ALERTS_DB)
-    c = conn.cursor()
-    c.execute("UPDATE alerts SET cleared=1 WHERE id=?", (alert_id,))
+    conn.execute("UPDATE alerts SET cleared=1 WHERE id=?", (alert_id,))
     conn.commit()
     conn.close()
 
 
 def clear_all_alerts():
-    """
-    Mark every alert in the DB as cleared=1.
-    """
     conn = sqlite3.connect(ALERTS_DB)
-    c = conn.cursor()
-    c.execute("UPDATE alerts SET cleared=1")
+    conn.execute("UPDATE alerts SET cleared=1")
     conn.commit()
     conn.close()
 
 
 def clear_alerts_by_filter(filter_type, value):
-    """
-    Clear alerts either by symbol or by trigger substring:
-      - If filter_type == 'symbol', set cleared=1 where symbol = value.
-      - If filter_type == 'trigger', set cleared=1 where triggers LIKE '%value%'.
-    """
     conn = sqlite3.connect(ALERTS_DB)
     c = conn.cursor()
     if filter_type == 'symbol':
         c.execute("UPDATE alerts SET cleared=1 WHERE symbol=?", (value,))
-    elif filter_type == 'trigger':
-        c.execute(
-            "UPDATE alerts SET cleared=1 WHERE triggers LIKE ?",
-            (f"%{value}%",)
-        )
+    else:
+        c.execute("UPDATE alerts SET cleared=1 WHERE triggers LIKE ?", (f"%{value}%",))
     conn.commit()
     conn.close()
+
 
 def clear_alert_by_id(alert_id):
     conn = sqlite3.connect(ALERTS_DB)
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM alerts WHERE id = ?", (alert_id,))
+    conn.execute("DELETE FROM alerts WHERE id=?", (alert_id,))
     conn.commit()
     conn.close()
 
-# Expose get_alerts under this name so api.py can import it
+# Expose alias
 get_alerts = get_active_alerts

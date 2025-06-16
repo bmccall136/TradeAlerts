@@ -448,97 +448,62 @@ def simulation_sell():
     }), 200
 
 
-@app.route('/news/<symbol>')
-def news_for_symbol(symbol):
-    headlines = fetch_latest_headlines(symbol)
-    sentiment = news_sentiment(symbol)
-    return jsonify({'headlines': headlines, 'sentiment': sentiment})
+from flask import request, redirect, url_for, render_template
+from services.alert_service import (
+    get_all_indicator_settings,
+    update_indicator_settings,
+    get_alerts
+)
 
-
-### ────────────── SINGLE INDEX ROUTE (ALERTS + INDICATOR SETTINGS) ────────────── ###
-
-from flask import redirect, url_for, render_template
-from services.alert_service import get_alerts
-@app.route('/', methods=['GET', 'POST'])
+@app.route("/", methods=["GET"])
 def index():
-    # 1) Read on/off toggles
-    sma_on   = (request.args.get('sma_on')   == 'on')
-    rsi_on   = (request.args.get('rsi_on')   == 'on')
-    macd_on  = (request.args.get('macd_on')  == 'on')
-    bb_on    = (request.args.get('bb_on')    == 'on')
-    vol_on   = (request.args.get('vol_on')   == 'on')
-    vwap_on  = (request.args.get('vwap_on')  == 'on')
-    news_on  = (request.args.get('news_on')  == 'on')
-    rsi_slope_on     = (request.args.get('rsi_slope_on')     == 'on')
-    macd_hist_on     = (request.args.get('macd_hist_on')     == 'on')
-    bb_breakout_on   = (request.args.get('bb_breakout_on')   == 'on')
+    # 1) Load persisted settings (or defaults if first run)
+    settings = get_all_indicator_settings()
 
-    print("VWAP_ON:", vwap_on, "NEWS_ON:", news_on)
+    # 2) If the user clicked “Apply” (i.e. there's any query-string),
+    #    merge those overrides into `settings`, persist, then redirect.
+    if request.args:
+        # Boolean toggles: checked ⇒ present in request.args
+        for toggle in (
+            "sma_on","rsi_on","macd_on","bb_on","vol_on",
+            "vwap_on","news_on","rsi_slope_on","macd_hist_on","bb_breakout_on"
+        ):
+            settings[toggle] = (toggle in request.args)
 
-    # 2) Read numeric filter values
-    sma_length     = int(request.args.get('sma_length',     20))
-    rsi_len        = int(request.args.get('rsi_len',        14))
-    rsi_overbought = int(request.args.get('rsi_overbought', 70))
-    rsi_oversold   = int(request.args.get('rsi_oversold',   30))
-    macd_fast      = int(request.args.get('macd_fast',      12))
-    macd_slow      = int(request.args.get('macd_slow',      26))
-    macd_signal    = int(request.args.get('macd_signal',    9))
-    bb_length      = int(request.args.get('bb_length',      20))
-    bb_std         = float(request.args.get('bb_std',       2.0))
-    vol_multiplier = float(request.args.get('vol_multiplier', 1.0))
-    vwap_threshold = float(request.args.get('vwap_threshold', 0.0))
+        # Numeric filters: parse back out of the query string
+        for field in (
+            "sma_length","rsi_len","rsi_overbought","rsi_oversold",
+            "macd_fast","macd_slow","macd_signal",
+            "bb_length","bb_std","vol_multiplier","vwap_threshold"
+        ):
+            if field in request.args:
+                val = request.args[field]
+                # floating‐point for the ones that need it:
+                if field in ("bb_std","vol_multiplier","vwap_threshold"):
+                    settings[field] = float(val)
+                else:
+                    settings[field] = int(val)
 
-    # 3) Load alerts
+        # Persist and clean‐URL redirect
+        update_indicator_settings(settings)
+        return redirect(url_for("index"))
+
+    # 3) No query‐string ⇒ build your alerts with current settings,
+    #    update match_count, persist it, then render.
     alerts = get_alerts()
-    match_count = len(alerts)
+    settings["match_count"] = len(alerts)
+    update_indicator_settings(settings)
 
-    # 4) Save settings
-    save_indicator_settings(
-        match_count,
-        sma_on,     sma_length,
-        rsi_on,     rsi_len,        rsi_overbought,    rsi_oversold,
-        macd_on,    macd_fast,      macd_slow,         macd_signal,
-        bb_on,      bb_length,      bb_std,
-        vol_on,     vol_multiplier,
-        vwap_on,    vwap_threshold,
-        news_on,
-        rsi_slope_on, macd_hist_on, bb_breakout_on   # ← added new toggle parameters
-    )
-
-
-    # 5) Rebuild settings from current request for template
-    settings = {
-        'sma_on': sma_on,
-        'sma_length': sma_length,
-        'rsi_on': rsi_on,
-        'rsi_len': rsi_len,
-        'rsi_overbought': rsi_overbought,
-        'rsi_oversold': rsi_oversold,
-        'macd_on': macd_on,
-        'macd_fast': macd_fast,
-        'macd_slow': macd_slow,
-        'macd_signal': macd_signal,
-        'bb_on': bb_on,
-        'bb_length': bb_length,
-        'bb_std': bb_std,
-        'vol_on': vol_on,
-        'vol_multiplier': vol_multiplier,
-        'vwap_on': vwap_on,
-        'vwap_threshold': vwap_threshold,
-        'news_on': news_on,
-        'news_on': news_on,
-        'rsi_slope_on': rsi_slope_on,
-        'macd_hist_on': macd_hist_on,
-        'bb_breakout_on': bb_breakout_on,
-}
-
-    # 6) Render template
     return render_template(
-        'alerts.html',
+        "alerts.html",
         alerts=alerts,
         settings=settings,
-        match_count=match_count
+        match_count=settings["match_count"]
     )
+
+
+
+
 @app.before_request
 def secure_everything():
     if request.path == "/health":
