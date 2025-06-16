@@ -269,7 +269,9 @@
       <input type="number" class="qty-input" min="1" value="1" />
     </td>
     <td>
-      <button class="btn btn-success btn-sm" onclick="buyStock(this)">Buy</button>
+<td>
+  <button class="btn btn-success btn-sm buy-btn">Buy</button>
+</td>
     </td>
     <td>
       <button class="btn btn-danger btn-sm" onclick="clearAlert(this)">Clear</button>

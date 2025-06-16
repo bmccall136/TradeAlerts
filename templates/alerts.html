@@ -266,84 +266,29 @@
 	<td>{{ alert.sparkline|safe }}</td>
     <td>{{ alert.triggers }}</td>
     <td>
-      <input type="number" class="qty-input" min="1" value="1" />
-    </td>
-    <td>
-<td>
-  <button class="btn btn-success btn-sm buy-btn">Buy</button>
-</td>
-    </td>
-    <td>
-      <button class="btn btn-danger btn-sm" onclick="clearAlert(this)">Clear</button>
-    </td>
+		  <input type="number" class="qty-input" min="1" value="1" />
+		</td>
+		<td>
+		  <button
+			class="btn btn-success btn-sm buy-btn"
+			data-symbol="{{ alert.symbol }}"
+		  >Buy</button>
+		</td>
+		<td>
+		  <button
+			class="btn btn-danger btn-sm clear-btn"
+			data-id="{{ alert.id }}"
+		  >Clear</button>
+		</td>
+
   </tr>
-  {% endfor %}
-</tbody>
-
-
+      {% endfor %}
+    </tbody>
     </table>
   </div>
-</div>
-<script src="{{ url_for('static', filename='js/simulation.js') }}"></script>
 
-<script>
-document.querySelectorAll(".buy-btn").forEach(button => {
-    button.addEventListener("click", () => {
-        const symbol = button.dataset.symbol;
-        const qty = parseInt(button.dataset.qty) || 1;
-
-fetch('/simulation/buy', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ symbol, qty })
-})
-.then(response => response.json())
-.then(data => {
-  if (data.success) {
-    alert(`Buy order sent for ${symbol} x${qty}`);
-    row.remove();  // ✅ Move inside the success block
-  } else {
-    alert(`Buy failed: ${data.error}`);
-  }
-})
-.catch(err => {
-  console.error('Buy error:', err);
-  alert('Buy request error.');
-});
-
-// Initialize Bootstrap popovers
-var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
-var popoverList = popoverTriggerList.map(function (el) { return new bootstrap.Popover(el); });
-
-function showNews(symbol) {
-  const container = document.getElementById(`news-${symbol}`);
-  container.innerHTML = 'Loading...';
-  fetch(`/news/${symbol}`)
-    .then(r=>r.json())
-    .then(data=>{
-      let html='<ul>';
-      data.headlines.forEach(h=> html+=`<li><a href="${h.url}" target="_blank">${h.title}</a></li>`);
-      html+='</ul><p><strong>Sentiment:</strong>'+data.sentiment+'</p>';
-      container.innerHTML=html;
-    }).catch(_=> container.innerHTML='<p style="color:red;">Error loading news.</p>');
-}
-</script>
-<script>
-function clearAlert(button) {
-  const row = button.closest('tr');
-  const id  = row.getAttribute('data-id');
-
-  fetch(`/clear/${id}`, { method: 'POST' })
-    .then(response => {
-      if (!response.ok) throw new Error(response.statusText);
-      window.location.reload();
-    })
-    .catch(err => {
-      console.error('Clear error:', err);
-      alert('Failed to clear alert.');
-    });
-}
-
-</script>
-
+  <!-- Replace this:
+  <script src="{{ url_for('static', filename='js/simulation.js') }}"></script>
+  -->
+  <script src="{{ url_for('static', filename='js/alerts.js') }}"></script>
 {% endblock %}

@@ -1,23 +1,53 @@
-function buyStock(button) {
-  const row = button.closest('tr');
-  const symbol = row.querySelector('td:nth-child(2)').innerText;
-  const qty = parseInt(row.querySelector('.qty-input').value) || 1;
+// static/js/simulation.js
 
-  fetch('/simulation/buy', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ symbol, qty })
-  })
-  .then(response => {
-    console.log('Buy response status:', response.status);
-    row.remove();
-    alert(`Buy order sent for ${symbol} x${qty}`);
-  })
- .catch(err => {
-  console.error('Buy fetch failed:', err);
-  console.log('Fetch body:', JSON.stringify({ symbol, qty }));
-  alert(`Buy request error, but alert cleared locally for ${symbol}.`);
-  row.remove();
-});
+(function() {
+  document.addEventListener('DOMContentLoaded', () => {
+    // Buy buttons
+    document.querySelectorAll('.buy-btn').forEach(btn =>
+      btn.addEventListener('click', e => {
+        e.preventDefault();
+        handleSimulationAction(btn, 'buy');
+      })
+    );
 
-}
+    // Sell buttons
+    document.querySelectorAll('.sell-btn').forEach(btn =>
+      btn.addEventListener('click', e => {
+        e.preventDefault();
+        handleSimulationAction(btn, 'sell');
+      })
+    );
+
+    // Reset simulation
+    const resetBtn = document.getElementById('reset-simulation-btn');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', e => {
+        e.preventDefault();
+        if (confirm('Are you sure you want to reset the simulation?')) {
+          fetch('/simulation/reset', { method: 'POST' })
+            .then(_ => window.location.reload())
+            .catch(err => console.error('Reset failed:', err));
+        }
+      });
+    }
+  });
+
+  function handleSimulationAction(button, action) {
+    const row       = button.closest('tr');
+    const symbol    = row.querySelector('.symbol-cell').textContent.trim();
+    const qtyInput  = row.querySelector('.qty-input');
+    const qty       = qtyInput ? parseInt(qtyInput.value, 10) : 1;
+
+    fetch(`/simulation/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol, qty })
+    })
+    .then(response => {
+      if (!response.ok) throw new Error(`${action} failed`);
+      return response.json();
+    })
+    .then(_ => window.location.reload())
+    .catch(err => console.error(`${action} error:`, err));
+  }
+})();

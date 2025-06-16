@@ -54,6 +54,7 @@ def analyze_symbol(sym):
     # ── A) Load settings ──
     settings = get_all_indicator_settings()
     match_count = settings.get('match_count', 0)
+
     sma_on         = bool(settings.get('sma_on', 1))
     rsi_on         = bool(settings.get('rsi_on', 1))
     macd_on        = bool(settings.get('macd_on', 1))
@@ -168,19 +169,22 @@ def analyze_symbol(sym):
     required = toggles_enabled if match_count <= 0 else min(match_count, toggles_enabled)
 
     if len(primary) < required:
+        logger.info(f"[DEBUG] {sym} Triggers hit: {primary}, Required: {required}")
         logger.info(f"[SKIP] {sym}: only {len(primary)}/{required} enabled triggers")
         return None
 
 
-    # ── I) Fetch news only if enabled ──
-    headlines = []
-    if news_on:
-        try:
-            headlines = fetch_latest_headlines(sym)
-        except Exception as e:
-            logger.warning(f"[NEWS] {sym}: {e}")
-        if headlines:
-            primary.append('NEWS')
+
+    # 6) If any primary triggers fired, insert alert
+    if primary:
+        headlines = []
+        if news_on:
+            try:
+                headlines = fetch_latest_headlines(sym)
+            except Exception as e:
+                logger.warning(f"[NEWS] {sym}: {e}")
+            if headlines:
+                logger.info(f"[NEWS] {sym}: {len(headlines)} articles")
 
     # ── J) Build display triggers ──
     display = []

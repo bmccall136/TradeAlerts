@@ -4,6 +4,7 @@ import yfinance as yf
 from pathlib import Path
 from services.etrade_service import get_etrade_price
 
+
 SIM_DB = str(Path(__file__).resolve().parent.parent / "simulation.db")
 
 def _connect():
@@ -127,9 +128,13 @@ def buy_stock(symbol: str, quantity: int, price: float):
     2) Deduct cash = price * quantity from state.cash
     3) Add or update holdings (recompute avg_cost)
     """
+    from datetime import datetime
+    import sqlite3
+    from services.simulation_service import SIM_DB
+
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    conn = _connect()
-    cur = conn.cursor()
+    conn = sqlite3.connect(SIM_DB)
+    cur  = conn.cursor()  # Ensure cursor is defined properly
 
     total_cost = price * quantity
 
@@ -140,18 +145,18 @@ def buy_stock(symbol: str, quantity: int, price: float):
         conn.close()
         raise ValueError("Insufficient cash to buy.")
 
-    # 2) Insert trade
+    # 2) Insert trade record
     cur.execute(
         "INSERT INTO simulation_trades (symbol, action, price, qty, trade_time, pnl) "
         "VALUES (?, 'BUY', ?, ?, ?, NULL);",
         (symbol, price, quantity, timestamp)
     )
 
-    # 3) Subtract cash
+    # 3) Subtract cash in state
     new_cash = float(row[0]) - total_cost
     cur.execute("UPDATE state SET cash = ? WHERE id = 1;", (new_cash,))
 
-    # 4) Update / insert holding
+    # 4) Update or insert holding
     cur.execute("SELECT qty, avg_cost FROM holdings WHERE symbol = ?;", (symbol,))
     hold = cur.fetchone()
     if hold:
@@ -170,7 +175,7 @@ def buy_stock(symbol: str, quantity: int, price: float):
 
     conn.commit()
     conn.close()
-
+    return True
 
 def sell_stock(symbol: str, quantity: int, price: float):
     """

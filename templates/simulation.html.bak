@@ -23,8 +23,8 @@
 
     <!-- 3) HOLDINGS TABLE -->
     <h2 style="margin-top:40px;">Holdings</h2>
-    <table class="alerts-table simulation-table" style="width:100%; border-collapse:collapse;">
-      <thead>
+    <table class="table table-striped table-bordered alerts-table text-white">
+      <thead class="table-light">
         <tr>
           <th>Symbol</th>
           <th>Last Price</th>
@@ -173,5 +173,48 @@
       });
     }
   </script>
+<script>
+function buyStock(btn) {
+  const row = btn.closest("tr");
+  if (!row) return;
+
+  const symbol = row.querySelector("td:nth-child(2)")?.textContent.trim();
+  const qty = parseInt(row.querySelector(".qty-input")?.value || 1);
+
+  if (!symbol || isNaN(qty)) {
+    alert("Invalid buy request");
+    return;
+  }
+
+  fetch("/simulation/buy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ symbol, qty }),
+  })
+    .then((res) => {
+      if (res.ok) location.reload();
+      else alert("Buy failed.");
+    })
+    .catch((err) => {
+      console.error("Buy error:", err);
+    });
+}
+
+function clearAlert(btn) {
+  const row = btn.closest("tr");
+  if (!row) return;
+
+  const alertId = row.getAttribute("data-id");
+
+  fetch(`/clear/${alertId}`, { method: "POST" })
+    .then((res) => {
+      if (res.ok) row.remove();
+      else alert("Clear failed.");
+    })
+    .catch((err) => {
+      console.error("Clear error:", err);
+    });
+}
+</script>
 
 {% endblock %}
