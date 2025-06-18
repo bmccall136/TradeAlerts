@@ -46,12 +46,7 @@
         >
           Simulation
         </a>
-        <a
-          class="nav-link{% if request.path == '/backtest' %} active{% endif %}"
-          href="{{ url_for('backtest_view') }}"
-        >
-          Backtest
-        </a>
+		<a class="nav-link" href="{{ url_for('backtest_view') }}">Backtest</a>
      </div>
 
       {# 2) Spacer: this pushes the title to the center #}

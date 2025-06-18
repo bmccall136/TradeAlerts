@@ -1,1 +1,195 @@
-# Updated backtest_service.py
+import sqlite3
+import json
+from datetime import datetime
+
+import yfinance as yf
+import pandas as pd
+from collections import namedtuple
+
+from services.indicators import compute_sma, compute_rsi, calculate_macd, compute_bollinger
+from services.news_service import fetch_latest_headlines
+
+# Optional: log backtest runs/trades\ nBACKTEST_DB = 'backtest.db'
+
+# Settings tuple for dashboard import
+BacktestSettings = namedtuple('BacktestSettings', [
+    'start_date', 'end_date', 'starting_cash', 'max_per_trade',
+    'trailing_stop_pct', 'sell_after_days',
+    'sma_on', 'rsi_on', 'macd_on', 'bb_on', 'vwap_on', 'vwap_threshold', 'news_on'
+])
+
+def extract_backtest_settings(args):
+    return BacktestSettings(
+        start_date        = args.get('start_date', '2023-01-01'),
+        end_date          = args.get('end_date',   '2024-01-01'),
+        starting_cash     = int(args.get('starting_cash', 10000)),
+        max_per_trade     = int(args.get('max_per_trade', 1000)),
+        trailing_stop_pct = float(args.get('trailing_stop_pct', 0.0)),
+        sell_after_days   = int(args.get('sell_after_days')) if args.get('sell_after_days') else None,
+        sma_on            = 'sma_on'  in args,
+        rsi_on            = 'rsi_on'  in args,
+        macd_on           = 'macd_on' in args,
+        bb_on             = 'bb_on'   in args,
+        vwap_on           = 'vwap_on' in args,
+        vwap_threshold    = float(args.get('vwap_threshold', 0.0)),
+        news_on           = 'news_on' in args
+    )
+
+def _has_headlines(src):
+    if hasattr(src, 'empty'):
+        return not src.empty
+    try:
+        return len(src) > 0
+    except:
+        return False
+
+
+def log_backtest_run(config, summary):
+    conn = sqlite3.connect(BACKTEST_DB)
+    c = conn.cursor()
+    c.execute(
+        """
+        INSERT INTO backtest_runs (timestamp, config_json, summary_json)
+        VALUES (?, ?, ?)
+        """,
+        (datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'), json.dumps(config), json.dumps(summary))
+    )
+    run_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    return run_id
+
+
+def log_backtest_trade(run_id, symbol, action, price, qty, trade_time, pnl):
+    conn = sqlite3.connect(BACKTEST_DB)
+    c = conn.cursor()
+    c.execute(
+        """
+        INSERT INTO backtest_trades (run_id, symbol, action, price, qty, trade_time, pnl)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (run_id, symbol, action, price, qty, trade_time, pnl)
+    )
+    conn.commit()
+    conn.close()
+
+
+def calculate_indicators(df):
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    cols_lower = [c.lower() for c in df.columns]
+    idx = cols_lower.index('close') if 'close' in cols_lower else 0
+    close_series = df.iloc[:, idx].astype(float)
+    df['Close'] = close_series
+    delta = close_series.diff()
+    gain  = delta.clip(lower=0).rolling(14).mean()
+    loss  = (-delta.clip(upper=0)).rolling(14).mean()
+    df['RSI'] = 100 - (100 / (1 + (gain / loss)))
+    ema12 = close_series.ewm(span=12, adjust=False).mean()
+    ema26 = close_series.ewm(span=26, adjust=False).mean()
+    df['MACD']   = ema12 - ema26
+    df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+    mb    = close_series.rolling(20).mean()
+    std20 = close_series.rolling(20).std()
+    df['MB'] = mb
+    df['UB'] = mb + 2 * std20
+    df['LB'] = mb - 2 * std20
+    return df
+
+
+def backtest(
+    symbol,
+    start_date,
+    end_date,
+    initial_cash=10000,
+    max_trade_amount=1000,
+    max_trade_per_stock=None,
+    trailing_stop_pct=0.0,
+    sell_after_days=None,
+    sma_on=False,
+    rsi_on=False,
+    macd_on=False,
+    bb_on=False,
+    vwap_on=False,
+    vwap_threshold=0.0,
+    news_on=False,
+    log_to_db=False,
+    **kwargs
+):
+    # Override trade size
+    if max_trade_per_stock is not None:
+        max_trade_amount = max_trade_per_stock
+
+    # Normalize dot tickers to dash (e.g. BRK.B -> BRK-B)
+    yf_symbol = symbol.replace('.', '-')
+
+    # 1) Fetch via Ticker.history
+    try:
+        ticker = yf.Ticker(yf_symbol)
+        df     = ticker.history(
+            start       = start_date,
+            end         = end_date,
+            interval    = '1d',
+            auto_adjust = False
+        )
+    except Exception as e:
+        print(f"[ERROR] Fetch failed for {symbol} (as {yf_symbol}): {e}")
+        return [], 0.0
+    if df is None or df.empty:
+        print(f"[WARN] No Yahoo data for {symbol} (tried {yf_symbol}), skipping.")
+        return [], 0.0
+
+    # 2) Indicators
+    df = calculate_indicators(df)
+    df = df.loc[:, ~df.columns.duplicated()]
+
+    # 3) Ensure high/low/volume are Series
+    high   = df['High']
+    low    = df['Low']
+    volume = df['Volume']
+    if isinstance(high, pd.DataFrame):   high   = high.iloc[:, 0]
+    if isinstance(low, pd.DataFrame):    low    = low.iloc[:, 0]
+    if isinstance(volume, pd.DataFrame): volume = volume.iloc[:, 0]
+
+    # 4) VWAP & diff
+    tp        = (high + low + df['Close']) / 3
+    vwap_ser  = (tp * volume).cumsum() / volume.cumsum()
+    if isinstance(vwap_ser, pd.DataFrame): vwap_ser = vwap_ser.iloc[:, 0]
+    df['VWAP']      = vwap_ser
+    df['VWAP_Diff'] = df['Close'] - vwap_ser
+
+    # 5) Backtest loop
+    trades, cash, position = [], initial_cash, 0
+    for i in range(1, len(df)):
+        price = df['Open'].iloc[i] if 'Open' in df.columns else df['Close'].iloc[i]
+        if sma_on:
+            sma = df['Close'].iloc[:i+1].rolling(20).mean().iloc[-1]
+            if price <= sma:
+                continue
+        if vwap_on and df['VWAP_Diff'].iloc[i] < vwap_threshold:
+            continue
+        if news_on and not _has_headlines(fetch_latest_headlines(symbol)):
+            continue
+
+        raw_qty = min(cash, max_trade_amount) // price
+        if hasattr(raw_qty, 'item'): raw_qty = raw_qty.item()
+        qty = int(raw_qty)
+        if qty <= 0:
+            continue
+
+        cash     -= qty * price
+        position += qty
+        trades.append({'symbol':symbol,'action':'BUY','date':str(df.index[i]),'qty':qty,'price':price,'pnl':0})
+
+    # 6) Sell remainder
+    if position > 0:
+        final = df['Close'].iloc[-1]
+        cash  += position * final
+        pnl   = cash - initial_cash
+        trades.append({'symbol':symbol,'action':'SELL','date':str(df.index[-1]),'qty':position,'price':final,'pnl':pnl})
+
+    # 7) Return
+    return trades, float(cash - initial_cash)
+
+# alias for dashboard
+backtest_scanner = backtest

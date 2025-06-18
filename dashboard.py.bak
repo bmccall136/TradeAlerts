@@ -1,29 +1,123 @@
-from pathlib import Path
 import os
 import subprocess
 import sqlite3
 import threading
 import time
-
-scanner_active = False  # Global flag
-
+import platform
+from pathlib import Path
 from datetime import datetime, timedelta
-from flask import request, render_template
-from flask import (
-    Flask, render_template, redirect, url_for,
-    request, flash, jsonify
-)
-
-# ALERTS & INDICATOR SETTINGS
-from services.alert_service import (
-    save_indicator_settings,
-    get_all_indicator_settings,
-    get_alerts,
-    clear_all_alerts,
-    insert_alert,
-)
 from functools import wraps
-from flask import request, Response
+
+from flask import (
+    Flask, request, render_template,
+    redirect, url_for, flash, jsonify,
+    Response
+)
+# ── service imports for backtest ─────────────────────────────────────────────
+from services.scanner_backtest_service import backtest_scanner
+from services.market_service           import get_symbols
+# 1) Instantiate your app
+app = Flask(__name__)
+# ── Add this so flash() will work ───────────────────
+app.secret_key = os.environ.get('PokeChop!', 'PokeChop!')
+BACKTEST_DB = os.path.join(os.getcwd(), 'backtest.db')
+
+# 2) BacktestSettings + extractor
+from collections import namedtuple
+BacktestSettings = namedtuple('BacktestSettings', [
+    # … existing fields …,
+    'single_entry_only',
+    'use_trailing_stop',
+    'trailing_stop_pct',
+    'sell_after_days',
+    'start_date','end_date','starting_cash','max_per_trade',
+    'timeframe','trailing_stop_pct','sell_after_days',
+    'sma_on','rsi_on','macd_on','bb_on','vol_on','vwap_on','news_on',
+    'sma_length','rsi_len','rsi_overbought','rsi_oversold',
+    'macd_fast','macd_slow','macd_signal',
+    'bb_length','bb_std','vol_multiplier','vwap_threshold',
+])
+def extract_backtest_settings(args):
+    return BacktestSettings(
+        start_date        = args.get('start_date',     '2023-01-01'),
+        end_date          = args.get('end_date',       '2024-01-01'),
+        starting_cash     = int(args.get('starting_cash', 10000)),
+        max_per_trade     = int(args.get('max_per_trade',    1000)),
+        timeframe         = args.get('timeframe',       '6mo'),
+        trailing_stop_pct = float(args.get('trailing_stop_pct', 0.05)),
+        sell_after_days   = int(args.get('sell_after_days')) if args.get('sell_after_days') else None,
+        sma_on           = 'sma_on'  in args,
+        rsi_on           = 'rsi_on'  in args,
+        macd_on          = 'macd_on' in args,
+        bb_on            = 'bb_on'   in args,
+        vol_on           = 'vol_on'  in args,
+        vwap_on          = 'vwap_on' in args,
+        news_on          = 'news_on' in args,
+        sma_length       = int(args.get('sma_length',      20)),
+        rsi_len          = int(args.get('rsi_len',         14)),
+        rsi_overbought   = int(args.get('rsi_overbought',  70)),
+        rsi_oversold     = int(args.get('rsi_oversold',    30)),
+        macd_fast        = int(args.get('macd_fast',       12)),
+        macd_slow        = int(args.get('macd_slow',       26)),
+        macd_signal      = int(args.get('macd_signal',      9)),
+        bb_length        = int(args.get('bb_length',       20)),
+        bb_std           = float(args.get('bb_std',         2.0)),
+        vol_multiplier   = float(args.get('vol_multiplier', 1.0)),
+        vwap_threshold   = float(args.get('vwap_threshold', 0.0)),
+        single_entry_only  = 'single_entry_only'  in args,
+        use_trailing_stop  = 'use_trailing_stop'  in args,
+        trailing_stop_pct  = float(args.get('trailing_stop_pct', 0.05)),
+        sell_after_days    = int(args.get('sell_after_days')) if args.get('sell_after_days') else None,
+
+    )
+
+# 3) Register the /backtest route
+@app.route('/backtest')
+def backtest_view():
+    conn = sqlite3.connect(BACKTEST_DB)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute('SELECT id FROM backtest_runs ORDER BY id DESC LIMIT 1')
+    row = c.fetchone()
+    if not row:
+        trades, summary = [], {
+            'total_pnl':0.0,'num_trades':0,'wins':0,'losses':0,'by_symbol':{}
+        }
+    else:
+        run_id = row['id']
+        c.execute("""
+            SELECT symbol, action, trade_time AS date, qty, price, pnl
+              FROM backtest_trades
+             WHERE run_id = ?
+             ORDER BY id
+        """, (run_id,))
+        trades = [dict(r) for r in c.fetchall()]
+        total_pnl = sum((r['pnl'] or 0) for r in trades)
+        num_trades = len(trades)
+        wins = sum(1 for r in trades if (r['pnl'] or 0) > 0)
+        losses = sum(1 for r in trades if (r['pnl'] or 0) < 0)
+        by_symbol = {}
+        for r in trades:
+            by_symbol.setdefault(r['symbol'], 0.0)
+            by_symbol[r['symbol']] += (r['pnl'] or 0.0)
+        summary = {
+            'total_pnl': round(total_pnl,2),
+            'num_trades': num_trades,
+            'wins': wins,
+            'losses': losses,
+            'by_symbol': by_symbol
+        }
+    conn.close()
+    settings = extract_backtest_settings(request.args)
+    return render_template(
+        'backtest.html',
+        trades=trades,
+        summary=summary,
+        settings=settings,
+        net_return=summary['total_pnl']
+    )
+
+# 4) Now bring in your Basic Auth and all the other @app.route handlers below…
 
 USERNAME = os.environ.get("BASIC_AUTH_USER", "admin")
 PASSWORD = os.environ.get("BASIC_AUTH_PASS", "Shadow!")
@@ -32,7 +126,10 @@ def check_auth(user, pw):
     return user == USERNAME and pw == PASSWORD
 
 def authenticate():
-    return Response("⛔ Authentication Required", 401, {'WWW-Authenticate': 'Basic realm="Login Required"'})
+    return Response(
+        "⛔ Authentication Required", 401,
+        {'WWW-Authenticate': 'Basic realm="Login Required"'}
+    )
 
 def require_auth(f):
     @wraps(f)
@@ -42,37 +139,6 @@ def require_auth(f):
             return authenticate()
         return f(*args, **kwargs)
     return decorated
-
-# NEWS
-from services.news_service import fetch_latest_headlines, fetch_sentiment_for
-
-# E*TRADE
-from services.etrade_service import get_etrade_price
-
-# SIMULATION
-from services.simulation_service import (
-    buy_stock,
-    get_holdings,
-    get_cash,
-    get_realized_pl,
-    get_trades,
-    sell_stock,
-    nuke_simulation_db   # if you need to reset simulation DB
-)
-
-# BACKTEST
-from services.backtest_service import backtest
-
-# MARKET SCANNER
-from services.market_service import analyze_symbol, get_symbols
-
-app = Flask(__name__)
-app.secret_key = "replace_with_your_secret_key"
-
-DB_PATH  = 'alerts.db'
-SIM_DB   = 'simulation.db'  # Must match SIM_DB in simulation_service.py
-import subprocess
-import platform
 
 def scanner_loop():
     global scanner_active
@@ -85,6 +151,7 @@ def scanner_loop():
         except Exception as e:
             print(f"[Scanner] ❌ Error: {e}")
         time.sleep(60)
+
         
 @app.route("/start_scanner", methods=["POST"])
 def start_scanner():
@@ -106,13 +173,6 @@ def run_checkpoint():
         return redirect(url_for('index'))
     except Exception as e:
         return f"Error executing batch: {e}", 500
-
-### ────────────── PRELOAD BACKTEST DATA (optional) ────────────── ###
-# If you want to run a backtest when the server starts, uncomment below:
-# trades, pnl = backtest("AAPL", "2024-01-01", "2024-06-01", initial_cash=10000)
-# You can then pass `trades` and `pnl` into a template or store them.
-
-
 ### ────────────── ALERTS (LIST & CLEAR) ────────────── ###
 
 @app.route('/nuke_db', methods=['POST'])
@@ -164,148 +224,78 @@ def launch_auth():
     except Exception as e:
         flash(f'❌ Error launching E*TRADE Auth: {e}', 'danger')
     return redirect(url_for('index'))
+# ── 2) run_backtest: wipe + run + log to DB ────────────────────────────────────
+
+# at top of Dashboard.py
+BACKTEST_DB = os.path.join(os.getcwd(), 'backtest.db')
 
 
-### ────────────── BACKTEST VIEW ────────────── ###
+# ────────────────────────────────────────────────────────
+# 2) RUN BACKTEST (wipe + run + log)
+# ────────────────────────────────────────────────────────
 
-from flask import request, render_template
-from scanner_backtest_service import backtest_scanner
-from collections import namedtuple
+@app.route('/run_backtest', methods=['POST'])
+def run_backtest():
+    # 1) Parse settings and load symbols
+    settings = extract_backtest_settings(request.form)
+    symbols  = get_symbols(simulation=True)
 
-BacktestSettings = namedtuple('BacktestSettings', [
-    'start_date', 'end_date', 'starting_cash', 'max_per_trade',
-    'trailing_stop_pct', 'sell_after_days',
-    'sma_on', 'rsi_on', 'macd_on', 'bb_on', 'vwap_on', 'news_on'
-])
+    # 2) Reinitialize DB
+    subprocess.run(['python', 'init_backtest_db.py'], check=True)
 
-def extract_backtest_settings(args):
-    return BacktestSettings(
-        start_date=args.get('start_date', '2023-01-01'),
-        end_date=args.get('end_date', '2024-01-01'),
-        starting_cash=int(args.get('starting_cash', 10000)),
-        max_per_trade=int(args.get('max_per_trade', 1000)),
-        trailing_stop_pct=float(args.get('trailing_stop_pct', 0.05)),
-        sell_after_days=int(args.get('sell_after_days')) if args.get('sell_after_days') else None,
-        sma_on='sma_on' in args,
-        rsi_on='rsi_on' in args,
-        macd_on='macd_on' in args,
-        bb_on='bb_on' in args,
-        vwap_on='vwap_on' in args,
-        news_on='news_on' in args
-    )
+    # 3) Backtest each symbol with all kwargs
+    for sym in symbols:
+        backtest_scanner(
+            symbol            = sym,
+            start_date        = settings.start_date,
+            end_date          = settings.end_date,
+            initial_cash      = settings.starting_cash,
+            max_trade_amount  = settings.max_per_trade,
+            timeframe         = settings.timeframe,
 
-from flask import request, render_template
-from scanner_backtest_service import backtest_scanner
-from services.backtest_service import backtest
-@app.route('/backtest', methods=['GET'])
-def backtest_view():
-    args = request.args
-    settings = {
-        "start_date": args.get("start_date", "2023-01-01"),
-        "end_date": args.get("end_date", "2024-01-01"),
-        "starting_cash": int(args.get("starting_cash", 10000)),
-        "max_per_trade": int(args.get("max_per_trade", 1000)),
-        "trailing_stop_pct": float(args.get("trailing_stop_pct", 0.05)),
-        "sell_after_days": int(args.get("sell_after_days")) if args.get("sell_after_days") else None,
-        "sma_on": 'sma_on' in args,
-        "rsi_on": 'rsi_on' in args,
-        "macd_on": 'macd_on' in args,
-        "bb_on": 'bb_on' in args,
-        "vwap_on": 'vwap_on' in args,
-        "news_on": 'news_on' in args,
-        "rsi_slope_on": 'rsi_slope_on' in args,
-        "macd_hist_on": 'macd_hist_on' in args,
-        "bb_breakout_on": 'bb_breakout_on' in args,
-        "run_full_scan": 'run_full_scan' in args,
-        "timeframe": args.get("timeframe", "6mo")
-    }
+            sma_on            = settings.sma_on,
+            sma_length        = settings.sma_length,
 
-    trades = []
-    net_return = 0
+            rsi_on            = settings.rsi_on,
+            rsi_len           = settings.rsi_len,
+            rsi_overbought    = settings.rsi_overbought,
+            rsi_oversold      = settings.rsi_oversold,
 
-    if settings["run_full_scan"]:
-        trades = backtest_scanner(
-            start_date=settings["start_date"],
-            end_date=settings["end_date"],
-            initial_cash=settings["starting_cash"],
-            max_trade_per_stock=settings["max_per_trade"],
-            trailing_stop_pct=settings["trailing_stop_pct"],
-            sell_after_days=settings["sell_after_days"],
-            sma_on=settings["sma_on"],
-            rsi_on=settings["rsi_on"],
-            macd_on=settings["macd_on"],
-            bb_on=settings["bb_on"],
-            vwap_on=settings["vwap_on"],
-            news_on=settings["news_on"],
-            rsi_slope_on=settings["rsi_slope_on"],
-            macd_hist_on=settings["macd_hist_on"],
-            bb_breakout_on=settings["bb_breakout_on"]
-        )
-        net_return = sum(t["pnl"] for t in trades)
-    else:
-        trades, net_return = backtest(
-            symbol="AAPL",
-            start_date=settings["start_date"],
-            end_date=settings["end_date"],
-            initial_cash=settings["starting_cash"],
-            max_trade_amount=settings["max_per_trade"],
-            sma_on=settings["sma_on"],
-            vwap_on=settings["vwap_on"],
-            news_on=settings["news_on"]
+            macd_on           = settings.macd_on,
+            macd_fast         = settings.macd_fast,
+            macd_slow         = settings.macd_slow,
+            macd_signal       = settings.macd_signal,
+
+            bb_on             = settings.bb_on,
+            bb_length         = settings.bb_length,
+            bb_std            = settings.bb_std,
+
+            vol_on            = settings.vol_on,
+            vol_multiplier    = settings.vol_multiplier,
+
+            vwap_on           = settings.vwap_on,
+            vwap_threshold    = settings.vwap_threshold,
+
+            news_on           = settings.news_on,
+
+            log_to_db         = True
         )
 
-    return render_template("backtest.html", trades=trades, net_return=net_return, settings=settings)
+    flash('✅ Backtest run complete!', 'success')
+    return redirect(url_for('backtest_view', **request.form))
 
-@app.route('/scanner_backtest', methods=['GET', 'POST'])
-def scanner_backtest_view():
-    from scanner_backtest_service import backtest_scanner
-    trades = []
-    summary = None
 
-    if request.method == 'POST':
-        form = request.form
-        start_date = form.get('start_date')
-        end_date = form.get('end_date')
-        initial_cash = float(form.get('initial_cash', 10000))
-        max_trade = float(form.get('max_trade_per_stock', 1000))
-        trailing_stop = float(form.get('trailing_stop_pct', 0.05))
-        sell_after_days = int(form.get('sell_after_days')) if form.get('sell_after_days') else None
 
-        sma_on = 'sma_on' in form
-        rsi_on = 'rsi_on' in form
-        macd_on = 'macd_on' in form
-        bb_on = 'bb_on' in form
-        vwap_on = 'vwap_on' in form
-        news_on = 'news_on' in form
 
-        trades = backtest_scanner(
-            start_date=start_date,
-            end_date=end_date,
-            initial_cash=initial_cash,
-            max_trade_per_stock=max_trade,
-            trailing_stop_pct=trailing_stop,
-            sell_after_days=sell_after_days,
-            sma_on=sma_on,
-            rsi_on=rsi_on,
-            macd_on=macd_on,
-            bb_on=bb_on,
-            vwap_on=vwap_on,
-            news_on=news_on
-        )
-     
-        summary = {
-            'total_pnl': round(sum(t['pnl'] for t in trades), 2),
-            'num_trades': len(trades),
-            'wins': sum(1 for t in trades if t['pnl'] > 0),
-            'losses': sum(1 for t in trades if t['pnl'] < 0),
-        }
 
-    return render_template('scanner_backtest.html', trades=trades, summary=summary)
-
-@app.route("/health")
-def health_check():
-    return "OK", 200
-
+@app.route('/reset_backtest', methods=['POST'])
+def reset_backtest():
+    try:
+        subprocess.run(['python','init_backtest_db.py'], check=True)
+        flash('✅ Backtest DB nuked and recreated!', 'success')
+    except Exception as e:
+        flash(f'❌ Backtest reset failed: {e}', 'danger')
+    return redirect(url_for('backtest_view'))
 
 
 @app.route('/config')
@@ -460,38 +450,36 @@ def index():
     # 1) Load persisted settings (or defaults if first run)
     settings = get_all_indicator_settings()
 
-    # 2) If the user just clicked “Apply”, merge any query-string overrides,
-    #    persist them, and redirect back to a clean URL so they “stick.”
+    # 2) If the user clicked “Apply” (i.e. there's any query-string),
+    #    merge those overrides into `settings`, persist, then redirect.
     if request.args:
-        # Boolean toggles
+        # Boolean toggles: checked ⇒ present in request.args
         for toggle in (
             "sma_on","rsi_on","macd_on","bb_on","vol_on",
             "vwap_on","news_on","rsi_slope_on","macd_hist_on","bb_breakout_on"
         ):
-            if toggle in request.args:
-                # Accept "1", "on", or "true"
-                settings[toggle] = request.args.get(toggle).lower() in ("1", "on", "true")
+            settings[toggle] = (toggle in request.args)
 
-        # Numeric filters
-        for num in (
+        # Numeric filters: parse back out of the query string
+        for field in (
             "sma_length","rsi_len","rsi_overbought","rsi_oversold",
             "macd_fast","macd_slow","macd_signal",
             "bb_length","bb_std","vol_multiplier","vwap_threshold"
         ):
-            if num in request.args:
-                val = request.args[num]
-                # float for the three with decimals, int otherwise
-                if num in ("bb_std","vol_multiplier","vwap_threshold"):
-                    settings[num] = float(val)
+            if field in request.args:
+                val = request.args[field]
+                # floating‐point for the ones that need it:
+                if field in ("bb_std","vol_multiplier","vwap_threshold"):
+                    settings[field] = float(val)
                 else:
-                    settings[num] = int(val)
+                    settings[field] = int(val)
 
-        # Persist the new settings and redirect
+        # Persist and clean‐URL redirect
         update_indicator_settings(settings)
         return redirect(url_for("index"))
 
-    # 3) No query-string => build alerts with current settings,
-    #    update match_count, persist, then render.
+    # 3) No query‐string ⇒ build your alerts with current settings,
+    #    update match_count, persist it, then render.
     alerts = get_alerts()
     settings["match_count"] = len(alerts)
     update_indicator_settings(settings)
@@ -502,6 +490,7 @@ def index():
         settings=settings,
         match_count=settings["match_count"]
     )
+
 
 
 

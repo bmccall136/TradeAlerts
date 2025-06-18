@@ -1,32 +1,36 @@
-# File: init_backtest_db.py
 import sqlite3
 
-BACKTEST_DB = "backtest.db"
+DB = 'backtest.db'
 
-ddl = """
-CREATE TABLE IF NOT EXISTS backtest_runs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp TEXT    NOT NULL,
-    config_json TEXT  NOT NULL,
-    summary_json TEXT NOT NULL
+schema = """
+PRAGMA foreign_keys=OFF;
+
+DROP TABLE IF EXISTS backtest_trades;
+DROP TABLE IF EXISTS backtest_runs;
+
+CREATE TABLE backtest_runs (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp    TEXT    NOT NULL,
+    config_json  TEXT    NOT NULL,
+    summary_json TEXT    NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS backtest_trades (
+CREATE TABLE backtest_trades (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_id     INTEGER  NOT NULL,
-    symbol     TEXT     NOT NULL,
-    action     TEXT     NOT NULL,
-    price      REAL     NOT NULL,
-    qty        INTEGER  NOT NULL,
-    trade_time TEXT     NOT NULL,
-    pnl        REAL     NULL,
-    FOREIGN KEY (run_id) REFERENCES backtest_runs(id)
+    run_id     INTEGER NOT NULL,
+    symbol     TEXT    NOT NULL,
+    action     TEXT    NOT NULL,
+    price      REAL    NOT NULL,
+    qty        INTEGER NOT NULL,
+    trade_time TEXT    NOT NULL,
+    pnl        REAL,
+    FOREIGN KEY(run_id) REFERENCES backtest_runs(id)
 );
 """
 
-conn = sqlite3.connect(BACKTEST_DB)
-conn.executescript(ddl)
-conn.commit()
-conn.close()
-
-print(f"Initialized {BACKTEST_DB} with the required tables.")
+if __name__ == "__main__":
+    conn = sqlite3.connect(DB)
+    conn.executescript(schema)
+    conn.commit()
+    conn.close()
+    print(f"Initialized {DB} with backtest_runs & backtest_trades")
