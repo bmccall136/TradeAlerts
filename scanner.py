@@ -6,6 +6,12 @@ from datetime import datetime, time as dt_time, timedelta
 from services.market_service import get_symbols, analyze_symbol
 from services.alert_service import insert_alert
 import sys
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+)
 
 # Ensure PID is saved relative to script location
 base_path = os.path.dirname(os.path.abspath(__file__))

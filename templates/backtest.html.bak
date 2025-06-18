@@ -2,40 +2,105 @@
 {% block content %}
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
-
 <div class="container">
-  <h2 class="text-warning text-center mb-4">Backtest Configuration & Results</h2>
+  <div class="d-flex align-items-center position-relative mb-4">
+    <!-- Centered title -->
+    <h2 class="text-warning mb-0 mx-auto">Backtest Configuration &amp; Results</h2>
 
-  <form id="backtest-form" method="GET" action="{{ url_for('backtest_view') }}">
-    <div class="filter-toggle-group mb-4 d-flex align-items-center w-100 flex-wrap">
-      {% set toggles = [
-        {'name':'sma_on',  'label':'SMA',  'icon':'bi-graph-up-arrow'},
-        {'name':'rsi_on',  'label':'RSI',  'icon':'bi-speedometer2'},
-        {'name':'macd_on', 'label':'MACD', 'icon':'bi-triangle-fill'},
-        {'name':'bb_on',   'label':'BB',   'icon':'bi-bar-chart-fill'},
-        {'name':'vol_on',  'label':'Vol',  'icon':'bi-bar-chart-lines'},
-        {'name':'vwap_on', 'label':'VWAP', 'icon':'bi-calculator'},
-        {'name':'news_on', 'label':'News', 'icon':'bi-newspaper'}
-      ] %}
-      {% for t in toggles %}
-        <div class="form-check form-switch me-3 mb-2">
-          <input class="form-check-input" type="checkbox" id="{{t.name}}" name="{{t.name}}" {% if settings[t.name] %}checked{% endif %}>
-          <label class="form-check-label" for="{{t.name}}">
-            <i class="bi {{t.icon}}"></i> {{t.label}}
-          </label>
-        </div>
-      {% endfor %}
+    <!-- Absolutely positioned reset button on the right -->
+    <form method="POST"
+          action="{{ url_for('reset_backtest') }}"
+          class="position-absolute end-0">
+      <button type="submit" class="btn btn-outline-danger">
+        <i class="bi bi-x-circle"></i> Reset Backtest DB
+      </button>
+    </form>
+  </div>
+</div>
+
+
+<form id="backtest-form"
+      method="POST"
+      action="{{ url_for('run_backtest') }}">
+  <div class="filter-toggle-group mb-4 d-flex align-items-center w-100 flex-wrap">
+    {% set toggles = [
+      {'name':'sma_on',  'label':'SMA',  'icon':'bi-graph-up-arrow'},
+      {'name':'rsi_on',  'label':'RSI',  'icon':'bi-speedometer2'},
+      {'name':'macd_on', 'label':'MACD', 'icon':'bi-triangle-fill'},
+      {'name':'bb_on',   'label':'BB',   'icon':'bi-bar-chart-fill'},
+      {'name':'vol_on',  'label':'Vol',  'icon':'bi-bar-chart-lines'},
+      {'name':'vwap_on', 'label':'VWAP', 'icon':'bi-calculator'},
+      {'name':'news_on', 'label':'News', 'icon':'bi-newspaper'}
+    ] %}
+    {% for t in toggles %}
       <div class="form-check form-switch me-3 mb-2">
-        <input class="form-check-input" type="checkbox" id="run_full_scan" name="run_full_scan">
-        <label class="form-check-label" for="run_full_scan">
-          <i class="bi bi-diagram-3"></i> Full Scanner Mode
+        <input class="form-check-input"
+               type="checkbox"
+               id="{{ t.name }}"
+               name="{{ t.name }}"
+               {% if settings[t.name] %}checked{% endif %}>
+        <label class="form-check-label" for="{{ t.name }}">
+          <i class="bi {{ t.icon }}"></i> {{ t.label }}
         </label>
       </div>
-      <button type="submit" class="btn btn-success ms-auto">
-        <i class="bi bi-arrow-repeat"></i> Run Backtest
-      </button>
+	  
+    {% endfor %}
+
+    <!-- any other selects / inputs here -->
+
+    <button type="submit" class="btn btn-success ms-auto">
+      <i class="bi bi-arrow-repeat"></i> Run Backtest
+    </button>
+</form>
+<div class="row g-3 mb-4 align-items-end">
+  <!-- Single‐Entry Only -->
+  <div class="col-auto">
+    <div class="form-check">
+      <input class="form-check-input" 
+             type="checkbox" 
+             id="single_entry_only" 
+             name="single_entry_only"
+             {% if settings.single_entry_only %}checked{% endif %}>
+      <label class="form-check-label" for="single_entry_only">
+        🛑 Single‐Entry Only
+      </label>
     </div>
-<div class="container">
+  </div>
+
+  <!-- Use Trailing Stop -->
+  <div class="col-auto">
+    <div class="form-check">
+      <input class="form-check-input" 
+             type="checkbox" 
+             id="use_trailing_stop" 
+             name="use_trailing_stop"
+             {% if settings.use_trailing_stop %}checked{% endif %}>
+      <label class="form-check-label" for="use_trailing_stop">
+        🚧 Use Trailing Stop
+      </label>
+    </div>
+  </div>
+  <div class="col-auto">
+    <label for="trailing_stop_pct" class="form-label">Stop % </label>
+    <input type="number" step="0.01" 
+           id="trailing_stop_pct" 
+           name="trailing_stop_pct" 
+           class="form-control" 
+           value="{{ settings.trailing_stop_pct }}">
+  </div>
+
+  <!-- Sell After Days -->
+  <div class="col-auto">
+    <label for="sell_after_days" class="form-label">Sell After Days</label>
+    <input type="number" 
+           id="sell_after_days" 
+           name="sell_after_days" 
+           class="form-control" 
+           value="{{ settings.sell_after_days or '' }}">
+  </div>
+</div>
+
+
   {# ─── Indicator Settings Form ─── #}
   {% set sma_labels = {10: "Short SMA (10)", 20: "Standard SMA (20)", 50: "Long SMA (50)", 100: "100-Day SMA (100)", 200: "200-Day SMA (200)"} %}
   {% set rsi_len_labels = {7: "Fast RSI (7)", 14: "Std RSI (14)", 21: "Slow RSI (21)", 28: "Very Slow RSI (28)"} %}
@@ -48,35 +113,6 @@
   {% set bb_std_labels = {1.5: "1.5σ", 2.0: "2σ", 2.5: "2.5σ"} %}
   {% set vol_mult_labels = {1.0: "Normal ×1.0", 1.5: "High ×1.5", 2.0: "Very High ×2.0", 2.5: "Extreme ×2.5"} %}
   {% set vwap_labels = {0.0: "No VWAP", 0.5: "≥ $0.5", 1.0: "≥ $1.0", 2.0: "≥ $2.0"} %}
-
-<form id="indicator-form" method="GET" action="{{ url_for('index') }}">
-  <!-- Toggle row -->
-  <div class="filter-toggle-group mb-4">
-    {% set toggles = [
-      {'name':'sma_on',  'label':'SMA',  'icon':'bi-graph-up-arrow'},
-      {'name':'rsi_on',  'label':'RSI',  'icon':'bi-speedometer2'},
-      {'name':'macd_on', 'label':'MACD', 'icon':'bi-triangle-fill'},
-      {'name':'bb_on',   'label':'BB',   'icon':'bi-bar-chart-fill'},
-      {'name':'vol_on',  'label':'Vol',  'icon':'bi-bar-chart-lines'},
-      {'name':'vwap_on', 'label':'VWAP', 'icon':'bi-calculator'},
-      {'name':'news_on', 'label':'News', 'icon':'bi-newspaper'}
-    ] %}
-    <div class="d-flex align-items-center w-100">
-      {% for t in toggles %}
-        <div class="form-check form-switch me-3">
-          <input class="form-check-input" type="checkbox" id="{{t.name}}" name="{{t.name}}"
-                 {% if settings[t.name] %}checked{% endif %}>
-          <label class="form-check-label" for="{{t.name}}">
-            <i class="bi {{t.icon}}"></i> {{t.label}}
-          </label>
-        </div>
-      {% endfor %}
-      <button type="submit" class="btn btn-success ms-auto">
-        <i class="bi bi-arrow-repeat"></i> Apply
-      </button>
-    </div>
-  </div>
-
   <!-- Numeric‐filters row -->
   <div class="row g-2 align-items-end mb-4">
     <!-- SMA -->
@@ -233,13 +269,13 @@
   <div class="col-auto">
     <div class="form-check">
       <input
-+        class="form-check-input indicator-setting"
-+        type="checkbox"
-+        id="bb_breakout_on"
-+        name="bb_breakout_on"
-+        value="1"
-+        {% if settings.bb_breakout_on %}checked{% endif %}
-+      >
+        class="form-check-input indicator-setting"
+        type="checkbox"
+        id="bb_breakout_on"
+        name="bb_breakout_on"
+        value="1"
+        {% if settings.bb_breakout_on %}checked{% endif %}
+      >
       <label class="form-check-label text-warning" for="bb_breakout_on">
         🚀 Require BB Breakout
       </label>
@@ -278,27 +314,35 @@
   {% if trades %}
   <div class="table-responsive">
     <table class="table table-striped table-bordered alerts-table text-white">
-      <thead class="table-light">
-        <tr>
-          <th style="width: 20%">Date</th>
-          <th style="width: 15%">Type</th>
-          <th style="width: 20%">Price</th>
-          <th style="width: 15%">Qty</th>
-          <th style="width: 15%">P/L</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for t in trades %}
-        <tr>
-          <td>{{ t.date }}</td>
-          <td>{{ t.action }}</td>
-          <td>${{ t.price | round(2) }}</td>
-          <td>{{ t.qty }}</td>
-          <td>${{ t.pl | default(0) | round(2) }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+<thead class="table-light">
+    <tr>
+      <th>Symbol</th>
+      <th>Date</th>
+      <th>Type</th>
+      <th>Price</th>
+      <th>Qty</th>
+      <th>P/L</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in trades %}
+    <tr>
+      <td>{{ t.symbol }}</td>
+      <td>{{ t.date }}</td>
+      <td>{{ t.action }}</td>
+      <td>${{ t.price|round(2) }}</td>
+      <td>{{ t.qty }}</td>
+      <td>
+        {% if t.pnl is not none %}
+          ${{ t.pnl|round(2) }}
+        {% else %}
+          &mdash;
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
   </div>
   <div class="text-end text-light me-3">
     <strong>Net Return:</strong> <span id="netReturn">${{ net_return | round(2) }}</span>
