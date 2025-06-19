@@ -1,4 +1,39 @@
 # backtest_helpers.py
+import sqlite3
+import os
+
+BACKTEST_DB = os.path.join(os.getcwd(), 'backtest.db')
+
+def init_backtest_db():
+    conn = sqlite3.connect(BACKTEST_DB)
+    cur  = conn.cursor()
+
+    # create a table to track each run
+    cur.execute("""
+      CREATE TABLE IF NOT EXISTS backtest_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        started_at TEXT,
+        settings_json TEXT
+      );
+    """)
+
+    # create a table for individual trades
+    cur.execute("""
+      CREATE TABLE IF NOT EXISTS backtest_trades (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id INTEGER,
+        symbol TEXT,
+        date TEXT,
+        action TEXT,
+        price REAL,
+        qty INTEGER,
+        pnl REAL,
+        FOREIGN KEY(run_id) REFERENCES backtest_runs(id)
+      );
+    """)
+
+    conn.commit()
+    conn.close()
 
 from collections import namedtuple
 

@@ -37,9 +37,9 @@
   </div>
 </div>
 
-<form id="backtest-form" method="POST" action="{{ url_for('run_backtest') }}">
-
-
+<<form id="backtest-form"
+      method="POST"
+	  action="{{ url_for('run_backtest_route') }}"
   <div class="filter-toggle-group mb-4 d-flex align-items-center w-100 flex-wrap">
     {% set toggles = [
       {'name':'sma_on',  'label':'SMA',  'icon':'bi-graph-up-arrow'},
