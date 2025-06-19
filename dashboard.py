@@ -446,52 +446,97 @@ from services.alert_service import (
     update_indicator_settings,
     get_alerts
 )
+import io, csv
+from flask import Response
+
+@app.route('/export_alerts')
+def export_alerts():
+    # pull your alerts from the DB (or your service)
+    alerts = get_alerts()  
+
+    # Build CSV in memory
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(['Symbol', 'Last Match', 'Filters'])
+
+    # Adjust these keys to whatever your alert dict actually uses:
+    for a in alerts:
+        last = a.get('last_match_time')  # or .get('time') if that's your field
+        filters = ";".join(a.get('matched_filters', []))
+        writer.writerow([ a['symbol'], last, filters ])
+
+    # Return as downloadable attachment
+    return Response(
+        buf.getvalue(),
+        mimetype='text/csv',
+        headers={
+            "Content-Disposition": "attachment;filename=alerts.csv"
+        }
+    )
+
+import io, csv
+import json
+import sqlite3
+from flask import Response, flash, redirect, url_for
+
 @app.route('/export_backtest')
 def export_backtest():
-    # 1) grab the *most recent* backtest run and its trades out of SQLite
+    # 1) Rebuild the BacktestSettings from the same query-string
+    settings = extract_backtest_settings(request.args)
+
+    # 2) Open your backtest.db
     conn = sqlite3.connect(BACKTEST_DB)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    # pull your settings for the latest run
-    cur.execute("SELECT * FROM backtest_runs ORDER BY id DESC LIMIT 1")
-    run = cur.fetchone()
+    # 3) Grab the most recent run_id
+    row = cur.execute(
+        "SELECT id FROM backtest_runs ORDER BY timestamp DESC LIMIT 1"
+    ).fetchone()
+    if not row:
+        flash('❌ No backtest run in the database to export.', 'warning')
+        return redirect(url_for('backtest_view'))
+    run_id = row['id']
 
-    # pull all of its trades
-    cur.execute("""
-      SELECT symbol, date, action, price, qty, pnl
-        FROM backtest_trades
-       WHERE run_id = ?
-       ORDER BY id
-    """, (run['id'],))
-    trades = cur.fetchall()
+    # 4) Pull all trade rows for that run
+    trades = cur.execute(
+        """SELECT symbol, date, action, price, qty, pnl
+           FROM backtest_trades
+           WHERE run_id = ?
+           ORDER BY date""",
+        (run_id,)
+    ).fetchall()
     conn.close()
 
-    # 2) stream it into an in-memory CSV
-    output = io.StringIO()
-    writer = csv.writer(output)
+    # 5) Build the CSV in memory
+    buf = io.StringIO()
+    writer = csv.writer(buf)
 
-    # write run settings first
-    writer.writerow(['Setting','Value'])
-    for key in run.keys():
-        writer.writerow([key, run[key]])
+    # 5a) Dump your settings first
+    writer.writerow(["# Backtest Settings"])
+    for key, val in settings._asdict().items():
+        writer.writerow([key, val])
     writer.writerow([])
 
-    # then the trade table
-    writer.writerow(['symbol','date','action','price','qty','pnl'])
-    for row in trades:
-        writer.writerow([row['symbol'], row['date'], row['action'],
-                         row['price'], row['qty'], row['pnl']])
+    # 5b) Dump the trades
+    writer.writerow(["Symbol","Date","Type","Price","Qty","P/L"])
+    for t in trades:
+        writer.writerow([
+            t["symbol"],
+            t["date"],
+            t["action"],
+            t["price"],
+            t["qty"],
+            t["pnl"]
+        ])
 
-    # 3) send it down as a download
-    output.seek(0)
+    # 6) Return as an attachment
     return Response(
-        output.getvalue(),
-        mimetype='text/csv',
-        headers={
-          'Content-Disposition': 'attachment; filename=backtest.csv'
-        }
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition":"attachment;filename=backtest.csv"},
     )
+
 
 @app.route("/", methods=["GET"])
 def index():

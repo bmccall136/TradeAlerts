@@ -135,36 +135,6 @@ import io
 import csv
 from flask import make_response
 
-@app.route('/export/backtest')
-def export_backtest():
-    # re‐extract settings & run (or load) the trades exactly as in backtest_view
-    settings = extract_backtest_settings(request.args)
-    symbols  = get_symbols(simulation=True)
-    # if you’re OK re-running, otherwise load from your backtest.db
-    trades, summary = run_backtest(settings, symbols)
-
-    # prepare CSV
-    si = io.StringIO()
-    cw = csv.writer(si)
-    # header row: settings + trade-columns
-    settings_row = ['setting','value']
-    cw.writerow(['-- SETTINGS --'])
-    for k,v in settings._asdict().items():
-        cw.writerow([k, v])
-    cw.writerow([])      # blank line
-    cw.writerow(['symbol','date','action','qty','price','pnl'])
-    for t in trades:
-        cw.writerow([t['symbol'], t['date'], t['action'], t['qty'], t['price'], t['pnl']])
-
-    # build response
-    output = make_response(si.getvalue())
-    output.headers["Content-Disposition"] = "attachment; filename=backtest.csv"
-    output.headers["Content-type"] = "text/csv"
-    return output
-
-# POST: wipe DB, run per-symbol backtests into DB, then redirect with run_full=1
-import flask  # make sure this is at the top of Dashboard.py
-
 @app.route('/run_backtest', methods=['POST'])
 def run_backtest_route():
     # 1) grab all of your form settings
@@ -476,52 +446,100 @@ from services.alert_service import (
     update_indicator_settings,
     get_alerts
 )
+import io, csv
+from flask import Response
+
+@app.route('/export_alerts')
+def export_alerts():
+    # pull your alerts from the DB (or your service)
+    alerts = get_alerts()  
+
+    # Build CSV in memory
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(['Symbol', 'Last Match', 'Filters'])
+
+    # Adjust these keys to whatever your alert dict actually uses:
+    for a in alerts:
+        last = a.get('last_match_time')  # or .get('time') if that's your field
+        filters = ";".join(a.get('matched_filters', []))
+        writer.writerow([ a['symbol'], last, filters ])
+
+    # Return as downloadable attachment
+    return Response(
+        buf.getvalue(),
+        mimetype='text/csv',
+        headers={
+            "Content-Disposition": "attachment;filename=alerts.csv"
+        }
+    )
+
+import io, csv
+from flask import Response, flash, redirect, url_for
+
 @app.route('/export_backtest')
 def export_backtest():
-    # 1) grab the *most recent* backtest run and its trades out of SQLite
+    # 1) Open connection & get dict‐style rows
     conn = sqlite3.connect(BACKTEST_DB)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    # pull your settings for the latest run
-    cur.execute("SELECT * FROM backtest_runs ORDER BY id DESC LIMIT 1")
-    run = cur.fetchone()
+    # 2) Find the most recent backtest_run
+    run = cur.execute(
+        "SELECT id, settings FROM backtest_runs ORDER BY timestamp DESC LIMIT 1"
+    ).fetchone()
 
-    # pull all of its trades
-    cur.execute("""
-      SELECT symbol, date, action, price, qty, pnl
-        FROM backtest_trades
-       WHERE run_id = ?
-       ORDER BY id
-    """, (run['id'],))
-    trades = cur.fetchall()
+    if not run:
+        flash('❌ No backtest run found to export.', 'warning')
+        return redirect(url_for('backtest_view'))
+
+    run_id = run['id']
+    settings_json = run['settings']  # if you have it stored
+
+    # 3) Pull all trades for that run_id
+    trades = cur.execute(
+        """SELECT symbol, date, action, price, qty, pnl
+           FROM backtest_trades
+           WHERE run_id = ?
+           ORDER BY date""",
+        (run_id,)
+    ).fetchall()
     conn.close()
 
-    # 2) stream it into an in-memory CSV
-    output = io.StringIO()
-    writer = csv.writer(output)
+    # 4) Build CSV in memory
+    buf = io.StringIO()
+    w = csv.writer(buf)
 
-    # write run settings first
-    writer.writerow(['Setting','Value'])
-    for key in run.keys():
-        writer.writerow([key, run[key]])
-    writer.writerow([])
+    # 4a) (Optional) dump settings up top
+    w.writerow(['--- Backtest Settings ---'])
+    # if settings_json is a JSON string:
+    import json
+    settings = json.loads(settings_json)
+    for k,v in settings.items():
+        w.writerow([k, v])
+    w.writerow([])
 
-    # then the trade table
-    writer.writerow(['symbol','date','action','price','qty','pnl'])
-    for row in trades:
-        writer.writerow([row['symbol'], row['date'], row['action'],
-                         row['price'], row['qty'], row['pnl']])
+    # 4b) trades header
+    w.writerow(['Symbol','Date','Type','Price','Qty','P/L'])
 
-    # 3) send it down as a download
-    output.seek(0)
+    # 4c) trades rows
+    for t in trades:
+        w.writerow([
+            t['symbol'],
+            t['date'],
+            t['action'],
+            t['price'],
+            t['qty'],
+            t['pnl'],
+        ])
+
+    # 5) Return as download
     return Response(
-        output.getvalue(),
+        buf.getvalue(),
         mimetype='text/csv',
-        headers={
-          'Content-Disposition': 'attachment; filename=backtest.csv'
-        }
+        headers={'Content-Disposition':'attachment;filename=backtest.csv'}
     )
+
 
 @app.route("/", methods=["GET"])
 def index():
