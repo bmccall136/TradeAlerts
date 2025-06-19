@@ -18,9 +18,8 @@
   <div class="d-flex align-items-center position-relative mb-4">
 
     <!-- Export CSV at absolute left -->
-    <a href="{{ url_for('export_backtest') }}"
-       class="btn btn-outline-light position-absolute start-0">
-      <i class="bi bi-download"></i> Export CSV
+ <a href="{{ url_for('export_backtest', **request.args) }}"
+     class="btn btn-outline-light position-absolute start-0">
     </a>
 
     <!-- Centered title -->
@@ -66,10 +65,6 @@
     {% endfor %}
 
     <!-- any other selects / inputs here -->
-<a href="{{ url_for('export_backtest', **request.args) }}"
-   class="btn btn-outline-light">
-  <i class="bi bi-download"></i> Export CSV
-</a>
     <button type="submit" class="btn btn-success ms-auto">
       <i class="bi bi-arrow-repeat"></i> Run Backtest
     </button>
