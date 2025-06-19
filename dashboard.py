@@ -22,7 +22,7 @@ from services.simulation_service import (
 import io
 import csv
 from flask import Response
-
+import threading
 app = Flask(__name__)
 
 from flask import (
@@ -37,7 +37,11 @@ from services.market_service           import get_symbols
 app = Flask(__name__)
 # ── Add this so flash() will work ───────────────────
 app.secret_key = os.environ.get('PokeChop!', 'PokeChop!')
+# ── Database paths ───────────────────────────────────────────────────────────
+DB_PATH = os.path.join(os.getcwd(), 'alerts.db')
+SIM_DB  = os.path.join(os.getcwd(), 'simulation.db')
 BACKTEST_DB = os.path.join(os.getcwd(), 'backtest.db')
+
 
 # 2) BacktestSettings + extractor
 from collections import namedtuple
@@ -131,21 +135,33 @@ def backtest_view():
         settings=settings,
         net_return=summary['total_pnl']
     )
+# near the top of Dashboard.py, alongside your other flask imports
 import io
 import csv
-from flask import make_response
+import subprocess
+import sqlite3
+from flask import (
+    flash,
+    redirect,
+    url_for,
+    request,
+    Response,
+)
+
+# … your existing code …
+
+from flask import request, redirect, url_for, flash
 
 @app.route('/run_backtest', methods=['POST'])
-def run_backtest_route():
-    # 1) grab all of your form settings
+def run_backtest():
+    # 1) Parse form into settings and kick off your backtest
     settings = extract_backtest_settings(request.form)
-    # 2) load your symbol list however you like
     symbols  = get_symbols(simulation=True)
 
-    # 3) reset the backtest DB
+    # 2) Reset the backtest DB so each run is fresh
     subprocess.run(['python', 'init_backtest_db.py'], check=True)
 
-    # 4) fire off each symbol into the DB
+    # 3) Run each symbol's backtest and log to DB
     for sym in symbols:
         backtest_scanner(
             symbol           = sym,
@@ -158,12 +174,12 @@ def run_backtest_route():
             vwap_on          = settings.vwap_on,
             vwap_threshold   = settings.vwap_threshold,
             news_on          = settings.news_on,
-            log_to_db        = True
+            log_to_db        = True,
         )
 
+    # 4) Flash success and redirect back to GET /backtest with run_full=1
     flash('✅ Backtest run complete!', 'success')
-    # 5) redirect *with* run_full=1 so the GET handler will actually load & display the table
-    return flask.redirect(
+    return redirect(
         url_for(
             'backtest_view',
             run_full=1,
@@ -171,41 +187,7 @@ def run_backtest_route():
         )
     )
 
-    
-USERNAME = os.environ.get("BASIC_AUTH_USER", "admin")
-PASSWORD = os.environ.get("BASIC_AUTH_PASS", "Shadow!")
 
-def check_auth(user, pw):
-    return user == USERNAME and pw == PASSWORD
-
-def authenticate():
-    return Response(
-        "⛔ Authentication Required", 401,
-        {'WWW-Authenticate': 'Basic realm="Login Required"'}
-    )
-
-def require_auth(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        auth = request.authorization
-        if not auth or not check_auth(auth.username, auth.password):
-            return authenticate()
-        return f(*args, **kwargs)
-    return decorated
-
-def scanner_loop():
-    global scanner_active
-    scanner_active = True
-    while True:
-        try:
-            from scanner import run_scan
-            run_scan()
-            print("[Scanner] ✅ Ran scan loop")
-        except Exception as e:
-            print(f"[Scanner] ❌ Error: {e}")
-        time.sleep(60)
-
-        
 @app.route("/start_scanner", methods=["POST"])
 def start_scanner():
     if platform.system() == "Windows":
@@ -402,7 +384,9 @@ def simulation_buy():
 
 
     flash('✅ Backtest run complete!', 'success')
-    return redirect(url_for('backtest_view', **request.form))
+    return redirect(
+        url_for('backtest_view', **request.form)
+    )
 from flask import flash, redirect, url_for
 import subprocess
 
@@ -583,23 +567,23 @@ def index():
         settings=settings,
         match_count=settings["match_count"]
     )
-
-
-
-
-@app.before_request
-def secure_everything():
-    if request.path == "/health":
-        return  # Allow unauthenticated access to /health
-    return require_auth(lambda: None)()  # Apply auth to all other routes
-
-
+# ── Background scanner loop ─────────────────────────────────────────────────
+def scanner_loop():
+    """
+    Background thread that runs your scanner every 60 seconds.
+    """
+    while True:
+        try:
+            from scanner import run_scan
+            run_scan()
+            print("[Scanner] ✅ Ran scan loop")
+        except Exception as e:
+            print(f"[Scanner] ❌ Scanner error: {e}")
+        time.sleep(60)
 if __name__ == "__main__":
-    # Local dev only
+    # spin up the scanner in a daemon thread
     threading.Thread(target=scanner_loop, daemon=True).start()
+
+    # start Flask
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-
-
-
