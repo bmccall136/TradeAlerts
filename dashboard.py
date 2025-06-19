@@ -8,7 +8,6 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, request, render_template, redirect, url_for, flash, jsonify, Response
-from flask import Flask, request, render_template, redirect, url_for, flash, jsonify, Response
 # bring in simulation service functions right here
 from services.simulation_service import (
     nuke_simulation_db,
@@ -23,16 +22,15 @@ import io
 import csv
 from flask import Response
 import threading
+from backtest_helpers import init_backtest_db
 app = Flask(__name__)
 
-from flask import (
-    Flask, request, render_template,
-    redirect, url_for, flash, jsonify,
-    Response
-)
-# ── service imports for backtest ─────────────────────────────────────────────
-from services.scanner_backtest_service import backtest_scanner
+# near the top of Dashboard.py, with your other flask imports:
+from flask import Flask, request, render_template, redirect, url_for, flash, jsonify, Response
+
+ # ── service imports for backtest ─────────────────────────────────────────────
 from services.market_service           import get_symbols
+from services.scanner_backtest_service import backtest_scanner
 # 1) Instantiate your app
 app = Flask(__name__)
 # ── Add this so flash() will work ───────────────────
@@ -46,56 +44,62 @@ BACKTEST_DB = os.path.join(os.getcwd(), 'backtest.db')
 # 2) BacktestSettings + extractor
 from collections import namedtuple
 BacktestSettings = namedtuple('BacktestSettings', [
-    # … existing fields …,
-    'single_entry_only',
-    'use_trailing_stop',
     'start_date','end_date','starting_cash','max_per_trade',
     'timeframe','trailing_stop_pct','sell_after_days',
+    # toggles
     'sma_on','rsi_on','macd_on','bb_on','vol_on','vwap_on','news_on',
+    # indicator params
     'sma_length','rsi_len','rsi_overbought','rsi_oversold',
     'macd_fast','macd_slow','macd_signal',
     'bb_length','bb_std','vol_multiplier','vwap_threshold',
+    # new behavioral flags
+    'single_entry_only','use_trailing_stop',
 ])
+def load_your_symbols():
+    # reads your SP500 list
+    with open('sp500_symbols.txt') as f:
+        return [line.strip() for line in f if line.strip()]
+
 def extract_backtest_settings(args):
     return BacktestSettings(
-        start_date        = args.get('start_date',     '2023-01-01'),
-        end_date          = args.get('end_date',       '2024-01-01'),
-        starting_cash     = int(args.get('starting_cash', 10000)),
-        max_per_trade     = int(args.get('max_per_trade',    1000)),
-        timeframe         = args.get('timeframe',       '6mo'),
-        trailing_stop_pct = float(args.get('trailing_stop_pct', 0.05)),
+        start_date        = args.get('start_date','2023-01-01'),
+        end_date          = args.get('end_date','2024-01-01'),
+        starting_cash     = int(args.get('starting_cash',10000)),
+        max_per_trade     = int(args.get('max_per_trade',1000)),
+        timeframe         = args.get('timeframe','6mo'),
+        trailing_stop_pct = float(args.get('trailing_stop_pct',0.0)),
         sell_after_days   = int(args.get('sell_after_days')) if args.get('sell_after_days') else None,
-        sma_on           = 'sma_on'  in args,
-        rsi_on           = 'rsi_on'  in args,
-        macd_on          = 'macd_on' in args,
-        bb_on            = 'bb_on'   in args,
-        vol_on           = 'vol_on'  in args,
-        vwap_on          = 'vwap_on' in args,
-        news_on          = 'news_on' in args,
-        sma_length       = int(args.get('sma_length',      20)),
-        rsi_len          = int(args.get('rsi_len',         14)),
-        rsi_overbought   = int(args.get('rsi_overbought',  70)),
-        rsi_oversold     = int(args.get('rsi_oversold',    30)),
-        macd_fast        = int(args.get('macd_fast',       12)),
-        macd_slow        = int(args.get('macd_slow',       26)),
-        macd_signal      = int(args.get('macd_signal',      9)),
-        bb_length        = int(args.get('bb_length',       20)),
-        bb_std           = float(args.get('bb_std',         2.0)),
-        vol_multiplier   = float(args.get('vol_multiplier', 1.0)),
-        vwap_threshold   = float(args.get('vwap_threshold', 0.0)),
-        single_entry_only  = 'single_entry_only'  in args,
-        use_trailing_stop  = 'use_trailing_stop'  in args,
+        sma_on            = 'sma_on' in args,
+        rsi_on            = 'rsi_on' in args,
+        macd_on           = 'macd_on' in args,
+        bb_on             = 'bb_on' in args,
+        vol_on            = 'vol_on' in args,
+        vwap_on           = 'vwap_on' in args,
+        news_on           = 'news_on' in args,
+        sma_length        = int(args.get('sma_length',20)),
+        rsi_len           = int(args.get('rsi_len',14)),
+        rsi_overbought    = int(args.get('rsi_overbought',70)),
+        rsi_oversold      = int(args.get('rsi_oversold',30)),
+        macd_fast         = int(args.get('macd_fast',12)),
+        macd_slow         = int(args.get('macd_slow',26)),
+        macd_signal       = int(args.get('macd_signal',9)),
+        bb_length         = int(args.get('bb_length',20)),
+        bb_std            = float(args.get('bb_std',2.0)),
+        vol_multiplier    = float(args.get('vol_multiplier',1.0)),
+        vwap_threshold    = float(args.get('vwap_threshold',0.0)),
+        single_entry_only = 'single_entry_only' in args,
+        use_trailing_stop = 'use_trailing_stop' in args,
     )
+
 
 # 3) Register the /backtest route
 import json
 import sqlite3
 from flask import request, render_template
-from services.backtest_service import backtest_scanner
+from services.backtest_service import run_full_backtest
 from flask import request, render_template, flash, redirect, url_for
 import sqlite3, json, sys
 from datetime import datetime
-from services.backtest_service import run_full_backtest as run_backtest
 from backtest_helpers import extract_backtest_settings
 
 BACKTEST_DB = 'backtest.db'
@@ -148,45 +152,67 @@ from flask import (
     Response,
 )
 
-# … your existing code …
-
 from flask import request, redirect, url_for, flash
+import subprocess
 
-@app.route('/run_backtest', methods=['POST'])
-def run_backtest():
-    # 1) Parse form into settings and kick off your backtest
-    settings = extract_backtest_settings(request.form)
-    symbols  = get_symbols(simulation=True)
+def extract_backtest_settings(args):
+    return BacktestSettings(
+        start_date        = args.get('start_date',     '2023-01-01'),
+        end_date          = args.get('end_date',       '2024-01-01'),
+        starting_cash     = int(args.get('starting_cash', 10000)),
+        max_per_trade     = int(args.get('max_per_trade',    1000)),
+        timeframe         = args.get('timeframe',       '6mo'),
+        trailing_stop_pct = float(args.get('trailing_stop_pct', 0.05)),
+        sell_after_days   = int(args.get('sell_after_days')) if args.get('sell_after_days') else None,
 
-    # 2) Reset the backtest DB so each run is fresh
-    subprocess.run(['python', 'init_backtest_db.py'], check=True)
+        sma_on    = 'sma_on'  in args,
+        rsi_on    = 'rsi_on'  in args,
+        macd_on   = 'macd_on' in args,
+        bb_on     = 'bb_on'   in args,
+        vol_on    = 'vol_on'  in args,
+        vwap_on   = 'vwap_on' in args,
+        news_on   = 'news_on' in args,
 
-    # 3) Run each symbol's backtest and log to DB
-    for sym in symbols:
-        backtest_scanner(
-            symbol           = sym,
-            start_date       = settings.start_date,
-            end_date         = settings.end_date,
-            initial_cash     = settings.starting_cash,
-            max_trade_amount = settings.max_per_trade,
-            sma_on           = settings.sma_on,
-            sma_length       = settings.sma_length,
-            vwap_on          = settings.vwap_on,
-            vwap_threshold   = settings.vwap_threshold,
-            news_on          = settings.news_on,
-            log_to_db        = True,
-        )
+        sma_length     = int(args.get('sma_length',      20)),
+        rsi_len        = int(args.get('rsi_len',         14)),
+        rsi_overbought = int(args.get('rsi_overbought',  70)),
+        rsi_oversold   = int(args.get('rsi_oversold',    30)),
+        macd_fast      = int(args.get('macd_fast',       12)),
+        macd_slow      = int(args.get('macd_slow',       26)),
+        macd_signal    = int(args.get('macd_signal',      9)),
+        bb_length      = int(args.get('bb_length',       20)),
+        bb_std         = float(args.get('bb_std',         2.0)),
+        vol_multiplier = float(args.get('vol_multiplier', 1.0)),
+        vwap_threshold = float(args.get('vwap_threshold', 0.0)),
 
-    # 4) Flash success and redirect back to GET /backtest with run_full=1
-    flash('✅ Backtest run complete!', 'success')
-    return redirect(
-        url_for(
-            'backtest_view',
-            run_full=1,
-            **request.form.to_dict()
-        )
+        single_entry_only = 'single_entry_only' in args,
+        use_trailing_stop = 'use_trailing_stop' in args,
     )
 
+# ── 3) Replace your old run_backtest route with this ──────────────────────────
+
+@app.route('/run_backtest', methods=['POST'])
+def run_backtest_route():
+    # grab everything into one object
+    settings = extract_backtest_settings(request.form)
+
+    # load symbols however you do it
+    symbols = load_your_symbols()
+
+    # reset/initialize the DB
+    init_backtest_db()
+
+    # <-- here’s the only change you need:
+    trades, summary = run_full_backtest(settings, symbols)
+
+    flash("✅ Backtest run complete!")
+    return render_template(
+        'backtest.html',
+        trades=trades,
+        summary=summary,
+        settings=settings,
+        net_return=summary['total_pnl']
+    )
 
 @app.route("/start_scanner", methods=["POST"])
 def start_scanner():

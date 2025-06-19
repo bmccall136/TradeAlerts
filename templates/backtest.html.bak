@@ -37,9 +37,7 @@
   </div>
 </div>
 
-<form id="backtest-form"
-      method="POST"
-      action="{{ url_for('run_backtest_route') }}">
+<form id="backtest-form" method="POST" action="{{ url_for('run_backtest') }}">
 
 
   <div class="filter-toggle-group mb-4 d-flex align-items-center w-100 flex-wrap">
