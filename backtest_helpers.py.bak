@@ -1,0 +1,33 @@
+# backtest_helpers.py
+
+from collections import namedtuple
+
+BacktestSettings = namedtuple('BacktestSettings', [
+    'start_date','end_date','starting_cash','max_per_trade',
+    'trailing_stop_pct','sell_after_days',
+    'sma_on','rsi_on','macd_on','bb_on','vwap_on','news_on',
+    'sma_length','rsi_len','rsi_overbought','rsi_oversold',
+    'macd_fast','macd_slow','macd_signal',
+    'bb_length','bb_std','vol_multiplier','vwap_threshold',
+    'timeframe'
+])
+
+
+def extract_backtest_settings(args):
+    """
+    Pulls settings out of Flask request.args for the full-scan backtest.
+    """
+    return BacktestSettings(
+        start_date        = args.get('start_date',  '2023-01-01'),
+        end_date          = args.get('end_date',    '2024-01-01'),
+        starting_cash     = float(args.get('starting_cash', 10000)),
+        max_per_trade     = float(args.get('max_per_trade', 1000)),
+        trailing_stop_pct = float(args.get('trailing_stop_pct', 0)),
+        sell_after_days   = int(args.get('sell_after_days', 0)),
+        sma_on            = bool(args.get('sma_on')),
+        rsi_on            = bool(args.get('rsi_on')),
+        macd_on           = bool(args.get('macd_on')),
+        bb_on             = bool(args.get('bb_on')),
+        vwap_on           = bool(args.get('vwap_on')),
+        news_on           = bool(args.get('news_on'))
+    )

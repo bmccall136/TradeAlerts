@@ -7,6 +7,23 @@ import platform
 from pathlib import Path
 from datetime import datetime, timedelta
 from functools import wraps
+from flask import Flask, request, render_template, redirect, url_for, flash, jsonify, Response
+from flask import Flask, request, render_template, redirect, url_for, flash, jsonify, Response
+# bring in simulation service functions right here
+from services.simulation_service import (
+    nuke_simulation_db,
+    get_cash,
+    get_holdings,
+    get_realized_pl,
+    get_trades,
+    buy_stock,
+    sell_stock,
+)
+import io
+import csv
+from flask import Response
+
+app = Flask(__name__)
 
 from flask import (
     Flask, request, render_template,
@@ -28,8 +45,6 @@ BacktestSettings = namedtuple('BacktestSettings', [
     # … existing fields …,
     'single_entry_only',
     'use_trailing_stop',
-    'trailing_stop_pct',
-    'sell_after_days',
     'start_date','end_date','starting_cash','max_per_trade',
     'timeframe','trailing_stop_pct','sell_after_days',
     'sma_on','rsi_on','macd_on','bb_on','vol_on','vwap_on','news_on',
@@ -66,49 +81,49 @@ def extract_backtest_settings(args):
         vwap_threshold   = float(args.get('vwap_threshold', 0.0)),
         single_entry_only  = 'single_entry_only'  in args,
         use_trailing_stop  = 'use_trailing_stop'  in args,
-        trailing_stop_pct  = float(args.get('trailing_stop_pct', 0.05)),
-        sell_after_days    = int(args.get('sell_after_days')) if args.get('sell_after_days') else None,
-
     )
 
 # 3) Register the /backtest route
+import json
+import sqlite3
+from flask import request, render_template
+from services.backtest_service import backtest_scanner
+from flask import request, render_template, flash, redirect, url_for
+import sqlite3, json, sys
+from datetime import datetime
+from services.backtest_service import run_full_backtest as run_backtest
+from backtest_helpers import extract_backtest_settings
+
+BACKTEST_DB = 'backtest.db'
+
 @app.route('/backtest')
 def backtest_view():
-    conn = sqlite3.connect(BACKTEST_DB)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    c.execute('SELECT id FROM backtest_runs ORDER BY id DESC LIMIT 1')
-    row = c.fetchone()
-    if not row:
-        trades, summary = [], {
-            'total_pnl':0.0,'num_trades':0,'wins':0,'losses':0,'by_symbol':{}
-        }
-    else:
-        run_id = row['id']
-        c.execute("""
-            SELECT symbol, action, trade_time AS date, qty, price, pnl
-              FROM backtest_trades
-             WHERE run_id = ?
-             ORDER BY id
-        """, (run_id,))
-        trades = [dict(r) for r in c.fetchall()]
-        total_pnl = sum((r['pnl'] or 0) for r in trades)
-        num_trades = len(trades)
-        wins = sum(1 for r in trades if (r['pnl'] or 0) > 0)
-        losses = sum(1 for r in trades if (r['pnl'] or 0) < 0)
-        by_symbol = {}
-        for r in trades:
-            by_symbol.setdefault(r['symbol'], 0.0)
-            by_symbol[r['symbol']] += (r['pnl'] or 0.0)
-        summary = {
-            'total_pnl': round(total_pnl,2),
-            'num_trades': num_trades,
-            'wins': wins,
-            'losses': losses,
-            'by_symbol': by_symbol
-        }
-    conn.close()
     settings = extract_backtest_settings(request.args)
+    # load symbols
+    with open('sp500_symbols.txt') as f:
+        symbols = [s.strip() for s in f if s.strip()]
+
+    trades = []
+    summary = {
+        'total_pnl': 0.0,
+        'num_trades': 0,
+        'wins': 0,
+        'losses': 0,
+        'by_symbol': {}
+    }
+
+    if request.args.get('run_full') == '1':
+        start_ts = datetime.utcnow()
+        print(f"[Backtest] START {start_ts.isoformat()}", file=sys.stdout)
+        try:
+            trades, summary = run_backtest(settings, symbols)
+            end_ts = datetime.utcnow()
+            print(f"[Backtest] COMPLETE (took {end_ts-start_ts})", file=sys.stdout)
+            flash(f"✅ Backtest completed in {end_ts - start_ts}")
+        except Exception as e:
+            flash(f"❌ Backtest error: {e}")
+            print(f"[Backtest] ERROR: {e}", file=sys.stderr)
+
     return render_template(
         'backtest.html',
         trades=trades,
@@ -116,9 +131,47 @@ def backtest_view():
         settings=settings,
         net_return=summary['total_pnl']
     )
+import io
+import csv
+from flask import make_response
 
-# 4) Now bring in your Basic Auth and all the other @app.route handlers below…
+@app.route('/run_backtest', methods=['POST'])
+def run_backtest_route():
+    # 1) grab all of your form settings
+    settings = extract_backtest_settings(request.form)
+    # 2) load your symbol list however you like
+    symbols  = get_symbols(simulation=True)
 
+    # 3) reset the backtest DB
+    subprocess.run(['python', 'init_backtest_db.py'], check=True)
+
+    # 4) fire off each symbol into the DB
+    for sym in symbols:
+        backtest_scanner(
+            symbol           = sym,
+            start_date       = settings.start_date,
+            end_date         = settings.end_date,
+            initial_cash     = settings.starting_cash,
+            max_trade_amount = settings.max_per_trade,
+            sma_on           = settings.sma_on,
+            sma_length       = settings.sma_length,
+            vwap_on          = settings.vwap_on,
+            vwap_threshold   = settings.vwap_threshold,
+            news_on          = settings.news_on,
+            log_to_db        = True
+        )
+
+    flash('✅ Backtest run complete!', 'success')
+    # 5) redirect *with* run_full=1 so the GET handler will actually load & display the table
+    return flask.redirect(
+        url_for(
+            'backtest_view',
+            run_full=1,
+            **request.form.to_dict()
+        )
+    )
+
+    
 USERNAME = os.environ.get("BASIC_AUTH_USER", "admin")
 PASSWORD = os.environ.get("BASIC_AUTH_PASS", "Shadow!")
 
@@ -234,144 +287,44 @@ BACKTEST_DB = os.path.join(os.getcwd(), 'backtest.db')
 # 2) RUN BACKTEST (wipe + run + log)
 # ────────────────────────────────────────────────────────
 
-@app.route('/run_backtest', methods=['POST'])
-def run_backtest():
-    # 1) Parse settings and load symbols
-    settings = extract_backtest_settings(request.form)
-    symbols  = get_symbols(simulation=True)
-
-    # 2) Reinitialize DB
-    subprocess.run(['python', 'init_backtest_db.py'], check=True)
-
-    # 3) Backtest each symbol with all kwargs
-    for sym in symbols:
-        backtest_scanner(
-    # … first five args …,
-            single_entry_only  = settings.single_entry_only,
-            use_trailing_stop  = settings.use_trailing_stop,
-            trailing_stop_pct  = settings.trailing_stop_pct,
-            sell_after_days    = settings.sell_after_days,
-            log_to_db          = True
-            symbol            = sym,
-            start_date        = settings.start_date,
-            end_date          = settings.end_date,
-            initial_cash      = settings.starting_cash,
-            max_trade_amount  = settings.max_per_trade,
-            timeframe         = settings.timeframe,
-
-            sma_on            = settings.sma_on,
-            sma_length        = settings.sma_length,
-
-            rsi_on            = settings.rsi_on,
-            rsi_len           = settings.rsi_len,
-            rsi_overbought    = settings.rsi_overbought,
-            rsi_oversold      = settings.rsi_oversold,
-
-            macd_on           = settings.macd_on,
-            macd_fast         = settings.macd_fast,
-            macd_slow         = settings.macd_slow,
-            macd_signal       = settings.macd_signal,
-
-            bb_on             = settings.bb_on,
-            bb_length         = settings.bb_length,
-            bb_std            = settings.bb_std,
-
-            vol_on            = settings.vol_on,
-            vol_multiplier    = settings.vol_multiplier,
-
-            vwap_on           = settings.vwap_on,
-            vwap_threshold    = settings.vwap_threshold,
-
-            news_on           = settings.news_on,
-
-            log_to_db         = True
-        )
-
-    flash('✅ Backtest run complete!', 'success')
-    return redirect(url_for('backtest_view', **request.form))
-
-
-
-
-
 @app.route('/reset_backtest', methods=['POST'])
 def reset_backtest():
-    try:
-        subprocess.run(['python','init_backtest_db.py'], check=True)
-        flash('✅ Backtest DB nuked and recreated!', 'success')
-    except Exception as e:
-        flash(f'❌ Backtest reset failed: {e}', 'danger')
+    subprocess.run(['python','init_backtest_db.py'], check=True)
+    flash('✅ Backtest DB reset!', 'success')
     return redirect(url_for('backtest_view'))
 
-
-@app.route('/config')
-def config():
-    config = {}
-    config_clean = {
-        k: str(v) if isinstance(v, timedelta) else v
-        for k, v in config.items()
-    }
-    return render_template('config.html', config=config_clean)
-
-
-### ────────────── SIMULATION ────────────── ###
-
-@app.route('/reset_simulation', methods=['POST'])
-def reset_simulation():
-    success = nuke_simulation_db()
-    if success:
-        return "Simulation reset!", 200
-    else:
-        return "Failed to reset simulation database.", 500
 
 
 @app.route('/simulation')
 def simulation():
-    # Default fallback values if something goes wrong
-    cash               = 0.0
-    unrealized_pnl     = 0.0
-    realized_pnl       = 0.0
+    cash          = get_cash()
+    realized_pnl  = get_realized_pl()
+
+    raw_holdings = get_holdings()
     formatted_holdings = []
-    formatted_trades   = []
+    unrealized_pnl = 0.0
+    for h in raw_holdings:
+        unrealized_pnl += h['total_gain']
+        formatted_holdings.append({
+            'symbol':     h['symbol'],
+            'last_price': h['last_price'],
+            'qty':        h['qty'],
+            'day_gain':   h['day_gain'],
+            'total_gain': h['total_gain'],
+            'value':      h['value'],
+        })
 
-    try:
-        # 1) Current cash & realized P/L
-        cash          = get_cash()
-        realized_pnl  = get_realized_pl()
-
-        # 2) Gather and format holdings
-        raw_holdings = get_holdings()
-        unrealized_pnl = 0.0
-        for h in raw_holdings:
-            unrealized_pnl += h['total_gain']
-            formatted_holdings.append({
-                'symbol':     h['symbol'],
-                'last_price': h['last_price'],
-                'change':     h['change'],
-                'change_pct': h['change_pct'],
-                'qty':        h['qty'],
-                'price_paid': h['price_paid'],
-                'day_gain':   h['day_gain'],
-                'total_gain': h['total_gain'],
-                'value':      h['value']
-            })
-
-        # 3) Gather and format trade history
-        raw_trades = get_trades()
-        for t in raw_trades:
-            pl_display = f"${t['pnl']:.2f}" if t['pnl'] is not None else "-"
-            formatted_trades.append({
-                'time':   t['trade_time'],
-                'symbol': t['symbol'],
-                'action': t['action'],
-                'qty':    t['qty'],
-                'price':  f"${t['price']:.2f}",
-                'pl':     pl_display
-            })
-
-    except Exception as e:
-        import traceback; traceback.print_exc()
-        print(f"[Simulation Error] {e}")
+    raw_trades      = get_trades()
+    formatted_trades = []
+    for t in raw_trades:
+        formatted_trades.append({
+            'time':   t['trade_time'],
+            'symbol': t['symbol'],
+            'action': t['action'],
+            'qty':    t['qty'],
+            'price':  t['price'],
+            'pl':     t['pnl'],
+        })
 
     return render_template(
         'simulation.html',
@@ -382,6 +335,30 @@ def simulation():
         history=formatted_trades
     )
 
+@app.route('/export/simulation')
+def export_simulation():
+    cash         = get_cash()
+    holdings     = get_holdings()
+    trades       = get_trades()
+    si = io.StringIO()
+    cw = csv.writer(si)
+
+    cw.writerow(['Cash', cash])
+    cw.writerow([])
+    cw.writerow(['-- HOLDINGS --'])
+    cw.writerow(['symbol','qty','last_price','value','day_gain','total_gain'])
+    for h in holdings:
+        cw.writerow([h['symbol'], h['qty'], h['last_price'], h['value'], h['day_gain'], h['total_gain']])
+    cw.writerow([])
+    cw.writerow(['-- TRADES --'])
+    cw.writerow(['time','symbol','action','qty','price','pl'])
+    for t in trades:
+        cw.writerow([t['time'], t['symbol'], t['action'], t['qty'], t['price'], t['pl']])
+
+    resp = make_response(si.getvalue())
+    resp.headers["Content-Disposition"] = "attachment; filename=simulation.csv"
+    resp.headers["Content-type"] = "text/csv"
+    return resp
 
 @app.route("/simulation/buy", methods=["POST"])
 def simulation_buy():
@@ -423,6 +400,25 @@ def simulation_buy():
         return jsonify(success=False, error=str(e)), 500
 
 
+
+    flash('✅ Backtest run complete!', 'success')
+    return redirect(url_for('backtest_view', **request.form))
+from flask import flash, redirect, url_for
+import subprocess
+
+@app.route('/reset_simulation', methods=['POST'])
+def reset_simulation():
+    try:
+        # if you have a script to re-init your simulation DB:
+        subprocess.run(
+            ['python', 'init_simulation_db.py'],
+            check=True, capture_output=True, text=True, timeout=10
+        )
+        flash('✅ Simulation database reset')
+    except Exception as e:
+        flash(f'❌ Failed to reset simulation: {e}')
+    return redirect(url_for('simulation'))
+
 @app.route("/simulation/sell", methods=["POST"])
 def simulation_sell():
     data = request.get_json()
@@ -450,6 +446,52 @@ from services.alert_service import (
     update_indicator_settings,
     get_alerts
 )
+@app.route('/export_backtest')
+def export_backtest():
+    # 1) grab the *most recent* backtest run and its trades out of SQLite
+    conn = sqlite3.connect(BACKTEST_DB)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    # pull your settings for the latest run
+    cur.execute("SELECT * FROM backtest_runs ORDER BY id DESC LIMIT 1")
+    run = cur.fetchone()
+
+    # pull all of its trades
+    cur.execute("""
+      SELECT symbol, date, action, price, qty, pnl
+        FROM backtest_trades
+       WHERE run_id = ?
+       ORDER BY id
+    """, (run['id'],))
+    trades = cur.fetchall()
+    conn.close()
+
+    # 2) stream it into an in-memory CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # write run settings first
+    writer.writerow(['Setting','Value'])
+    for key in run.keys():
+        writer.writerow([key, run[key]])
+    writer.writerow([])
+
+    # then the trade table
+    writer.writerow(['symbol','date','action','price','qty','pnl'])
+    for row in trades:
+        writer.writerow([row['symbol'], row['date'], row['action'],
+                         row['price'], row['qty'], row['pnl']])
+
+    # 3) send it down as a download
+    output.seek(0)
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={
+          'Content-Disposition': 'attachment; filename=backtest.csv'
+        }
+    )
 
 @app.route("/", methods=["GET"])
 def index():
