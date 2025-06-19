@@ -6,22 +6,39 @@ def backtest(
     symbol,
     start_date,
     end_date,
-    initial_cash=10000,
-    max_trade_amount=1000,
+    initial_cash,
+    max_trade_amount,
+    max_trade_per_stock=None,
     trailing_stop_pct=0.0,
     sell_after_days=None,
     sma_on=False,
+    rsi_on=False,
+    macd_on=False,
+    bb_on=False,
     vwap_on=False,
-    vwap_threshold=0.0,
     news_on=False,
-    log_to_db=False
+    sma_length=20,
+    rsi_len=14,
+    macd_fast=12,
+    macd_slow=26,
+    macd_signal=9,
+    bb_length=20,
+    bb_std=2.0,
+    vol_multiplier=1.0,
+    vwap_threshold=0.0,       # ← ensure this is here
+    log_to_db=False,
 ):
+
+
     # 1) Fetch data
     yf_symbol = symbol.replace('.', '-')
     df = yf.Ticker(yf_symbol).history(
-        start=start_date, end=end_date,
-        interval='1d', auto_adjust=False, progress=False
+        start=start_date,
+        end=end_date,
+        interval='1d',
+        auto_adjust=False,
     )
+
     if df is None or df.empty:
         return [], 0.0
 
@@ -112,6 +129,64 @@ def backtest(
 
     net_pnl = cash - initial_cash
     return trades, float(net_pnl)
+# at the bottom of services/backtest_service.py
+
+def run_full_backtest(settings, symbols):
+    """
+    Loop through each ticker, call the single-symbol backtest(),
+    and build a trades list + summary dict.
+    """
+    all_trades = []
+    summary = {
+        'total_pnl': 0.0,
+        'num_trades': 0,
+        'wins': 0,
+        'losses': 0,
+        'by_symbol': {}
+    }
+
+    for symbol in symbols:
+        trades, net_pnl = backtest(
+            symbol,
+            settings.start_date,
+            settings.end_date,
+            settings.starting_cash,
+            settings.max_per_trade,
+            trailing_stop_pct=settings.trailing_stop_pct,
+            sell_after_days=settings.sell_after_days,
+            sma_on=settings.sma_on,
+            rsi_on=settings.rsi_on,
+            macd_on=settings.macd_on,
+            bb_on=settings.bb_on,
+            vwap_on=settings.vwap_on,
+            news_on=settings.news_on,
+            sma_length=settings.sma_length,
+            rsi_len=settings.rsi_len,
+            macd_fast=settings.macd_fast,
+            macd_slow=settings.macd_slow,
+            macd_signal=settings.macd_signal,
+            bb_length=settings.bb_length,
+            bb_std=settings.bb_std,
+            vol_multiplier=settings.vol_multiplier,
+            vwap_threshold=settings.vwap_threshold,
+            log_to_db=False
+        )
+
+        all_trades.extend(trades)
+        summary['total_pnl']  += net_pnl
+        summary['num_trades'] += len(trades)
+        wins   = sum(1 for t in trades if t['action']=='SELL' and t['pnl']>0)
+        losses = sum(1 for t in trades if t['action']=='SELL' and t['pnl']<=0)
+        summary['wins']   += wins
+        summary['losses'] += losses
+        summary['by_symbol'][symbol] = {
+            'pnl':    net_pnl,
+            'trades': len(trades),
+            'wins':   wins,
+            'losses': losses
+        }
+
+    return all_trades, summary
 
 # Alias for dashboard
 backtest_scanner = backtest

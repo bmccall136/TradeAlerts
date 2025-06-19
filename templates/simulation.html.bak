@@ -1,18 +1,26 @@
 {# templates/simulation.html #}
-
 {% extends "layout.html" %}
 {% block content %}
 
-  <!-- ── CONTAINER ── everything in here stays properly nested ── -->
-  <div class="container">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+<div class="container">
+  <div class="d-flex align-items-center position-relative mb-4">
+    <!-- Centered title -->
+    <h2 class="text-warning mb-0 mx-auto">Simulation Dashboard</h2>
 
-    <!-- 1) PAGE HEADER & RESET BUTTON -->
-    <div class="simulation-header" style="text-align:center; margin:20px 0;">
-      <h1>Simulation Dashboard</h1>
-      <form action="{{ url_for('reset_simulation') }}" method="post" style="display:inline;">
-        <button class="reset-btn" type="submit">Reset Simulation</button>
-      </form>
-    </div>
+    <!-- Absolutely positioned reset button on the right -->
+    <form method="POST"
+          action="{{ url_for('reset_simulation') }}"
+          class="position-absolute end-0">
+      <button type="submit" class="btn btn-outline-danger">
+        <i class="bi bi-x-circle"></i> Reset Simulation DB
+      </button>
+    </form>
+<a href="{{ url_for('export_simulation') }}" class="btn btn-outline-light mb-3">
+  <i class="bi bi-download"></i> Export CSV
+</a>
+  </div>
+</div>
 
     <!-- 2) CASH SUMMARY -->
     <div class="simulation-summary" style="text-align:center; margin-bottom:30px;">
@@ -173,48 +181,5 @@
       });
     }
   </script>
-<script>
-function buyStock(btn) {
-  const row = btn.closest("tr");
-  if (!row) return;
-
-  const symbol = row.querySelector("td:nth-child(2)")?.textContent.trim();
-  const qty = parseInt(row.querySelector(".qty-input")?.value || 1);
-
-  if (!symbol || isNaN(qty)) {
-    alert("Invalid buy request");
-    return;
-  }
-
-  fetch("/simulation/buy", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ symbol, qty }),
-  })
-    .then((res) => {
-      if (res.ok) location.reload();
-      else alert("Buy failed.");
-    })
-    .catch((err) => {
-      console.error("Buy error:", err);
-    });
-}
-
-function clearAlert(btn) {
-  const row = btn.closest("tr");
-  if (!row) return;
-
-  const alertId = row.getAttribute("data-id");
-
-  fetch(`/clear/${alertId}`, { method: "POST" })
-    .then((res) => {
-      if (res.ok) row.remove();
-      else alert("Clear failed.");
-    })
-    .catch((err) => {
-      console.error("Clear error:", err);
-    });
-}
-</script>
 
 {% endblock %}

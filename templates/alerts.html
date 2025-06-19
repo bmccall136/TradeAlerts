@@ -34,7 +34,9 @@
   table.alerts-table th:nth-child(11), table.alerts-table td:nth-child(11) { width: 3%; }
   table.alerts-table th:nth-child(12), table.alerts-table td:nth-child(12) { width: 3%; }
 </style>
-
+<a href="{{ url_for('export_alerts') }}" class="btn btn-outline-light mb-3">
+  <i class="bi bi-download"></i> Export CSV
+</a>
 <div class="container">
   {# ─── Indicator Settings Form ─── #}
   {% set sma_labels = {10: "Short SMA (10)", 20: "Standard SMA (20)", 50: "Long SMA (50)", 100: "100-Day SMA (100)", 200: "200-Day SMA (200)"} %}

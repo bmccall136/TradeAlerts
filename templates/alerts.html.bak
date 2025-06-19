@@ -222,7 +222,7 @@
         type="checkbox"
         id="macd_hist_on"
         name="macd_hist_on"
-        value="1"
+        value="0"
         {% if settings.macd_hist_on %}checked{% endif %}
       >
       <label class="form-check-label text-warning" for="macd_hist_on">
