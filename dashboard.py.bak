@@ -22,7 +22,7 @@ from services.simulation_service import (
 import io
 import csv
 from flask import Response
-
+import threading
 app = Flask(__name__)
 
 from flask import (
@@ -37,7 +37,11 @@ from services.market_service           import get_symbols
 app = Flask(__name__)
 # ── Add this so flash() will work ───────────────────
 app.secret_key = os.environ.get('PokeChop!', 'PokeChop!')
+# ── Database paths ───────────────────────────────────────────────────────────
+DB_PATH = os.path.join(os.getcwd(), 'alerts.db')
+SIM_DB  = os.path.join(os.getcwd(), 'simulation.db')
 BACKTEST_DB = os.path.join(os.getcwd(), 'backtest.db')
+
 
 # 2) BacktestSettings + extractor
 from collections import namedtuple
@@ -131,21 +135,31 @@ def backtest_view():
         settings=settings,
         net_return=summary['total_pnl']
     )
+# near the top of Dashboard.py, alongside your other flask imports
 import io
 import csv
-from flask import make_response
+import subprocess
+import sqlite3
+from flask import (
+    flash,
+    redirect,
+    url_for,
+    request,
+    Response,
+)
+
+# … your existing code …
 
 @app.route('/run_backtest', methods=['POST'])
-def run_backtest_route():
-    # 1) grab all of your form settings
+def run_backtest():
+    # 1) Parse form into settings and kick off your backtest
     settings = extract_backtest_settings(request.form)
-    # 2) load your symbol list however you like
     symbols  = get_symbols(simulation=True)
 
-    # 3) reset the backtest DB
+    # 2) Reset the backtest DB
     subprocess.run(['python', 'init_backtest_db.py'], check=True)
 
-    # 4) fire off each symbol into the DB
+    # 3) Run each symbol's backtest and log to DB
     for sym in symbols:
         backtest_scanner(
             symbol           = sym,
@@ -158,12 +172,12 @@ def run_backtest_route():
             vwap_on          = settings.vwap_on,
             vwap_threshold   = settings.vwap_threshold,
             news_on          = settings.news_on,
-            log_to_db        = True
+            log_to_db        = True,
         )
 
+    # 4) Flash success and redirect back to GET /backtest with run_full=1
     flash('✅ Backtest run complete!', 'success')
-    # 5) redirect *with* run_full=1 so the GET handler will actually load & display the table
-    return flask.redirect(
+    return redirect(
         url_for(
             'backtest_view',
             run_full=1,
@@ -171,41 +185,6 @@ def run_backtest_route():
         )
     )
 
-    
-USERNAME = os.environ.get("BASIC_AUTH_USER", "admin")
-PASSWORD = os.environ.get("BASIC_AUTH_PASS", "Shadow!")
-
-def check_auth(user, pw):
-    return user == USERNAME and pw == PASSWORD
-
-def authenticate():
-    return Response(
-        "⛔ Authentication Required", 401,
-        {'WWW-Authenticate': 'Basic realm="Login Required"'}
-    )
-
-def require_auth(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        auth = request.authorization
-        if not auth or not check_auth(auth.username, auth.password):
-            return authenticate()
-        return f(*args, **kwargs)
-    return decorated
-
-def scanner_loop():
-    global scanner_active
-    scanner_active = True
-    while True:
-        try:
-            from scanner import run_scan
-            run_scan()
-            print("[Scanner] ✅ Ran scan loop")
-        except Exception as e:
-            print(f"[Scanner] ❌ Error: {e}")
-        time.sleep(60)
-
-        
 @app.route("/start_scanner", methods=["POST"])
 def start_scanner():
     if platform.system() == "Windows":
@@ -402,7 +381,9 @@ def simulation_buy():
 
 
     flash('✅ Backtest run complete!', 'success')
-    return redirect(url_for('backtest_view', **request.form))
+    return redirect(
+        url_for('backtest_view', **request.form)
+    )
 from flask import flash, redirect, url_for
 import subprocess
 
@@ -475,28 +456,30 @@ def export_alerts():
     )
 
 import io, csv
+import json
+import sqlite3
 from flask import Response, flash, redirect, url_for
 
 @app.route('/export_backtest')
 def export_backtest():
-    # 1) Open connection & get dict‐style rows
+    # 1) Rebuild the BacktestSettings from the same query-string
+    settings = extract_backtest_settings(request.args)
+
+    # 2) Open your backtest.db
     conn = sqlite3.connect(BACKTEST_DB)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    # 2) Find the most recent backtest_run
-    run = cur.execute(
-        "SELECT id, settings FROM backtest_runs ORDER BY timestamp DESC LIMIT 1"
+    # 3) Grab the most recent run_id
+    row = cur.execute(
+        "SELECT id FROM backtest_runs ORDER BY timestamp DESC LIMIT 1"
     ).fetchone()
-
-    if not run:
-        flash('❌ No backtest run found to export.', 'warning')
+    if not row:
+        flash('❌ No backtest run in the database to export.', 'warning')
         return redirect(url_for('backtest_view'))
+    run_id = row['id']
 
-    run_id = run['id']
-    settings_json = run['settings']  # if you have it stored
-
-    # 3) Pull all trades for that run_id
+    # 4) Pull all trade rows for that run
     trades = cur.execute(
         """SELECT symbol, date, action, price, qty, pnl
            FROM backtest_trades
@@ -506,38 +489,33 @@ def export_backtest():
     ).fetchall()
     conn.close()
 
-    # 4) Build CSV in memory
+    # 5) Build the CSV in memory
     buf = io.StringIO()
-    w = csv.writer(buf)
+    writer = csv.writer(buf)
 
-    # 4a) (Optional) dump settings up top
-    w.writerow(['--- Backtest Settings ---'])
-    # if settings_json is a JSON string:
-    import json
-    settings = json.loads(settings_json)
-    for k,v in settings.items():
-        w.writerow([k, v])
-    w.writerow([])
+    # 5a) Dump your settings first
+    writer.writerow(["# Backtest Settings"])
+    for key, val in settings._asdict().items():
+        writer.writerow([key, val])
+    writer.writerow([])
 
-    # 4b) trades header
-    w.writerow(['Symbol','Date','Type','Price','Qty','P/L'])
-
-    # 4c) trades rows
+    # 5b) Dump the trades
+    writer.writerow(["Symbol","Date","Type","Price","Qty","P/L"])
     for t in trades:
-        w.writerow([
-            t['symbol'],
-            t['date'],
-            t['action'],
-            t['price'],
-            t['qty'],
-            t['pnl'],
+        writer.writerow([
+            t["symbol"],
+            t["date"],
+            t["action"],
+            t["price"],
+            t["qty"],
+            t["pnl"]
         ])
 
-    # 5) Return as download
+    # 6) Return as an attachment
     return Response(
         buf.getvalue(),
-        mimetype='text/csv',
-        headers={'Content-Disposition':'attachment;filename=backtest.csv'}
+        mimetype="text/csv",
+        headers={"Content-Disposition":"attachment;filename=backtest.csv"},
     )
 
 
@@ -586,23 +564,23 @@ def index():
         settings=settings,
         match_count=settings["match_count"]
     )
-
-
-
-
-@app.before_request
-def secure_everything():
-    if request.path == "/health":
-        return  # Allow unauthenticated access to /health
-    return require_auth(lambda: None)()  # Apply auth to all other routes
-
-
+# ── Background scanner loop ─────────────────────────────────────────────────
+def scanner_loop():
+    """
+    Background thread that runs your scanner every 60 seconds.
+    """
+    while True:
+        try:
+            from scanner import run_scan
+            run_scan()
+            print("[Scanner] ✅ Ran scan loop")
+        except Exception as e:
+            print(f"[Scanner] ❌ Scanner error: {e}")
+        time.sleep(60)
 if __name__ == "__main__":
-    # Local dev only
+    # spin up the scanner in a daemon thread
     threading.Thread(target=scanner_loop, daemon=True).start()
+
+    # start Flask
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-
-
-

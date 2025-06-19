@@ -85,12 +85,27 @@ def backtest(
     end_date,
     initial_cash,
     max_trade_amount,
+    max_trade_per_stock=None,
+    trailing_stop_pct=0.0,
+    sell_after_days=None,
     sma_on=False,
+    rsi_on=False,
+    macd_on=False,
+    bb_on=False,
     vwap_on=False,
     news_on=False,
+    sma_length=20,
+    rsi_len=14,
+    macd_fast=12,
+    macd_slow=26,
+    macd_signal=9,
+    bb_length=20,
+    bb_std=2.0,
+    vol_multiplier=1.0,
+    vwap_threshold=0.0,       # ← ensure this is here
     log_to_db=False,
-    **kwargs
 ):
+
 
     # allow dashboard override of per‐stock max
     if max_trade_per_stock is not None:
