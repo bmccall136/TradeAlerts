@@ -1,242 +1,38 @@
-import sqlite3
-from datetime import datetime
-import yfinance as yf
-from pathlib import Path
-from services.etrade_service import get_etrade_price
+# services/simulation_service.py
 
+import time
+from services.trading_helpers import (
+    nuke_simulation_db,
+    fetch_live_data,
+    buy_stock,
+    sell_stock
+)
+from services.market_service import get_symbols
 
-SIM_DB = str(Path(__file__).resolve().parent.parent / "simulation.db")
+# flag to tell the loop when to stop
+_sim_stop = False
 
-def _connect():
-    return sqlite3.connect(SIM_DB, detect_types=sqlite3.PARSE_DECLTYPES)
+def run_simulation_loop(settings):
+    """Background loop—pure orchestration only."""
+    global _sim_stop
+    _sim_stop = False
 
-def _connect():
-    return sqlite3.connect(SIM_DB, detect_types=sqlite3.PARSE_DECLTYPES)
+    # start fresh
+    nuke_simulation_db()
 
-# … rest of get_holdings(), buy_stock(), sell_stock(), etc. …
+    symbols = get_symbols()
+    while not _sim_stop:
+        for sym in symbols:
+            data = fetch_live_data(sym)
+            if evaluate_entry(data, settings):
+                qty = calculate_qty(settings, data)
+                buy_stock(sym, qty, data["price"])
+            if evaluate_exit(data, settings):
+                exit_qty = calculate_exit_qty(data)
+                sell_stock(sym, exit_qty, data["price"])
+        time.sleep(settings.poll_interval)
 
-def get_cash():
-    """Return the single row `state.cash` (or 0.0 if missing)."""
-    conn = _connect()
-    cur = conn.cursor()
-    cur.execute("SELECT cash FROM state WHERE id = 1;")
-    row = cur.fetchone()
-    conn.close()
-    return float(row[0]) if row else 0.0
-
-def nuke_simulation_db():
-    """
-    Delete or reinitialize simulation.db by re-running init_simulation_db.py.
-    Returns True on success, False on error.
-    """
-
-def get_realized_pl():
-    """Return state.realized_pl (or 0.0)."""
-    conn = _connect()
-    cur = conn.cursor()
-    cur.execute("SELECT realized_pl FROM state WHERE id = 1;")
-    row = cur.fetchone()
-    conn.close()
-    return float(row[0]) if row else 0.0
-
-
-def get_trades():
-    """
-    Return a list of all trades (newest first).
-    Each trade is a dict with keys:
-      id, symbol, action, price, qty, trade_time, pnl
-    """
-    conn = _connect()
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    cur.execute("""
-      SELECT id, symbol, action, price, qty, trade_time, pnl
-        FROM simulation_trades
-       ORDER BY id DESC;
-    """)
-    rows = cur.fetchall()
-    conn.close()
-
-    trades = []
-    for r in rows:
-        trades.append({
-            "id":         r["id"],
-            "symbol":     r["symbol"],
-            "action":     r["action"],
-            "price":      float(r["price"]),
-            "qty":        int(r["qty"]),
-            "trade_time": r["trade_time"],
-            "pnl":        float(r["pnl"]) if r["pnl"] is not None else None
-        })
-    return trades
-
-
-def get_holdings():
-    """
-    Return a list of holdings dicts with exactly these keys for the template:
-      symbol, qty, price_paid, last_price, change, change_pct, day_gain, total_gain, value
-
-    - price_paid : pulled from the database (avg_cost at the time of purchase)
-    - last_price : fetched live from E*TRADE via get_etrade_price()
-    """
-    holdings = []
-    conn = _connect()
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-
-    # 1) Read each holding's cost basis (which we call avg_cost in the table)
-    cur.execute("SELECT symbol, qty, avg_cost FROM holdings;")
-    rows = cur.fetchall()
-    conn.close()
-
-    for r in rows:
-        symbol   = r["symbol"]
-        qty      = int(r["qty"])
-        price_paid = float(r["avg_cost"])  # THIS IS the cost at purchase
-
-        # 2) Fetch the latest quote from E*TRADE
-        try:
-            last_price = float(get_etrade_price(symbol))
-        except Exception:
-            # Fallback: if E*TRADE call fails, just use the price_paid
-            last_price = price_paid
-
-        # 3) Calculate the various P/L fields
-        change_amount = last_price - price_paid
-        change_pct    = (change_amount / price_paid * 100) if price_paid != 0 else 0.0
-        day_gain      = change_amount * qty       # approximating day_gain = total_gain
-        total_gain    = change_amount * qty
-        market_value  = last_price * qty
-
-        holdings.append({
-            "symbol":      symbol,
-            "qty":         qty,
-            "price_paid":  price_paid,     # matches {{ h.price_paid }} in template
-            "last_price":  last_price,     # matches {{ h.last_price }}
-            "change":      change_amount,  # matches {{ h.change }}
-            "change_pct":  change_pct,     # matches {{ h.change_pct }}
-            "day_gain":    day_gain,       # matches {{ h.day_gain }}
-            "total_gain":  total_gain,     # matches {{ h.total_gain }}
-            "value":       market_value    # matches {{ h.value }}
-        })
-
-    return holdings
-
-def buy_stock(symbol: str, quantity: int, price: float):
-    """
-    1) Insert a new BUY into simulation_trades (pnl=NULL)
-    2) Deduct cash = price * quantity from state.cash
-    3) Add or update holdings (recompute avg_cost)
-    """
-    from datetime import datetime
-    import sqlite3
-    from services.simulation_service import SIM_DB
-
-    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    conn = sqlite3.connect(SIM_DB)
-    cur  = conn.cursor()  # Ensure cursor is defined properly
-
-    total_cost = price * quantity
-
-    # 1) Check current cash
-    cur.execute("SELECT cash FROM state WHERE id = 1;")
-    row = cur.fetchone()
-    if not row or float(row[0]) < total_cost:
-        conn.close()
-        raise ValueError("Insufficient cash to buy.")
-
-    # 2) Insert trade record
-    cur.execute(
-        "INSERT INTO simulation_trades (symbol, action, price, qty, trade_time, pnl) "
-        "VALUES (?, 'BUY', ?, ?, ?, NULL);",
-        (symbol, price, quantity, timestamp)
-    )
-
-    # 3) Subtract cash in state
-    new_cash = float(row[0]) - total_cost
-    cur.execute("UPDATE state SET cash = ? WHERE id = 1;", (new_cash,))
-
-    # 4) Update or insert holding
-    cur.execute("SELECT qty, avg_cost FROM holdings WHERE symbol = ?;", (symbol,))
-    hold = cur.fetchone()
-    if hold:
-        old_qty, old_avg = int(hold[0]), float(hold[1])
-        new_qty = old_qty + quantity
-        new_avg = ((old_avg * old_qty) + (price * quantity)) / new_qty
-        cur.execute(
-            "UPDATE holdings SET qty = ?, avg_cost = ?, last_price = ? WHERE symbol = ?;",
-            (new_qty, new_avg, price, symbol)
-        )
-    else:
-        cur.execute(
-            "INSERT INTO holdings (symbol, qty, avg_cost, last_price) VALUES (?, ?, ?, ?);",
-            (symbol, quantity, price, price)
-        )
-
-    conn.commit()
-    conn.close()
-    return True
-
-def sell_stock(symbol: str, quantity: int, price: float):
-    """
-    1) Lookup existing holding; if not enough qty, error out.
-    2) Compute realized_pl = (price - avg_cost) * quantity.
-    3) Insert SELL into simulation_trades with pnl.
-    4) Subtract that qty from holdings (or delete if qty→0).
-    5) Add proceeds = price * quantity back into state.cash.
-    6) Add realized_pl to state.realized_pl.
-    """
-    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    conn = _connect()
-    cur = conn.cursor()
-
-    # 1) Get current cash + realized_pl
-    cur.execute("SELECT cash, realized_pl FROM state WHERE id = 1;")
-    state_row = cur.fetchone()
-    if not state_row:
-        conn.close()
-        raise Exception("No state row found.")
-    cash_now, realized = float(state_row[0]), float(state_row[1])
-
-    # 2) Get holding
-    cur.execute("SELECT qty, avg_cost FROM holdings WHERE symbol = ?;", (symbol,))
-    hold = cur.fetchone()
-    if not hold:
-        conn.close()
-        raise Exception(f"No holdings for {symbol}.")
-    old_qty, avg_cost = int(hold[0]), float(hold[1])
-    if quantity > old_qty:
-        conn.close()
-        raise Exception(f"Cannot sell {quantity} {symbol}; only {old_qty} held.")
-
-    # 3) Compute realized P/L
-    proceeds     = price * quantity
-    realized_pl  = (price - avg_cost) * quantity
-
-    # 4) Insert SELL trade
-    cur.execute(
-        "INSERT INTO simulation_trades (symbol, action, price, qty, trade_time, pnl) "
-        "VALUES (?, 'SELL', ?, ?, ?, ?);",
-        (symbol, price, quantity, timestamp, realized_pl)
-    )
-
-    # 5) Update holdings
-    new_qty = old_qty - quantity
-    if new_qty > 0:
-        cur.execute(
-            "UPDATE holdings SET qty = ?, last_price = ? WHERE symbol = ?;",
-            (new_qty, price, symbol)
-        )
-    else:
-        cur.execute("DELETE FROM holdings WHERE symbol = ?;", (symbol,))
-
-    # 6) Update cash + realized_pl in state
-    new_cash     = cash_now + proceeds
-    new_realized = realized + realized_pl
-    cur.execute(
-        "UPDATE state SET cash = ?, realized_pl = ? WHERE id = 1;",
-        (new_cash, new_realized)
-    )
-
-    conn.commit()
-    conn.close()
+def stop_simulation():
+    """Signal the running loop to exit on next iteration."""
+    global _sim_stop
+    _sim_stop = True

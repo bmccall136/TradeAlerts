@@ -1,0 +1,29 @@
+# services/trading_helpers.py
+
+import sqlite3
+import time
+from pathlib import Path
+from .broker_api import buy_stock, sell_stock, fetch_live_data
+
+SIM_DB = str(Path(__file__).parent.parent / "simulation.db")
+
+# global flag for your loop
+_sim_stop = False
+
+def nuke_simulation_db():
+    conn = sqlite3.connect(SIM_DB)
+    cur = conn.cursor()
+    # … your drop/create logic …
+    conn.commit()
+    conn.close()
+
+def get_symbols():
+    # return your list of symbols
+    return ["AAPL","MSFT","GOOG"]
+
+def stop_simulation():
+    """Signal the running loop to exit on the next iteration."""
+    global _sim_stop
+    _sim_stop = True
+
+# your existing buy_stock, sell_stock, fetch_live_data, etc…
