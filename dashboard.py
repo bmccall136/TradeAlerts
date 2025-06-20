@@ -1,72 +1,60 @@
 import os
 import subprocess
-import sqlite3
 import threading
 import time
 import platform
-from pathlib import Path
-from datetime import datetime, timedelta
-from functools import wraps
-from flask import Flask, request, render_template, redirect, url_for, flash, jsonify, Response
-# bring in simulation service functions right here
-from services.simulation_service import (
-    nuke_simulation_db,
-    get_cash,
-    get_holdings,
-    get_realized_pl,
-    get_trades,
-    buy_stock,
-    sell_stock,
-)
+import sqlite3
 import io
 import csv
-from flask import Response
-import threading
+from pathlib import Path
+from datetime import datetime, date, timedelta
+from dateutil.relativedelta import relativedelta
+from collections import namedtuple
+
+from flask import (
+    Flask, request, render_template, redirect,
+    url_for, flash, jsonify, Response as FlaskResponse
+)
+
+# helpers to initialize DBs
 from backtest_helpers import init_backtest_db
-app = Flask(__name__)
 
-# near the top of Dashboard.py, with your other flask imports:
-from flask import Flask, request, render_template, redirect, url_for, flash, jsonify, Response
+# simulation services
+from services.simulation_service import run_simulation_loop, stop_simulation
+from services.trading_helpers import (
+    nuke_simulation_db, get_cash, get_holdings,
+    get_realized_pl, get_trades,
+    buy_stock, sell_stock, fetch_live_data
+)
 
- # ── service imports for backtest ─────────────────────────────────────────────
-from services.market_service           import get_symbols
-from services.scanner_backtest_service import backtest_scanner
-# 1) Instantiate your app
-app = Flask(__name__)
-# ── Add this so flash() will work ───────────────────
-app.secret_key = os.environ.get('PokeChop!', 'PokeChop!')
-# ── Database paths ───────────────────────────────────────────────────────────
-DB_PATH = os.path.join(os.getcwd(), 'alerts.db')
-SIM_DB  = os.path.join(os.getcwd(), 'simulation.db')
+DB_PATH     = os.path.join(os.getcwd(), 'alerts.db')
+SIM_DB      = os.path.join(os.getcwd(), 'simulation.db')
 BACKTEST_DB = os.path.join(os.getcwd(), 'backtest.db')
 
+app = Flask(__name__)
+app.secret_key = os.environ.get('PokeChop!', 'PokeChop!')
 
-# 2) BacktestSettings + extractor
-from collections import namedtuple
-BacktestSettings = namedtuple('BacktestSettings', [
-    'start_date','end_date','starting_cash','max_per_trade',
-    'timeframe','trailing_stop_pct','sell_after_days',
-    # toggles
-    'sma_on','rsi_on','macd_on','bb_on','vol_on','vwap_on','news_on',
-    # indicator params
-    'sma_length','rsi_len','rsi_overbought','rsi_oversold',
-    'macd_fast','macd_slow','macd_signal',
-    'bb_length','bb_std','vol_multiplier','vwap_threshold',
-    # new behavioral flags
-    'single_entry_only','use_trailing_stop',
-])
-def load_your_symbols():
-    # reads your SP500 list
-    with open('sp500_symbols.txt') as f:
-        return [line.strip() for line in f if line.strip()]
+TIMEFRAME_DELTAS = {
+    '1mo': {'months': 1},
+    '3mo': {'months': 3},
+    '6mo': {'months': 6},
+    '1y' : {'years': 1},
+}
 
 def extract_backtest_settings(args):
+    # figure out end_date = today, start_date = today - timeframe
+    tf = args.get('timeframe', '6mo')
+    today = date.today()
+    delta = TIMEFRAME_DELTAS.get(tf, {'months': 6})
+    start = today - relativedelta(**delta)
+    end   = today
+
     return BacktestSettings(
-        start_date        = args.get('start_date','2023-01-01'),
-        end_date          = args.get('end_date','2024-01-01'),
+        start_date        = args.get('start_date', start.isoformat()),
+        end_date          = args.get('end_date',   end.isoformat()),
         starting_cash     = int(args.get('starting_cash',10000)),
         max_per_trade     = int(args.get('max_per_trade',1000)),
-        timeframe         = args.get('timeframe','6mo'),
+        timeframe         = tf,
         trailing_stop_pct = float(args.get('trailing_stop_pct',0.0)),
         sell_after_days   = int(args.get('sell_after_days')) if args.get('sell_after_days') else None,
         sma_on            = 'sma_on' in args,
@@ -91,6 +79,68 @@ def extract_backtest_settings(args):
         use_trailing_stop = 'use_trailing_stop' in args,
     )
 
+SimulationSettings = namedtuple('SimulationSettings', [
+  # toggles
+  'sma_on','rsi_on','macd_on','bb_on','vol_on','vwap_on','news_on',
+  # numeric indicators
+  'sma_length','rsi_len','rsi_overbought','rsi_oversold',
+  'macd_fast','macd_slow','macd_signal',
+  'bb_length','bb_std','vol_multiplier','vwap_threshold',
+  # extra entry/exit flags
+  'rsi_slope_on','macd_hist_on','bb_breakout_on',
+  # exit parameters
+  'trailing_stop_pct','sell_after_days',
+  # behavioral flags
+  'single_entry_only','use_trailing_stop'
+])
+
+def extract_simulation_settings(args):
+    return SimulationSettings(
+      sma_on            = 'sma_on' in args,
+      rsi_on            = 'rsi_on' in args,
+      macd_on           = 'macd_on' in args,
+      bb_on             = 'bb_on' in args,
+      vol_on            = 'vol_on' in args,
+      vwap_on           = 'vwap_on' in args,
+      news_on           = 'news_on' in args,
+      sma_length        = int(args.get('sma_length', 20)),
+      rsi_len           = int(args.get('rsi_len', 14)),
+      rsi_overbought    = int(args.get('rsi_overbought', 70)),
+      rsi_oversold      = int(args.get('rsi_oversold', 30)),
+      macd_fast         = int(args.get('macd_fast', 12)),
+      macd_slow         = int(args.get('macd_slow', 26)),
+      macd_signal       = int(args.get('macd_signal', 9)),
+      bb_length         = int(args.get('bb_length', 20)),
+      bb_std            = float(args.get('bb_std', 2.0)),
+      vol_multiplier    = float(args.get('vol_multiplier', 1.0)),
+      vwap_threshold    = float(args.get('vwap_threshold', 0.0)),
+      rsi_slope_on      = 'rsi_slope_on' in args,
+      macd_hist_on      = 'macd_hist_on' in args,
+      bb_breakout_on    = 'bb_breakout_on' in args,
+      trailing_stop_pct = float(args.get('trailing_stop_pct', 0.0)),
+      sell_after_days   = int(args.get('sell_after_days')) if args.get('sell_after_days') else None,
+      single_entry_only = 'single_entry_only' in args,
+      use_trailing_stop = 'use_trailing_stop' in args,
+    )
+
+# 2) BacktestSettings + extractor
+from collections import namedtuple
+BacktestSettings = namedtuple('BacktestSettings', [
+    'start_date','end_date','starting_cash','max_per_trade',
+    'timeframe','trailing_stop_pct','sell_after_days',
+    # toggles
+    'sma_on','rsi_on','macd_on','bb_on','vol_on','vwap_on','news_on',
+    # indicator params
+    'sma_length','rsi_len','rsi_overbought','rsi_oversold',
+    'macd_fast','macd_slow','macd_signal',
+    'bb_length','bb_std','vol_multiplier','vwap_threshold',
+    # new behavioral flags
+    'single_entry_only','use_trailing_stop',
+])
+def load_your_symbols():
+    # reads your SP500 list
+    with open('sp500_symbols.txt') as f:
+        return [line.strip() for line in f if line.strip()]
 
 # 3) Register the /backtest route
 import json
@@ -155,56 +205,55 @@ from flask import (
 from flask import request, redirect, url_for, flash
 import subprocess
 
-def extract_backtest_settings(args):
-    return BacktestSettings(
-        start_date        = args.get('start_date',     '2023-01-01'),
-        end_date          = args.get('end_date',       '2024-01-01'),
-        starting_cash     = int(args.get('starting_cash', 10000)),
-        max_per_trade     = int(args.get('max_per_trade',    1000)),
-        timeframe         = args.get('timeframe',       '6mo'),
-        trailing_stop_pct = float(args.get('trailing_stop_pct', 0.05)),
-        sell_after_days   = int(args.get('sell_after_days')) if args.get('sell_after_days') else None,
-
-        sma_on    = 'sma_on'  in args,
-        rsi_on    = 'rsi_on'  in args,
-        macd_on   = 'macd_on' in args,
-        bb_on     = 'bb_on'   in args,
-        vol_on    = 'vol_on'  in args,
-        vwap_on   = 'vwap_on' in args,
-        news_on   = 'news_on' in args,
-
-        sma_length     = int(args.get('sma_length',      20)),
-        rsi_len        = int(args.get('rsi_len',         14)),
-        rsi_overbought = int(args.get('rsi_overbought',  70)),
-        rsi_oversold   = int(args.get('rsi_oversold',    30)),
-        macd_fast      = int(args.get('macd_fast',       12)),
-        macd_slow      = int(args.get('macd_slow',       26)),
-        macd_signal    = int(args.get('macd_signal',      9)),
-        bb_length      = int(args.get('bb_length',       20)),
-        bb_std         = float(args.get('bb_std',         2.0)),
-        vol_multiplier = float(args.get('vol_multiplier', 1.0)),
-        vwap_threshold = float(args.get('vwap_threshold', 0.0)),
-
-        single_entry_only = 'single_entry_only' in args,
-        use_trailing_stop = 'use_trailing_stop' in args,
-    )
-
-# ── 3) Replace your old run_backtest route with this ──────────────────────────
+import json
+from datetime import datetime
+import sqlite3
+from flask import flash, render_template
 
 @app.route('/run_backtest', methods=['POST'])
 def run_backtest_route():
-    # grab everything into one object
+    # 1) Grab settings & symbols
     settings = extract_backtest_settings(request.form)
+    symbols  = load_your_symbols()
 
-    # load symbols however you do it
-    symbols = load_your_symbols()
-
-    # reset/initialize the DB
+    # 2) Reset DB
     init_backtest_db()
 
-    # <-- here’s the only change you need:
+    # 3) Run backtest
     trades, summary = run_full_backtest(settings, symbols)
 
+    # 4) Log this run into backtest_runs & backtest_trades
+    conn = sqlite3.connect(BACKTEST_DB)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    # 4a) Insert the run
+    cur.execute(
+        "INSERT INTO backtest_runs (started_at, settings_json) VALUES (?, ?)",
+        (datetime.utcnow().isoformat(), json.dumps(settings._asdict()))
+    )
+    run_id = cur.lastrowid
+
+    # 4b) Insert each trade
+    for t in trades:
+        cur.execute("""
+          INSERT INTO backtest_trades
+            (run_id, symbol, date, action, price, qty, pnl)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+          run_id,
+          t['symbol'],
+          t['date'],
+          t['action'],
+          t['price'],
+          t['qty'],
+          t['pnl']
+        ))
+
+    conn.commit()
+    conn.close()
+
+    # 5) Notify & render
     flash("✅ Backtest run complete!")
     return render_template(
         'backtest.html',
@@ -214,11 +263,20 @@ def run_backtest_route():
         net_return=summary['total_pnl']
     )
 
-@app.route("/start_scanner", methods=["POST"])
+@app.route('/start_scanner', methods=['POST'])
 def start_scanner():
-    if platform.system() == "Windows":
-        subprocess.Popen(["start", "start_scanner.bat"], shell=True)
-    return redirect(url_for('index'))
+    settings = extract_simulation_settings(request.form)
+    # background thread runs until /stop_scanner flips a flag
+    t = threading.Thread(
+      target=services.simulation_service.run_simulation_loop,
+      args=(settings,),
+      daemon=True
+    )
+    t.start()
+    flash("▶️ Simulation started with new settings", "success")
+    # redirect back, you can preserve the form values as query-string if you like:
+    return redirect(url_for('index', **request.form))
+
 
 @app.route("/stop_scanner", methods=["POST"])
 def stop_scanner():
@@ -499,9 +557,9 @@ def export_backtest():
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    # 3) Grab the most recent run_id
+    # 3) Grab the most recent run_id (order by started_at, not timestamp)
     row = cur.execute(
-        "SELECT id FROM backtest_runs ORDER BY timestamp DESC LIMIT 1"
+        "SELECT id FROM backtest_runs ORDER BY started_at DESC LIMIT 1"
     ).fetchone()
     if not row:
         flash('❌ No backtest run in the database to export.', 'warning')
@@ -613,3 +671,5 @@ if __name__ == "__main__":
     # start Flask
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+import json
+from datetime import datetime
