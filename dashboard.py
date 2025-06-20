@@ -1,3 +1,4 @@
+
 import os
 import subprocess
 import threading
@@ -131,6 +132,9 @@ BacktestSettings = namedtuple('BacktestSettings', [
     # toggles
     'sma_on','rsi_on','macd_on','bb_on','vol_on','vwap_on','news_on',
     # indicator params
+    
+    
+    
     'sma_length','rsi_len','rsi_overbought','rsi_oversold',
     'macd_fast','macd_slow','macd_signal',
     'bb_length','bb_std','vol_multiplier','vwap_threshold',
@@ -209,6 +213,12 @@ import json
 from datetime import datetime
 import sqlite3
 from flask import flash, render_template
+# near the top, after imports
+_is_scanner_running = False
+
+@app.route('/scanner_status')
+def scanner_status():
+    return jsonify(running=_is_scanner_running)
 
 @app.route('/run_backtest', methods=['POST'])
 def run_backtest_route():
@@ -265,24 +275,27 @@ def run_backtest_route():
 
 @app.route('/start_scanner', methods=['POST'])
 def start_scanner():
+    global _is_scanner_running
     settings = extract_simulation_settings(request.form)
-    # background thread runs until /stop_scanner flips a flag
+    _is_scanner_running = True
+
     t = threading.Thread(
-      target=services.simulation_service.run_simulation_loop,
-      args=(settings,),
-      daemon=True
+        target=run_simulation_loop,
+        args=(settings,),
+        daemon=True
     )
     t.start()
-    flash("▶️ Simulation started with new settings", "success")
-    # redirect back, you can preserve the form values as query-string if you like:
-    return redirect(url_for('index', **request.form))
+    flash("▶️ Simulation started", "success")
+    return redirect(url_for('simulation'))
 
 
-@app.route("/stop_scanner", methods=["POST"])
+@app.route('/stop_scanner', methods=['POST'])
 def stop_scanner():
-    if platform.system() == "Windows":
-        subprocess.call(["stop_scanner.bat"], shell=True)
-    return redirect(url_for('index'))
+    global _is_scanner_running
+    stop_simulation()
+    _is_scanner_running = False
+    flash("⛔ Simulation stopped", "danger")
+    return redirect(url_for('simulation'))
 
 @app.route('/run-checkpoint')
 def run_checkpoint():

@@ -1,3 +1,4 @@
+
 import os
 import subprocess
 import threading
@@ -131,6 +132,9 @@ BacktestSettings = namedtuple('BacktestSettings', [
     # toggles
     'sma_on','rsi_on','macd_on','bb_on','vol_on','vwap_on','news_on',
     # indicator params
+    
+    
+    
     'sma_length','rsi_len','rsi_overbought','rsi_oversold',
     'macd_fast','macd_slow','macd_signal',
     'bb_length','bb_std','vol_multiplier','vwap_threshold',
@@ -268,13 +272,12 @@ def start_scanner():
     settings = extract_simulation_settings(request.form)
     # background thread runs until /stop_scanner flips a flag
     t = threading.Thread(
-      target=services.simulation_service.run_simulation_loop,
-      args=(settings,),
-      daemon=True
+        target=run_simulation_loop,
+        args=(settings,),
+        daemon=True
     )
     t.start()
     flash("▶️ Simulation started with new settings", "success")
-    # redirect back, you can preserve the form values as query-string if you like:
     return redirect(url_for('index', **request.form))
 
 
@@ -671,3 +674,5 @@ if __name__ == "__main__":
     # start Flask
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+import json
+from datetime import datetime

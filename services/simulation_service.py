@@ -11,6 +11,70 @@ from services.market_service import get_symbols
 
 # flag to tell the loop when to stop
 _sim_stop = False
+# services/simulation_service.py
+
+import yfinance as yf
+from services.indicators import compute_sma, compute_rsi, compute_bollinger, calculate_macd
+
+def evaluate_entry(data, settings):
+    """
+    Return True if *all* enabled entry conditions pass.
+    """
+    # grab a little history
+    hist = yf.Ticker(data['symbol']).history(
+        period="1mo",  interval="1d",  auto_adjust=False
+    )
+    close = hist['Close']
+
+    if settings.sma_on:
+        sma = compute_sma(close, settings.sma_length)
+        if data['price'] < sma:
+            return False
+
+    if settings.rsi_on:
+        rsi = compute_rsi(close, settings.rsi_len).iloc[-1]
+        # must be oversold to buy
+        if rsi > settings.rsi_oversold:
+            return False
+
+    if settings.macd_on:
+        macd_line, signal = compute_macd(close, settings.macd_fast,
+                                         settings.macd_slow,
+                                         settings.macd_signal)
+        # require MACD line crossing above signal
+        if macd_line.iloc[-1] < signal.iloc[-1]:
+            return False
+
+    if settings.bb_on:
+        upper, middle, lower = compute_bollinger(
+            close, settings.bb_length, settings.bb_std
+        )
+        # price must break below lower band
+        if data['price'] > lower.iloc[-1]:
+            return False
+
+    # …and so on for vol_on, vwap_on, news_on…
+
+    return True
+
+
+def evaluate_exit(data, settings):
+    """
+    Return True if *any* enabled exit condition fires.
+    """
+    # trailing stop
+    if settings.use_trailing_stop and data.get('peak_price') is not None:
+        stop_price = data['peak_price'] * (1 - settings.trailing_stop_pct)
+        if data['price'] <= stop_price:
+            return True
+
+    # time-based exit
+    if settings.sell_after_days and data.get('entry_time') is not None:
+        if (data['datetime'] - data['entry_time']).days >= settings.sell_after_days:
+            return True
+
+    # you can also invert your entry logic here for exits…
+    return False
 
 def run_simulation_loop(settings):
     """Background loop—pure orchestration only."""
