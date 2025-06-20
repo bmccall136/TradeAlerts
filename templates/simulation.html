@@ -25,16 +25,23 @@
   </div>
 </div>
 
+  <!-- 2) CASH SUMMARY -->
+  <div class="simulation-summary text-center mb-4">
+    <p><strong>Cash:</strong> ${{ '%.2f'|format(cash) }}</p>
+    <p><strong>Unrealized P&L:</strong> ${{ '%.2f'|format(unrealized_pnl) }}</p>
+    <p><strong>Realized P&L:</strong> ${{ '%.2f'|format(realized_pnl) }}</p>
+  </div>
 
-    <!-- 2) CASH SUMMARY -->
-    <div class="simulation-summary" style="text-align:center; margin-bottom:30px;">
-      <p><strong>Cash:</strong> ${{ '%.2f'|format(cash) }}</p>
-      <p><strong>Unrealized P&L:</strong> ${{ '%.2f'|format(unrealized_pnl) }}</p>
-      <p><strong>Realized P&L:</strong> ${{ '%.2f'|format(realized_pnl) }}</p>
-    </div>
+  <!-- 3) HOLDINGS HEADER + STATUS -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="text-white mb-0">Holdings</h3>
+    <span id="sim-status" class="badge bg-secondary">
+      Status: <span id="sim-status-text">Stopped</span>
+    </span>
+  </div>
 
-    <!-- 3) HOLDINGS TABLE -->
-    <h2 style="margin-top:40px;">Holdings</h2>
+  <!-- 4) HOLDINGS TABLE -->
+  <div class="table-responsive">
     <table class="table table-striped table-bordered alerts-table text-white">
       <thead class="table-light">
         <tr>
@@ -52,75 +59,39 @@
       </thead>
       <tbody>
         {% for h in holdings %}
-          <tr>
-            <!-- Symbol -->
-            <td>{{ h.symbol }}</td>
-
-            <!-- Last Price -->
-            <td>${{ '%.2f'|format((h.last_price | default(0) | float)) }}</td>
-
-            <!-- Change -->
-            <td>${{ '%.2f'|format((h.change | default(0) | float)) }}</td>
-
-            <!-- Change % -->
-            <td>{{ '%.2f'|format((h.change_pct | default(0) | float)) }}%</td>
-
-            <!-- Qty -->
-            <td>{{ (h.qty | default(0) | float) | round(0) }}</td>
-
-            <!-- Price Paid -->
-            <td>${{ '%.2f'|format((h.price_paid | default(0) | float)) }}</td>
-
-            <!-- Day Gain/Loss -->
-            <td>
-              <span class="{% if (h.day_gain | default(0) | float) < 0 %}gain-negative{% else %}gain-positive{% endif %}">
-                ${{ '%.2f'|format((h.day_gain | default(0) | float)) }}
-              </span>
-            </td>
-
-            <!-- Total Gain/Loss -->
-            <td>${{ '%.2f'|format((h.total_gain | default(0) | float)) }}</td>
-
-            <!-- Value -->
-            <td>${{ '%.2f'|format((h.value | default(0) | float)) }}</td>
-
-            <!-- Action (quantity input + Sell button) -->
-            <td>
-              <input
-                type="number"
-                name="qty"
-                value="1"
-                min="1"
-                class="qty-input"
-                style="width: 40px; padding: 2px; font-size: 12px;"
-              >
-              <button
-                class="btn-clear"
-                style="
-                  display: inline-block !important;
-                  background-color: #e74c3c !important;
-                  color: #fff !important;
-                  border: 1px solid #fff !important;
-                  padding: 4px 8px !important;
-                  font-size: 12px !important;
-                  border-radius: 4px !important;
-                  cursor: pointer !important;
-                  white-space: nowrap;
-                "
-                onclick="sellStock('{{ h.symbol }}', this)"
-              >
-                Sell
-              </button>
-            </td>
-          </tr>
+        <tr>
+          <td>{{ h.symbol }}</td>
+          <td>${{ '%.2f'|format(h.last_price|float) }}</td>
+          <td>${{ '%.2f'|format(h.change|float) }}</td>
+          <td>{{ '%.2f'|format(h.change_pct|float) }}%</td>
+          <td>{{ h.qty|int }}</td>
+          <td>${{ '%.2f'|format(h.price_paid|float) }}</td>
+          <td>
+            <span class="{{ 'gain-negative' if h.day_gain < 0 else 'gain-positive' }}">
+              ${{ '%.2f'|format(h.day_gain|float) }}
+            </span>
+          </td>
+          <td>${{ '%.2f'|format(h.total_gain|float) }}</td>
+          <td>${{ '%.2f'|format(h.value|float) }}</td>
+          <td>
+            <input type="number" class="qty-input" min="1" value="1"
+                   style="width:40px; font-size:12px; padding:2px;">
+            <button class="btn btn-sm btn-danger ms-1"
+                    onclick="sellStock('{{ h.symbol }}', this)">
+              Sell
+            </button>
+          </td>
+        </tr>
         {% endfor %}
       </tbody>
     </table>
+  </div>
 
-    <!-- 4) TRADE HISTORY TABLE -->
-    <h2 style="margin-top:40px;">Trade History</h2>
-    <table class="alerts-table trade-history-table" style="width:100%; border-collapse:collapse;">
-      <thead>
+  <!-- 5) TRADE HISTORY -->
+  <h3 class="text-white mt-5 mb-3">Trade History</h3>
+  <div class="table-responsive">
+    <table class="table table-striped table-bordered alerts-table text-white">
+      <thead class="table-light">
         <tr>
           <th>Time</th>
           <th>Symbol</th>
@@ -132,25 +103,25 @@
       </thead>
       <tbody>
         {% for t in history %}
-          <tr>
-            <td>{{ t.time }}</td>
-            <td>{{ t.symbol }}</td>
-            <td>{{ t.action }}</td>
-            <td>{{ (t.qty | default(0) | float) | round(0) }}</td>
-            <td>${{ '%.2f'|format((t.price | default(0) | float)) }}</td>
-            <td>
-              {% if t.pl is not none %}
-                ${{ '%.2f'|format((t.pl | default(0) | float)) }}
-              {% else %}
-                -
-              {% endif %}
-            </td>
-          </tr>
+        <tr>
+          <td>{{ t.time }}</td>
+          <td>{{ t.symbol }}</td>
+          <td>{{ t.action }}</td>
+          <td>{{ t.qty|int }}</td>
+          <td>${{ '%.2f'|format(t.price|float) }}</td>
+          <td>
+            {% if t.pl is not none %}
+              ${{ '%.2f'|format(t.pl|float) }}
+            {% else %}
+              &mdash;
+            {% endif %}
+          </td>
+        </tr>
         {% endfor %}
       </tbody>
     </table>
+  </div>
 
-  </div> {# end of .container #}
 
   <!-- 5) JavaScript for Sell button -->
   <script>
