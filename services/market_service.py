@@ -111,36 +111,43 @@ def analyze_symbol(sym):
     price_series = (close_col.iloc[:,0] if isinstance(close_col, pd.DataFrame)
                     else close_col)
     last_price   = price_series.iloc[-1]
-
     # ── F) Compute indicators ──
     sma_val       = compute_sma(price_series, length=sma_length)
     rsi_series    = compute_rsi(price_series, period=rsi_len)
     rsi_val       = rsi_series.iloc[-1]
-    macd_line, sig= calculate_macd(price_series,
-                                   fast=macd_fast,
-                                   slow=macd_slow,
-                                   signal=macd_signal)
-    bb_up, _, _   = compute_bollinger(price_series,
-                                      window=bb_length,
-                                      num_std=bb_std)
-    rsi_slope     = rsi_series.diff().iloc[-1]
-    macd_hist     = (macd_line - sig).iloc[-1]
-    bb_breakout   = (last_price > bb_up.iloc[-1]
-                    and price_series.iloc[-2] <= bb_up.iloc[-2])
 
-    vol_col       = df['Volume']
-    vol_series    = (vol_col.iloc[:,0] if isinstance(vol_col, pd.DataFrame)
-                     else vol_col)
-    vol_current   = vol_series.iloc[-1]
-    avg_vol20     = vol_series.rolling(20).mean().iloc[-1]
-    vol_trigger   = vol_current >= vol_multiplier * avg_vol20
+    macd_line, sig = calculate_macd(
+        price_series,
+        fast=macd_fast,
+        slow=macd_slow,
+        signal=macd_signal
+    )
 
-    tp            = (df['High'] + df['Low'] + df['Close']) / 3
-    tp            = tp.iloc[:,0] if isinstance(tp, pd.DataFrame) else tp
-    vwap_ser      = (tp * vol_series).cumsum() / vol_series.cumsum()
-    latest_vwap   = vwap_ser.iloc[-1]
-    vwap_diff     = price_live - latest_vwap
-    vwap_trigger  = vwap_diff >= vwap_threshold
+    bb_up, bb_mid, bb_low = compute_bollinger(
+        price_series,
+        window=bb_length,
+        num_std=bb_std
+    )
+
+    rsi_slope  = rsi_series.diff().iloc[-1]
+    macd_hist  = (macd_line - sig).iloc[-1]
+    bb_breakout = (
+        last_price > bb_up.iloc[-1]
+        and price_series.iloc[-2] <= bb_up.iloc[-2]
+    )
+
+    # Volume filter
+    vol_series  = df['Volume']
+    vol_current = vol_series.iloc[-1]
+    avg_vol20   = vol_series.rolling(20).mean().iloc[-1]
+    vol_trigger = vol_current >= vol_multiplier * avg_vol20
+
+    # True rolling VWAP over the intraday bars
+    tp       = (df['High'] + df['Low'] + df['Close']) / 3
+    vwap_ser = (tp * vol_series).cumsum() / vol_series.cumsum()
+    latest_vwap  = vwap_ser.iloc[-1]
+    vwap_diff    = price_live - latest_vwap
+    vwap_trigger = vwap_diff >= vwap_threshold
 
     toggles_enabled = sum([
         sma_on, rsi_on, macd_on, bb_on,
@@ -161,12 +168,6 @@ def analyze_symbol(sym):
         (macd_hist_on and macd_hist > 0,                 'MACD_HIST'),
         (bb_breakout_on and bb_breakout,                 'BB_BREAK'),
     ]
-    primary = _match_tags(conds_primary)
-
-    required = toggles_enabled if match_count <= 0 else min(match_count, toggles_enabled)
-    if len(primary) < required:
-        logger.debug(f"[SKIP] {sym}: matched {primary} (<{required})")
-        return None
 
     # ── H) Fetch news ──
     headlines = []

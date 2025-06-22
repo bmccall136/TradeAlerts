@@ -12,15 +12,6 @@
 
     <!-- Centered title -->
     <h2 class="text-warning mb-0 mx-auto">Alerts Dashboard</h2>
-
-    <!-- (Optional) Clear All alerts on the right -->
-    <form method="POST"
-          action="{{ url_for('clear_all_alerts') }}"
-          class="position-absolute end-0">
-      <button type="submit" class="btn btn-outline-danger">
-        <i class="bi bi-x-circle"></i> Clear All
-      </button>
-    </form>
   </div>
 </div>
 
@@ -286,45 +277,63 @@
   </div>
 
   {# ─── 5) Money Management ─── #}
-  <div class="row g-3 mb-4">
-    <div class="col-md-3">
-      <label for="starting_cash" class="form-label">
-        <i class="bi bi-currency-dollar"></i> Starting Cash
-      </label>
-      <select id="starting_cash" name="starting_cash" class="form-select">
-        {% for v in [1000,5000,10000,25000,50000] %}
-          <option value="{{ v }}" {% if settings.starting_cash==v %}selected{% endif %}>
-            ${{ v }}
-          </option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="col-md-3">
-      <label for="max_per_trade" class="form-label">
-        <i class="bi bi-arrow-up-right-circle"></i> Max Per Trade
-      </label>
-      <select id="max_per_trade" name="max_per_trade" class="form-select">
-        {% for v in [100,250,500,1000,2500,5000] %}
-          <option value="{{ v }}" {% if settings.max_per_trade==v %}selected{% endif %}>
-            ${{ v }}
-          </option>
-        {% endfor %}
-      </select>
-    </div>
-  </div>
+  {# Wrap everything (toggles, selects, buttons) in one form #}
+  <form id="simulation-form"
+        method="POST"
+        action="{{ url_for('start_scanner') }}">
 
-  {# ─── 6) Start / Stop Buttons ─── #}
-  <div class="d-flex justify-content-end">
-    <button type="submit" class="btn btn-success btn-sm me-2">
-      ▶️ Start
-    </button>
-    <button type="submit"
-            formaction="{{ url_for('stop_scanner') }}"
-            class="btn btn-danger btn-sm">
-      ⛔ Stop
-    </button>
-  </div>
-</form>
+    {# …your existing indicator toggles/drop-downs here… #}
+
+    <div class="row g-3 mb-4">
+      <div class="col-md-3">
+        <label for="starting_cash" class="form-label">
+          <i class="bi bi-currency-dollar"></i> Starting Cash
+        </label>
+        <select id="starting_cash"
+                name="starting_cash"
+                class="form-select">
+          {% for v in [1000,5000,10000,25000,50000] %}
+            <option value="{{ v }}"
+                    {% if settings.starting_cash == v %}selected{% endif %}>
+              ${{ v }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label for="max_per_trade" class="form-label">
+          <i class="bi bi-arrow-up-right-circle"></i> Max Per Trade
+        </label>
+        <select id="max_per_trade"
+                name="max_per_trade"
+                class="form-select">
+          {% for v in [100,250,500,1000,2500,5000] %}
+            <option value="{{ v }}"
+                    {% if settings.max_per_trade == v %}selected{% endif %}>
+              ${{ v }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="d-flex justify-content-end align-items-center mb-3">
+      <button
+        type="submit"
+        class="btn btn-success btn-sm me-2">
+        ▶️ Start
+      </button>
+
+      <button
+        type="submit"
+        formaction="{{ url_for('stop_scanner') }}"
+        formmethod="post"
+        class="btn btn-danger btn-sm">
+        ⛔ Stop
+      </button>
+    </div>
+
+  </form>
 
   <!-- ─── Alerts Table ─── -->
   <div class="table-responsive">

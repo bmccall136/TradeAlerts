@@ -88,13 +88,16 @@ def analyze_symbol(sym):
     if df is None or df.empty:
         return None
 
-    # ── C) Fetch live price ──
+       # ── C) Fetch live price ──
     try:
         price_live = fetch_etrade_quote(sym)
-    except:
+    except Exception:
         return None
     if not price_live:
         return None
+    # ── LOGGING ──
+    logger.info(f"[PRICE]  {sym}: fetched live price = {price_live}")
+
 
     # ── D) Company name ──
     try:
@@ -109,41 +112,53 @@ def analyze_symbol(sym):
                     else close_col)
     last_price   = price_series.iloc[-1]
 
-    # ── F) Compute indicators ──
-    sma_val       = compute_sma(price_series, length=sma_length)
-    rsi_series    = compute_rsi(price_series, period=rsi_len)
-    rsi_val       = rsi_series.iloc[-1]
-    macd_line, sig= calculate_macd(price_series,
-                                   fast=macd_fast,
-                                   slow=macd_slow,
-                                   signal=macd_signal)
-    bb_up, _, _   = compute_bollinger(price_series,
-                                      window=bb_length,
-                                      num_std=bb_std)
-    rsi_slope     = rsi_series.diff().iloc[-1]
-    macd_hist     = (macd_line - sig).iloc[-1]
-    bb_breakout   = (last_price > bb_up.iloc[-1]
-                    and price_series.iloc[-2] <= bb_up.iloc[-2])
+# ── F) Compute indicators ──
+sma_val       = compute_sma(price_series, length=sma_length)
+rsi_series    = compute_rsi(price_series, period=rsi_len)
+rsi_val       = rsi_series.iloc[-1]
+macd_line, sig= calculate_macd(price_series,
+                               fast=macd_fast,
+                               slow=macd_slow,
+                               signal=macd_signal)
+bb_up, _, _   = compute_bollinger(price_series,
+                                  window=bb_length,
+                                  num_std=bb_std)
+rsi_slope     = rsi_series.diff().iloc[-1]
+macd_hist     = (macd_line - sig).iloc[-1]
+bb_breakout   = (last_price > bb_up.iloc[-1]
+                and price_series.iloc[-2] <= bb_up.iloc[-2])
 
-    vol_col       = df['Volume']
-    vol_series    = (vol_col.iloc[:,0] if isinstance(vol_col, pd.DataFrame)
-                     else vol_col)
-    vol_current   = vol_series.iloc[-1]
-    avg_vol20     = vol_series.rolling(20).mean().iloc[-1]
-    vol_trigger   = vol_current >= vol_multiplier * avg_vol20
+# Volume trigger
+vol_col       = df['Volume']
+vol_series    = (vol_col.iloc[:,0] 
+                 if isinstance(vol_col, pd.DataFrame) 
+                 else vol_col)
+vol_current   = vol_series.iloc[-1]
+avg_vol20     = vol_series.rolling(20).mean().iloc[-1]
+vol_trigger   = vol_current >= vol_multiplier * avg_vol20
 
-    tp            = (df['High'] + df['Low'] + df['Close']) / 3
-    tp            = tp.iloc[:,0] if isinstance(tp, pd.DataFrame) else tp
-    vwap_ser      = (tp * vol_series).cumsum() / vol_series.cumsum()
-    latest_vwap   = vwap_ser.iloc[-1]
-    vwap_diff     = price_live - latest_vwap
-    vwap_trigger  = vwap_diff >= vwap_threshold
+# ── Rolling VWAP over the last N bars (e.g. 20) ──
+N             = 20
+# Typical Price
+tp            = (df['High'] + df['Low'] + df['Close']) / 3
+tp            = tp.iloc[:,0] if isinstance(tp, pd.DataFrame) else tp
 
-    toggles_enabled = sum([
-        sma_on, rsi_on, macd_on, bb_on,
-        vol_on, vwap_on,
-        rsi_slope_on, macd_hist_on, bb_breakout_on
-    ])
+pv            = tp * vol_series
+pv_sum        = pv.rolling(N).sum()
+vol_sum       = vol_series.rolling(N).sum()
+
+vwap_ser      = pv_sum / vol_sum
+latest_vwap   = vwap_ser.iloc[-1]
+
+vwap_diff     = price_live - latest_vwap
+vwap_trigger  = vwap_diff >= vwap_threshold
+
+# Count how many toggles are enabled
+toggles_enabled = sum([
+    sma_on, rsi_on, macd_on, bb_on,
+    vol_on, vwap_on,
+    rsi_slope_on, macd_hist_on, bb_breakout_on
+])
 
     # ── G) Build & check minimum non-news triggers ──
     conds_primary = [
