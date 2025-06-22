@@ -12,15 +12,6 @@
 
     <!-- Centered title -->
     <h2 class="text-warning mb-0 mx-auto">Alerts Dashboard</h2>
-
-    <!-- (Optional) Clear All alerts on the right -->
-    <form method="POST"
-          action="{{ url_for('clear_all_alerts') }}"
-          class="position-absolute end-0">
-      <button type="submit" class="btn btn-outline-danger">
-        <i class="bi bi-x-circle"></i> Clear All
-      </button>
-    </form>
   </div>
 </div>
 
@@ -58,9 +49,7 @@
   table.alerts-table th:nth-child(11), table.alerts-table td:nth-child(11) { width: 3%; }
   table.alerts-table th:nth-child(12), table.alerts-table td:nth-child(12) { width: 3%; }
 </style>
-<a href="{{ url_for('export_alerts') }}" class="btn btn-outline-light mb-3">
-  <i class="bi bi-download"></i> Export CSV
-</a>
+
 <div class="container">
   {# ─── Indicator Settings Form ─── #}
   {% set sma_labels = {10: "Short SMA (10)", 20: "Standard SMA (20)", 50: "Long SMA (50)", 100: "100-Day SMA (100)", 200: "200-Day SMA (200)"} %}
@@ -315,14 +304,37 @@
     </div>
   </div>
 
-  {# ─── 6) Start / Stop Buttons ─── #}
-  <div class="d-flex justify-content-end">
-    <button type="submit" class="btn btn-success btn-sm me-2">
+<!-- …inside your simulation form… -->
+
+<!-- add a little wrapper so it sits above the buttons -->
+<div class="mb-3 text-end">
+  <form method="POST" action="{{ url_for('clear_all_alerts') }}" class="d-inline">
+    <button type="submit" class="btn btn-outline-danger btn-sm">
+      <i class="bi bi-x-circle"></i> Clear All
+    </button>
+  </form>
+</div>
+
+<!-- ─── Controls: Start / Stop ─── -->
+<form id="simulation-form"
+      method="POST"
+      action="{{ url_for('start_scanner') }}">
+  <div class="d-flex justify-content-end align-items-center mb-3">
+    <!-- 1 button to Start -->
+    <button
+      type="submit"
+      formaction="{{ url_for('start_scanner') }}"
+      formmethod="post"
+      class="btn btn-success btn-sm me-2">
       ▶️ Start
     </button>
-    <button type="submit"
-            formaction="{{ url_for('stop_scanner') }}"
-            class="btn btn-danger btn-sm">
+
+    <!-- 1 button to Stop -->
+    <button
+      type="submit"
+      formaction="{{ url_for('stop_scanner') }}"
+      formmethod="post"
+      class="btn btn-danger btn-sm">
       ⛔ Stop
     </button>
   </div>

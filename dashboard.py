@@ -1,4 +1,3 @@
-
 import os
 import subprocess
 import threading
@@ -13,21 +12,47 @@ from dateutil.relativedelta import relativedelta
 from collections import namedtuple
 
 from flask import (
-    Flask, request, render_template, redirect,
-    url_for, flash, jsonify, Response as FlaskResponse
+    Flask,
+    request,
+    render_template,
+    redirect,
+    url_for,
+    flash,
+    jsonify,
+    Response as FlaskResponse
 )
 
-# helpers to initialize DBs
+import logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s %(levelname)7s %(message)s"
+)
+
+# ── Helpers to initialize DBs ─────────────────────────────────
 from backtest_helpers import init_backtest_db
 
-# simulation services
+# ── Simulation loop & control ─────────────────────────────────
 from services.simulation_service import run_simulation_loop, stop_simulation
+
+# ── Optional live‐data hook (if you have broker_api.py) ────────
+try:
+    from services.broker_api import fetch_live_data
+except ImportError:
+    fetch_live_data = None
+
+# ── Trading & DB helpers ───────────────────────────────────────
 from services.trading_helpers import (
-    nuke_simulation_db, get_cash, get_holdings,
-    get_realized_pl, get_trades,
-    buy_stock, sell_stock, fetch_live_data
+    set_cash,
+    get_cash,
+    buy_stock,
+    sell_stock,
+    get_holdings,
+    get_trades,
+    get_realized_pl,
+    nuke_simulation_db
 )
 
+# ── DB file paths ─────────────────────────────────────────────
 DB_PATH     = os.path.join(os.getcwd(), 'alerts.db')
 SIM_DB      = os.path.join(os.getcwd(), 'simulation.db')
 BACKTEST_DB = os.path.join(os.getcwd(), 'backtest.db')
@@ -81,18 +106,20 @@ def extract_backtest_settings(args):
     )
 
 SimulationSettings = namedtuple('SimulationSettings', [
-  # toggles
-  'sma_on','rsi_on','macd_on','bb_on','vol_on','vwap_on','news_on',
-  # numeric indicators
-  'sma_length','rsi_len','rsi_overbought','rsi_oversold',
-  'macd_fast','macd_slow','macd_signal',
-  'bb_length','bb_std','vol_multiplier','vwap_threshold',
-  # extra entry/exit flags
-  'rsi_slope_on','macd_hist_on','bb_breakout_on',
-  # exit parameters
-  'trailing_stop_pct','sell_after_days',
+   # toggles
+   'sma_on','rsi_on','macd_on','bb_on','vol_on','vwap_on','news_on',
+   # numeric indicators
+   'sma_length','rsi_len','rsi_overbought','rsi_oversold',
+   'macd_fast','macd_slow','macd_signal',
+   'bb_length','bb_std','vol_multiplier','vwap_threshold',
+   # extra entry/exit flags
+   'rsi_slope_on','macd_hist_on','bb_breakout_on',
+   # exit parameters
+   'trailing_stop_pct','sell_after_days',
   # behavioral flags
-  'single_entry_only','use_trailing_stop'
+  'single_entry_only','use_trailing_stop',
+  # cash settings
+  'starting_cash','max_per_trade'
 ])
 
 def extract_simulation_settings(args):
@@ -118,10 +145,14 @@ def extract_simulation_settings(args):
       rsi_slope_on      = 'rsi_slope_on' in args,
       macd_hist_on      = 'macd_hist_on' in args,
       bb_breakout_on    = 'bb_breakout_on' in args,
-      trailing_stop_pct = float(args.get('trailing_stop_pct', 0.0)),
+      # if the form field comes back empty, fall back to 0.0 instead of trying to float('')
+      trailing_stop_pct = float(args.get('trailing_stop_pct') or 0.0),
       sell_after_days   = int(args.get('sell_after_days')) if args.get('sell_after_days') else None,
       single_entry_only = 'single_entry_only' in args,
       use_trailing_stop = 'use_trailing_stop' in args,
+      # ── here are the two you were missing ──
+      starting_cash     = float(args.get('starting_cash', 10000)),
+      max_per_trade     = float(args.get('max_per_trade', 1000)),
     )
 
 # 2) BacktestSettings + extractor
@@ -273,20 +304,7 @@ def run_backtest_route():
         net_return=summary['total_pnl']
     )
 
-@app.route('/start_scanner', methods=['POST'])
-def start_scanner():
-    global _is_scanner_running
-    settings = extract_simulation_settings(request.form)
-    _is_scanner_running = True
-
-    t = threading.Thread(
-        target=run_simulation_loop,
-        args=(settings,),
-        daemon=True
-    )
-    t.start()
-    flash("▶️ Simulation started", "success")
-    return redirect(url_for('simulation'))
+from services.trading_helpers import nuke_simulation_db, set_cash
 
 
 @app.route('/stop_scanner', methods=['POST'])
@@ -372,37 +390,45 @@ def reset_backtest():
     flash('✅ Backtest DB reset!', 'success')
     return redirect(url_for('backtest_view'))
 
-
-
-@app.route('/simulation')
 def simulation():
-    cash          = get_cash()
-    realized_pnl  = get_realized_pl()
-
-    raw_holdings = get_holdings()
-    formatted_holdings = []
-    unrealized_pnl = 0.0
-    for h in raw_holdings:
-        unrealized_pnl += h['total_gain']
-        formatted_holdings.append({
-            'symbol':     h['symbol'],
-            'last_price': h['last_price'],
-            'qty':        h['qty'],
-            'day_gain':   h['day_gain'],
-            'total_gain': h['total_gain'],
-            'value':      h['value'],
-        })
-
-    raw_trades      = get_trades()
+    raw_trades       = get_trades()
     formatted_trades = []
+
+    # DEBUG: inspect first trade to see its shape
+    if raw_trades:
+        print("🔍 raw_trades[0] =", raw_trades[0])
+
     for t in raw_trades:
+        # Case A: dict
+        if isinstance(t, dict):
+            trade_time = t.get('trade_time') or t.get('time')
+            symbol     = t.get('symbol')
+            action     = t.get('action')
+            qty        = t.get('qty')
+            price      = t.get('price')
+            pnl        = t.get('pnl') or t.get('pl')
+
+        # Case B: tuple
+        elif isinstance(t, tuple):
+            # Adjust this unpack order to match your service’s return
+            trade_time, symbol, action, qty, price, pnl = t
+
+        else:
+            # Unexpected type; skip
+            continue
+
         formatted_trades.append({
-            'time':   t['trade_time'],
-            'symbol': t['symbol'],
-            'action': t['action'],
-            'qty':    t['qty'],
-            'price':  t['price'],
-            'pl':     t['pnl'],
+        
+        
+        
+        
+        
+            'time':   trade_time,
+            'symbol': symbol,
+            'action': action,
+            'qty':    qty,
+            'price':  price,
+            'pl':     pnl,
         })
 
     return render_template(
@@ -414,11 +440,13 @@ def simulation():
         history=formatted_trades
     )
 
+
 @app.route('/export/simulation')
 def export_simulation():
-    cash         = get_cash()
-    holdings     = get_holdings()
-    trades       = get_trades()
+    cash     = get_cash()
+    holdings = get_holdings()
+    trades   = get_trades()
+
     si = io.StringIO()
     cw = csv.writer(si)
 
@@ -427,17 +455,191 @@ def export_simulation():
     cw.writerow(['-- HOLDINGS --'])
     cw.writerow(['symbol','qty','last_price','value','day_gain','total_gain'])
     for h in holdings:
-        cw.writerow([h['symbol'], h['qty'], h['last_price'], h['value'], h['day_gain'], h['total_gain']])
+        cw.writerow([
+            h['symbol'],
+            h['qty'],
+            h['last_price'],
+            h['value'],
+            abs(h['day_gain']),
+            abs(h['total_gain'])
+        ])
+
     cw.writerow([])
     cw.writerow(['-- TRADES --'])
     cw.writerow(['time','symbol','action','qty','price','pl'])
     for t in trades:
-        cw.writerow([t['time'], t['symbol'], t['action'], t['qty'], t['price'], t['pl']])
+        cw.writerow([
+            t['time'],
+            t['symbol'],
+            t['action'],
+            t['qty'],
+            t['price'],
+            abs(t['pl'])
+        ])
 
     resp = make_response(si.getvalue())
     resp.headers["Content-Disposition"] = "attachment; filename=simulation.csv"
     resp.headers["Content-type"] = "text/csv"
     return resp
+# ── Main Simulation Page ──
+from types import SimpleNamespace
+from flask import request, render_template
+import sqlite3
+
+from services.trading_helpers import (
+    nuke_simulation_db,
+    set_cash,
+    get_cash,
+    get_realized_pl,
+    get_holdings,
+    get_trades
+)
+
+from flask import request, render_template
+import sqlite3
+from types import SimpleNamespace
+from services.trading_helpers import (
+    nuke_simulation_db, set_cash,
+    get_cash, get_realized_pl,
+    get_holdings, get_trades
+)
+
+from types import SimpleNamespace
+import sqlite3
+from flask import request, redirect, url_for, flash, render_template
+
+import threading
+import sqlite3
+import logging
+from types import SimpleNamespace
+from flask import request, render_template, url_for, redirect, flash
+
+from services.trading_helpers import (
+    get_cash, get_holdings, get_realized_pl, get_trades,
+    nuke_simulation_db, set_cash
+)
+from services.simulation_service import run_simulation_loop
+
+logging.basicConfig(level=logging.DEBUG)
+
+@app.route('/start_scanner', methods=['POST'])
+def start_scanner():
+     global _is_scanner_running
+     # ── ALWAYS clear out the old sim state ──
+     nuke_simulation_db()
+
+     # seed your starting cash (pulled from the form on Alerts)
+     starting_cash   = float(request.form.get('starting_cash', 10000))
+     set_cash(starting_cash)
+     _is_scanner_running = True
+
+     # also grab max_per_trade so we can hand it back to /simulation
+     max_per_trade = float(request.form.get('max_per_trade', 1000))
+
+     # now start the thread as before…
+     _is_scanner_running = True
+     t = threading.Thread(
+         target=run_simulation_loop,
+         args=(extract_simulation_settings(request.form),),
+         daemon=True
+     )
+     t.start()
+     flash("▶️ Simulation started (DB nuked first)", "success")
+     # send the user back to the live simulation dashboard, passing our two form values
+     return redirect(url_for(
+        'simulation',
+        starting_cash=starting_cash,
+        max_per_trade=max_per_trade
+    ))
+
+@app.route('/simulation')
+def simulation():
+    starting_cash = float(request.args.get('starting_cash', 10000))
+    max_per_trade = float(request.args.get('max_per_trade',   1000))
+    set_cash(starting_cash)
+
+    settings = SimpleNamespace(
+        starting_cash=starting_cash,
+        max_per_trade=max_per_trade
+    )
+    logging.debug(f"[view] /simulation with settings={settings}")
+
+    # ensure schema exists
+    try:
+        get_cash()
+        get_holdings()
+        get_trades()
+    except sqlite3.OperationalError as e:
+        logging.debug(f"[view] missing tables ({e}), recreating…")
+        nuke_simulation_db()
+        set_cash(settings.starting_cash)
+
+    cash         = get_cash()
+    realized_pnl = get_realized_pl()
+
+    # ── 2) Format holdings ──
+    raw_holdings       = get_holdings()
+    formatted_holdings = []
+    unrealized_pnl     = 0.0
+
+    for h in raw_holdings:
+        if isinstance(h, dict):
+            symbol      = h['symbol']
+            last_price  = h['last_price']
+            qty         = h['qty']
+            price_paid  = h['price_paid']
+            day_gain    = h['day_gain']
+            total_gain  = h['total_gain']
+            value       = h['value']
+        elif isinstance(h, tuple) and len(h) == 4:
+            symbol, last_price, qty, price_paid = h
+            day_gain   = (last_price - price_paid) * qty
+            total_gain = day_gain
+            value      = last_price * qty
+        else:
+            continue
+
+        unrealized_pnl += total_gain
+        formatted_holdings.append({
+            'symbol':      symbol,
+            'last_price':  last_price,
+            'qty':         qty,
+            'price_paid':  round(price_paid, 2),
+            'day_gain':    abs(day_gain),
+            'total_gain':  abs(total_gain),
+            'value':       value,
+            'change':      abs(day_gain),
+            'change_pct':  (abs(day_gain) / price_paid * 100) if price_paid else 0
+        })
+
+    # ── 3) Format trade history ──
+    raw_trades       = get_trades()
+    formatted_trades = []
+    for t in raw_trades:
+        if isinstance(t, tuple):
+            symbol, action, price, qty, trade_time, pnl = t
+            pnl = abs(pnl or 0.0)
+        else:
+            continue
+
+        formatted_trades.append({
+            'time':   trade_time,
+            'symbol': symbol,
+            'action': action,
+            'qty':    qty,
+            'price':  price,
+            'pl':     pnl
+        })
+
+    return render_template(
+        'simulation.html',
+        settings=settings,
+        cash=cash,
+        unrealized_pnl=unrealized_pnl,
+        realized_pnl=realized_pnl,
+        holdings=formatted_holdings,
+        history=formatted_trades
+    )
 
 @app.route("/simulation/buy", methods=["POST"])
 def simulation_buy():

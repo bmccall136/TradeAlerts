@@ -11,6 +11,8 @@ TradeAlerts is a next-level, pro-grade stock scanning, simulation, and backtesti
 ---
 
 ## Features
+- **Entry/Exit Strategies:** Single-Entry Only, Trailing Stops, Sell-After-Days
+- **Capital Allocation:** Starting Cash and Max Per Trade controls for both simulation and backtest
 
 - **Pure black theme** with modern nav bar and responsive layout
 - **Alerts Dashboard:** Real-time signal display, Prime filtering, local time, non-repeating cleared alerts

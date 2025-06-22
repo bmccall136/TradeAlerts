@@ -1,9 +1,8 @@
-# init_simulation_db.py
-
 import sqlite3
 import os
 
-SIM_DB = "simulation.db"
+# Use absolute path for simulation.db to ensure consistency
+SIM_DB = os.path.join(os.getcwd(), "simulation.db")
 if os.path.exists(SIM_DB):
     os.remove(SIM_DB)
 
@@ -18,6 +17,7 @@ c.execute("""
       realized_pl  REAL    NOT NULL DEFAULT 0.0
     );
 """)
+# seed state row
 c.execute("INSERT OR IGNORE INTO state (id, cash, realized_pl) VALUES (1, 10000, 0.0);")
 
 # 2) holdings table
