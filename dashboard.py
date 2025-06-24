@@ -1,15 +1,17 @@
 import os
+import time
 import subprocess
 import threading
-import time
-import platform
 import sqlite3
+import logging
 import io
 import csv
+
 from pathlib import Path
 from datetime import datetime, date, timedelta
 from dateutil.relativedelta import relativedelta
 from collections import namedtuple
+from types import SimpleNamespace
 
 from flask import (
     Flask,
@@ -22,50 +24,74 @@ from flask import (
     Response as FlaskResponse
 )
 
-import logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s %(levelname)7s %(message)s"
+# ── Alert service (settings + alerts) ─────────────────────────
+from services.alert_service import (
+    get_all_indicator_settings,
+    update_indicator_settings,
+    get_alerts,
+    insert_alert,
+    generate_sparkline
 )
 
-# ── Helpers to initialize DBs ─────────────────────────────────
-from backtest_helpers import init_backtest_db
+# ── Trading DB helpers ───────────────────────────────────────
+from services.trading_helpers import (
+    set_cash,
+    get_cash,
+    get_holdings,
+    get_trades,
+    get_realized_pl,
+    get_unrealized_pl,
+    nuke_simulation_db,
+)
 
-# ── Simulation loop & control ─────────────────────────────────
+# 1) Load your .env first, before any service imports
+from dotenv import load_dotenv
+load_dotenv()
+
+# 2) Now import everything else
 from services.simulation_service import run_simulation_loop, stop_simulation
+from services.market_service     import fetch_data_with_timeout
+from services.etrade_service     import fetch_etrade_quote
+# …any other imports that rely on env vars
 
-# ── Optional live‐data hook (if you have broker_api.py) ────────
 try:
     from services.broker_api import fetch_live_data
 except ImportError:
     fetch_live_data = None
-
-# ── Trading & DB helpers ───────────────────────────────────────
-from services.trading_helpers import (
-    set_cash,
-    get_cash,
-    buy_stock,
-    sell_stock,
-    get_holdings,
-    get_trades,
-    get_realized_pl,
-    nuke_simulation_db
-)
 
 # ── DB file paths ─────────────────────────────────────────────
 DB_PATH     = os.path.join(os.getcwd(), 'alerts.db')
 SIM_DB      = os.path.join(os.getcwd(), 'simulation.db')
 BACKTEST_DB = os.path.join(os.getcwd(), 'backtest.db')
 
+# ── Flask app ───────────────────────────────────────────────
 app = Flask(__name__)
-app.secret_key = os.environ.get('PokeChop!', 'PokeChop!')
+app.secret_key = os.environ.get('FLASK_SECRET', 'supersecret')
 
+# ── Timeframe presets for backtests ─────────────────────────
 TIMEFRAME_DELTAS = {
     '1mo': {'months': 1},
     '3mo': {'months': 3},
     '6mo': {'months': 6},
     '1y' : {'years': 1},
 }
+# ── Simulation defaults ─────────────────────────────────────
+DEFAULT_STARTING_CASH   = 10000.0
+DEFAULT_MAX_PER_TRADE   = 1000.0
+
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+def fetch_current_price(symbol):
+    """
+    Pulls the latest price from your E*TRADE service.
+    """
+    try:
+        price = fetch_etrade_quote(symbol)
+        return float(price)
+    except Exception as e:
+        logging.warning(f"[PRICE] {symbol}: E*TRADE fetch failed ({e})")
+        return 0.0
 
 def extract_backtest_settings(args):
     # figure out end_date = today, start_date = today - timeframe
@@ -155,8 +181,6 @@ def extract_simulation_settings(args):
       max_per_trade     = float(args.get('max_per_trade', 1000)),
     )
 
-# 2) BacktestSettings + extractor
-from collections import namedtuple
 BacktestSettings = namedtuple('BacktestSettings', [
     'start_date','end_date','starting_cash','max_per_trade',
     'timeframe','trailing_stop_pct','sell_after_days',
@@ -177,15 +201,6 @@ def load_your_symbols():
     with open('sp500_symbols.txt') as f:
         return [line.strip() for line in f if line.strip()]
 
-# 3) Register the /backtest route
-import json
-import sqlite3
-from flask import request, render_template
-from services.backtest_service import run_full_backtest
-from flask import request, render_template, flash, redirect, url_for
-import sqlite3, json, sys
-from datetime import datetime
-from backtest_helpers import extract_backtest_settings
 
 BACKTEST_DB = 'backtest.db'
 
@@ -224,26 +239,7 @@ def backtest_view():
         settings=settings,
         net_return=summary['total_pnl']
     )
-# near the top of Dashboard.py, alongside your other flask imports
-import io
-import csv
-import subprocess
-import sqlite3
-from flask import (
-    flash,
-    redirect,
-    url_for,
-    request,
-    Response,
-)
 
-from flask import request, redirect, url_for, flash
-import subprocess
-
-import json
-from datetime import datetime
-import sqlite3
-from flask import flash, render_template
 # near the top, after imports
 _is_scanner_running = False
 
@@ -303,9 +299,6 @@ def run_backtest_route():
         settings=settings,
         net_return=summary['total_pnl']
     )
-
-from services.trading_helpers import nuke_simulation_db, set_cash
-
 
 @app.route('/stop_scanner', methods=['POST'])
 def stop_scanner():
@@ -482,45 +475,6 @@ def export_simulation():
     resp.headers["Content-type"] = "text/csv"
     return resp
 # ── Main Simulation Page ──
-from types import SimpleNamespace
-from flask import request, render_template
-import sqlite3
-
-from services.trading_helpers import (
-    nuke_simulation_db,
-    set_cash,
-    get_cash,
-    get_realized_pl,
-    get_holdings,
-    get_trades
-)
-
-from flask import request, render_template
-import sqlite3
-from types import SimpleNamespace
-from services.trading_helpers import (
-    nuke_simulation_db, set_cash,
-    get_cash, get_realized_pl,
-    get_holdings, get_trades
-)
-
-from types import SimpleNamespace
-import sqlite3
-from flask import request, redirect, url_for, flash, render_template
-
-import threading
-import sqlite3
-import logging
-from types import SimpleNamespace
-from flask import request, render_template, url_for, redirect, flash
-
-from services.trading_helpers import (
-    get_cash, get_holdings, get_realized_pl, get_trades,
-    nuke_simulation_db, set_cash
-)
-from services.simulation_service import run_simulation_loop
-
-logging.basicConfig(level=logging.DEBUG)
 
 @app.route('/start_scanner', methods=['POST'])
 def start_scanner():
@@ -552,98 +506,83 @@ def start_scanner():
         max_per_trade=max_per_trade
     ))
 
+# near the top of Dashboard.py, add your defaults:
+DEFAULT_STARTING_CASH   = 10000.0
+DEFAULT_MAX_PER_TRADE   = 1000.0
+
 @app.route('/simulation')
 def simulation():
-    starting_cash = float(request.args.get('starting_cash', 10000))
-    max_per_trade = float(request.args.get('max_per_trade',   1000))
-    set_cash(starting_cash)
-
-    settings = SimpleNamespace(
-        starting_cash=starting_cash,
-        max_per_trade=max_per_trade
-    )
-    logging.debug(f"[view] /simulation with settings={settings}")
-
-    # ensure schema exists
-    try:
-        get_cash()
-        get_holdings()
-        get_trades()
-    except sqlite3.OperationalError as e:
-        logging.debug(f"[view] missing tables ({e}), recreating…")
-        nuke_simulation_db()
-        set_cash(settings.starting_cash)
-
     cash         = get_cash()
-    realized_pnl = get_realized_pl()
+    unrealized   = get_unrealized_pl()
+    realized     = get_realized_pl()
+    raw_h        = get_holdings()
+    raw_t        = get_trades()
 
-    # ── 2) Format holdings ──
-    raw_holdings       = get_holdings()
+    logging.debug(f"[sim-view] cash={cash}, unrealized={unrealized}, "
+                  f"realized={realized}, holdings={raw_h}, trades={raw_t}")
+
+    # ── 1) Format holdings & compute unrealized ─────────────────
     formatted_holdings = []
-    unrealized_pnl     = 0.0
-
-    for h in raw_holdings:
-        if isinstance(h, dict):
-            symbol      = h['symbol']
-            last_price  = h['last_price']
-            qty         = h['qty']
-            price_paid  = h['price_paid']
-            day_gain    = h['day_gain']
-            total_gain  = h['total_gain']
-            value       = h['value']
-        elif isinstance(h, tuple) and len(h) == 4:
-            symbol, last_price, qty, price_paid = h
-            day_gain   = (last_price - price_paid) * qty
-            total_gain = day_gain
-            value      = last_price * qty
-        else:
-            continue
-
-        unrealized_pnl += total_gain
+    total_unrealized   = 0.0
+    for symbol, qty, paid in raw_h:
+        # … your existing logic to fetch last_price, compute day_gain …
         formatted_holdings.append({
-            'symbol':      symbol,
-            'last_price':  last_price,
-            'qty':         qty,
-            'price_paid':  round(price_paid, 2),
-            'day_gain':    abs(day_gain),
-            'total_gain':  abs(total_gain),
-            'value':       value,
-            'change':      abs(day_gain),
-            'change_pct':  (abs(day_gain) / price_paid * 100) if price_paid else 0
+            'symbol':     symbol,
+            'last_price': last_price,
+            'qty':        qty,
+            'price_paid': paid,
+            'day_gain':   day_gain,
+            'value':      last_price * qty,
+            'change_pct': (day_gain / paid * 100) if paid else 0,
         })
+        total_unrealized += day_gain
 
-    # ── 3) Format trade history ──
-    raw_trades       = get_trades()
+    # ── 2) Format trade history ────────────────────────────────
     formatted_trades = []
-    for t in raw_trades:
+    for t in raw_t:
         if isinstance(t, tuple):
-            symbol, action, price, qty, trade_time, pnl = t
-            pnl = abs(pnl or 0.0)
+            symbol, action, price, qty, tstamp, pnl = t
         else:
-            continue
+            symbol = t.get('symbol')
+            action = t.get('action')
+            price  = t.get('price')
+            qty    = t.get('qty')
+            tstamp = t.get('time') or t.get('trade_time')
+            pnl    = t.get('pnl') or t.get('pl') or 0.0
 
         formatted_trades.append({
-            'time':   trade_time,
+            'time':   tstamp,
             'symbol': symbol,
             'action': action,
             'qty':    qty,
             'price':  price,
-            'pl':     pnl
+            'pl':     pnl,
         })
 
+    # ── 3) Grab the last-used—or fallback—money values ────────
+    starting_cash = float(request.args.get('starting_cash',
+                                           DEFAULT_STARTING_CASH))
+    max_per_trade = float(request.args.get('max_per_trade',
+                                           DEFAULT_MAX_PER_TRADE))
+
+    # ── 4) Render ─────────────────────────────────────────────
     return render_template(
         'simulation.html',
-        settings=settings,
         cash=cash,
-        unrealized_pnl=unrealized_pnl,
-        realized_pnl=realized_pnl,
+        unrealized_pnl=total_unrealized,
+        realized_pnl=realized,
         holdings=formatted_holdings,
-        history=formatted_trades
+        history=formatted_trades,
+        settings={
+            'starting_cash': starting_cash,
+            'max_per_trade':  max_per_trade
+        },
+        is_running=_is_scanner_running
     )
+
 
 @app.route("/simulation/buy", methods=["POST"])
 def simulation_buy():
-    from flask import current_app
     try:
         data   = request.get_json(force=True)
         symbol = data.get("symbol")
@@ -652,9 +591,6 @@ def simulation_buy():
         # 1) Validate
         if not symbol or qty <= 0:
             return jsonify(success=False, error="Invalid symbol or quantity"), 400
-
-        # 2) Fetch current price from E*TRADE API
-        from services.etrade_service import fetch_etrade_quote
         quote_data = fetch_etrade_quote(symbol)
         if isinstance(quote_data, dict):
             # tweak these keys if your API returns different field names
@@ -686,21 +622,18 @@ def simulation_buy():
     return redirect(
         url_for('backtest_view', **request.form)
     )
-from flask import flash, redirect, url_for
-import subprocess
 
-@app.route('/reset_simulation', methods=['POST'])
+@app.route('/simulation/reset', methods=['POST'])
 def reset_simulation():
-    try:
-        # if you have a script to re-init your simulation DB:
-        subprocess.run(
-            ['python', 'init_simulation_db.py'],
-            check=True, capture_output=True, text=True, timeout=10
-        )
-        flash('✅ Simulation database reset')
-    except Exception as e:
-        flash(f'❌ Failed to reset simulation: {e}')
+    # read the default starting cash from a hidden form field or query string
+    default_cash = float(request.form.get('starting_cash', 10000))
+    set_cash(default_cash)
+    # clear out any trades/holdings if you want
+    nuke_simulation_db()
+    flash(f"Simulation reset: cash back to ${default_cash:,.2f}", "info")
     return redirect(url_for('simulation'))
+
+
 
 @app.route("/simulation/sell", methods=["POST"])
 def simulation_sell():
@@ -722,15 +655,6 @@ def simulation_sell():
         "realized_pl": get_realized_pl()
     }), 200
 
-
-from flask import request, redirect, url_for, render_template
-from services.alert_service import (
-    get_all_indicator_settings,
-    update_indicator_settings,
-    get_alerts
-)
-import io, csv
-from flask import Response
 
 @app.route('/export_alerts')
 def export_alerts():
@@ -757,10 +681,6 @@ def export_alerts():
         }
     )
 
-import io, csv
-import json
-import sqlite3
-from flask import Response, flash, redirect, url_for
 
 @app.route('/export_backtest')
 def export_backtest():
@@ -866,25 +786,10 @@ def index():
         settings=settings,
         match_count=settings["match_count"]
     )
-# ── Background scanner loop ─────────────────────────────────────────────────
-def scanner_loop():
-    """
-    Background thread that runs your scanner every 60 seconds.
-    """
-    while True:
-        try:
-            from scanner import run_scan
-            run_scan()
-            print("[Scanner] ✅ Ran scan loop")
-        except Exception as e:
-            print(f"[Scanner] ❌ Scanner error: {e}")
-        time.sleep(60)
+
 if __name__ == "__main__":
     # spin up the scanner in a daemon thread
-    threading.Thread(target=scanner_loop, daemon=True).start()
 
     # start Flask
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-import json
-from datetime import datetime

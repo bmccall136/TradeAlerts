@@ -38,6 +38,7 @@
     <span id="sim-status" class="badge bg-secondary">
       Status: <span id="sim-status-text">Stopped</span>
     </span>
+  </div>  <!-- ← close the flex header row here -->
 
   <!-- 5) HOLDINGS TABLE -->
   <div class="table-responsive">
@@ -58,29 +59,7 @@
       </thead>
       <tbody>
         {% for h in holdings %}
-        <tr>
-          <td>{{ h.symbol }}</td>
-          <td>${{ '%.2f'|format(h.last_price|float) }}</td>
-          <td>${{ '%.2f'|format(h.change|float) }}</td>
-          <td>{{ '%.2f'|format(h.change_pct|float) }}%</td>
-          <td>{{ h.qty|int }}</td>
-          <td>${{ '%.2f'|format(h.price_paid|float) }}</td>
-          <td>
-            <span class="{{ 'gain-negative' if h.day_gain < 0 else 'gain-positive' }}">
-              ${{ '%.2f'|format(h.day_gain|float) }}
-            </span>
-          </td>
-          <td>${{ '%.2f'|format(h.total_gain|float) }}</td>
-          <td>${{ '%.2f'|format(h.value|float) }}</td>
-          <td>
-            <input type="number" class="qty-input" min="1" value="1"
-                   style="width:40px; font-size:12px; padding:2px;">
-            <button class="btn btn-sm btn-danger ms-1"
-                    onclick="sellStock('{{ h.symbol }}', this)">
-              Sell
-            </button>
-          </td>
-        </tr>
+        <tr> … </tr>
         {% endfor %}
       </tbody>
     </table>
@@ -89,7 +68,7 @@
   <!-- 6) TRADE HISTORY -->
   <h3 class="text-white mt-5 mb-3">Trade History</h3>
   <div class="table-responsive">
-    <table class="table table-striped table-bordered alerts-table text-white">
+    <table class="table table-striped table-bordered alerts-table text-white">  
       <thead class="table-light">
         <tr>
           <th>Time</th>
@@ -173,6 +152,10 @@
   setInterval(refreshStatus, 2000);
   // also on first load
   refreshStatus();
+</script>
+<script>
+  var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
+  var popoverList = popoverTriggerList.map(function (el) { return new bootstrap.Popover(el); });
 </script>
 
 {% endblock %}

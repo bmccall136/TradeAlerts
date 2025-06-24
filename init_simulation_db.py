@@ -1,48 +1,63 @@
 import sqlite3
 import os
 
-# Use absolute path for simulation.db to ensure consistency
-SIM_DB = os.path.join(os.getcwd(), "simulation.db")
-if os.path.exists(SIM_DB):
-    os.remove(SIM_DB)
+# Path to your simulation database file; adjust as needed
+SIM_DB = os.path.join(os.getcwd(), 'simulation.db')
 
-conn = sqlite3.connect(SIM_DB)
-c = conn.cursor()
 
-# 1) state table
-c.execute("""
-    CREATE TABLE IF NOT EXISTS state (
-      id           INTEGER PRIMARY KEY,
-      cash         REAL    NOT NULL DEFAULT 10000,
-      realized_pl  REAL    NOT NULL DEFAULT 0.0
-    );
-""")
-# seed state row
-c.execute("INSERT OR IGNORE INTO state (id, cash, realized_pl) VALUES (1, 10000, 0.0);")
+def init_simulation_db():
+    print("🔧 initializing simulation.db schema…")
+    """
+    Initialize the simulation database schema.
+    Drops existing tables if they exist and recreates:
+    - state: stores simulation key/value pairs (e.g., cash)
+    - holdings: tracks current positions
+    - simulation_trades: logs each buy/sell with timestamp
+    """
+    conn = sqlite3.connect(SIM_DB)
+    cur = conn.cursor()
 
-# 2) holdings table
-c.execute("""
-    CREATE TABLE IF NOT EXISTS holdings (
-      symbol     TEXT    PRIMARY KEY,
-      qty        INTEGER NOT NULL,
-      avg_cost   REAL    NOT NULL,
-      last_price REAL    NOT NULL
-    );
-""")
+    # Drop old tables
+    cur.execute("DROP TABLE IF EXISTS state")
+    cur.execute("DROP TABLE IF EXISTS holdings")
+    # Ensure old trades tables are cleared
+    cur.execute("DROP TABLE IF EXISTS simulation_trades")
+    cur.execute("DROP TABLE IF EXISTS trades")
 
-# 3) simulation_trades table
-c.execute("""
-    CREATE TABLE IF NOT EXISTS simulation_trades (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      symbol     TEXT    NOT NULL,
-      action     TEXT    NOT NULL,
-      price      REAL    NOT NULL,
-      qty        INTEGER NOT NULL,
-      trade_time TEXT    NOT NULL,
-      pnl        REAL
-    );
-""")
+    # 1) State table for storing simulation-wide values (e.g., cash)
+    cur.execute("""
+        CREATE TABLE state (
+            key TEXT PRIMARY KEY,
+            value REAL
+        )
+    """)
 
-conn.commit()
-conn.close()
-print("✅ simulation.db initialized with state, holdings, and simulation_trades.")
+    # 2) Holdings table: one row per symbol in portfolio
+    cur.execute("""
+        CREATE TABLE holdings (
+            symbol TEXT PRIMARY KEY,
+            qty INTEGER NOT NULL,
+            price_paid REAL NOT NULL
+        )
+    """)
+
+    # 3) Simulation trades table: logs each trade event
+    cur.execute("""
+        CREATE TABLE simulation_trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            action TEXT NOT NULL,
+            price REAL NOT NULL,
+            qty INTEGER NOT NULL,
+            trade_time TEXT NOT NULL,
+            pnl REAL
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+# Run on import to ensure schema exists
+if __name__ == '__main__':
+    init_simulation_db()

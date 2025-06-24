@@ -2,6 +2,12 @@ import os
 from requests_oauthlib import OAuth1Session
 import os
 from etrade_auth import get_etrade_session
+from dotenv import load_dotenv
+load_dotenv(override=True)
+
+import os
+# now os.getenv("ETRADE_CONSUMER_KEY") will work even if this module
+# was imported before Dashboard.py called load_dotenv()
 
 def get_etrade_headers():
     return {

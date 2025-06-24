@@ -26,8 +26,14 @@ logger = logging.getLogger(__name__)
 def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
     def _fetch():
         try:
-            return yf.download(sym, period=period, interval=interval,
-                               progress=False, threads=False)
+            return yf.download(
+                sym,
+                period=period,
+                interval=interval,
+                auto_adjust=False,    # ← explicitly disable auto-adjust
+                progress=False,
+                threads=False
+            )
         except Exception as e:
             logger.error(f"[ERROR] Yahoo download {sym} failed: {e}")
             return None
@@ -39,7 +45,6 @@ def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
         except FuturesTimeout:
             logger.error(f"[ERROR] Yahoo download {sym} timed out after {timeout}s")
             return None
-
 
 def _has_headlines(source):
     if hasattr(source, "empty"):

@@ -2,18 +2,18 @@ import time
 import logging
 from datetime import datetime
 from pathlib import Path
-import yfinance as yf
+
 from services.etrade_service import fetch_etrade_quote
-from services.trading_helpers import (
-    set_cash, buy_stock, sell_stock, get_cash, nuke_simulation_db
-)
 from services.market_service import fetch_data_with_timeout
+from services.trading_helpers import (
+    set_cash,
+    buy_stock,
+    sell_stock,
+    get_cash,
+    nuke_simulation_db
+)
 
-# configure logging
-tools = logging.basicConfig(level=logging.DEBUG,
-                    format="%(asctime)s %(levelname)7s %(message)s")
-
-# control flag for the simulation loop
+# ── control flag & stop fn ─────────────────────────────────────
 _sim_stop = False
 
 def stop_simulation():
@@ -21,15 +21,18 @@ def stop_simulation():
     global _sim_stop
     _sim_stop = True
 
+# ── helpers ─────────────────────────────────────────────────────
 
 def load_symbols():
     """Load the list of symbols from your SP500 file."""
     p = Path(__file__).parent.parent / "sp500_symbols.txt"
     return [s.strip() for s in p.read_text().splitlines() if s.strip()]
 
-
 def calculate_qty(settings, data):
-    """Turn max_per_trade into whole-share qty based on latest price."""
+    """
+    Turn max_per_trade into whole‐share qty based on latest price.
+    Expects `data['price']` to be the live price.
+    """
     try:
         price   = float(data.get("price") if isinstance(data, dict) else getattr(data, "price", 0))
         max_amt = float(settings.max_per_trade)
@@ -41,26 +44,33 @@ def calculate_qty(settings, data):
         logging.error(f"[sim] calculate_qty error: {e}")
         return 1
 
-
 def evaluate_exit(pos, settings):
-    """Return True if any exit condition fires (trailing-stop or sell-after-days)."""
+    """
+    Return True if any exit condition fires:
+     - trailing‐stop
+     - sell_after_days
+    """
     price = pos.get("price", 0)
-    # trailing stop
+    # ─ trailing stop ─
     if getattr(settings, 'use_trailing_stop', False):
         peak = pos.get("peak_price", price)
         if price <= peak * (1 - settings.trailing_stop_pct):
             return True
-    # time-based exit
-    entry_time = pos.get("entry_time")
-    if getattr(settings, 'sell_after_days', None) and entry_time:
-        if (datetime.utcnow() - entry_time).days >= settings.sell_after_days:
+
+    # ─ time‐based exit ─
+    entry = pos.get("entry_time")
+    if getattr(settings, 'sell_after_days', None) and entry:
+        if (datetime.utcnow() - entry).days >= settings.sell_after_days:
             return True
+
     return False
 
+# ── main simulation loop ───────────────────────────────────────
 
 def run_simulation_loop(settings):
     logging.debug(f"[sim] starting run_simulation_loop with settings={settings}")
-    # reset database & seed cash
+
+    # reset DB & seed cash
     nuke_simulation_db()
     set_cash(settings.starting_cash)
     logging.debug(f"[sim] after seed cash: {get_cash()}")
@@ -69,60 +79,82 @@ def run_simulation_loop(settings):
     symbols   = load_symbols()
 
     while not _sim_stop:
-        # ENTRY scan
+        # ── ENTRY pass ──
         for sym in symbols:
-            df = fetch_data_with_timeout(sym)
-            if df is None or df.empty:
-                logging.debug(f"[sim] no data for {sym}, skipping")
+            # 1) live price
+            try:
+                price_live = fetch_etrade_quote(sym)
+            except Exception as e:
+                logging.warning(f"[sim] could not fetch live price for {sym}: {e}")
                 continue
 
-            latest = df.iloc[-1]
-            price  = float(latest["Close"])
-            vwap   = float(latest.get("VWAP", 0.0))
+            # 2) compute VWAP if enabled
+            latest_vwap = 0.0
+            if getattr(settings, 'vwap_on', False):
+                df = fetch_data_with_timeout(sym, period='1d', interval='1m')
+                if df is not None and not df.empty:
+                    vol = df['Volume']
+                    tp  = (df['High'] + df['Low'] + df['Close']) / 3
+                    vwap_ser = (tp * vol).cumsum() / vol.cumsum()
+                    latest_vwap = vwap_ser.iloc[-1]
 
-            logging.debug(f"[sim] {sym}: price={price}, vwap={vwap}")
+            # …inside run_simulation_loop, wherever you do:
+            # price_live, latest_vwap = …
 
-            if getattr(settings, 'vwap_on', False) and (price - vwap) < settings.vwap_threshold:
+            # extract scalars
+            if hasattr(price_live, 'iloc'):
+                price_live = float(price_live.iloc[0])
+            if hasattr(latest_vwap, 'iloc'):
+                latest_vwap = float(latest_vwap.iloc[0])
+
+            logging.debug(f"[sim] {sym}: price_live={price_live:.2f}, vwap={latest_vwap:.2f}")
+
+
+            # 3) VWAP filter
+            if getattr(settings, 'vwap_on', False) and (price_live - latest_vwap) < settings.vwap_threshold:
                 logging.debug(f"[sim] {sym} filtered by VWAP")
                 continue
+
+            # 4) single‐entry guard
             if getattr(settings, 'single_entry_only', False) and sym in positions:
                 logging.debug(f"[sim] {sym} already in positions")
                 continue
 
-            # calculate order size
-            data = {"symbol": sym, "price": price, "vwap": vwap}
-            qty  = calculate_qty(settings, data)
-            t0   = datetime.utcnow().isoformat(sep=' ')
-
+            # 5) calculate qty & BUY
+            qty = calculate_qty(settings, {"price": price_live})
+            t0  = datetime.utcnow().isoformat(sep=' ')
             try:
-                buy_stock(sym, qty, price, trade_time=t0)
-                logging.info(f"[sim] BUY {sym} x{qty} @ {price}")
+                buy_stock(sym, qty, price_live, trade_time=t0)
+                logging.info(f"[sim] BUY {sym} x{qty} @ {price_live:.2f}")
                 positions[sym] = {
                     "entry_time": datetime.fromisoformat(t0),
                     "qty":        qty,
-                    "peak_price": price,
-                    "price":      price
+                    "peak_price": price_live,
+                    "price":      price_live
                 }
             except ValueError as e:
-                logging.warning(f"[sim] skip BUY {sym}: {e} ({qty}@{price})")
+                logging.warning(f"[sim] skip BUY {sym}: {e}")
 
-        # EXIT scan
+        # ── EXIT pass ──
         for sym, pos in list(positions.items()):
-            df = fetch_data_with_timeout(sym)
-            if df is None or df.empty:
+            # always use live price for exit
+            try:
+                price_live = fetch_etrade_quote(sym)
+            except Exception as e:
+                logging.warning(f"[sim] could not fetch live price for {sym} on exit: {e}")
                 continue
-            price = float(df.iloc[-1]["Close"])
-            pos["price"] = price
-            logging.debug(f"[sim] {sym} now at price={price}")
+
+            pos["price"] = price_live
+            logging.debug(f"[sim] {sym} now at price_live={price_live:.2f}")
 
             if evaluate_exit(pos, settings):
                 t1 = datetime.utcnow().isoformat(sep=' ')
                 try:
-                    sell_stock(sym, pos["qty"], pos["price"], trade_time=t1)
-                    logging.info(f"[sim] SELL {sym} x{pos['qty']} @ {pos['price']}")
+                    sell_stock(sym, pos["qty"], price_live, trade_time=t1)
+                    logging.info(f"[sim] SELL {sym} x{pos['qty']} @ {price_live:.2f}")
                 except ValueError as e:
                     logging.warning(f"[sim] skip SELL {sym}: {e}")
                 positions.pop(sym)
 
-        # Pause until next iteration (default to 60s if not set)
+        # pause between loops
         time.sleep(getattr(settings, 'poll_interval', 60))

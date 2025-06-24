@@ -1,7 +1,7 @@
 import os
 from requests_oauthlib import OAuth1Session
 import os
-from etrade_auth_helper import make_etrade_session
+from etrade_auth import get_etrade_session
 
 def get_etrade_headers():
     return {
@@ -51,7 +51,7 @@ def fetch_etrade_quote(symbol):
     return 0.0
 
 def get_etrade_name(symbol):
-    session = make_etrade_session()
+    session = get_etrade_session()
     url = f"https://api.etrade.com/v1/market/quote/{symbol}.json"
 
     try:
