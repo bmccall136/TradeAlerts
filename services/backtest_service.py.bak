@@ -3,32 +3,31 @@ import pandas as pd
 from services.news_service import fetch_latest_headlines
 
 def backtest(
-    symbol,
-    start_date,
-    end_date,
-    initial_cash,
-    max_trade_amount,
-    max_trade_per_stock=None,
-    trailing_stop_pct=0.0,
-    sell_after_days=None,
-    sma_on=False,
-    rsi_on=False,
-    macd_on=False,
-    bb_on=False,
-    vwap_on=False,
-    news_on=False,
-    sma_length=20,
-    rsi_len=14,
-    macd_fast=12,
-    macd_slow=26,
-    macd_signal=9,
-    bb_length=20,
-    bb_std=2.0,
-    vol_multiplier=1.0,
-    vwap_threshold=0.0,       # ← ensure this is here
-    log_to_db=False,
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    initial_cash: float,
+    max_trade_amount: float,
+    sma_on: bool,
+    rsi_on: bool,
+    macd_on: bool,
+    bb_on: bool,
+    vol_on: bool,
+    vwap_on: bool,
+    news_on: bool,
+    sma_length: int,
+    rsi_len: int,
+    rsi_overbought: int,
+    rsi_oversold: int,
+    macd_fast: int,
+    macd_slow: int,
+    macd_signal: int,
+    bb_length: int,
+    bb_std: float,
+    vol_multiplier: float,
+    vwap_threshold: float,
+    log_to_db: bool = False,
 ):
-
 
     # 1) Fetch data
     yf_symbol = symbol.replace('.', '-')
@@ -133,8 +132,8 @@ def backtest(
 
 def run_full_backtest(settings, symbols):
     """
-    Loop through each symbol, run the single-symbol backtest,
-    collect all trades and build a summary dict.
+    Loop through each ticker, call the single-symbol backtest(),
+    and build a trades list + summary dict.
     """
     all_trades = []
     summary = {
@@ -152,7 +151,6 @@ def run_full_backtest(settings, symbols):
             settings.end_date,
             settings.starting_cash,
             settings.max_per_trade,
-            max_trade_per_stock=None,
             trailing_stop_pct=settings.trailing_stop_pct,
             sell_after_days=settings.sell_after_days,
             sma_on=settings.sma_on,
@@ -173,20 +171,17 @@ def run_full_backtest(settings, symbols):
             log_to_db=False
         )
 
-        # accumulate
         all_trades.extend(trades)
-        summary['total_pnl'] += net_pnl
+        summary['total_pnl']  += net_pnl
         summary['num_trades'] += len(trades)
-
-        wins = sum(1 for t in trades if t['action'] == 'SELL' and t['pnl'] > 0)
-        losses = sum(1 for t in trades if t['action'] == 'SELL' and t['pnl'] <= 0)
-        summary['wins'] += wins
+        wins   = sum(1 for t in trades if t['action']=='SELL' and t['pnl']>0)
+        losses = sum(1 for t in trades if t['action']=='SELL' and t['pnl']<=0)
+        summary['wins']   += wins
         summary['losses'] += losses
-
         summary['by_symbol'][symbol] = {
-            'pnl': net_pnl,
+            'pnl':    net_pnl,
             'trades': len(trades),
-            'wins': wins,
+            'wins':   wins,
             'losses': losses
         }
 

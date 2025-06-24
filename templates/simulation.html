@@ -149,9 +149,13 @@
     }
   }
   // poll every 2s
-  setInterval(refreshStatus, 2000);
+setInterval(fetchScannerStatus, 10000);
   // also on first load
   refreshStatus();
+</script>
+<script>
+  var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
+  var popoverList = popoverTriggerList.map(function (el) { return new bootstrap.Popover(el); });
 </script>
 
 {% endblock %}

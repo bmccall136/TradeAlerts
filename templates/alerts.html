@@ -276,64 +276,81 @@
     </div>
   </div>
 
-  {# ─── 5) Money Management ─── #}
-  {# Wrap everything (toggles, selects, buttons) in one form #}
-  <form id="simulation-form"
-        method="POST"
-        action="{{ url_for('start_scanner') }}">
+{# ─── Money Management & Controls ─── #}
+<form id="simulation-form"
+      method="POST"
+      action="{{ url_for('start_scanner') }}">
 
-    {# …your existing indicator toggles/drop-downs here… #}
+  {# …your existing indicator toggles and dropdowns here… #}
 
-    <div class="row g-3 mb-4">
-      <div class="col-md-3">
-        <label for="starting_cash" class="form-label">
-          <i class="bi bi-currency-dollar"></i> Starting Cash
-        </label>
-        <select id="starting_cash"
-                name="starting_cash"
-                class="form-select">
-          {% for v in [1000,5000,10000,25000,50000] %}
-            <option value="{{ v }}"
-                    {% if settings.starting_cash == v %}selected{% endif %}>
-              ${{ v }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-3">
-        <label for="max_per_trade" class="form-label">
-          <i class="bi bi-arrow-up-right-circle"></i> Max Per Trade
-        </label>
-        <select id="max_per_trade"
-                name="max_per_trade"
-                class="form-select">
-          {% for v in [100,250,500,1000,2500,5000] %}
-            <option value="{{ v }}"
-                    {% if settings.max_per_trade == v %}selected{% endif %}>
-              ${{ v }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
+  <div class="row g-3 mb-4">
+    <!-- Starting Cash -->
+    <div class="col-md-3">
+      <label for="starting_cash" class="form-label">
+        <i class="bi bi-currency-dollar"></i> Starting Cash
+      </label>
+      <select id="starting_cash"
+              name="starting_cash"
+              class="form-select">
+        {% for v in [1000, 5000, 10000, 25000, 50000] %}
+          <option value="{{ v }}"
+                  {% if settings.starting_cash == v %}selected{% endif %}>
+            ${{ "{:,}".format(v) }}
+          </option>
+        {% endfor %}
+      </select>
     </div>
 
-    <div class="d-flex justify-content-end align-items-center mb-3">
-      <button
-        type="submit"
-        class="btn btn-success btn-sm me-2">
-        ▶️ Start
-      </button>
-
-      <button
-        type="submit"
-        formaction="{{ url_for('stop_scanner') }}"
-        formmethod="post"
-        class="btn btn-danger btn-sm">
-        ⛔ Stop
-      </button>
+    <!-- Max Per Trade -->
+    <div class="col-md-3">
+      <label for="max_per_trade" class="form-label">
+        <i class="bi bi-arrow-up-right-circle"></i> Max Per Trade
+      </label>
+      <select id="max_per_trade"
+              name="max_per_trade"
+              class="form-select">
+        {% for v in [100, 250, 500, 1000, 2500, 5000] %}
+          <option value="{{ v }}"
+                  {% if settings.max_per_trade == v %}selected{% endif %}>
+            ${{ "{:,}".format(v) }}
+          </option>
+        {% endfor %}
+      </select>
     </div>
+  </div>
 
-  </form>
+  <div class="d-flex justify-content-between align-items-start mb-4">
+    <!-- Left: Section title -->
+    <h3 class="text-white mb-0">Holdings</h3>
+
+    <!-- Right: Status + Buttons -->
+    <div class="d-flex flex-column align-items-end">
+      <!-- 1) Dynamic status badge -->
+      <span id="sim-status"
+            class="badge bg-{{ 'success' if _is_scanner_running else 'secondary' }} mb-2">
+        Status: <span id="sim-status-text">
+                   {{ 'Running' if _is_scanner_running else 'Stopped' }}
+                 </span>
+      </span>
+
+      <!-- 2) Start / Stop buttons -->
+      <div>
+        <!-- uses form’s default action (/start_scanner) -->
+        <button type="submit"
+                class="btn btn-success btn-sm me-2">
+          ▶️ Start
+        </button>
+        <!-- overrides to call /stop_scanner -->
+        <button type="submit"
+                class="btn btn-danger btn-sm"
+                formaction="{{ url_for('stop_scanner') }}">
+          ⛔ Stop
+        </button>
+      </div>
+    </div>
+  </div>
+</form>
+
 
   <!-- ─── Alerts Table ─── -->
   <div class="table-responsive">
@@ -405,5 +422,45 @@
     });
   });
 </script>
-
-{% endblock %}
+<script>
+  async function refreshStatus(){
+    const res = await fetch('/scanner_status');
+    const j   = await res.json();
+    const badge = document.getElementById('sim-status');
+    const text  = document.getElementById('sim-status-text');
+    if(j.running){
+      badge.classList.replace('bg-secondary','bg-success');
+      text.textContent = 'Running';
+    } else {
+      badge.classList.replace('bg-success','bg-secondary');
+      text.textContent = 'Stopped';
+    }
+  }
+  // poll every 2s
+  setInterval(refreshStatus, 2000);
+  // also on first load
+  refreshStatus();
+</script>
+<script>
+  async function refreshStatus(){
+    const res = await fetch('/scanner_status');
+    const j   = await res.json();
+    const badge = document.getElementById('sim-status');
+    const text  = document.getElementById('sim-status-text');
+    if(j.running){
+      badge.classList.replace('bg-secondary','bg-success');
+      text.textContent = 'Running';
+    } else {
+      badge.classList.replace('bg-success','bg-secondary');
+      text.textContent = 'Stopped';
+    }
+  }
+  // poll every 2s
+setInterval(fetchScannerStatus, 10000);
+  // also on first load
+  refreshStatus();
+</script>
+<script>
+  var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
+  var popoverList = popoverTriggerList.map(function (el) { return new bootstrap.Popover(el); });
+</script>{% endblock %}

@@ -1,40 +1,55 @@
-import sqlite3
-import os
-from datetime import datetime
+# services/trading_helpers.py
 
-# ── Path to your simulation DB ────────────────────────────────
+import os
+import sqlite3
+from pathlib import Path
+
 SIM_DB = os.path.join(os.getcwd(), 'simulation.db')
 
-# ── CORE DB CONNECTION ────────────────────────────────────────
-def get_db_connection():
-    """Return a SQLite connection to the simulation DB."""
-    conn = sqlite3.connect(SIM_DB, detect_types=sqlite3.PARSE_DECLTYPES)
-    conn.row_factory = sqlite3.Row
-    return conn
+from services.market_service import fetch_data_with_timeout
 
-# ── SCHEMA MANAGEMENT ─────────────────────────────────────────
-def nuke_simulation_db():
-    conn = get_db_connection()
+def get_unrealized_pl():
+    """
+    Compute P&L on open positions by fetching the latest price.
+    """
+    total = 0.0
+    for symbol, qty, price_paid in get_holdings():
+        df = fetch_data_with_timeout(symbol)
+        if df is not None and not df.empty:
+            last_price = float(df["Close"].iloc[-1])
+        else:
+            last_price = price_paid
+        total += (last_price - price_paid) * qty
+    return total
+
+def _connect():
+    return sqlite3.connect(SIM_DB, detect_types=sqlite3.PARSE_DECLTYPES)
+
+def init_simulation_db():
+    """
+    Drops any old simulation.db and recreates it from scratch with the right tables.
+    """
+    # ensure the file is gone
+    f = Path(SIM_DB)
+    if f.exists():
+        f.unlink()
+
+    conn = _connect()
     cur  = conn.cursor()
 
-    # drop any old tables
-    cur.execute("DROP TABLE IF EXISTS state")
-    cur.execute("DROP TABLE IF EXISTS holdings")
-    cur.execute("DROP TABLE IF EXISTS trades")
-
-    # recreate them
+    # Create all three tables with the exact columns you use below:
     cur.execute("""
       CREATE TABLE state (
         key   TEXT PRIMARY KEY,
         value REAL
-      )
+      );
     """)
     cur.execute("""
       CREATE TABLE holdings (
-        symbol     TEXT,
+        symbol     TEXT PRIMARY KEY,
         qty        INTEGER,
         price_paid REAL
-      )
+      );
     """)
     cur.execute("""
       CREATE TABLE trades (
@@ -44,124 +59,69 @@ def nuke_simulation_db():
         qty        INTEGER,
         trade_time TEXT,
         pnl        REAL
-      )
+      );
     """)
     conn.commit()
     conn.close()
 
-# ── CASH MANAGEMENT ──────────────────────────────────────────
-def set_cash(amount: float):
-    """Seed or update your cash balance."""
-    conn = get_db_connection()
+def nuke_simulation_db():
+    """
+    User-land routine to wipe & rebuild the DB.
+    """
+    init_simulation_db()
+
+def set_cash(amount):
+    conn = _connect()
     cur  = conn.cursor()
-    # store under key='cash'
+    cur.execute("CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value REAL)")
     cur.execute("""
-      INSERT INTO state(key,value)
-      VALUES(?,?)
+      INSERT INTO state (key, value)
+        VALUES ('cash', ?)
       ON CONFLICT(key) DO UPDATE SET value=excluded.value
-    """, ("cash", amount))
+    """, (amount,))
     conn.commit()
     conn.close()
 
-def get_cash() -> float:
-    """Retrieve current cash balance (0.0 if missing)."""
-    conn = get_db_connection()
+def get_cash():
+    conn = _connect()
     cur  = conn.cursor()
     cur.execute("SELECT value FROM state WHERE key='cash'")
     row = cur.fetchone()
     conn.close()
-    return float(row["value"]) if row else 0.0
-
-def get_realized_pl() -> float:
-    """Sum of all P/L from the trades table."""
-    conn = get_db_connection()
-    cur  = conn.cursor()
-    cur.execute("SELECT SUM(pnl) as total FROM trades")
-    row = cur.fetchone()
-    conn.close()
-    return float(row["total"] or 0.0)
-
-# ── HOLDINGS CRUD ────────────────────────────────────────────
-def buy_stock(symbol: str, qty: int, price: float, trade_time: str=None):
-    """Record a buy: add to holdings, log trade."""
-    if qty <= 0:
-        raise ValueError("Quantity must be > 0")
-    conn = get_db_connection()
-    cur  = conn.cursor()
-    # upsert holdings
-    cur.execute("SELECT qty, price_paid FROM holdings WHERE symbol=?", (symbol,))
-    existing = cur.fetchone()
-    if existing:
-        prev_qty, prev_cost = existing["qty"], existing["price_paid"]
-        total_cost = prev_cost * prev_qty + price * qty
-        new_qty   = prev_qty + qty
-        new_price = total_cost / new_qty
-        cur.execute(
-            "UPDATE holdings SET qty=?, price_paid=? WHERE symbol=?",
-            (new_qty, new_price, symbol)
-        )
-    else:
-        cur.execute(
-            "INSERT INTO holdings(symbol,qty,price_paid) VALUES(?,?,?)",
-            (symbol, qty, price)
-        )
-
-    # log trade with pnl=NULL
-    cur.execute("""
-      INSERT INTO trades(symbol,action,price,qty,trade_time,pnl)
-      VALUES(?,?,?,?,?,NULL)
-    """, (symbol, "BUY", price, qty, trade_time or datetime.utcnow().isoformat(sep=' ')))
-    conn.commit()
-    conn.close()
-
-def sell_stock(symbol: str, qty: int, price: float, trade_time: str=None):
-    """Record a sell: remove from holdings, compute & log P/L."""
-    conn = get_db_connection()
-    cur  = conn.cursor()
-    cur.execute("SELECT qty, price_paid FROM holdings WHERE symbol=?", (symbol,))
-    row = cur.fetchone()
-    if not row or row["qty"] < qty:
-        conn.close()
-        raise ValueError("Insufficient shares")
-    prev_qty, prev_cost = row["qty"], row["price_paid"]
-    # remaining shares
-    new_qty = prev_qty - qty
-    if new_qty > 0:
-        cur.execute(
-            "UPDATE holdings SET qty=? WHERE symbol=?",
-            (new_qty, symbol)
-        )
-    else:
-        cur.execute("DELETE FROM holdings WHERE symbol=?", (symbol,))
-
-    # compute pnl = (sell_price - avg_cost) * qty
-    pnl = (price - prev_cost) * qty
-    cur.execute("""
-      INSERT INTO trades(symbol,action,price,qty,trade_time,pnl)
-      VALUES(?,?,?,?,?,?)
-    """, (symbol, "SELL", price, qty, trade_time or datetime.utcnow().isoformat(sep=' '), pnl))
-    conn.commit()
-    conn.close()
+    return float(row[0]) if row else 0.0
 
 def get_holdings():
-    """Return list of (symbol, qty, price_paid)."""
-    conn = get_db_connection()
+    conn = _connect()
     cur  = conn.cursor()
     cur.execute("SELECT symbol, qty, price_paid FROM holdings")
     rows = cur.fetchall()
     conn.close()
-    # you can return dicts or tuples; simulation view handles both
-    return [dict(row) for row in rows]
+    return rows
 
 def get_trades():
-    """Return full history: (symbol,action,price,qty,trade_time,pnl)."""
-    conn = get_db_connection()
-    cur  = conn.cursor()
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
     cur.execute("""
-      SELECT symbol,action,price,qty,trade_time,pnl
-      FROM trades
-      ORDER BY trade_time DESC
+      SELECT symbol, action, price, qty, trade_time, pnl
+        FROM trades
+       ORDER BY trade_time ASC
     """)
     rows = cur.fetchall()
     conn.close()
-    return [dict(row) for row in rows]
+    return [
+      (r['symbol'], r['action'], r['price'], r['qty'], r['trade_time'], r['pnl'])
+      for r in rows
+    ]
+
+def get_realized_pl():
+    conn = _connect()
+    cur  = conn.cursor()
+    cur.execute("SELECT SUM(pnl) FROM trades WHERE action='SELL'")
+    total = cur.fetchone()[0] or 0.0
+    conn.close()
+    return float(total)
+
+# As soon as this module is imported, ensure the DB exists:
+if not Path(SIM_DB).exists():
+    init_simulation_db()
