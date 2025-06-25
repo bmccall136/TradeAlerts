@@ -200,6 +200,7 @@ def load_your_symbols():
     # reads your SP500 list
     with open('sp500_symbols.txt') as f:
         return [line.strip() for line in f if line.strip()]
+        logging.debug(f"[sim] symbols to scan: {symbols[:5]}… ({len(symbols)} total)")
 
 
 BACKTEST_DB = 'backtest.db'
@@ -506,38 +507,38 @@ def start_scanner():
         max_per_trade=max_per_trade
     ))
 
-# near the top of Dashboard.py, add your defaults:
-DEFAULT_STARTING_CASH   = 10000.0
-DEFAULT_MAX_PER_TRADE   = 1000.0
+# near the top of Dashboard.py
+DEFAULT_STARTING_CASH = 10000.0
+DEFAULT_MAX_PER_TRADE = 1000.0
 
 @app.route('/simulation')
 def simulation():
-    cash         = get_cash()
-    unrealized   = get_unrealized_pl()
-    realized     = get_realized_pl()
-    raw_h        = get_holdings()
-    raw_t        = get_trades()
+    # ── A) grab form-passed defaults (or fall back) ──────────────
+    starting_cash = float(request.args.get('starting_cash', DEFAULT_STARTING_CASH))
+    max_per_trade = float(request.args.get('max_per_trade', DEFAULT_MAX_PER_TRADE))
 
-    logging.debug(f"[sim-view] cash={cash}, unrealized={unrealized}, "
-                  f"realized={realized}, holdings={raw_h}, trades={raw_t}")
+    # ── B) grab raw data ───────────────────────────────────────
+    cash       = get_cash()
+    unrealized = get_unrealized_pl()
+    realized   = get_realized_pl()
+    raw_h      = get_holdings()   # [(symbol, qty, avg_cost, last_price), …]
+    raw_t      = get_trades()     # [(symbol, action, price, qty, tstamp, pnl), …]
 
-    # ── 1) Format holdings & compute unrealized ─────────────────
+    # ── C) format holdings & compute unrealized ────────────────
     formatted_holdings = []
-    total_unrealized   = 0.0
-    for symbol, qty, paid in raw_h:
-        # … your existing logic to fetch last_price, compute day_gain …
+    for symbol, qty, avg_cost, last_price in raw_h:
+        day_gain = (last_price - avg_cost) * qty
         formatted_holdings.append({
             'symbol':     symbol,
             'last_price': last_price,
             'qty':        qty,
-            'price_paid': paid,
+            'price_paid': avg_cost,
             'day_gain':   day_gain,
             'value':      last_price * qty,
-            'change_pct': (day_gain / paid * 100) if paid else 0,
+            'change_pct': (day_gain / (avg_cost * qty) * 100) if avg_cost else 0,
         })
-        total_unrealized += day_gain
 
-    # ── 2) Format trade history ────────────────────────────────
+    # ── D) format trade history ─────────────────────────────────
     formatted_trades = []
     for t in raw_t:
         if isinstance(t, tuple):
@@ -547,7 +548,7 @@ def simulation():
             action = t.get('action')
             price  = t.get('price')
             qty    = t.get('qty')
-            tstamp = t.get('time') or t.get('trade_time')
+            tstamp = t.get('trade_time') or t.get('time')
             pnl    = t.get('pnl') or t.get('pl') or 0.0
 
         formatted_trades.append({
@@ -559,27 +560,18 @@ def simulation():
             'pl':     pnl,
         })
 
-    # ── 3) Grab the last-used—or fallback—money values ────────
-    starting_cash = float(request.args.get('starting_cash',
-                                           DEFAULT_STARTING_CASH))
-    max_per_trade = float(request.args.get('max_per_trade',
-                                           DEFAULT_MAX_PER_TRADE))
-
-    # ── 4) Render ─────────────────────────────────────────────
+    # ── E) render ────────────────────────────────────────────────
     return render_template(
         'simulation.html',
         cash=cash,
-        unrealized_pnl=total_unrealized,
-        realized_pnl=realized,
         holdings=formatted_holdings,
-        history=formatted_trades,
-        settings={
-            'starting_cash': starting_cash,
-            'max_per_trade':  max_per_trade
-        },
+        trades=formatted_trades,
+        unrealized_pnl=unrealized,
+        realized_pnl=realized,
+        starting_cash=starting_cash,
+        max_per_trade=max_per_trade,
         is_running=_is_scanner_running
     )
-
 
 @app.route("/simulation/buy", methods=["POST"])
 def simulation_buy():

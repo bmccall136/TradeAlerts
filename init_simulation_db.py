@@ -1,5 +1,6 @@
 import sqlite3
 import os
+from datetime import datetime
 
 # Path to your simulation database file; adjust as needed
 SIM_DB = os.path.join(os.getcwd(), 'simulation.db')
@@ -7,57 +8,52 @@ SIM_DB = os.path.join(os.getcwd(), 'simulation.db')
 
 def init_simulation_db():
     print("🔧 initializing simulation.db schema…")
-    """
-    Initialize the simulation database schema.
-    Drops existing tables if they exist and recreates:
-    - state: stores simulation key/value pairs (e.g., cash)
-    - holdings: tracks current positions
-    - simulation_trades: logs each buy/sell with timestamp
-    """
-    conn = sqlite3.connect(SIM_DB)
+    conn = sqlite3.connect(SIM_DB, detect_types=sqlite3.PARSE_DECLTYPES)
     cur = conn.cursor()
 
-    # Drop old tables
-    cur.execute("DROP TABLE IF EXISTS state")
-    cur.execute("DROP TABLE IF EXISTS holdings")
-    # Ensure old trades tables are cleared
-    cur.execute("DROP TABLE IF EXISTS simulation_trades")
-    cur.execute("DROP TABLE IF EXISTS trades")
+    # drop tables if they exist
+    cur.execute("DROP TABLE IF EXISTS state;")
+    cur.execute("DROP TABLE IF EXISTS holdings;")
+    cur.execute("DROP TABLE IF EXISTS simulation_trades;")
 
-    # 1) State table for storing simulation-wide values (e.g., cash)
+    # recreate state with cash & realized_pl
     cur.execute("""
-        CREATE TABLE state (
-            key TEXT PRIMARY KEY,
-            value REAL
-        )
+      CREATE TABLE state (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        cash REAL DEFAULT 0,
+        realized_pl REAL DEFAULT 0
+      );
     """)
 
-    # 2) Holdings table: one row per symbol in portfolio
+    # recreate holdings
     cur.execute("""
-        CREATE TABLE holdings (
-            symbol TEXT PRIMARY KEY,
-            qty INTEGER NOT NULL,
-            price_paid REAL NOT NULL
-        )
+      CREATE TABLE holdings (
+        symbol TEXT PRIMARY KEY,
+        qty INTEGER NOT NULL,
+        avg_cost REAL NOT NULL,
+        last_price REAL NOT NULL
+      );
     """)
 
-    # 3) Simulation trades table: logs each trade event
+    # recreate simulation_trades
     cur.execute("""
-        CREATE TABLE simulation_trades (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol TEXT NOT NULL,
-            action TEXT NOT NULL,
-            price REAL NOT NULL,
-            qty INTEGER NOT NULL,
-            trade_time TEXT NOT NULL,
-            pnl REAL
-        )
+      CREATE TABLE simulation_trades (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        symbol TEXT NOT NULL,
+        action TEXT CHECK (action IN ('BUY','SELL')) NOT NULL,
+        price REAL NOT NULL,
+        qty INTEGER NOT NULL,
+        trade_time TEXT NOT NULL,
+        pnl REAL
+      );
     """)
+
+    # initialize the one row of state
+    cur.execute("INSERT INTO state (id, cash, realized_pl) VALUES (1, 10000, 0);")
 
     conn.commit()
     conn.close()
 
 
-# Run on import to ensure schema exists
 if __name__ == '__main__':
     init_simulation_db()
