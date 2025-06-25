@@ -21,10 +21,15 @@ from flask import (
     url_for,
     flash,
     jsonify,
-    Response as FlaskResponse
+    Response as FlaskResponse,
+    session
 )
 
-# ── Alert service (settings + alerts) ─────────────────────────
+# ── 1) Load your .env first ──────────────────────────────────
+from dotenv import load_dotenv, set_key
+load_dotenv()
+
+# ── 2) All other imports ────────────────────────────────────
 from services.alert_service import (
     get_all_indicator_settings,
     update_indicator_settings,
@@ -32,8 +37,6 @@ from services.alert_service import (
     insert_alert,
     generate_sparkline
 )
-
-# ── Trading DB helpers ───────────────────────────────────────
 from services.trading_helpers import (
     set_cash,
     get_cash,
@@ -43,23 +46,15 @@ from services.trading_helpers import (
     get_unrealized_pl,
     nuke_simulation_db,
 )
-
-# 1) Load your .env first, before any service imports
-from dotenv import load_dotenv
-load_dotenv()
-
-# 2) Now import everything else
 from services.simulation_service import run_simulation_loop, stop_simulation
 from services.market_service     import fetch_data_with_timeout
 from services.etrade_service     import fetch_etrade_quote
-# …any other imports that rely on env vars
-
 try:
     from services.broker_api import fetch_live_data
 except ImportError:
     fetch_live_data = None
 
-# ── DB file paths ─────────────────────────────────────────────
+# ── DB file paths ───────────────────────────────────────────
 DB_PATH     = os.path.join(os.getcwd(), 'alerts.db')
 SIM_DB      = os.path.join(os.getcwd(), 'simulation.db')
 BACKTEST_DB = os.path.join(os.getcwd(), 'backtest.db')
@@ -68,37 +63,91 @@ BACKTEST_DB = os.path.join(os.getcwd(), 'backtest.db')
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET', 'supersecret')
 
-# ── Timeframe presets for backtests ─────────────────────────
+# ── Logging configuration ───────────────────────────────────
+import logging
+
+# get your sim logger and make it print to the console at DEBUG
+sim_logger = logging.getLogger('sim')
+sim_logger.setLevel(logging.DEBUG)
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter(
+    "%(asctime)s %(levelname)-4s %(name)s: %(message)s"
+))
+sim_logger.addHandler(handler)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)-5s %(name)s: %(message)s'
+)
+for lib in ('werkzeug', 'urllib3', 'requests_oauthlib', 'oauthlib', 'yfinance', 'peewee'):
+    logging.getLogger(lib).setLevel(logging.WARNING)
+
+# ── Timeframe presets & simulation defaults ─────────────────
 TIMEFRAME_DELTAS = {
     '1mo': {'months': 1},
     '3mo': {'months': 3},
     '6mo': {'months': 6},
     '1y' : {'years': 1},
 }
-# ── Simulation defaults ─────────────────────────────────────
-DEFAULT_STARTING_CASH   = 10000.0
-DEFAULT_MAX_PER_TRADE   = 1000.0
+DEFAULT_STARTING_CASH = 10000.0
+DEFAULT_MAX_PER_TRADE = 1000.0
 
-import logging
+# ── E*TRADE OAuth configuration (production only) ──────────
+# Keys filled in directly as provided
+CONSUMER_KEY       = '1e0978925ddea6a6addb5436e6ff2164'
+CONSUMER_SECRET    = '0fdac4a22a68112d7e855281bab9df70af85cfd023206d15d75bcf51f1390bc2'
+OAUTH_TOKEN        = 'mcjsKyZ+GEfimgLRexsERoevbOQ9EVRrN7iJ/I13Dwg='
+OAUTH_TOKEN_SECRET = 'YFDwu7K23oWft+n+0TongPACdDzkQR0oB6xPug3GpOw='
+OAUTH_HOST         = 'https://etws.etrade.com'
+REQUEST_TOKEN_URL  = f'{OAUTH_HOST}/oauth/request_token'
+ACCESS_TOKEN_URL   = f'{OAUTH_HOST}/oauth/access_token'
+AUTHORIZE_URL      = 'https://us.etrade.com/e/t/etws/authorize'
+ENV_PATH           = os.path.join(os.path.dirname(__file__), '.env')
+KEY_OAUTH_TOKEN        = 'OAUTH_TOKEN'
+KEY_OAUTH_TOKEN_SECRET = 'OAUTH_TOKEN_SECRET'
 
-# 1) Basic root logger at INFO; format timestamps + levels + name
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s %(levelname)-5s %(name)s: %(message)s'
-)
+# ── OAuth routes ────────────────────────────────────────────
+from requests_oauthlib import OAuth1Session
 
-# 2) Silence noisy libraries
-for lib in ('werkzeug', 'urllib3', 'requests_oauthlib', 'oauthlib', 'yfinance', 'peewee'):
-    logging.getLogger(lib).setLevel(logging.WARNING)
+@app.route('/etrade/auth')
+def etrade_start_auth():
+    """Step 1: Obtain request token & redirect to E*TRADE approval."""
+    oauth = OAuth1Session(
+        CONSUMER_KEY,
+        client_secret=CONSUMER_SECRET,
+        callback_uri=url_for('etrade_handle_callback', _external=True)
+    )
+    resp = oauth.fetch_request_token(REQUEST_TOKEN_URL)
+    session['req_token']  = resp['oauth_token']
+    session['req_secret'] = resp['oauth_token_secret']
 
-# 3) Now import Flask and your modules
-from flask import Flask, request, render_template, redirect, url_for, flash, jsonify, Response
-from services.simulation_service import run_simulation_loop, stop_simulation
-from services.trading_helpers    import set_cash, get_cash, get_holdings, get_trades, get_realized_pl, get_unrealized_pl, nuke_simulation_db
-from services.market_service     import fetch_data_with_timeout
-from services.etrade_service     import fetch_etrade_quote
-# any other imports you need…
+    auth_url = f"{AUTHORIZE_URL}?key={CONSUMER_KEY}&token={session['req_token']}"
+    return redirect(auth_url)
 
+@app.route('/etrade/callback')
+def etrade_handle_callback():
+    """Step 2: Exchange verifier for access tokens & persist."""
+    verifier   = request.args.get('oauth_verifier')
+    req_token  = session.pop('req_token', None)
+    req_secret = session.pop('req_secret', None)
+
+    oauth = OAuth1Session(
+        CONSUMER_KEY,
+        client_secret=CONSUMER_SECRET,
+        resource_owner_key=req_token,
+        resource_owner_secret=req_secret,
+        verifier=verifier
+    )
+    tokens = oauth.fetch_access_token(ACCESS_TOKEN_URL)
+
+    # Persist into .env
+    set_key(ENV_PATH, KEY_OAUTH_TOKEN,        tokens['oauth_token'])
+    set_key(ENV_PATH, KEY_OAUTH_TOKEN_SECRET, tokens['oauth_token_secret'])
+
+    flash('✅ E*TRADE authenticated!', 'success')
+    return redirect(url_for('index'))
+
+# ── …then the rest of your routes and logic follow below…
 
 
 def fetch_current_price(symbol):
@@ -532,32 +581,46 @@ DEFAULT_MAX_PER_TRADE = 1000.0
 
 @app.route('/simulation')
 def simulation():
-    # ── A) grab form-passed defaults (or fall back) ──────────────
+    # A) grab form-passed defaults (or fall back)
     starting_cash = float(request.args.get('starting_cash', DEFAULT_STARTING_CASH))
     max_per_trade = float(request.args.get('max_per_trade', DEFAULT_MAX_PER_TRADE))
 
-    # ── B) grab raw data ───────────────────────────────────────
+    # B) pull raw data
     cash       = get_cash()
     unrealized = get_unrealized_pl()
     realized   = get_realized_pl()
     raw_h      = get_holdings()   # [(symbol, qty, avg_cost, last_price), …]
     raw_t      = get_trades()     # [(symbol, action, price, qty, tstamp, pnl), …]
 
-    # ── C) format holdings & compute unrealized ────────────────
+    # C) format holdings & compute P/L
     formatted_holdings = []
-    for symbol, qty, avg_cost, last_price in raw_h:
-        day_gain = (last_price - avg_cost) * qty
+    total_unrealized   = 0.0
+
+    for symbol, qty, avg_cost, db_last in raw_h:
+        # fetch latest for display
+        try:
+            last_price = fetch_current_price(symbol)
+            logging.debug(f"[sim-view] Updated last_price for {symbol}: {last_price}")
+        except Exception as e:
+            logging.warning(f"[sim-view] Could not fetch price for {symbol}: {e}")
+            last_price = db_last
+
+        day_gain   = (last_price - avg_cost) * qty
+        total_gain = day_gain  # if you want separate realized vs unrealized adjust here
+        total_unrealized += day_gain
+
         formatted_holdings.append({
-            'symbol':     symbol,
-            'last_price': last_price,
-            'qty':        qty,
-            'price_paid': avg_cost,
-            'day_gain':   day_gain,
-            'value':      last_price * qty,
-            'change_pct': (day_gain / (avg_cost * qty) * 100) if avg_cost else 0,
+            'symbol'     : symbol,
+            'last_price' : last_price,
+            'qty'        : qty,
+            'price_paid' : avg_cost,
+            'day_gain'   : day_gain,
+            'change_pct' : (day_gain / (avg_cost * qty) * 100) if avg_cost else 0,
+            'total_gain' : total_gain,
+            'value'      : last_price * qty,
         })
 
-    # ── D) format trade history ─────────────────────────────────
+    # D) format trade history
     formatted_trades = []
     for t in raw_t:
         if isinstance(t, tuple):
@@ -571,21 +634,21 @@ def simulation():
             pnl    = t.get('pnl') or t.get('pl') or 0.0
 
         formatted_trades.append({
-            'time':   tstamp,
-            'symbol': symbol,
-            'action': action,
-            'qty':    qty,
-            'price':  price,
-            'pl':     pnl,
+            'time'   : tstamp,
+            'symbol' : symbol,
+            'action' : action,
+            'qty'    : qty,
+            'price'  : price,
+            'pl'     : pnl,
         })
 
-    # ── E) render ────────────────────────────────────────────────
+    # E) render
     return render_template(
         'simulation.html',
         cash=cash,
         holdings=formatted_holdings,
-        trades=formatted_trades,
-        unrealized_pnl=unrealized,
+        history=formatted_trades,
+        unrealized_pnl=total_unrealized,
         realized_pnl=realized,
         starting_cash=starting_cash,
         max_per_trade=max_per_trade,

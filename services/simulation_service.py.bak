@@ -12,7 +12,10 @@ from services.trading_helpers import (
     get_cash,
     nuke_simulation_db
 )
+import logging
+
 logger = logging.getLogger('sim')
+
 # ── control flag & stop fn ─────────────────────────────────────
 _sim_stop = False
 
@@ -68,94 +71,140 @@ def evaluate_exit(pos, settings):
 # ── main simulation loop ───────────────────────────────────────
 
 def run_simulation_loop(settings):
-    logging.debug(f"[sim] starting run_simulation_loop with settings={settings}")
-
-    # reset DB & seed cash
+    logger.info(f"[sim] starting run with settings={settings}")
     nuke_simulation_db()
     set_cash(settings.starting_cash)
-    logging.debug(f"[sim] after seed cash: {get_cash()}")
+    logger.info(f"[sim] seed cash: {get_cash():.2f}")
 
     positions = {}
     symbols   = load_symbols()
-
     while not _sim_stop:
-        # ── ENTRY pass ──
+
         for sym in symbols:
             # 1) live price
             try:
-                price_live = fetch_etrade_quote(sym)
+                price_live = float(fetch_etrade_quote(sym))
             except Exception as e:
-                logging.warning(f"[sim] could not fetch live price for {sym}: {e}")
+                logger.warning(f"[sim] {sym}: price fetch failed ({e})")
                 continue
 
-            # 2) compute VWAP if enabled
-            latest_vwap = 0.0
-            if getattr(settings, 'vwap_on', False):
+            # 2) pull 1d/1m bars once (for all indicators)
+            df = None
+            if settings.sma_on or settings.rsi_on or settings.bb_on:
                 df = fetch_data_with_timeout(sym, period='1d', interval='1m')
-                if df is not None and not df.empty:
-                    vol = df['Volume']
-                    tp  = (df['High'] + df['Low'] + df['Close']) / 3
-                    vwap_ser = (tp * vol).cumsum() / vol.cumsum()
-                    latest_vwap = vwap_ser.iloc[-1]
+                if df is None or df.empty:
+                    logger.warning(f"[sim] {sym}: no market data for indicators")
+                    continue
 
-            # …inside run_simulation_loop, wherever you do:
-            # price_live, latest_vwap = …
+            decisions = []
+            reasons   = []
 
-            # extract scalars
-            if hasattr(price_live, 'iloc'):
-                price_live = float(price_live.iloc[0])
-            if hasattr(latest_vwap, 'iloc'):
-                latest_vwap = float(latest_vwap.iloc[0])
-
-            logging.debug(f"[sim] {sym}: price_live={price_live:.2f}, vwap={latest_vwap:.2f}")
-            logger.info(f"BUY {sym} x{qty} @ {price_live:.2f}")
+            # 3a) SMA cross-above
+            if settings.sma_on:
+                sma = df['Close'].rolling(settings.sma_length).mean().iloc[-1]
+                ok  = price_live > sma
+                decisions.append(ok)
+                reasons.append(f"SMA({settings.sma_length}) pass? {ok}")
             
+             # 3b) RSI oversold-cross
+            if settings.rsi_on:
+                delta      = df['Close'].diff()
+                up         = delta.clip(lower=0)
+                down       = -delta.clip(upper=0)
+                roll_up    = up.ewm(span=settings.rsi_len).mean()
+                roll_down  = down.ewm(span=settings.rsi_len).mean()
+                rs         = roll_up / roll_down
+                rsi_series = 100 - (100 / (1 + rs))
+                latest_rsi = float(rsi_series.iloc[-1])   # scalar
+                ok         = latest_rsi < settings.rsi_oversold
+                decisions.append(ok)
+                reasons.append(f"RSI({settings.rsi_len})={latest_rsi:.1f} pass? {ok}")
 
-            # 3) VWAP filter
-            if getattr(settings, 'vwap_on', False) and (price_live - latest_vwap) < settings.vwap_threshold:
-                logging.debug(f"[sim] {sym} filtered by VWAP")
+
+            # 3c) Bollinger Band breakout
+            if settings.bb_on:
+                mb    = df['Close'].rolling(settings.bb_length).mean().iloc[-1]
+                std   = df['Close'].rolling(settings.bb_length).std().iloc[-1]
+                upper = mb + settings.bb_std * std
+                ok    = price_live > upper
+                decisions.append(ok)
+                reasons.append(f"BB upper={upper:.2f} pass? {ok}")
+
+            # 3d) VWAP (you already have this)
+            if settings.vwap_on:
+                vol = df['Volume']
+                tp  = (df['High'] + df['Low'] + df['Close']) / 3
+                vwap_ser = (tp * vol).cumsum() / vol.cumsum()
+                latest_vwap = vwap_ser.iloc[-1]
+                ok = (price_live - latest_vwap) > settings.vwap_threshold
+                # right before “if not all(decisions): …”
+                logger.debug(f"[sim] {sym}  decisions={decisions}  reasons={reasons}")
+                decisions.append(ok)
+                # unwrap a single-element Series to a Python float
+                if hasattr(latest_vwap, 'iloc'):
+                    vwap_scalar = float(latest_vwap.iloc[0])
+                else:
+                    vwap_scalar = float(latest_vwap)
+
+                reasons.append(f"VWAP={vwap_scalar:.2f} pass? {ok}")
+
+            # 3e) single-entry guard
+            if settings.single_entry_only and sym in positions:
+                logger.debug(f"[sim] {sym} already in positions")
                 continue
 
-            # 4) single‐entry guard
-            if getattr(settings, 'single_entry_only', False) and sym in positions:
-                logging.debug(f"[sim] {sym} already in positions")
+            # DEBUG: dump decisions & reasons
+            logger.debug(f"[sim] {sym}: decisions={decisions}  reasons={reasons}")
+
+            # if no filters at all, skip
+            if not decisions:
+                logger.debug(f"[sim] {sym}: no filters enabled, skipping buy")
                 continue
+
+            # 4) only buy if *all* pass
+            decisions = [
+                (d.iloc[0] if hasattr(d, 'iloc') else d)
+                for d in decisions
+            ]
+            if not all(decisions):
+                continue
+
+
+            # … then do your buy …
 
             # 5) calculate qty & BUY
             qty = calculate_qty(settings, {"price": price_live})
-            t0  = datetime.utcnow().isoformat(sep=' ')
+            if qty <= 0:
+                logger.debug(f"[sim] {sym}: qty=0, skipping")
+                continue
             try:
-                buy_stock(sym, qty, price_live, trade_time=t0)
-                logging.info(f"[sim] BUY {sym} x{qty} @ {price_live:.2f}")
+                buy_stock(sym, qty, price_live)
+                logger.info(f"BUY  {sym} x{qty} @ {price_live:.2f}")
                 positions[sym] = {
-                    "entry_time": datetime.fromisoformat(t0),
+                    "entry_time": datetime.utcnow(),
                     "qty":        qty,
                     "peak_price": price_live,
                     "price":      price_live
                 }
             except ValueError as e:
-                logging.warning(f"[sim] skip BUY {sym}: {e}")
+                logger.warning(f"[sim] skip BUY {sym}: {e}")
 
         # ── EXIT pass ──
         for sym, pos in list(positions.items()):
-            # always use live price for exit
-            try:
-                price_live = fetch_etrade_quote(sym)
-            except Exception as e:
-                logging.warning(f"[sim] could not fetch live price for {sym} on exit: {e}")
-                continue
-
+            # fetch live…
+            price_live = float(fetch_etrade_quote(sym))
             pos["price"] = price_live
-            logging.debug(f"[sim] {sym} now at price_live={price_live:.2f}")
+            # update peak
+            if price_live > pos["peak_price"]:
+                pos["peak_price"] = price_live
 
+            # log for trailing-stop
             if evaluate_exit(pos, settings):
-                t1 = datetime.utcnow().isoformat(sep=' ')
                 try:
-                    sell_stock(sym, pos["qty"], price_live, trade_time=t1)
-                    logging.info(f"[sim] SELL {sym} x{pos['qty']} @ {price_live:.2f}")
+                    sell_stock(sym, pos["qty"], price_live)
+                    logger.info(f"SELL {sym} x{pos['qty']} @ {price_live:.2f}")
                 except ValueError as e:
-                    logging.warning(f"[sim] skip SELL {sym}: {e}")
+                    logger.warning(f"[sim] skip SELL {sym}: {e}")
                 positions.pop(sym)
 
-        # pause between loops
         time.sleep(getattr(settings, 'poll_interval', 60))
