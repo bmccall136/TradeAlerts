@@ -80,7 +80,26 @@ DEFAULT_STARTING_CASH   = 10000.0
 DEFAULT_MAX_PER_TRADE   = 1000.0
 
 import logging
-logging.basicConfig(level=logging.DEBUG)
+
+# 1) Basic root logger at INFO; format timestamps + levels + name
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)-5s %(name)s: %(message)s'
+)
+
+# 2) Silence noisy libraries
+for lib in ('werkzeug', 'urllib3', 'requests_oauthlib', 'oauthlib', 'yfinance', 'peewee'):
+    logging.getLogger(lib).setLevel(logging.WARNING)
+
+# 3) Now import Flask and your modules
+from flask import Flask, request, render_template, redirect, url_for, flash, jsonify, Response
+from services.simulation_service import run_simulation_loop, stop_simulation
+from services.trading_helpers    import set_cash, get_cash, get_holdings, get_trades, get_realized_pl, get_unrealized_pl, nuke_simulation_db
+from services.market_service     import fetch_data_with_timeout
+from services.etrade_service     import fetch_etrade_quote
+# any other imports you need…
+
+
 
 def fetch_current_price(symbol):
     """
