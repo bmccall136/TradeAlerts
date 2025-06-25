@@ -130,7 +130,7 @@ def fetch_live_data(symbol: str) -> dict:
 
 # ── TRADING OPS ─────────────────────────────────────────────
 
-def buy_stock(symbol: str, quantity: int, price: float):
+def buy_stock(symbol: str, quantity: int, price: float, trade_time: str = None):
     """Execute a BUY in the simulation DB."""
     conn = _connect()
     cur  = conn.cursor()
@@ -143,7 +143,7 @@ def buy_stock(symbol: str, quantity: int, price: float):
         conn.close()
         raise ValueError("Insufficient cash to buy.")
 
-    now = datetime.utcnow().isoformat(sep=' ')
+    now = trade_time or datetime.utcnow().isoformat(sep=' ')
 
     # record trade
     cur.execute("""
@@ -178,7 +178,7 @@ def buy_stock(symbol: str, quantity: int, price: float):
     conn.close()
 
 
-def sell_stock(symbol: str, quantity: int, price: float):
+def sell_stock(symbol: str, quantity: int, price: float, trade_time: str = None):
     """Execute a SELL in the simulation DB."""
     conn = _connect()
     cur  = conn.cursor()
@@ -198,7 +198,7 @@ def sell_stock(symbol: str, quantity: int, price: float):
     # compute
     proceeds    = price * quantity
     realized_pl = (price - avg_cost) * quantity
-    now = datetime.utcnow().isoformat(sep=' ')
+    now = trade_time or datetime.utcnow().isoformat(sep=' ')
 
     # record trade
     cur.execute("""

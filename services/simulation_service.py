@@ -12,7 +12,7 @@ from services.trading_helpers import (
     get_cash,
     nuke_simulation_db
 )
-
+logger = logging.getLogger('sim')
 # ── control flag & stop fn ─────────────────────────────────────
 _sim_stop = False
 
@@ -108,7 +108,7 @@ def run_simulation_loop(settings):
                 latest_vwap = float(latest_vwap.iloc[0])
 
             logging.debug(f"[sim] {sym}: price_live={price_live:.2f}, vwap={latest_vwap:.2f}")
-
+            
 
             # 3) VWAP filter
             if getattr(settings, 'vwap_on', False) and (price_live - latest_vwap) < settings.vwap_threshold:
@@ -125,7 +125,7 @@ def run_simulation_loop(settings):
             t0  = datetime.utcnow().isoformat(sep=' ')
             try:
                 buy_stock(sym, qty, price_live, trade_time=t0)
-                logging.info(f"[sim] BUY {sym} x{qty} @ {price_live:.2f}")
+                logger.info(f"BUY {sym} x{qty} @ {price_live:.2f}")
                 positions[sym] = {
                     "entry_time": datetime.fromisoformat(t0),
                     "qty":        qty,

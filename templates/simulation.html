@@ -40,7 +40,7 @@
       <tr>
         <th>Symbol</th><th>Last Price</th><th>Change</th><th>Change %</th>
         <th>Qty</th><th>Price Paid</th><th>Day Gain/Loss</th>
-        <th>Total Gain/Loss</th><th>Value</th><th>Action</th>
+        <th>Total Gain/Loss</th><th>Value</th>
       </tr>
     </thead>
     <tbody>
@@ -55,13 +55,6 @@
         <td>${{ '%.2f'|format((h.last_price - h.price_paid) * h.qty) }}</td>
         <td>&mdash;</td>
         <td>${{ '%.2f'|format(h.value) }}</td>
-        <td>
-          <input type="number" value="1" min="1" style="width:4em">
-          <button class="btn btn-sm btn-outline-danger"
-                  onclick="sellStock('{{ h.symbol }}', this)">
-            Sell
-          </button>
-        </td>
       </tr>
       {% else %}
       <tr><td colspan="10" class="text-center">No holdings</td></tr>

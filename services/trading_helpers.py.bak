@@ -1,6 +1,7 @@
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+import yfinance as yf
 
 # point to your simulation.db
 SIM_DB = str(Path(__file__).resolve().parent.parent / "simulation.db")
@@ -9,6 +10,7 @@ SIM_DB = str(Path(__file__).resolve().parent.parent / "simulation.db")
 
 def _connect():
     return sqlite3.connect(SIM_DB, detect_types=sqlite3.PARSE_DECLTYPES)
+
 
 def nuke_simulation_db():
     """Wipe and recreate the simulation schema."""
@@ -45,17 +47,11 @@ def nuke_simulation_db():
         pnl REAL
       );
     """)
-    # initialize cash row
+    # initialize state
     cur.execute("INSERT INTO state (id, cash, realized_pl) VALUES (1, 10000, 0);")
     conn.commit()
     conn.close()
 
-def set_cash(amount: float):
-    """Seed or reset the cash in your simulation."""
-    conn = _connect()
-    conn.cursor().execute("UPDATE state SET cash = ? WHERE id = 1;", (amount,))
-    conn.commit()
-    conn.close()
 
 def get_cash() -> float:
     """Return current cash."""
@@ -66,6 +62,27 @@ def get_cash() -> float:
     conn.close()
     return float(row[0]) if row else 0.0
 
+
+def set_cash(amount: float):
+    """Set current cash to a specified amount."""
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("UPDATE state SET cash = ? WHERE id = 1;", (amount,))
+    conn.commit()
+    conn.close()
+
+
+def get_holdings():
+    """Return all holdings as (symbol, qty, avg_cost, last_price)."""
+    conn = _connect()
+    cur = conn.cursor()
+    rows = cur.execute(
+        "SELECT symbol, qty, avg_cost, last_price FROM holdings;")
+    data = rows.fetchall()
+    conn.close()
+    return data
+
+
 def get_realized_pl() -> float:
     """Return total realized P/L so far."""
     conn = _connect()
@@ -75,42 +92,45 @@ def get_realized_pl() -> float:
     conn.close()
     return float(row[0]) if row else 0.0
 
+
 def get_unrealized_pl() -> float:
-    """Compute unrealized P/L across all open holdings."""
-    conn = _connect()
-    cur = conn.cursor()
-    cur.execute("SELECT qty, avg_cost, last_price FROM holdings;")
+    """Compute unrealized P/L across all holdings."""
+    holdings = get_holdings()
     total = 0.0
-    for qty, avg, last in cur.fetchall():
-        total += (last - avg) * qty
-    conn.close()
+    for sym, qty, avg_cost, last_price in holdings:
+        total += (last_price - avg_cost) * qty
     return total
 
-def get_holdings():
-    """Return all current holdings as (symbol, qty, avg_cost, last_price)."""
-    conn = _connect()
-    rows = conn.cursor().execute(
-        "SELECT symbol, qty, avg_cost, last_price FROM holdings"
-    ).fetchall()
-    conn.close()
-    return rows
 
 def get_trades():
-    """Return all simulation trades."""
+    """Return all simulation trades as list of tuples."""
     conn = _connect()
-    rows = conn.cursor().execute("""
-      SELECT symbol, action, price, qty, trade_time, pnl
-        FROM simulation_trades
-       ORDER BY trade_time
-    """).fetchall()
+    cur = conn.cursor()
+    rows = cur.execute(
+        "SELECT symbol, action, price, qty, trade_time, pnl FROM simulation_trades ORDER BY trade_time;")
+    data = rows.fetchall()
     conn.close()
-    return rows
+    return data
 
-# ── TRADING OPS ────────────────────────────────────────────────
+# ── MARKET DATA ────────────────────────────────────────────────
 
-# ── TRADING OPS ───────────────────────────────────────────────
+def fetch_live_data(symbol: str) -> dict:
+    """
+    Pull the latest minute‐bar quote via yfinance.
+    """
+    ticker = yf.Ticker(symbol)
+    df = ticker.history(period="1d", interval="1m")
+    last = df.iloc[-1]
+    return {
+        "symbol":   symbol,
+        "price":    float(last["Close"]),
+        "volume":   int(last["Volume"]),
+        "datetime": last.name.to_pydatetime()
+    }
 
-def buy_stock(symbol: str, quantity: int, price: float, trade_time: str = None):
+# ── TRADING OPS ─────────────────────────────────────────────
+
+def buy_stock(symbol: str, quantity: int, price: float):
     """Execute a BUY in the simulation DB."""
     conn = _connect()
     cur  = conn.cursor()
@@ -123,8 +143,7 @@ def buy_stock(symbol: str, quantity: int, price: float, trade_time: str = None):
         conn.close()
         raise ValueError("Insufficient cash to buy.")
 
-    # use passed-in trade_time or generate now
-    now = trade_time or datetime.utcnow().isoformat(sep=' ')
+    now = datetime.utcnow().isoformat(sep=' ')
 
     # record trade
     cur.execute("""
@@ -159,7 +178,7 @@ def buy_stock(symbol: str, quantity: int, price: float, trade_time: str = None):
     conn.close()
 
 
-def sell_stock(symbol: str, quantity: int, price: float, trade_time: str = None):
+def sell_stock(symbol: str, quantity: int, price: float):
     """Execute a SELL in the simulation DB."""
     conn = _connect()
     cur  = conn.cursor()
@@ -179,7 +198,7 @@ def sell_stock(symbol: str, quantity: int, price: float, trade_time: str = None)
     # compute
     proceeds    = price * quantity
     realized_pl = (price - avg_cost) * quantity
-    now = trade_time or datetime.utcnow().isoformat(sep=' ')
+    now = datetime.utcnow().isoformat(sep=' ')
 
     # record trade
     cur.execute("""
@@ -205,6 +224,10 @@ def sell_stock(symbol: str, quantity: int, price: float, trade_time: str = None)
 
     conn.commit()
     conn.close()
+
+# ── CONTROL LOOP FLAG ────────────────────────────────────────
+
+_sim_stop = False
 
 def stop_simulation():
     """Signal the background loop to exit."""
