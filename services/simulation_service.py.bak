@@ -1,23 +1,204 @@
 import time
+import pandas as pd
 import logging
-from datetime import datetime
 from pathlib import Path
 
-from services.etrade_service import fetch_etrade_quote
-from services.market_service import fetch_data_with_timeout
 from services.trading_helpers import (
+    nuke_simulation_db,
     set_cash,
-    buy_stock,
-    sell_stock,
     get_cash,
-    nuke_simulation_db
+    buy_stock,
+    sell_stock
 )
+from services.market_service import fetch_data_with_timeout
+from services.etrade_service import fetch_etrade_quote
+
+import pandas_market_calendars as mcal
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import logging
 
-logger = logging.getLogger('sim')
-
-# ── control flag & stop fn ─────────────────────────────────────
+logger = logging.getLogger("sim")
 _sim_stop = False
+
+# define ET
+ET = ZoneInfo("America/New_York")
+
+nyse = mcal.get_calendar("NYSE")
+
+def seconds_until_open():
+    now = datetime.now(ET)
+    schedule = nyse.schedule(start_date=now.date(), end_date=(now + timedelta(days=2)).date())
+    # find the next open time after now
+    for idx, row in schedule.iterrows():
+        open_dt = row.market_open.tz_convert(ET)
+        close_dt = row.market_close.tz_convert(ET)
+        if now < open_dt:
+            return (open_dt - now).total_seconds()
+        elif open_dt <= now <= close_dt:
+            return 0
+    return 24*3600  # fallback
+
+# … all the imports, ET, seconds_until_open, etc …
+
+while not _sim_stop:
+    wait = seconds_until_open()
+    if wait > 0:
+        logger.info(f"Market closed—sleeping {wait/60:.1f} min")
+        time.sleep(min(wait, 60))
+        continue
+
+    # … trading logic …
+
+
+def run_simulation_loop(settings):
+    logger.info(f"[sim] starting run with settings={settings}")
+    nuke_simulation_db()
+    set_cash(settings.starting_cash)
+    logger.info(f"[sim] seed cash: {get_cash():.2f}")
+
+    positions = {}
+    symbols   = load_symbols()
+
+    while not _sim_stop:
+        # ─── wait for market open ─────────────────────────────
+        wait = seconds_until_open()
+        if wait > 0:
+            logger.info(f"Market closed — sleeping {wait/60:.1f} min")
+            time.sleep(min(wait, 60))
+            continue
+
+        # ─── now market is open: one pass over each symbol ───────
+        for sym in symbols:
+            try:
+                price_live = float(fetch_etrade_quote(sym))
+            except Exception as e:
+                logger.warning(f"[sim] {sym}: price fetch failed ({e})")
+                continue
+
+            # pull bars if any indicator is on
+            df = None
+            if any([
+                settings.sma_on,
+                settings.rsi_on,
+                settings.rsi_slope_on,
+                settings.macd_hist_on,
+                settings.bb_on,
+                settings.vwap_on
+            ]):
+                df = fetch_data_with_timeout(sym, period='1d', interval='1m')
+                if df is None or df.empty:
+                    logger.warning(f"[sim] {sym}: no market data for indicators")
+                    continue
+
+            decisions = []
+            reasons   = []
+
+            # SMA
+            if settings.sma_on:
+                sma = df['Close'].rolling(settings.sma_length).mean().iloc[-1]
+                ok  = price_live > sma
+                decisions.append(ok)
+                reasons.append(f"SMA({settings.sma_length}) pass? {ok}")
+
+            # RSI oversold
+            if settings.rsi_on:
+                delta   = df['Close'].diff()
+                up      = delta.clip(lower=0)
+                down    = -delta.clip(upper=0)
+                rs      = up.ewm(span=settings.rsi_len).mean() / down.ewm(span=settings.rsi_len).mean()
+                rsi_ser = 100 - (100 / (1 + rs))
+                latest  = rsi_ser.iloc[-1]
+                ok      = latest < settings.rsi_oversold
+                decisions.append(ok)
+                reasons.append(f"RSI({settings.rsi_len})={latest:.1f} pass? {ok}")
+
+            # RSI slope
+            if settings.rsi_slope_on:
+                delta   = df['Close'].diff()
+                up      = delta.clip(lower=0)
+                down    = -delta.clip(upper=0)
+                rs      = up.ewm(span=settings.rsi_len).mean() / down.ewm(span=settings.rsi_len).mean()
+                rsi_ser = 100 - (100 / (1 + rs))
+                slope   = rsi_ser.diff().iloc[-1]
+                ok      = slope > 0
+                decisions.append(ok)
+                reasons.append(f"RSI slope pass? {ok}")
+
+            # MACD histogram
+            if settings.macd_hist_on:
+                exp1       = df['Close'].ewm(span=settings.macd_fast).mean()
+                exp2       = df['Close'].ewm(span=settings.macd_slow).mean()
+                macd       = exp1 - exp2
+                signal     = macd.ewm(span=settings.macd_signal).mean()
+                hist       = macd - signal
+                raw_hist   = hist.iloc[-1]
+                latest_hist = float(raw_hist) if hasattr(raw_hist, 'item') or isinstance(raw_hist, pd.Series) else float(raw_hist)
+                ok         = latest_hist > 0
+                decisions.append(ok)
+                reasons.append(f"MACD hist={latest_hist:.2f} pass? {ok}")
+
+            # Bollinger‐breakout
+            if settings.bb_on:
+                mb    = df['Close'].rolling(settings.bb_length).mean().iloc[-1]
+                std   = df['Close'].rolling(settings.bb_length).std().iloc[-1]
+                upper = mb + settings.bb_std * std
+                ok    = price_live > upper
+                decisions.append(ok)
+                reasons.append(f"BB upper={upper:.2f} pass? {ok}")
+
+            # VWAP
+            if settings.vwap_on:
+                vol       = df['Volume']
+                tp        = (df['High'] + df['Low'] + df['Close']) / 3
+                vwap_ser  = (tp * vol).cumsum() / vol.cumsum()
+                raw_vwap  = vwap_ser.iloc[-1]
+                latest_vwap = float(raw_vwap) if hasattr(raw_vwap, 'item') or isinstance(raw_vwap, pd.Series) else float(raw_vwap)
+                ok        = (price_live - latest_vwap) > settings.vwap_threshold
+                decisions.append(ok)
+                reasons.append(f"VWAP={latest_vwap:.2f} pass? {ok}")
+
+            # single‐entry guard
+            if settings.single_entry_only and sym in positions:
+                continue
+
+            # unwrap any pandas booleans/series
+            decisions = [(d.iloc[0] if hasattr(d, 'iloc') else d) for d in decisions]
+            if not decisions or not all(decisions):
+                continue
+
+            # calculate qty & buy
+            qty = calculate_qty(settings, {'price': price_live})
+            if qty < 1:
+                continue
+            try:
+                buy_stock(sym, qty, price_live)
+                logger.info(f"BUY  {sym} x{qty} @ {price_live:.2f}")
+                positions[sym] = {
+                    'entry_time': datetime.utcnow(),
+                    'qty':        qty,
+                    'peak_price': price_live,
+                    'price':      price_live
+                }
+            except ValueError as e:
+                logger.warning(f"skip BUY {sym}: {e}")
+
+        # ─── exit logic ──────────────────────────────────────
+        for sym, pos in list(positions.items()):
+            price_live = float(fetch_etrade_quote(sym))
+            pos['price'] = price_live
+            if price_live > pos['peak_price']:
+                pos['peak_price'] = price_live
+            if evaluate_exit(pos, settings):
+                try:
+                    sell_stock(sym, pos['qty'], price_live)
+                    logger.info(f"SELL {sym} x{pos['qty']} @ {price_live:.2f}")
+                except ValueError as e:
+                    logger.warning(f"skip SELL {sym}: {e}")
+                positions.pop(sym)
+
+        # wait until next poll
+        time.sleep(getattr(settings, 'poll_interval', 60))
 
 def stop_simulation():
     """Signal the running simulation loop to exit on next iteration."""
@@ -68,143 +249,3 @@ def evaluate_exit(pos, settings):
 
     return False
 
-# ── main simulation loop ───────────────────────────────────────
-
-def run_simulation_loop(settings):
-    logger.info(f"[sim] starting run with settings={settings}")
-    nuke_simulation_db()
-    set_cash(settings.starting_cash)
-    logger.info(f"[sim] seed cash: {get_cash():.2f}")
-
-    positions = {}
-    symbols   = load_symbols()
-    while not _sim_stop:
-
-        for sym in symbols:
-            # 1) live price
-            try:
-                price_live = float(fetch_etrade_quote(sym))
-            except Exception as e:
-                logger.warning(f"[sim] {sym}: price fetch failed ({e})")
-                continue
-
-            # 2) pull 1d/1m bars once (for all indicators)
-            df = None
-            if settings.sma_on or settings.rsi_on or settings.bb_on:
-                df = fetch_data_with_timeout(sym, period='1d', interval='1m')
-                if df is None or df.empty:
-                    logger.warning(f"[sim] {sym}: no market data for indicators")
-                    continue
-
-            decisions = []
-            reasons   = []
-
-            # 3a) SMA cross-above
-            if settings.sma_on:
-                sma = df['Close'].rolling(settings.sma_length).mean().iloc[-1]
-                ok  = price_live > sma
-                decisions.append(ok)
-                reasons.append(f"SMA({settings.sma_length}) pass? {ok}")
-            
-             # 3b) RSI oversold-cross
-            if settings.rsi_on:
-                delta      = df['Close'].diff()
-                up         = delta.clip(lower=0)
-                down       = -delta.clip(upper=0)
-                roll_up    = up.ewm(span=settings.rsi_len).mean()
-                roll_down  = down.ewm(span=settings.rsi_len).mean()
-                rs         = roll_up / roll_down
-                rsi_series = 100 - (100 / (1 + rs))
-                latest_rsi = float(rsi_series.iloc[-1])   # scalar
-                ok         = latest_rsi < settings.rsi_oversold
-                decisions.append(ok)
-                reasons.append(f"RSI({settings.rsi_len})={latest_rsi:.1f} pass? {ok}")
-
-
-            # 3c) Bollinger Band breakout
-            if settings.bb_on:
-                mb    = df['Close'].rolling(settings.bb_length).mean().iloc[-1]
-                std   = df['Close'].rolling(settings.bb_length).std().iloc[-1]
-                upper = mb + settings.bb_std * std
-                ok    = price_live > upper
-                decisions.append(ok)
-                reasons.append(f"BB upper={upper:.2f} pass? {ok}")
-
-            # 3d) VWAP (you already have this)
-            if settings.vwap_on:
-                vol = df['Volume']
-                tp  = (df['High'] + df['Low'] + df['Close']) / 3
-                vwap_ser = (tp * vol).cumsum() / vol.cumsum()
-                latest_vwap = vwap_ser.iloc[-1]
-                ok = (price_live - latest_vwap) > settings.vwap_threshold
-                # right before “if not all(decisions): …”
-                logger.debug(f"[sim] {sym}  decisions={decisions}  reasons={reasons}")
-                decisions.append(ok)
-                # unwrap a single-element Series to a Python float
-                if hasattr(latest_vwap, 'iloc'):
-                    vwap_scalar = float(latest_vwap.iloc[0])
-                else:
-                    vwap_scalar = float(latest_vwap)
-
-                reasons.append(f"VWAP={vwap_scalar:.2f} pass? {ok}")
-
-            # 3e) single-entry guard
-            if settings.single_entry_only and sym in positions:
-                logger.debug(f"[sim] {sym} already in positions")
-                continue
-
-            # DEBUG: dump decisions & reasons
-            logger.debug(f"[sim] {sym}: decisions={decisions}  reasons={reasons}")
-
-            # if no filters at all, skip
-            if not decisions:
-                logger.debug(f"[sim] {sym}: no filters enabled, skipping buy")
-                continue
-
-            # 4) only buy if *all* pass
-            decisions = [
-                (d.iloc[0] if hasattr(d, 'iloc') else d)
-                for d in decisions
-            ]
-            if not all(decisions):
-                continue
-
-
-            # … then do your buy …
-
-            # 5) calculate qty & BUY
-            qty = calculate_qty(settings, {"price": price_live})
-            if qty <= 0:
-                logger.debug(f"[sim] {sym}: qty=0, skipping")
-                continue
-            try:
-                buy_stock(sym, qty, price_live)
-                logger.info(f"BUY  {sym} x{qty} @ {price_live:.2f}")
-                positions[sym] = {
-                    "entry_time": datetime.utcnow(),
-                    "qty":        qty,
-                    "peak_price": price_live,
-                    "price":      price_live
-                }
-            except ValueError as e:
-                logger.warning(f"[sim] skip BUY {sym}: {e}")
-
-        # ── EXIT pass ──
-        for sym, pos in list(positions.items()):
-            # fetch live…
-            price_live = float(fetch_etrade_quote(sym))
-            pos["price"] = price_live
-            # update peak
-            if price_live > pos["peak_price"]:
-                pos["peak_price"] = price_live
-
-            # log for trailing-stop
-            if evaluate_exit(pos, settings):
-                try:
-                    sell_stock(sym, pos["qty"], price_live)
-                    logger.info(f"SELL {sym} x{pos['qty']} @ {price_live:.2f}")
-                except ValueError as e:
-                    logger.warning(f"[sim] skip SELL {sym}: {e}")
-                positions.pop(sym)
-
-        time.sleep(getattr(settings, 'poll_interval', 60))
