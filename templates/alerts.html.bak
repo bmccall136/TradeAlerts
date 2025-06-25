@@ -276,14 +276,15 @@
     </div>
   </div>
 
-{# ─── 5) Money Management ─── #}
+{# ─── Money Management & Controls ─── #}
 <form id="simulation-form"
       method="POST"
       action="{{ url_for('start_scanner') }}">
 
-  {# …your existing indicator toggles/drop-downs here… #}
+  {# …your existing indicator toggles and dropdowns here… #}
 
   <div class="row g-3 mb-4">
+    <!-- Starting Cash -->
     <div class="col-md-3">
       <label for="starting_cash" class="form-label">
         <i class="bi bi-currency-dollar"></i> Starting Cash
@@ -291,14 +292,16 @@
       <select id="starting_cash"
               name="starting_cash"
               class="form-select">
-        {% for v in [1000,5000,10000,25000,50000] %}
+        {% for v in [1000, 5000, 10000, 25000, 50000] %}
           <option value="{{ v }}"
                   {% if settings.starting_cash == v %}selected{% endif %}>
-            ${{ v }}
+            ${{ "{:,}".format(v) }}
           </option>
         {% endfor %}
       </select>
     </div>
+
+    <!-- Max Per Trade -->
     <div class="col-md-3">
       <label for="max_per_trade" class="form-label">
         <i class="bi bi-arrow-up-right-circle"></i> Max Per Trade
@@ -306,10 +309,10 @@
       <select id="max_per_trade"
               name="max_per_trade"
               class="form-select">
-        {% for v in [100,250,500,1000,2500,5000] %}
+        {% for v in [100, 250, 500, 1000, 2500, 5000] %}
           <option value="{{ v }}"
                   {% if settings.max_per_trade == v %}selected{% endif %}>
-            ${{ v }}
+            ${{ "{:,}".format(v) }}
           </option>
         {% endfor %}
       </select>
@@ -317,25 +320,27 @@
   </div>
 
   <div class="d-flex justify-content-between align-items-start mb-4">
-    <!-- Left side -->
+    <!-- Left: Section title -->
     <h3 class="text-white mb-0">Holdings</h3>
 
-    <!-- Right side: status + buttons stacked -->
+    <!-- Right: Status + Buttons -->
     <div class="d-flex flex-column align-items-end">
-      <!-- 1) Status badge -->
-      <span id="sim-status" class="badge bg-secondary mb-2">
-        Status: <span id="sim-status-text">{{ 'Running' if _is_scanner_running else 'Stopped' }}</span>
+      <!-- 1) Dynamic status badge -->
+      <span id="sim-status"
+            class="badge bg-{{ 'success' if _is_scanner_running else 'secondary' }} mb-2">
+        Status: <span id="sim-status-text">
+                   {{ 'Running' if _is_scanner_running else 'Stopped' }}
+                 </span>
       </span>
 
-      <!-- 2) Start / Stop -->
+      <!-- 2) Start / Stop buttons -->
       <div>
-        <!-- Submit to start_scanner (form default) -->
+        <!-- uses form’s default action (/start_scanner) -->
         <button type="submit"
                 class="btn btn-success btn-sm me-2">
           ▶️ Start
         </button>
-
-        <!-- Override action to stop_scanner -->
+        <!-- overrides to call /stop_scanner -->
         <button type="submit"
                 class="btn btn-danger btn-sm"
                 formaction="{{ url_for('stop_scanner') }}">
@@ -344,7 +349,6 @@
       </div>
     </div>
   </div>
-
 </form>
 
 
@@ -418,45 +422,33 @@
     });
   });
 </script>
-<script>
-  async function refreshStatus(){
-    const res = await fetch('/scanner_status');
-    const j   = await res.json();
-    const badge = document.getElementById('sim-status');
-    const text  = document.getElementById('sim-status-text');
-    if(j.running){
-      badge.classList.replace('bg-secondary','bg-success');
-      text.textContent = 'Running';
-    } else {
-      badge.classList.replace('bg-success','bg-secondary');
-      text.textContent = 'Stopped';
+{% block scripts %}
+  <!-- 1) Status poller -->
+  <script>
+    async function refreshStatus() {
+      const res    = await fetch('/scanner_status');
+      const { running } = await res.json();
+      const badge  = document.getElementById('sim-status');
+      const text   = document.getElementById('sim-status-text');
+
+      if (running) {
+        badge.classList.replace('bg-secondary', 'bg-success');
+        text.textContent = 'Running';
+      } else {
+        badge.classList.replace('bg-success', 'bg-secondary');
+        text.textContent = 'Stopped';
+      }
     }
-  }
-  // poll every 2s
-  setInterval(refreshStatus, 2000);
-  // also on first load
-  refreshStatus();
-</script>
-<script>
-  async function refreshStatus(){
-    const res = await fetch('/scanner_status');
-    const j   = await res.json();
-    const badge = document.getElementById('sim-status');
-    const text  = document.getElementById('sim-status-text');
-    if(j.running){
-      badge.classList.replace('bg-secondary','bg-success');
-      text.textContent = 'Running';
-    } else {
-      badge.classList.replace('bg-success','bg-secondary');
-      text.textContent = 'Stopped';
-    }
-  }
-  // poll every 2s
-setInterval(fetchScannerStatus, 10000);
-  // also on first load
-  refreshStatus();
-</script>
-<script>
-  var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
-  var popoverList = popoverTriggerList.map(function (el) { return new bootstrap.Popover(el); });
-</script>{% endblock %}
+
+    // kick off immediately & then every 10 seconds
+    refreshStatus();
+    setInterval(refreshStatus, 10000);
+  </script>
+
+  <!-- 2) Bootstrap popovers -->
+  <script>
+    document
+      .querySelectorAll('[data-bs-toggle="popover"]')
+      .forEach(el => new bootstrap.Popover(el));
+  </script>
+{% endblock %}

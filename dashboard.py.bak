@@ -40,7 +40,7 @@ from services.trading_helpers import (
     get_holdings,
     get_trades,
     get_realized_pl,
-    get_unrealized_pl,    # ← add this
+    get_unrealized_pl,
     nuke_simulation_db,
 )
 
@@ -200,6 +200,7 @@ def load_your_symbols():
     # reads your SP500 list
     with open('sp500_symbols.txt') as f:
         return [line.strip() for line in f if line.strip()]
+        logging.debug(f"[sim] symbols to scan: {symbols[:5]}… ({len(symbols)} total)")
 
 
 BACKTEST_DB = 'backtest.db'
@@ -512,32 +513,33 @@ DEFAULT_MAX_PER_TRADE   = 1000.0
 
 @app.route('/simulation')
 def simulation():
-    cash         = get_cash()
-    unrealized   = get_unrealized_pl()
-    realized     = get_realized_pl()
-    raw_h        = get_holdings()
-    raw_t        = get_trades()
+    # ── A) grab raw data ───────────────────────────────────────
+    cash       = get_cash()
+    unrealized = get_unrealized_pl()
+    realized   = get_realized_pl()
+    raw_h      = get_holdings()   # returns list of (symbol, qty, avg_cost, last_price)
+    raw_t      = get_trades()     # returns list of trades
 
     logging.debug(f"[sim-view] cash={cash}, unrealized={unrealized}, "
                   f"realized={realized}, holdings={raw_h}, trades={raw_t}")
 
-    # ── 1) Format holdings & compute unrealized ─────────────────
+    # ── B) format holdings & compute unrealized ────────────────
     formatted_holdings = []
     total_unrealized   = 0.0
-    for symbol, qty, paid in raw_h:
-        # … your existing logic to fetch last_price, compute day_gain …
+    for symbol, qty, avg_cost, last_price in raw_h:
+        day_gain = (last_price - avg_cost) * qty
         formatted_holdings.append({
             'symbol':     symbol,
             'last_price': last_price,
             'qty':        qty,
-            'price_paid': paid,
+            'price_paid': avg_cost,
             'day_gain':   day_gain,
             'value':      last_price * qty,
-            'change_pct': (day_gain / paid * 100) if paid else 0,
+            'change_pct': (day_gain / (avg_cost * qty) * 100) if avg_cost else 0,
         })
         total_unrealized += day_gain
 
-    # ── 2) Format trade history ────────────────────────────────
+    # ── C) format trade history ─────────────────────────────────
     formatted_trades = []
     for t in raw_t:
         if isinstance(t, tuple):
@@ -547,39 +549,40 @@ def simulation():
             action = t.get('action')
             price  = t.get('price')
             qty    = t.get('qty')
-            tstamp = t.get('time') or t.get('trade_time')
+            tstamp = t.get('trade_time') or t.get('time')
             pnl    = t.get('pnl') or t.get('pl') or 0.0
 
-        formatted_trades.append({
-            'time':   tstamp,
-            'symbol': symbol,
-            'action': action,
-            'qty':    qty,
-            'price':  price,
-            'pl':     pnl,
-        })
-
-    # ── 3) Grab the last-used—or fallback—money values ────────
-    starting_cash = float(request.args.get('starting_cash',
-                                           DEFAULT_STARTING_CASH))
-    max_per_trade = float(request.args.get('max_per_trade',
-                                           DEFAULT_MAX_PER_TRADE))
-
-    # ── 4) Render ─────────────────────────────────────────────
     return render_template(
         'simulation.html',
         cash=cash,
-        unrealized_pnl=total_unrealized,
-        realized_pnl=realized,
         holdings=formatted_holdings,
-        history=formatted_trades,
-        settings={
-            'starting_cash': starting_cash,
-            'max_per_trade':  max_per_trade
-        },
+        trades=formatted_trades,
+        unrealized=total_unrealized,         # keep this if you use it elsewhere
+        unrealized_pnl=total_unrealized,     # <— add this for your template
+        realized=realized,
+        realized_pnl=realized,               # <— and this
+        starting_cash=starting_cash,
+        max_per_trade=max_per_trade,
         is_running=_is_scanner_running
     )
 
+
+    # ── D) grab form-passed defaults (or fall back) ──────────────
+    starting_cash = float(request.args.get('starting_cash', DEFAULT_STARTING_CASH))
+    max_per_trade = float(request.args.get('max_per_trade', DEFAULT_MAX_PER_TRADE))
+
+    # ── E) render inside the function ───────────────────────────
+    return render_template(
+        'simulation.html',
+        cash=cash,
+        holdings=formatted_holdings,
+        trades=formatted_trades,
+        unrealized=total_unrealized,
+        realized=realized,
+        starting_cash=starting_cash,
+        max_per_trade=max_per_trade,
+        is_running=_is_scanner_running
+    )
 
 @app.route("/simulation/buy", methods=["POST"])
 def simulation_buy():

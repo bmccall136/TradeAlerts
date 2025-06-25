@@ -422,45 +422,32 @@
     });
   });
 </script>
-<script>
-  async function refreshStatus(){
-    const res = await fetch('/scanner_status');
-    const j   = await res.json();
-    const badge = document.getElementById('sim-status');
-    const text  = document.getElementById('sim-status-text');
-    if(j.running){
-      badge.classList.replace('bg-secondary','bg-success');
-      text.textContent = 'Running';
-    } else {
-      badge.classList.replace('bg-success','bg-secondary');
-      text.textContent = 'Stopped';
+  <!-- 1) Status poller -->
+  <script>
+    async function refreshStatus() {
+      const res    = await fetch('/scanner_status');
+      const { running } = await res.json();
+      const badge  = document.getElementById('sim-status');
+      const text   = document.getElementById('sim-status-text');
+
+      if (running) {
+        badge.classList.replace('bg-secondary', 'bg-success');
+        text.textContent = 'Running';
+      } else {
+        badge.classList.replace('bg-success', 'bg-secondary');
+        text.textContent = 'Stopped';
+      }
     }
-  }
-  // poll every 2s
-  setInterval(refreshStatus, 2000);
-  // also on first load
-  refreshStatus();
-</script>
-<script>
-  async function refreshStatus(){
-    const res = await fetch('/scanner_status');
-    const j   = await res.json();
-    const badge = document.getElementById('sim-status');
-    const text  = document.getElementById('sim-status-text');
-    if(j.running){
-      badge.classList.replace('bg-secondary','bg-success');
-      text.textContent = 'Running';
-    } else {
-      badge.classList.replace('bg-success','bg-secondary');
-      text.textContent = 'Stopped';
-    }
-  }
-  // poll every 2s
-setInterval(fetchScannerStatus, 10000);
-  // also on first load
-  refreshStatus();
-</script>
-<script>
-  var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
-  var popoverList = popoverTriggerList.map(function (el) { return new bootstrap.Popover(el); });
-</script>{% endblock %}
+
+    // kick off immediately & then every 10 seconds
+    refreshStatus();
+    setInterval(refreshStatus, 10000);
+  </script>
+
+  <!-- 2) Bootstrap popovers -->
+  <script>
+    document
+      .querySelectorAll('[data-bs-toggle="popover"]')
+      .forEach(el => new bootstrap.Popover(el));
+  </script>
+{% endblock %}

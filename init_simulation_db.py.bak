@@ -6,6 +6,7 @@ SIM_DB = os.path.join(os.getcwd(), 'simulation.db')
 
 
 def init_simulation_db():
+    print("🔧 initializing simulation.db schema…")
     """
     Initialize the simulation database schema.
     Drops existing tables if they exist and recreates:
