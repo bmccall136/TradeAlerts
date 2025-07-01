@@ -11,6 +11,42 @@ from services.news_service import fetch_latest_headlines
 logger = logging.getLogger(__name__)
 BACKTEST_DB = os.path.join(os.getcwd(), "backtest.db")
 
+
+def init_backtest_db():
+    """
+    Initialize the backtest.db schema with run and trade tables.
+    """
+    conn = sqlite3.connect(BACKTEST_DB)
+    cursor = conn.cursor()
+    cursor.executescript("""
+    PRAGMA foreign_keys=OFF;
+    DROP TABLE IF EXISTS backtest_runs;
+    DROP TABLE IF EXISTS backtest_trades;
+
+    CREATE TABLE backtest_runs (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp     TEXT    NOT NULL,
+      config_json   TEXT,
+      summary_json  TEXT
+    );
+
+    CREATE TABLE backtest_trades (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      run_id     INTEGER NOT NULL,
+      symbol     TEXT    NOT NULL,
+      action     TEXT    NOT NULL,
+      price      REAL    NOT NULL,
+      qty        INTEGER NOT NULL,
+      trade_time TEXT    NOT NULL,
+      pnl        REAL,
+      FOREIGN KEY(run_id) REFERENCES backtest_runs(id)
+    );
+    """)
+    conn.commit()
+    conn.close()
+    logger.info("Initialized backtest.db with backtest_runs & backtest_trades")
+
+
 def _has_headlines(src):
     if hasattr(src, 'empty'):
         return not src.empty
@@ -20,32 +56,39 @@ def _has_headlines(src):
         return False
 
 
-def calculate_indicators(df):
+def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    # Flatten MultiIndex if present
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
-    # rename close
+
     close = df['Close'] if 'Close' in df.columns else df.iloc[:, 3]
     if isinstance(close, pd.DataFrame):
         close = close.iloc[:, 0]
     df['Close'] = close.astype(float)
+
     # RSI
     delta = close.diff()
     gain = delta.clip(lower=0).rolling(14).mean()
     loss = (-delta.clip(upper=0)).rolling(14).mean()
     df['RSI'] = 100 - (100 / (1 + gain / loss))
+
     # MACD
     ema_fast = close.ewm(span=12, adjust=False).mean()
     ema_slow = close.ewm(span=26, adjust=False).mean()
     df['MACD'] = ema_fast - ema_slow
     df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
-    # Bollinger
+
+    # Bollinger Bands
     mb = close.rolling(20).mean()
     std20 = close.rolling(20).std()
-    df['MB'], df['UB'], df['LB'] = mb, mb + 2*std20, mb - 2*std20
+    df['MB'] = mb
+    df['UB'] = mb + 2 * std20
+    df['LB'] = mb - 2 * std20
+
     return df
 
 
-def log_backtest_run(config, summary):
+def log_backtest_run(config: dict, summary: dict) -> int:
     conn = sqlite3.connect(BACKTEST_DB)
     c = conn.cursor()
     c.execute(
@@ -65,7 +108,8 @@ def log_backtest_run(config, summary):
     return run_id
 
 
-def log_backtest_trade(run_id, symbol, action, price, qty, trade_time, pnl):
+def log_backtest_trade(run_id: int, symbol: str, action: str, price: float,
+                       qty: int, trade_time: str, pnl: float) -> None:
     conn = sqlite3.connect(BACKTEST_DB)
     c = conn.cursor()
     c.execute(
@@ -73,132 +117,214 @@ def log_backtest_trade(run_id, symbol, action, price, qty, trade_time, pnl):
         INSERT INTO backtest_trades (run_id, symbol, action, price, qty, trade_time, pnl)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (run_id, symbol, action, price, qty, str(trade_time), pnl)
+        (run_id, symbol, action, price, qty, trade_time, pnl)
     )
     conn.commit()
     conn.close()
 
 
 def backtest(
-    symbol,
-    start_date,
-    end_date,
-    initial_cash,
-    max_trade_amount,
-    max_trade_per_stock=None,
-    trailing_stop_pct=0.0,
-    sell_after_days=None,
-    sma_on=False,
-    rsi_on=False,
-    macd_on=False,
-    bb_on=False,
-    vwap_on=False,
-    news_on=False,
-    sma_length=20,
-    rsi_len=14,
-    macd_fast=12,
-    macd_slow=26,
-    macd_signal=9,
-    bb_length=20,
-    bb_std=2.0,
-    vol_multiplier=1.0,
-    vwap_threshold=0.0,       # ← ensure this is here
-    log_to_db=False,
-):
-
-
-    # allow dashboard override of per‐stock max
-    if max_trade_per_stock is not None:
-        max_trade_amount = max_trade_per_stock
-
-    # prepare logging
-    run_id = None
-    if log_to_db:
-        run_id = log_backtest_run(
-            {"symbol":symbol, "start_date":start_date, "end_date":end_date},
-            {}
-        )
-
-    # fetch data
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    initial_cash: float,
+    max_trade_per_stock: float,
+    sma_on: bool,
+    rsi_on: bool,
+    macd_on: bool,
+    bb_on: bool,
+    vol_on: bool,
+    vwap_on: bool,
+    sma_length: int,
+    rsi_len: int,
+    rsi_overbought: float,
+    rsi_oversold: float,
+    macd_fast: int,
+    macd_slow: int,
+    macd_signal: int,
+    bb_length: int,
+    bb_std: float,
+    vol_multiplier: float,
+    vwap_threshold: float,
+    trailing_stop_pct: float = 0.0,
+    single_entry_only: bool = False,
+    news_on: bool = False,
+    log_to_db: bool = False,
+) -> tuple[list[dict], float]:
+    # Fetch historical data
     yf_sym = symbol.replace('.', '-')
     df = yf.Ticker(yf_sym).history(
-        start=start_date, end=end_date, interval='1d', auto_adjust=False
+        start=start_date,
+        end=end_date,
+        interval='1d',
+        auto_adjust=False
     )
     if df is None or df.empty:
         return [], 0.0
 
     df = calculate_indicators(df)
-    tp = (df['High'] + df['Low'] + df['Close'])/3
-    vwap = (tp*df['Volume']).cumsum()/df['Volume'].cumsum()
-    df['VWAP_Diff'] = df['Close'] - vwap
+    tp = (df['High'] + df['Low'] + df['Close']) / 3
+    df['VWAP_Diff'] = (tp * df['Volume']).cumsum() / df['Volume'].cumsum()
 
     trades = []
-    cash, position = initial_cash, 0
-    in_position = False
+    cash = initial_cash
+    position = 0
+    in_pos = False
     entry_idx = None
+    run_id = None
 
+    # Optionally log run
+    if log_to_db:
+        config = {
+            'symbol': symbol,
+            'start_date': start_date,
+            'end_date': end_date,
+            'initial_cash': initial_cash,
+            'max_trade_per_stock': max_trade_per_stock,
+            'single_entry_only': single_entry_only,
+            'trailing_stop_pct': trailing_stop_pct,
+            'sma_on': sma_on,
+            'rsi_on': rsi_on,
+            'macd_on': macd_on,
+            'bb_on': bb_on,
+            'vol_on': vol_on,
+            'vwap_on': vwap_on,
+            'vwap_threshold': vwap_threshold,
+            'news_on': news_on
+        }
+        run_id = log_backtest_run(config, {})
+
+    # Main backtest loop
     for i in range(1, len(df)):
-        price = df['Open'].iat[i] if 'Open' in df else df['Close'].iat[i]
+        price = df['Open'].iat[i] if 'Open' in df.columns else df['Close'].iat[i]
 
-        # entry filters
-        if sma_on:
-            sma = df['Close'].iloc[:i+1].rolling(sma_length).mean().iat[-1]
-            if price <= sma: continue
-        if vwap_on and df['VWAP_Diff'].iat[i] < vwap_threshold: continue
-        if news_on and not _has_headlines(fetch_latest_headlines(symbol)): continue
-
-        # try entry
-        if (not single_entry_only or not in_position):
-            qty = int(min(cash, max_trade_amount) // price)
-            if qty > 0:
-                cash -= qty*price
-                position += qty
-                in_position = True
-                entry_idx = i
-                trades.append(dict(symbol=symbol, action='BUY',
-                                   date=str(df.index[i]), qty=qty,
-                                   price=price, pnl=0.0))
+        # 1) Trailing-stop exit
+        if in_pos and trailing_stop_pct > 0:
+            entry_price = df['Close'].iat[entry_idx]
+            if price <= entry_price * (1 - trailing_stop_pct):
+                pnl = (price - entry_price) * position
+                cash += position * price
+                trades.append({
+                    'symbol': symbol,
+                    'action': 'SELL',
+                    'date': str(df.index[i]),
+                    'qty': position,
+                    'price': price,
+                    'pnl': round(pnl, 2)
+                })
                 if log_to_db and run_id:
-                    log_backtest_trade(run_id, symbol, 'BUY', price, qty, df.index[i], 0.0)
+                    log_backtest_trade(run_id, symbol, 'SELL', price, position, str(df.index[i]), round(pnl, 2))
+                in_pos = False
+                position = 0
+                continue
 
-        # trailing‐stop exit
-        if in_position and use_trailing_stop:
-            highest = df['High'].iloc[entry_idx:i+1].max()
-            if price <= highest*(1-trailing_stop_pct):
-                cash += position*price
-                pnl = cash - initial_cash
-                trades.append(dict(symbol=symbol, action='SELL',
-                                   date=str(df.index[i]), qty=position,
-                                   price=price, pnl=round(pnl,2)))
-                if log_to_db and run_id:
-                    log_backtest_trade(run_id, symbol, 'SELL', price, position, df.index[i], round(pnl,2))
-                in_position = False
+        # 2) Entry logic
+        if not in_pos:
+            if sma_on:
+                sma = df['Close'].rolling(sma_length).mean().iat[i]
+                if price <= sma:
+                    continue
+            if rsi_on:
+                if df['RSI'].iat[i] > rsi_overbought or df['RSI'].iat[i] < rsi_oversold:
+                    continue
+            if macd_on:
+                macd_val = df['MACD'].iat[i] - df['Signal'].iat[i]
+                if macd_val <= 0:
+                    continue
+            if bb_on:
+                if df['Close'].iat[i] <= df['UB'].iat[i]:
+                    continue
+            if vol_on:
+                avg_vol = df['Volume'].rolling(vol_multiplier).mean().iat[i]
+                if df['Volume'].iat[i] < avg_vol:
+                    continue
+            if vwap_on:
+                if df['VWAP_Diff'].iat[i] < vwap_threshold:
+                    continue
+            if news_on and not _has_headlines(fetch_latest_headlines(symbol)):
+                continue
 
-        # time‐stop exit
-        if in_position and sell_after_days is not None:
-            days_held = (df.index[i] - df.index[entry_idx]).days
-            if days_held >= sell_after_days:
-                cash += position*price
-                pnl = cash - initial_cash
-                trades.append(dict(symbol=symbol, action='SELL',
-                                   date=str(df.index[i]), qty=position,
-                                   price=price, pnl=round(pnl,2)))
-                if log_to_db and run_id:
-                    log_backtest_trade(run_id, symbol, 'SELL', price, position, df.index[i], round(pnl,2))
-                in_position = False
+            qty = int(min(cash, max_trade_per_stock) // price)
+            if qty <= 0:
+                continue
 
-    # final liquidation if still in
-    if in_position and position>0:
+            cash -= qty * price
+            position = qty
+            in_pos = True
+            entry_idx = i
+            trades.append({
+                'symbol': symbol,
+                'action': 'BUY',
+                'date': str(df.index[i]),
+                'qty': qty,
+                'price': price,
+                'pnl': None
+            })
+            if log_to_db and run_id:
+                log_backtest_trade(run_id, symbol, 'BUY', price, qty, str(df.index[i]), 0)
+            continue
+
+    # 3) Final sell
+    if in_pos and position > 0:
         final_price = df['Close'].iat[-1]
-        cash += position*final_price
-        pnl = cash - initial_cash
-        trades.append(dict(symbol=symbol, action='SELL',
-                           date=str(df.index[-1]), qty=position,
-                           price=final_price, pnl=round(pnl,2)))
+        pnl = (final_price - df['Close'].iat[entry_idx]) * position
+        cash += position * final_price
+        trades.append({
+            'symbol': symbol,
+            'action': 'SELL',
+            'date': str(df.index[-1]),
+            'qty': position,
+            'price': final_price,
+            'pnl': round(pnl, 2)
+        })
         if log_to_db and run_id:
-            log_backtest_trade(run_id, symbol, 'SELL', final_price, position, df.index[-1], round(pnl,2))
+            log_backtest_trade(run_id, symbol, 'SELL', final_price, position, str(df.index[-1]), round(pnl, 2))
 
-    return trades, float(cash-initial_cash)
+    return trades, cash - initial_cash
 
-# alias
+
+# Alias for scanner
 backtest_scanner = backtest
+
+
+def run_full_backtest(settings, symbols):
+    """
+    Run backtest over a list of symbols using the provided settings namespace.
+    Returns (all_trades, summary_dict).
+    """
+    all_trades = []
+    net_pnl = 0.0
+    for symbol in symbols:
+        trades, pnl = backtest(
+            symbol=symbol,
+            start_date=settings.start_date,
+            end_date=settings.end_date,
+            initial_cash=settings.starting_cash,
+            max_trade_per_stock=settings.max_per_trade,
+            sma_on=settings.sma_on,
+            rsi_on=settings.rsi_on,
+            macd_on=settings.macd_on,
+            bb_on=settings.bb_on,
+            vol_on=settings.vol_on,
+            vwap_on=settings.vwap_on,
+            sma_length=settings.sma_length,
+            rsi_len=settings.rsi_len,
+            rsi_overbought=settings.rsi_overbought,
+            rsi_oversold=settings.rsi_oversold,
+            macd_fast=settings.macd_fast,
+            macd_slow=settings.macd_slow,
+            macd_signal=settings.macd_signal,
+            bb_length=settings.bb_length,
+            bb_std=settings.bb_std,
+            vol_multiplier=settings.vol_multiplier,
+            vwap_threshold=settings.vwap_threshold,
+            trailing_stop_pct=getattr(settings, 'trailing_stop_pct', 0.0),
+            single_entry_only=settings.single_entry_only,
+            news_on=settings.news_on,
+            log_to_db=True
+        )
+        all_trades.extend(trades)
+        net_pnl += pnl
+
+    summary = {'net_pnl': net_pnl, 'total_trades': len(all_trades)}
+    return all_trades, summary

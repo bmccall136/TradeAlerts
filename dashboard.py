@@ -38,14 +38,20 @@ from services.alert_service import (
     generate_sparkline
 )
 from services.trading_helpers import (
+    nuke_simulation_db,
     set_cash,
-    get_cash,
     get_holdings,
     get_trades,
     get_realized_pl,
     get_unrealized_pl,
-    nuke_simulation_db,
+    get_cash,
+    buy_stock,
+    sell_stock,
+    setup_simulation_db,
+    init_backtest_db,
 )
+# Dashboard.py, at the top
+from services.backtest_service   import run_full_backtest
 from services.simulation_service import run_simulation_loop, stop_simulation
 from services.market_service     import fetch_data_with_timeout
 from services.etrade_service     import fetch_etrade_quote
@@ -210,10 +216,12 @@ SimulationSettings = namedtuple('SimulationSettings', [
    'rsi_slope_on','macd_hist_on','bb_breakout_on',
    # exit parameters
    'trailing_stop_pct','sell_after_days',
-  # behavioral flags
-  'single_entry_only','use_trailing_stop',
-  # cash settings
-  'starting_cash','max_per_trade'
+   # behavioral flags
+   'single_entry_only','use_trailing_stop',
+   # cash settings
+   'starting_cash','max_per_trade'
+   'stop_loss_pct',
+   'take_profit_pct',
 ])
 
 def extract_simulation_settings(args):
