@@ -38,14 +38,20 @@ from services.alert_service import (
     generate_sparkline
 )
 from services.trading_helpers import (
+    nuke_simulation_db,
     set_cash,
-    get_cash,
     get_holdings,
     get_trades,
     get_realized_pl,
     get_unrealized_pl,
-    nuke_simulation_db,
+    get_cash,
+    buy_stock,
+    sell_stock,
+    setup_simulation_db,
+    init_backtest_db,
 )
+# Dashboard.py, at the top
+from services.backtest_service   import run_full_backtest
 from services.simulation_service import run_simulation_loop, stop_simulation
 from services.market_service     import fetch_data_with_timeout
 from services.etrade_service     import fetch_etrade_quote
@@ -64,6 +70,17 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET', 'supersecret')
 
 # ── Logging configuration ───────────────────────────────────
+import logging
+
+# get your sim logger and make it print to the console at DEBUG
+sim_logger = logging.getLogger('sim')
+sim_logger.setLevel(logging.DEBUG)
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter(
+    "%(asctime)s %(levelname)-4s %(name)s: %(message)s"
+))
+sim_logger.addHandler(handler)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s %(levelname)-5s %(name)s: %(message)s'

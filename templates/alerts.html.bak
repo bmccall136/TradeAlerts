@@ -273,6 +273,26 @@
              name="sell_after_days"
              class="form-control"
              value="{{ settings.sell_after_days or '' }}">
+			 <div class="form-group">
+  <label for="stop_loss_pct">Stop-Loss (%)</label>
+  <input type="number"
+         step="0.1" min="0" max="100"
+         name="stop_loss_pct"
+         id="stop_loss_pct"
+         value="{{ request.args.get('stop_loss_pct', 0) }}"
+         class="form-control">
+</div>
+<div class="form-group">
+  <label for="take_profit_pct">Take-Profit (%)</label>
+  <input type="number"
+         step="0.1" min="0" max="100"
+         name="take_profit_pct"
+         id="take_profit_pct"
+         value="{{ request.args.get('take_profit_pct', 0) }}"
+         class="form-control">
+</div>
+
+
     </div>
   </div>
 
@@ -422,7 +442,6 @@
     });
   });
 </script>
-{% block scripts %}
   <!-- 1) Status poller -->
   <script>
     async function refreshStatus() {

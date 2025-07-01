@@ -1,0 +1,12 @@
+<!-- templates/etrade_enter_pin.html -->
+<!doctype html>
+<title>E*TRADE Authorization</title>
+<h1>Authorize with E*TRADE</h1>
+
+<p><a href="{{ auth_url }}" target="_blank">Click here to log in on E*TRADE</a></p>
+
+<form action="{{ url_for('etrade_handle_pin') }}" method="post">
+  <label>Enter the PIN E*TRADE gave you:</label><br/>
+  <input name="oauth_verifier" type="text" required />
+  <button type="submit">Submit PIN</button>
+</form>

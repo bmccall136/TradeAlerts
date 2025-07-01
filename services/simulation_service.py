@@ -71,6 +71,8 @@ def run_simulation_loop(settings):
                 settings.rsi_on,
                 settings.rsi_slope_on,
                 settings.macd_hist_on,
+                settings.stop_loss_pct,
+                settings.take_profit_pct,
                 settings.bb_on,
                 settings.vwap_on
             ]):
@@ -115,18 +117,26 @@ def run_simulation_loop(settings):
 
             # MACD histogram
             if settings.macd_hist_on:
-                exp1       = df['Close'].ewm(span=settings.macd_fast).mean()
-                exp2       = df['Close'].ewm(span=settings.macd_slow).mean()
-                macd       = exp1 - exp2
-                signal     = macd.ewm(span=settings.macd_signal).mean()
-                hist       = macd - signal
-                raw_hist   = hist.iloc[-1]
-                latest_hist = float(raw_hist) if hasattr(raw_hist, 'item') or isinstance(raw_hist, pd.Series) else float(raw_hist)
-                ok         = latest_hist > 0
+                exp1     = df['Close'].ewm(span=settings.macd_fast).mean()
+                exp2     = df['Close'].ewm(span=settings.macd_slow).mean()
+                macd     = exp1 - exp2
+                signal   = macd.ewm(span=settings.macd_signal).mean()
+                hist     = macd - signal
+                raw_hist = hist.iloc[-1]
+
+                # always coerce to float
+                try:
+                    latest_hist = float(raw_hist)
+                except (TypeError, ValueError):
+                    # fallback in case it's a zero-dim pandas object
+                    latest_hist = raw_hist.item() if hasattr(raw_hist, 'item') else float(raw_hist)
+
+                ok = latest_hist > 0
                 decisions.append(ok)
                 reasons.append(f"MACD hist={latest_hist:.2f} pass? {ok}")
 
-            # Bollinger‐breakout
+
+            # Bollinger-breakout
             if settings.bb_on:
                 mb    = df['Close'].rolling(settings.bb_length).mean().iloc[-1]
                 std   = df['Close'].rolling(settings.bb_length).std().iloc[-1]
@@ -141,10 +151,17 @@ def run_simulation_loop(settings):
                 tp        = (df['High'] + df['Low'] + df['Close']) / 3
                 vwap_ser  = (tp * vol).cumsum() / vol.cumsum()
                 raw_vwap  = vwap_ser.iloc[-1]
-                latest_vwap = float(raw_vwap) if hasattr(raw_vwap, 'item') or isinstance(raw_vwap, pd.Series) else float(raw_vwap)
-                ok        = (price_live - latest_vwap) > settings.vwap_threshold
+
+                # pull scalar out of possible 1-element Series
+                if hasattr(raw_vwap, 'item'):
+                    latest_vwap = raw_vwap.item()
+                else:
+                    latest_vwap = float(raw_vwap)
+
+                ok = (price_live - latest_vwap) > settings.vwap_threshold
                 decisions.append(ok)
                 reasons.append(f"VWAP={latest_vwap:.2f} pass? {ok}")
+
 
             # single‐entry guard
             if settings.single_entry_only and sym in positions:
@@ -165,6 +182,7 @@ def run_simulation_loop(settings):
                 positions[sym] = {
                     'entry_time': datetime.utcnow(),
                     'qty':        qty,
+                    'entry_price': price_live,
                     'peak_price': price_live,
                     'price':      price_live
                 }
@@ -173,17 +191,47 @@ def run_simulation_loop(settings):
 
         # ─── exit logic ──────────────────────────────────────
         for sym, pos in list(positions.items()):
-            price_live = float(fetch_etrade_quote(sym))
+            price_live   = float(fetch_etrade_quote(sym))
+            entry_price  = pos['entry_price']
             pos['price'] = price_live
+
+            # 1) FIXED STOP-LOSS
+            if getattr(settings, 'stop_loss_pct', 0) > 0:
+                if price_live <= entry_price * (1 - settings.stop_loss_pct):
+                    sell_stock(sym, pos['qty'], price_live)
+                    logger.info(f"STOP-LOSS SELL {sym} x{pos['qty']} @ {price_live:.2f}")
+                    positions.pop(sym)
+                    continue
+
+            # 2) FIXED TAKE-PROFIT
+            if getattr(settings, 'take_profit_pct', 0) > 0:
+                if price_live >= entry_price * (1 + settings.take_profit_pct):
+                    sell_stock(sym, pos['qty'], price_live)
+                    logger.info(f"TAKE-PROFIT SELL {sym} x{pos['qty']} @ {price_live:.2f}")
+                    positions.pop(sym)
+                    continue
+
+            # 3) UPDATE PEAK for trailing-stop
             if price_live > pos['peak_price']:
                 pos['peak_price'] = price_live
-            if evaluate_exit(pos, settings):
-                try:
+
+            # 4) EXISTING TRAILING-STOP
+            if getattr(settings, 'use_trailing_stop', False):
+                if price_live <= pos['peak_price'] * (1 - settings.trailing_stop_pct):
                     sell_stock(sym, pos['qty'], price_live)
-                    logger.info(f"SELL {sym} x{pos['qty']} @ {price_live:.2f}")
-                except ValueError as e:
-                    logger.warning(f"skip SELL {sym}: {e}")
-                positions.pop(sym)
+                    logger.info(f"TRAILING-STOP SELL {sym} x{pos['qty']} @ {price_live:.2f}")
+                    positions.pop(sym)
+                    continue
+
+            # 5) TIME-BASED EXIT (as before)
+            entry = pos['entry_time']
+            if getattr(settings, 'sell_after_days', None) and entry:
+                if (datetime.utcnow() - entry).days >= settings.sell_after_days:
+                    sell_stock(sym, pos['qty'], price_live)
+                    logger.info(f"TIME-STOP SELL {sym} x{pos['qty']} @ {price_live:.2f}")
+                    positions.pop(sym)
+                    continue
+
 
         # wait until next poll
         time.sleep(getattr(settings, 'poll_interval', 60))
@@ -211,10 +259,10 @@ def calculate_qty(settings, data):
         if price <= 0:
             return 0
         qty = int(max_amt // price)
-        return max(qty, 1)
+        return qty        # no fallback to 1
     except Exception as e:
         logging.error(f"[sim] calculate_qty error: {e}")
-        return 1
+        return 0         # safest: treat errors as zero
 
 def evaluate_exit(pos, settings):
     """
