@@ -18,8 +18,10 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import logging
 
-logger = logging.getLogger("sim")
-_sim_stop = False
+logger     = logging.getLogger("sim")
+sim_logger = logger
+_sim_stop  = False
+
 
 # define ET
 ET = ZoneInfo("America/New_York")
@@ -140,7 +142,9 @@ def run_simulation_loop(settings):
             if settings.bb_on:
                 mb    = df['Close'].rolling(settings.bb_length).mean().iloc[-1]
                 std   = df['Close'].rolling(settings.bb_length).std().iloc[-1]
-                upper = mb + settings.bb_std * std
+                raw_upper = mb + settings.bb_std * std
+                # coerce to float if it's a 1-element Series
+                upper = raw_upper.item() if hasattr(raw_upper, 'item') else float(raw_upper)
                 ok    = price_live > upper
                 decisions.append(ok)
                 reasons.append(f"BB upper={upper:.2f} pass? {ok}")
@@ -169,6 +173,14 @@ def run_simulation_loop(settings):
 
             # unwrap any pandas booleans/series
             decisions = [(d.iloc[0] if hasattr(d, 'iloc') else d) for d in decisions]
+            # Log exactly which checks failed
+            if decisions and not all(decisions):
+                logger.debug(
+                    f"{sym}: "
+                    + ", ".join(reasons)
+                    + f"  →  passing? {all(decisions)}"
+                )
+
             if not decisions or not all(decisions):
                 continue
 
@@ -265,23 +277,20 @@ def calculate_qty(settings, data):
         return 0         # safest: treat errors as zero
 
 def evaluate_exit(pos, settings):
-    """
-    Return True if any exit condition fires:
-     - trailing‐stop
-     - sell_after_days
-    """
-    price = pos.get("price", 0)
-    # ─ trailing stop ─
-    if getattr(settings, 'use_trailing_stop', False):
-        peak = pos.get("peak_price", price)
+    price = pos['price']
+    entry = pos['entry_price']
+    # 1) stop‐loss
+    if settings.stop_loss_pct and price <= entry * (1 - settings.stop_loss_pct/100):
+        return True
+    # 2) take‐profit
+    if settings.take_profit_pct and price >= entry * (1 + settings.take_profit_pct/100):
+        return True
+    # 3) trailing‐stop
+    if settings.use_trailing_stop:
+        peak = pos['peak_price']
         if price <= peak * (1 - settings.trailing_stop_pct):
             return True
-
-    # ─ time‐based exit ─
-    entry = pos.get("entry_time")
-    if getattr(settings, 'sell_after_days', None) and entry:
-        if (datetime.utcnow() - entry).days >= settings.sell_after_days:
-            return True
-
+    # 4) time‐based
     return False
+
 

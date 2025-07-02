@@ -83,6 +83,8 @@ def extract_backtest_settings(args):
         max_per_trade     = float(args.get('max_per_trade', 1000)),
         trailing_stop_pct = float(args.get('trailing_stop_pct', 0)),
         sell_after_days   = int(args.get('sell_after_days', 0)),
+        stop_loss_pct     = float(args.get('stop_loss_pct', 0.0)),
+        take_profit_pct   = float(args.get('take_profit_pct', 0.0)),
         sma_on            = 'sma_on' in args,
         rsi_on            = 'rsi_on' in args,
         macd_on           = 'macd_on' in args,
