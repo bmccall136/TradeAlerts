@@ -18,8 +18,10 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import logging
 
-logger = logging.getLogger("sim")
-_sim_stop = False
+logger     = logging.getLogger("sim")
+sim_logger = logger
+_sim_stop  = False
+
 
 # define ET
 ET = ZoneInfo("America/New_York")
@@ -71,6 +73,8 @@ def run_simulation_loop(settings):
                 settings.rsi_on,
                 settings.rsi_slope_on,
                 settings.macd_hist_on,
+                settings.stop_loss_pct,
+                settings.take_profit_pct,
                 settings.bb_on,
                 settings.vwap_on
             ]):
@@ -138,7 +142,9 @@ def run_simulation_loop(settings):
             if settings.bb_on:
                 mb    = df['Close'].rolling(settings.bb_length).mean().iloc[-1]
                 std   = df['Close'].rolling(settings.bb_length).std().iloc[-1]
-                upper = mb + settings.bb_std * std
+                raw_upper = mb + settings.bb_std * std
+                # coerce to float if it's a 1-element Series
+                upper = raw_upper.item() if hasattr(raw_upper, 'item') else float(raw_upper)
                 ok    = price_live > upper
                 decisions.append(ok)
                 reasons.append(f"BB upper={upper:.2f} pass? {ok}")
@@ -167,6 +173,14 @@ def run_simulation_loop(settings):
 
             # unwrap any pandas booleans/series
             decisions = [(d.iloc[0] if hasattr(d, 'iloc') else d) for d in decisions]
+            # Log exactly which checks failed
+            if decisions and not all(decisions):
+                sim_logger.debug(
+                    f"{sym}: "
+                    + ", ".join(reasons)
+                    + f"  →  passing? {all(decisions)}"
+                )
+
             if not decisions or not all(decisions):
                 continue
 
@@ -180,6 +194,7 @@ def run_simulation_loop(settings):
                 positions[sym] = {
                     'entry_time': datetime.utcnow(),
                     'qty':        qty,
+                    'entry_price': price_live,
                     'peak_price': price_live,
                     'price':      price_live
                 }
@@ -188,17 +203,47 @@ def run_simulation_loop(settings):
 
         # ─── exit logic ──────────────────────────────────────
         for sym, pos in list(positions.items()):
-            price_live = float(fetch_etrade_quote(sym))
+            price_live   = float(fetch_etrade_quote(sym))
+            entry_price  = pos['entry_price']
             pos['price'] = price_live
+
+            # 1) FIXED STOP-LOSS
+            if getattr(settings, 'stop_loss_pct', 0) > 0:
+                if price_live <= entry_price * (1 - settings.stop_loss_pct):
+                    sell_stock(sym, pos['qty'], price_live)
+                    logger.info(f"STOP-LOSS SELL {sym} x{pos['qty']} @ {price_live:.2f}")
+                    positions.pop(sym)
+                    continue
+
+            # 2) FIXED TAKE-PROFIT
+            if getattr(settings, 'take_profit_pct', 0) > 0:
+                if price_live >= entry_price * (1 + settings.take_profit_pct):
+                    sell_stock(sym, pos['qty'], price_live)
+                    logger.info(f"TAKE-PROFIT SELL {sym} x{pos['qty']} @ {price_live:.2f}")
+                    positions.pop(sym)
+                    continue
+
+            # 3) UPDATE PEAK for trailing-stop
             if price_live > pos['peak_price']:
                 pos['peak_price'] = price_live
-            if evaluate_exit(pos, settings):
-                try:
+
+            # 4) EXISTING TRAILING-STOP
+            if getattr(settings, 'use_trailing_stop', False):
+                if price_live <= pos['peak_price'] * (1 - settings.trailing_stop_pct):
                     sell_stock(sym, pos['qty'], price_live)
-                    logger.info(f"SELL {sym} x{pos['qty']} @ {price_live:.2f}")
-                except ValueError as e:
-                    logger.warning(f"skip SELL {sym}: {e}")
-                positions.pop(sym)
+                    logger.info(f"TRAILING-STOP SELL {sym} x{pos['qty']} @ {price_live:.2f}")
+                    positions.pop(sym)
+                    continue
+
+            # 5) TIME-BASED EXIT (as before)
+            entry = pos['entry_time']
+            if getattr(settings, 'sell_after_days', None) and entry:
+                if (datetime.utcnow() - entry).days >= settings.sell_after_days:
+                    sell_stock(sym, pos['qty'], price_live)
+                    logger.info(f"TIME-STOP SELL {sym} x{pos['qty']} @ {price_live:.2f}")
+                    positions.pop(sym)
+                    continue
+
 
         # wait until next poll
         time.sleep(getattr(settings, 'poll_interval', 60))
@@ -232,23 +277,20 @@ def calculate_qty(settings, data):
         return 0         # safest: treat errors as zero
 
 def evaluate_exit(pos, settings):
-    """
-    Return True if any exit condition fires:
-     - trailing‐stop
-     - sell_after_days
-    """
-    price = pos.get("price", 0)
-    # ─ trailing stop ─
-    if getattr(settings, 'use_trailing_stop', False):
-        peak = pos.get("peak_price", price)
+    price = pos['price']
+    entry = pos['entry_price']
+    # 1) stop‐loss
+    if settings.stop_loss_pct and price <= entry * (1 - settings.stop_loss_pct/100):
+        return True
+    # 2) take‐profit
+    if settings.take_profit_pct and price >= entry * (1 + settings.take_profit_pct/100):
+        return True
+    # 3) trailing‐stop
+    if settings.use_trailing_stop:
+        peak = pos['peak_price']
         if price <= peak * (1 - settings.trailing_stop_pct):
             return True
-
-    # ─ time‐based exit ─
-    entry = pos.get("entry_time")
-    if getattr(settings, 'sell_after_days', None) and entry:
-        if (datetime.utcnow() - entry).days >= settings.sell_after_days:
-            return True
-
+    # 4) time‐based
     return False
+
 
