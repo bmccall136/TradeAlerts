@@ -85,7 +85,7 @@
         <td>{{ t.symbol }}</td>
         <td>{{ t.action }}</td>
         <td>{{ t.qty }}</td>
-        <td>${{ '%.2f'|format(t.price) }}</td>
+		<td>${{ '%.2f'|format(t.price|float) }}</td>
         <td>
           {% if t.pl is not none %}
             ${{ '%.2f'|format(t.pl) }}

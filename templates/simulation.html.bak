@@ -43,23 +43,29 @@
         <th>Total Gain/Loss</th><th>Value</th>
       </tr>
     </thead>
-    <tbody>
-      {% for h in holdings %}
-      <tr>
-        <td>{{ h.symbol }}</td>
-        <td>${{ '%.2f'|format(h.last_price) }}</td>
-        <td>${{ '%.2f'|format((h.last_price - h.price_paid) * h.qty) }}</td>
-        <td>{{ '%.1f'|format(h.change_pct) }}%</td>
-        <td>{{ h.qty }}</td>
-        <td>${{ '%.2f'|format(h.price_paid) }}</td>
-        <td>${{ '%.2f'|format((h.last_price - h.price_paid) * h.qty) }}</td>
-        <td>&mdash;</td>
-        <td>${{ '%.2f'|format(h.value) }}</td>
-      </tr>
-      {% else %}
-      <tr><td colspan="10" class="text-center">No holdings</td></tr>
-      {% endfor %}
-    </tbody>
+      <tbody>
+        {% for h in holdings %}
+        <tr>
+          <td>{{ h.symbol }}</td>
+          <td>${{ '%.2f'|format(h.last_price) }}</td>
+          <td>${{ '%.2f'|format(h.day_gain) }}</td>
+          <td>{{ '%.1f'|format(h.change_pct) }}%</td>
+          <td>{{ h.qty }}</td>
+          <td>${{ '%.2f'|format(h.price_paid) }}</td>
+          <td>${{ '%.2f'|format(h.day_gain) }}</td>
+          <td>
+            {% if h.total_gain is not none %}
+              ${{ '%.2f'|format(h.total_gain) }}
+            {% else %}
+              &mdash;
+            {% endif %}
+          </td>
+          <td>${{ '%.2f'|format(h.value) }}</td>
+          <td><!-- you can drop or leave blank since you auto‐sell --></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+
   </table>
 </div>
 
