@@ -349,6 +349,7 @@ _is_scanner_running = False
 @app.route('/scanner_status')
 def scanner_status():
     return jsonify(running=_is_scanner_running)
+
 @app.route('/run_backtest', methods=['POST'])
 def run_backtest_route():
     # 1) Grab settings & symbols
@@ -363,7 +364,7 @@ def run_backtest_route():
     if not (isinstance(result, tuple) and len(result) == 2):
         logger.warning("run_full_backtest returned unexpected result: %r", result)
         flash("⚠️ Backtest didn’t produce any data—showing an empty run", "warning")
-        trades = []
+        trades  = []
         summary = {
             'total_pnl': 0.0,
             'num_trades': 0,
@@ -378,15 +379,12 @@ def run_backtest_route():
     conn = sqlite3.connect(BACKTEST_DB)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
-
-    # 4a) Insert the run
     cur.execute(
         "INSERT INTO backtest_runs (started_at, settings_json) VALUES (?, ?)",
         (datetime.utcnow().isoformat(), json.dumps(settings._asdict()))
     )
     run_id = cur.lastrowid
 
-    # 4b) Insert each trade
     for t in trades:
         cur.execute(
             """
