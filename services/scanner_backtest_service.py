@@ -158,8 +158,8 @@ def backtest(
             'pnl': round(pnl, 2)
         })
 
-    net_pnl = round(cash - initial_cash, 2)
-    return trades, net_pnl
+    net_pnl = round(sum(t['pnl'] for t in trades if t['action']=='SELL'), 2)
+
 
 
 def run_full_backtest(settings, symbols):

@@ -4,10 +4,27 @@ import os
 from etrade_auth import get_etrade_session
 from dotenv import load_dotenv
 load_dotenv(override=True)
-
 import os
 # now os.getenv("ETRADE_CONSUMER_KEY") will work even if this module
 # was imported before Dashboard.py called load_dotenv()
+from flask import redirect, url_for, current_app
+from requests.exceptions import HTTPError
+
+def safe_fetch_price(symbol, db_last):
+    try:
+        return get_etrade_price(symbol)
+    except HTTPError as e:
+        code = e.response.status_code if e.response else None
+        current_app.logger.warning(f"[PRICE] {symbol} fetch failed: {code}")
+        if code == 401:
+            # send user into the auth flow
+            return redirect(url_for('etrade_auth'))
+        # any other HTTP error → use last‐stored price
+        return db_last
+    except RuntimeError as e:
+        # missing tokens should also trigger auth
+        current_app.logger.warning(f"[PRICE] {symbol} credentials error: {e}")
+        return redirect(url_for('etrade_auth'))
 
 def get_etrade_headers():
     return {

@@ -100,23 +100,57 @@ def get_realized_pl() -> float:
     conn.close()
     return float(row[0]) if row else 0.0
 
+# services/trading_helpers.py
+
+from services.etrade_service import fetch_etrade_quote
+
 def get_unrealized_pl() -> float:
-    conn     = _connect()
-    cur      = conn.cursor()
+    conn = _connect()
+    cur  = conn.cursor()
     cur.execute("SELECT symbol, qty, avg_cost, last_price FROM holdings;")
     total = 0.0
-    for sym, qty, avg, last in cur.fetchall():
-        total += (last - avg) * qty
+
+    for symbol, qty, avg_cost, db_price in cur.fetchall():
+        try:
+            live = fetch_etrade_quote(symbol)
+        except Exception:
+            live = db_price
+        total += (live - avg_cost) * qty
+
     conn.close()
     return total
 
 def get_holdings():
     conn = _connect()
+    conn.row_factory = sqlite3.Row
     cur  = conn.cursor()
     cur.execute("SELECT symbol, qty, avg_cost, last_price FROM holdings;")
     rows = cur.fetchall()
     conn.close()
     return rows
+
+
+    formatted = []
+    for symbol, qty, avg_cost, last_price in rows:
+        value      = last_price * qty
+        change     = last_price - avg_cost
+        change_pct = (change / avg_cost * 100) if avg_cost else 0.0
+        total_gain = change * qty
+        day_gain   = total_gain
+
+        formatted.append({
+            'symbol'      : symbol,
+            'qty'         : qty,
+            'price_paid'  : round(avg_cost,    2),
+            'last_price'  : round(last_price,  2),
+            'value'       : round(value,       2),
+            'day_gain'    : round(day_gain,    2),
+            'total_gain'  : round(total_gain,  2),
+            'change_pct'  : round(change_pct,  1),
+        })
+
+    return formatted
+
 
 def get_trades():
     conn = _connect()

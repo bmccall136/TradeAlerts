@@ -3,111 +3,158 @@ import pandas as pd
 from services.news_service import fetch_latest_headlines
 
 
+def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute RSI, MACD, and Bollinger Bands.
+    """
+    # Ensure Close is float
+    df['Close'] = df['Close'].astype(float)
+    close = df['Close']
+    # RSI
+    delta = close.diff()
+    gain = delta.clip(lower=0).rolling(14).mean()
+    loss = (-delta.clip(upper=0)).rolling(14).mean()
+    df['RSI'] = 100 - (100 / (1 + gain / loss))
+    # MACD
+    ema_fast = close.ewm(span=12, adjust=False).mean()
+    ema_slow = close.ewm(span=26, adjust=False).mean()
+    df['MACD'] = ema_fast - ema_slow
+    df['MACD_SIGNAL'] = df['MACD'].ewm(span=9, adjust=False).mean()
+    # Bollinger Bands
+    mb = close.rolling(20).mean()
+    std = close.rolling(20).std()
+    df['BB_MID'] = mb
+    df['BB_UP'] = mb + 2 * std
+    df['BB_LOW'] = mb - 2 * std
+    return df
+
+
 def backtest(
-     symbol: str,
-     start_date: str,
-     end_date: str,
-     initial_cash: float,
-     max_trade_amount: float,
-     sma_on: bool,
-     rsi_on: bool,
-     macd_on: bool,
-     bb_on: bool,
-     vol_on: bool,
-     vwap_on: bool,
-     news_on: bool,
-     sma_length: int,
-     rsi_len: int,
-     rsi_overbought: int,
-     rsi_oversold: int,
-     macd_fast: int,
-     macd_slow: int,
-     macd_signal: int,
-     bb_length: int,
-     bb_std: float,
-     vol_multiplier: float,
-     vwap_threshold: float,
-    # ── STOP‐LOSS / TAKE‐PROFIT ──
-    stop_loss_pct:   float = 0.0,
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    initial_cash: float,
+    max_trade_amount: float,
+    sma_on: bool,
+    rsi_on: bool,
+    macd_on: bool,
+    bb_on: bool,
+    vol_on: bool,
+    vwap_on: bool,
+    news_on: bool,
+    sma_length: int,
+    rsi_len: int,
+    rsi_overbought: int,
+    rsi_oversold: int,
+    macd_fast: int,
+    macd_slow: int,
+    macd_signal: int,
+    bb_length: int,
+    bb_std: float,
+    vol_multiplier: float,
+    vwap_threshold: float,
+    stop_loss_pct: float = 0.0,
     take_profit_pct: float = 0.0,
-     log_to_db: bool = False,
- ):
-
-
-    # 1) Fetch data
-    yf_symbol = symbol.replace('.', '-')
-    df = yf.Ticker(yf_symbol).history(
+    log_to_db: bool = False,
+) -> (list, float):
+    """
+    Single-symbol backtest with optional stop-loss and take-profit.
+    Returns trades list and net P&L.
+    """
+    # Fetch historical data
+    df = yf.Ticker(symbol.replace('.', '-')).history(
         start=start_date,
         end=end_date,
         interval='1d',
-        auto_adjust=False,
+        auto_adjust=False
     )
     if df is None or df.empty:
         return [], 0.0
 
-    # Precompute VWAP diff
-    high, low, vol = df['High'], df['Low'], df['Volume']
-    tp = (high + low + df['Close']) / 3
-    vwap_ser = (tp * vol).cumsum() / vol.cumsum()
-    df['VWAP_Diff'] = df['Close'] - vwap_ser
+    # Compute indicators
+    df = calculate_indicators(df)
+    # VWAP
+    tp = (df['High'] + df['Low'] + df['Close']) / 3
+    df['VWAP'] = (tp * df['Volume']).cumsum() / df['Volume'].cumsum()
+    df['VWAP_DIFF'] = df['Close'] - df['VWAP']
 
     trades = []
     cash = initial_cash
     position = 0
-    entry_price = None
-    peak_price = None
-    entry_index = None
+    entry_price = 0.0
 
     # Loop through each day
-    for i in range(1, len(df)):
-        row   = df.iloc[i]
-        date  = df.index[i]
-        price = row['Open'] if 'Open' in df.columns else row['Close']
+    for idx in range(1, len(df)):
+        price = df['Open'].iat[idx] if 'Open' in df.columns else df['Close'].iat[idx]
+        date = str(df.index[idx])
 
-        # ── 1) STOP-LOSS / TAKE-PROFIT EXIT ─────────────────────
+        # 1) EXIT: Stop-loss / Take-profit
         if position > 0:
-            # stop-loss: drop below entry_price*(1−stop_loss_pct)
+            # Stop-loss
             if stop_loss_pct > 0 and price <= entry_price * (1 - stop_loss_pct):
                 pnl = (price - entry_price) * position
                 cash += position * price
                 trades.append({
                     'symbol': symbol,
                     'action': 'SELL',
-                    'date':   str(date),
-                    'qty':    position,
-                    'price':  price,
-                    'pnl':    round(pnl, 2)
+                    'date': date,
+                    'qty': position,
+                    'price': price,
+                    'pnl': round(pnl, 2)
                 })
                 position = 0
-                entry_price = None
                 continue
-
-            # take-profit: rise above entry_price*(1+take_profit_pct)
+            # Take-profit
             if take_profit_pct > 0 and price >= entry_price * (1 + take_profit_pct):
                 pnl = (price - entry_price) * position
                 cash += position * price
                 trades.append({
                     'symbol': symbol,
                     'action': 'SELL',
-                    'date':   str(date),
-                    'qty':    position,
-                    'price':  price,
-                    'pnl':    round(pnl, 2)
+                    'date': date,
+                    'qty': position,
+                    'price': price,
+                    'pnl': round(pnl, 2)
                 })
                 position = 0
-                entry_price = None
                 continue
 
-        # ── 2) (now your old entry / other exit logic) ─────────
-        # … whatever you had here before …
+        # 2) ENTRY: Only if not in position
+        if position == 0:
+            # SMA filter
+            if sma_on:
+                sma = df['Close'].rolling(sma_length).mean().iat[idx]
+                if price <= sma:
+                    continue
+            # VWAP filter
+            if vwap_on and df['VWAP_DIFF'].iat[idx] < vwap_threshold:
+                continue
+            # News filter
+            if news_on and fetch_latest_headlines(symbol).empty:
+                continue
 
+            # Determine quantity
+            qty = int(min(cash, max_trade_amount) // price)
+            if qty < 1:
+                continue
+            # BUY
+            cash -= qty * price
+            entry_price = price
+            position = qty
+            trades.append({
+                'symbol': symbol,
+                'action': 'BUY',
+                'date': date,
+                'qty': qty,
+                'price': price,
+                'pnl': None
+            })
 
-    # Final sell if still holding at end
+    # 3) FINAL SELL if still holding at end
     if position > 0:
-        # use .iat to extract scalar without FutureWarning
         final_price = df['Close'].iat[-1]
+        pnl = (final_price - entry_price) * position
         cash += position * final_price
-        pnl = cash - initial_cash
         trades.append({
             'symbol': symbol,
             'action': 'SELL',
@@ -117,122 +164,13 @@ def backtest(
             'pnl': round(pnl, 2)
         })
 
-    net_pnl = cash - initial_cash
+    net_pnl = round(cash - initial_cash, 2)
     return trades, net_pnl
 
 
-# Scanner backtest alias
-
-def backtest_scanner(
-    symbol,
-    start_date,
-    end_date,
-    initial_cash=10000,
-    max_trade_amount=1000,
-    max_trade_per_stock=None,
-    single_entry_only=False,
-    use_trailing_stop=False,
-    trailing_stop_pct=0.0,
-    sell_after_days=None,
-    sma_on=False,
-    vwap_on=False,
-    vwap_threshold=0.0,
-    news_on=False,
-    log_to_db=False,
-    **kwargs
-):
-    # fetch data
-    yf_sym = symbol.replace('.', '-')
-    try:
-        df = yf.Ticker(yf_sym).history(
-            start=start_date,
-            end=end_date,
-            interval='1d',
-            auto_adjust=False,
-        )
-    except Exception as e:
-        logger.error(f"Fetch failed for {symbol}: {e}")
-        return [], 0.0
-
-    if df is None or df.empty:
-        return [], 0.0
-
-    # calculate indicators & VWAP_Diff
-    df = calculate_indicators(df)
-    tp = (df['High'] + df['Low'] + df['Close']) / 3
-    volumes = df['Volume']
-    vwap_ser = (tp * volumes).cumsum() / volumes.cumsum()
-    df['VWAP_Diff'] = df['Close'] - vwap_ser
-
-    trades = []
-    cash = initial_cash
-    position = 0
-    in_position = False
-
-    # Loop through each day
-    for i in range(1, len(df)):
-        row   = df.iloc[i]
-        date  = df.index[i]
-        price = row['Open'] if 'Open' in df.columns else row['Close']
-
-        # ── 1) STOP-LOSS / TAKE-PROFIT EXIT ─────────────────────
-        if position > 0:
-            # stop-loss: drop below entry_price*(1−stop_loss_pct)
-            if stop_loss_pct > 0 and price <= entry_price * (1 - stop_loss_pct):
-                pnl = (price - entry_price) * position
-                cash += position * price
-                trades.append({
-                    'symbol': symbol,
-                    'action': 'SELL',
-                    'date':   str(date),
-                    'qty':    position,
-                    'price':  price,
-                    'pnl':    round(pnl, 2)
-                })
-                position = 0
-                entry_price = None
-                continue
-
-            # take-profit: rise above entry_price*(1+take_profit_pct)
-            if take_profit_pct > 0 and price >= entry_price * (1 + take_profit_pct):
-                pnl = (price - entry_price) * position
-                cash += position * price
-                trades.append({
-                    'symbol': symbol,
-                    'action': 'SELL',
-                    'date':   str(date),
-                    'qty':    position,
-                    'price':  price,
-                    'pnl':    round(pnl, 2)
-                })
-                position = 0
-                entry_price = None
-                continue
-
-        # ── 2) (now your old entry / other exit logic) ─────────
-        # … whatever you had here before …
-
-
-    # final sell
-    if in_position and position > 0:
-        final_price = df['Close'].iat[-1]
-        cash += position * final_price
-        pnl = cash - initial_cash
-        trades.append({
-            'symbol': symbol,
-            'action':'SELL',
-            'date': str(df.index[-1]),
-            'qty': position,
-            'price': final_price,
-            'pnl': round(pnl, 2)
-        })
-
-    return trades, cash - initial_cash
-
 def run_full_backtest(settings, symbols):
     """
-    Loop through each ticker, call the single-symbol backtest(),
-    and build a trades list + summary dict.
+    Iterate over symbols, call backtest(), and aggregate summary.
     """
     all_trades = []
     summary = {
@@ -242,51 +180,49 @@ def run_full_backtest(settings, symbols):
         'losses': 0,
         'by_symbol': {}
     }
-
-for symbol in symbols:
-    trades, net_pnl = backtest(
-    symbol,
-    settings.start_date,
-    settings.end_date,
-    settings.starting_cash,
-    settings.max_per_trade,
-    trailing_stop_pct=settings.trailing_stop_pct,
-    sell_after_days=settings.sell_after_days,
-    sma_on=settings.sma_on,
-    rsi_on=settings.rsi_on,
-    macd_on=settings.macd_on,
-    bb_on=settings.bb_on,
-    vwap_on=settings.vwap_on,
-    news_on=settings.news_on,
-    sma_length=settings.sma_length,
-    rsi_len=settings.rsi_len,
-    macd_fast=settings.macd_fast,
-    macd_slow=settings.macd_slow,
-    macd_signal=settings.macd_signal,
-    bb_length=settings.bb_length,
-    bb_std=settings.bb_std,
-    vol_multiplier=settings.vol_multiplier,
-    vwap_threshold=settings.vwap_threshold,
-    stop_loss_pct=settings.stop_loss_pct,
-    take_profit_pct=settings.take_profit_pct,
-    log_to_db=False
- )
-
+    for symbol in symbols:
+        trades, net_pnl = backtest(
+            symbol,
+            settings.start_date,
+            settings.end_date,
+            settings.starting_cash,
+            settings.max_per_trade,
+            settings.sma_on,
+            settings.rsi_on,
+            settings.macd_on,
+            settings.bb_on,
+            settings.vol_on,
+            settings.vwap_on,
+            settings.news_on,
+            settings.sma_length,
+            settings.rsi_len,
+            settings.rsi_overbought,
+            settings.rsi_oversold,
+            settings.macd_fast,
+            settings.macd_slow,
+            settings.macd_signal,
+            settings.bb_length,
+            settings.bb_std,
+            settings.vol_multiplier,
+            settings.vwap_threshold,
+            stop_loss_pct=getattr(settings, 'stop_loss_pct', 0.0),
+            take_profit_pct=getattr(settings, 'take_profit_pct', 0.0),
+            log_to_db=False
+        )
         all_trades.extend(trades)
-        summary['total_pnl']  += net_pnl
+        summary['total_pnl'] += net_pnl
         summary['num_trades'] += len(trades)
-        wins   = sum(1 for t in trades if t['action']=='SELL' and t['pnl']>0)
+        wins = sum(1 for t in trades if t['action']=='SELL' and t['pnl']>0)
         losses = sum(1 for t in trades if t['action']=='SELL' and t['pnl']<=0)
-        summary['wins']   += wins
+        summary['wins'] += wins
         summary['losses'] += losses
         summary['by_symbol'][symbol] = {
-            'pnl':    net_pnl,
+            'pnl': net_pnl,
             'trades': len(trades),
-            'wins':   wins,
+            'wins': wins,
             'losses': losses
         }
-
     return all_trades, summary
 
 # Alias for dashboard
-backtest_scanner = backtest
+backtest_scanner = run_full_backtest

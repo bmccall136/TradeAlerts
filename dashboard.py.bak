@@ -1,17 +1,20 @@
 import os
 import time
+import json
 import subprocess
 import threading
 import sqlite3
 import logging
 import io
 import csv
-
+from requests.exceptions import HTTPError
 from pathlib import Path
 from datetime import datetime, date, timedelta
 from dateutil.relativedelta import relativedelta
 from collections import namedtuple
 from types import SimpleNamespace
+import logging
+logger = logging.getLogger(__name__)
 
 from flask import (
     Flask,
@@ -104,7 +107,7 @@ CONSUMER_KEY       = '1e0978925ddea6a6addb5436e6ff2164'
 CONSUMER_SECRET    = '0fdac4a22a68112d7e855281bab9df70af85cfd023206d15d75bcf51f1390bc2'
 OAUTH_TOKEN        = 'mcjsKyZ+GEfimgLRexsERoevbOQ9EVRrN7iJ/I13Dwg='
 OAUTH_TOKEN_SECRET = 'YFDwu7K23oWft+n+0TongPACdDzkQR0oB6xPug3GpOw='
-OAUTH_HOST         = 'https://etws.etrade.com'
+OAUTH_HOST         = 'https://api.etrade.com'
 REQUEST_TOKEN_URL  = f'{OAUTH_HOST}/oauth/request_token'
 ACCESS_TOKEN_URL   = f'{OAUTH_HOST}/oauth/access_token'
 AUTHORIZE_URL      = 'https://us.etrade.com/e/t/etws/authorize'
@@ -113,22 +116,45 @@ KEY_OAUTH_TOKEN        = 'OAUTH_TOKEN'
 KEY_OAUTH_TOKEN_SECRET = 'OAUTH_TOKEN_SECRET'
 
 # ── OAuth routes ────────────────────────────────────────────
+from flask import render_template, session, redirect, url_for, flash
 from requests_oauthlib import OAuth1Session
 
 @app.route('/etrade/auth')
 def etrade_start_auth():
-    """Step 1: Obtain request token & redirect to E*TRADE approval."""
     oauth = OAuth1Session(
         CONSUMER_KEY,
         client_secret=CONSUMER_SECRET,
-        callback_uri=url_for('etrade_handle_callback', _external=True)
+        callback_uri='oob'   # out-of-band
     )
     resp = oauth.fetch_request_token(REQUEST_TOKEN_URL)
     session['req_token']  = resp['oauth_token']
     session['req_secret'] = resp['oauth_token_secret']
+    auth_url = f"{AUTHORIZE_URL}?key={CONSUMER_KEY}&token={resp['oauth_token']}"
+    return render_template('etrade_pin.html', auth_url=auth_url)
 
-    auth_url = f"{AUTHORIZE_URL}?key={CONSUMER_KEY}&token={session['req_token']}"
-    return redirect(auth_url)
+@app.route('/etrade/pin', methods=['POST'])
+def etrade_handle_pin():
+    # Grab the PIN (oauth_verifier) from the form
+    verifier   = request.form['oauth_verifier']
+    req_token  = session.pop('req_token', None)
+    req_secret = session.pop('req_secret', None)
+
+    # Exchange for real access tokens
+    oauth = OAuth1Session(
+        CONSUMER_KEY,
+        client_secret=CONSUMER_SECRET,
+        resource_owner_key=req_token,
+        resource_owner_secret=req_secret,
+        verifier=verifier
+    )
+    tokens = oauth.fetch_access_token(ACCESS_TOKEN_URL)
+
+    # Persist into .env so fetch_etrade_quote() works
+    set_key(ENV_PATH, KEY_OAUTH_TOKEN,        tokens['oauth_token'])
+    set_key(ENV_PATH, KEY_OAUTH_TOKEN_SECRET, tokens['oauth_token_secret'])
+
+    flash('✅ E*TRADE authenticated!', 'success')
+    return redirect(url_for('index'))
 
 @app.route('/etrade/callback')
 def etrade_handle_callback():
@@ -157,15 +183,13 @@ def etrade_handle_callback():
 
 
 def fetch_current_price(symbol):
-    """
-    Pulls the latest price from your E*TRADE service.
-    """
     try:
         price = fetch_etrade_quote(symbol)
         return float(price)
     except Exception as e:
         logging.warning(f"[PRICE] {symbol}: E*TRADE fetch failed ({e})")
-        return 0.0
+        raise
+
 
 def extract_backtest_settings(args):
      # figure out end_date = today, start_date = today - timeframe
@@ -477,8 +501,11 @@ def simulation():
             symbol     = t.get('symbol')
             action     = t.get('action')
             qty        = t.get('qty')
-            price      = t.get('price')
-            pnl        = t.get('pnl') or t.get('pl')
+            # coerce to numeric so Jinja sees real numbers
+            price_str  = t.get('price')
+            pnl_str    = t.get('pnl') or t.get('pl')
+            price = float(t.get('price'))
+            pl    = float(t.get('pnl') or t.get('pl'))
 
         # Case B: tuple
         elif isinstance(t, tuple):
@@ -489,19 +516,14 @@ def simulation():
             # Unexpected type; skip
             continue
 
-        formatted_trades.append({
-        
-        
-        
-        
-        
-            'time':   trade_time,
-            'symbol': symbol,
-            'action': action,
-            'qty':    qty,
-            'price':  price,
-            'pl':     pnl,
-        })
+    formatted_trades.append({
+        'time':   t.get('time'),
+        'symbol': t.get('symbol'),
+        'action': t.get('action'),
+        'qty':    int(t.get('qty')),
+        'price':  price,
+        'pl':     pl,
+    })
 
     return render_template(
         'simulation.html',
@@ -527,14 +549,19 @@ def export_simulation():
     cw.writerow(['-- HOLDINGS --'])
     cw.writerow(['symbol','qty','last_price','value','day_gain','total_gain'])
     for h in holdings:
-        cw.writerow([
-            h['symbol'],
-            h['qty'],
-            h['last_price'],
-            h['value'],
-            abs(h['day_gain']),
-            abs(h['total_gain'])
-        ])
+        try:
+            live = fetch_etrade_quote(h['symbol'])
+            app.logger.info(f"[PRICE] {h['symbol']}: E*TRADE price = {live}")
+            h['last_price'] = round(live, 2)
+            # recalc all the P/L
+            change     = h['last_price'] - h['price_paid']
+            h['change']     = round(change, 2)
+            h['change_pct'] = round((change / h['price_paid']*100) if h['price_paid'] else 0, 1)
+            h['total_gain'] = round(change * h['qty'], 2)
+            h['day_gain']   = h['total_gain']  # or however you define “day”
+            h['value']      = round(h['last_price'] * h['qty'], 2)
+        except Exception as e:
+            app.logger.warning(f"[PRICE] {h['symbol']} fetch failed: {e}")
 
     cw.writerow([])
     cw.writerow(['-- TRADES --'])
@@ -589,79 +616,120 @@ def start_scanner():
 DEFAULT_STARTING_CASH = 10000.0
 DEFAULT_MAX_PER_TRADE = 1000.0
 
+from services.trading_helpers import (
+    get_cash, get_holdings, get_trades,
+    get_unrealized_pl, get_realized_pl
+)
+from flask import request
+from services.trading_helpers import get_trades, get_cash, get_realized_pl, get_unrealized_pl
+from services.market_service import fetch_data_with_timeout
+# at the very top, with your other imports
+from services.trading_helpers import get_trades
+
+from services.trading_helpers import get_trades
+
+# at the top of Dashboard.py, make sure cost_basis is defined as we did earlier
+def cost_basis(symbol):
+    trades = get_trades()
+    total_qty  = 0
+    total_cost = 0.0
+    for t in trades:
+        if isinstance(t, dict):
+            sym    = t.get('symbol')
+            action = t.get('action')
+            qty    = t.get('qty', 0)
+            price  = t.get('price', 0.0)
+        elif isinstance(t, (tuple, list)):
+            # adjust unpack order if your tuple is different
+            _, sym, action, qty, price, *_ = t
+        else:
+            continue
+
+        if sym == symbol and action.upper() == 'BUY':
+            total_qty  += qty
+            total_cost += qty * price
+
+    return (total_cost / total_qty) if total_qty else 0.0
+
 @app.route('/simulation')
 def simulation():
-    # A) grab form-passed defaults (or fall back)
-    starting_cash = float(request.args.get('starting_cash', DEFAULT_STARTING_CASH))
-    max_per_trade = float(request.args.get('max_per_trade', DEFAULT_MAX_PER_TRADE))
-
-    # B) pull raw data
-    cash       = get_cash()
-    unrealized = get_unrealized_pl()
-    realized   = get_realized_pl()
-    raw_h      = get_holdings()   # [(symbol, qty, avg_cost, last_price), …]
-    raw_t      = get_trades()     # [(symbol, action, price, qty, tstamp, pnl), …]
-
-    # C) format holdings & compute P/L
+    cash = get_cash()
+    raw_holdings = get_holdings()
     formatted_holdings = []
-    total_unrealized   = 0.0
 
-    for symbol, qty, avg_cost, db_last in raw_h:
-        # fetch latest for display
+    for symbol, qty, avg_cost, db_last_price in raw_holdings:
         try:
-            last_price = fetch_current_price(symbol)
-            logging.debug(f"[sim-view] Updated last_price for {symbol}: {last_price}")
-        except Exception as e:
-            logging.warning(f"[sim-view] Could not fetch price for {symbol}: {e}")
-            last_price = db_last
+            live_price = fetch_etrade_quote(symbol)
+            logger.info(f"[PRICE] {symbol}: live price = {live_price}")
+        except HTTPError as e:
+            # if it’s a 401, kick off the OAuth dance
+            if e.response is not None and e.response.status_code == 401:
+                logger.warning(f"[PRICE] {symbol}: 401 → redirecting to auth")
+                return redirect(url_for('etrade_start_auth'))
+            # otherwise just fall back to the DB price
+            logger.warning(f"[PRICE] {symbol}: live fetch failed ({e})")
+            live_price = db_last_price
 
-        day_gain   = (last_price - avg_cost) * qty
-        total_gain = day_gain  # if you want separate realized vs unrealized adjust here
-        total_unrealized += day_gain
+        value      = live_price * qty
+        total_gain = (live_price - avg_cost) * qty
+        change_pct = (total_gain / (avg_cost * qty) * 100) if avg_cost else 0.0
+        day_gain   = total_gain
 
         formatted_holdings.append({
             'symbol'     : symbol,
-            'last_price' : last_price,
             'qty'        : qty,
             'price_paid' : avg_cost,
+            'last_price' : live_price,
             'day_gain'   : day_gain,
-            'change_pct' : (day_gain / (avg_cost * qty) * 100) if avg_cost else 0,
             'total_gain' : total_gain,
-            'value'      : last_price * qty,
+            'change_pct' : change_pct,
+            'value'      : value,
         })
 
-    # D) format trade history
+    # …the rest of formatting trades, pulling P/L, then render_template…
+
+
+    # ── C) format trades
+    raw_trades = get_trades()
     formatted_trades = []
-    for t in raw_t:
-        if isinstance(t, tuple):
-            symbol, action, price, qty, tstamp, pnl = t
+    for t in raw_trades:
+        if isinstance(t, dict):
+            trade_time = t.get('time') or t.get('trade_time')
+            symbol     = t['symbol']
+            action     = t['action']
+            qty        = t['qty']
+            price      = float(t.get('price', 0))
+            pl         = float(t.get('pnl') or t.get('pl') or 0)
         else:
-            symbol = t.get('symbol')
-            action = t.get('action')
-            price  = t.get('price')
-            qty    = t.get('qty')
-            tstamp = t.get('trade_time') or t.get('time')
-            pnl    = t.get('pnl') or t.get('pl') or 0.0
+            trade_time, symbol, action, qty, price, pl = t
 
         formatted_trades.append({
-            'time'   : tstamp,
+            'time'   : trade_time,
             'symbol' : symbol,
             'action' : action,
             'qty'    : qty,
             'price'  : price,
-            'pl'     : pnl,
+            'pl'     : pl,
         })
 
-    # E) render
+    # ── D) echo back your form-supplied settings
+    starting_cash = float(request.args.get('starting_cash', DEFAULT_STARTING_CASH))
+    max_per_trade = float(request.args.get('max_per_trade',   DEFAULT_MAX_PER_TRADE))
+
+    # ── E) compute P/L totals
+    unrealized_pnl = get_unrealized_pl()
+    realized_pnl   = get_realized_pl()
+
+    # ── F) render once, with everything defined
     return render_template(
         'simulation.html',
         cash=cash,
         holdings=formatted_holdings,
         history=formatted_trades,
-        unrealized_pnl=total_unrealized,
-        realized_pnl=realized,
         starting_cash=starting_cash,
         max_per_trade=max_per_trade,
+        unrealized_pnl=unrealized_pnl,
+        realized_pnl=realized_pnl,
         is_running=_is_scanner_running
     )
 
@@ -872,8 +940,7 @@ def index():
     )
 
 if __name__ == "__main__":
-    # spin up the scanner in a daemon thread
-
-    # start Flask
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    # ← add debug=True (and use_reloader if you want)
+    app.run(host="0.0.0.0", port=port, debug=True, use_reloader=True)
+

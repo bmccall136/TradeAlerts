@@ -110,13 +110,39 @@ def get_unrealized_pl() -> float:
     conn.close()
     return total
 
+import sqlite3
+
 def get_holdings():
     conn = _connect()
+    conn.row_factory = sqlite3.Row
     cur  = conn.cursor()
     cur.execute("SELECT symbol, qty, avg_cost, last_price FROM holdings;")
     rows = cur.fetchall()
     conn.close()
     return rows
+
+
+    formatted = []
+    for symbol, qty, avg_cost, last_price in rows:
+        value      = last_price * qty
+        change     = last_price - avg_cost
+        change_pct = (change / avg_cost * 100) if avg_cost else 0.0
+        total_gain = change * qty
+        day_gain   = total_gain
+
+        formatted.append({
+            'symbol'      : symbol,
+            'qty'         : qty,
+            'price_paid'  : round(avg_cost,    2),
+            'last_price'  : round(last_price,  2),
+            'value'       : round(value,       2),
+            'day_gain'    : round(day_gain,    2),
+            'total_gain'  : round(total_gain,  2),
+            'change_pct'  : round(change_pct,  1),
+        })
+
+    return formatted
+
 
 def get_trades():
     conn = _connect()
@@ -221,4 +247,8 @@ def init_backtest_db():
     conn.close()
 
 # ensure schema is ready whenever this module is imported
+# … all your functions …
+
+# at the very end of services/trading_helpers.py:
+from .trading_helpers import setup_simulation_db
 setup_simulation_db()
