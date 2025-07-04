@@ -358,9 +358,11 @@ def run_backtest_route():
     # 2) Reset DB
     init_backtest_db()
 
-    # 3) Run backtest (safely handle None)
+    # 3) Run backtest (safely handle None or unexpected result)
     result = run_full_backtest(settings, symbols)
-    if result is None:
+    if not (isinstance(result, tuple) and len(result) == 2):
+        logger.warning("run_full_backtest returned unexpected result: %r", result)
+        flash("⚠️ Backtest didn’t produce any data—showing an empty run", "warning")
         trades = []
         summary = {
             'total_pnl': 0.0,
