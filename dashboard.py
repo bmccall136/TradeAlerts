@@ -349,7 +349,6 @@ _is_scanner_running = False
 @app.route('/scanner_status')
 def scanner_status():
     return jsonify(running=_is_scanner_running)
-
 @app.route('/run_backtest', methods=['POST'])
 def run_backtest_route():
     # 1) Grab settings & symbols
@@ -359,8 +358,21 @@ def run_backtest_route():
     # 2) Reset DB
     init_backtest_db()
 
-    # 3) Run backtest
-    trades, summary = run_full_backtest(settings, symbols)
+    # 3) Run backtest (safely handle None or unexpected result)
+    result = run_full_backtest(settings, symbols)
+    if not (isinstance(result, tuple) and len(result) == 2):
+        logger.warning("run_full_backtest returned unexpected result: %r", result)
+        flash("⚠️ Backtest didn’t produce any data—showing an empty run", "warning")
+        trades = []
+        summary = {
+            'total_pnl': 0.0,
+            'num_trades': 0,
+            'wins': 0,
+            'losses': 0,
+            'by_symbol': {}
+        }
+    else:
+        trades, summary = result
 
     # 4) Log this run into backtest_runs & backtest_trades
     conn = sqlite3.connect(BACKTEST_DB)
@@ -376,19 +388,22 @@ def run_backtest_route():
 
     # 4b) Insert each trade
     for t in trades:
-        cur.execute("""
-          INSERT INTO backtest_trades
-            (run_id, symbol, date, action, price, qty, pnl)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-          run_id,
-          t['symbol'],
-          t['date'],
-          t['action'],
-          t['price'],
-          t['qty'],
-          t['pnl']
-        ))
+        cur.execute(
+            """
+            INSERT INTO backtest_trades
+              (run_id, symbol, date, action, price, qty, pnl)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                run_id,
+                t['symbol'],
+                t['date'],
+                t['action'],
+                t['price'],
+                t['qty'],
+                t['pnl']
+            )
+        )
 
     conn.commit()
     conn.close()
@@ -400,8 +415,9 @@ def run_backtest_route():
         trades=trades,
         summary=summary,
         settings=settings,
-        net_return=summary['total_pnl']
+        net_return=summary.get('total_pnl', 0.0)
     )
+
 
 @app.route('/stop_scanner', methods=['POST'])
 def stop_scanner():
