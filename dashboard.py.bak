@@ -463,69 +463,99 @@ def load_your_symbols():
 
 BACKTEST_DB = 'backtest.db'
 
-@app.route('/backtest')
-def backtest_view():
-    settings = extract_backtest_settings(request.args)
-# ── Volatility & Gap Defaults ──
-defaults = {
-    "atr14_on":      True,
-    "atr_threshold": 1.4,
-    "atr_pct_on":    True,
-    "atr_pct":       0.7,
-    "range_on":      True,
-    "range_pct":     1.2,
-    "gap_on":        True,
-    "gap_pct":       1.0,
-    # ─── New defaults for exits ───
-    "single_entry_only": True,
-    "use_trailing_stop":  True,
-    "trailing_stop_pct":  0.03,
-    "sell_after_days":    "",    # no default limit
-    "stop_loss_pct":      3.0,
-    "take_profit_pct":    7.0,
- 
-# load symbols
-    with open('sp500_symbols.txt') as f:
-        symbols = [s.strip() for s in f if s.strip()]
+from flask import request, redirect, url_for, render_template
+from services.alert_service import get_all_indicator_settings, update_indicator_settings, get_alerts
+from services.backtest_service import run_full_backtest
 
-    trades = []
-    summary = {
-        'total_pnl': 0.0,
-        'num_trades': 0,
-        'wins': 0,
-        'losses': 0,
-        'by_symbol': {}
+@app.route("/backtest", methods=["GET", "POST"])
+def backtest_view():
+    # 1) Load persisted settings or defaults container
+    settings = get_all_indicator_settings()
+
+    # 2) Our recommended defaults (same as Alerts)
+    defaults = {
+        # core toggles
+        "sma_on": True, "rsi_on": True, "macd_on": True, "bb_on": True,
+        "vol_on": True, "vwap_on": True, "news_on": False,
+
+        # next-gen toggles
+        "rsi_slope_on": True, "macd_hist_on": True, "bb_breakout_on": True,
+
+        # volatility/gap defaults
+        "atr14_on": True, "atr_threshold": 1.4,
+        "atr_pct_on": True, "atr_pct": 0.7,
+        "range_on": True, "range_pct": 1.2,
+        "gap_on": True, "gap_pct": 1.0,
+
+        # exits & risk
+        "single_entry_only": True, "use_trailing_stop": True,
+        "trailing_stop_pct": 0.03, "sell_after_days": "",
+        "stop_loss_pct": 3.0, "take_profit_pct": 7.0,
+
+        # sizing & timeframe
+        "starting_cash": 10000, "max_per_trade": 1000, "timeframe": "1mo",
     }
 
-    if request.args.get('run_full') == '1':
-        start_ts = datetime.utcnow()
-        print(f"[Backtest] START {start_ts.isoformat()}", file=sys.stdout)
-        try:
-            trades, summary = run_backtest(settings, symbols)
-            end_ts = datetime.utcnow()
-            print(f"[Backtest] COMPLETE (took {end_ts-start_ts})", file=sys.stdout)
-            flash(f"✅ Backtest completed in {end_ts - start_ts}")
-        except Exception as e:
-            flash(f"❌ Backtest error: {e}")
-            print(f"[Backtest] ERROR: {e}", file=sys.stderr)
+    # 3) On a fresh GET, apply defaults
+    if request.method == "GET":
+        settings.update(defaults)
 
+    # 4) On POST, merge overrides then redirect back to GET
+    elif request.method == "POST":
+        # Booleans
+        for t in (
+            "sma_on","rsi_on","macd_on","bb_on","vol_on","vwap_on","news_on",
+            "rsi_slope_on","macd_hist_on","bb_breakout_on",
+            "atr14_on","atr_pct_on","range_on","gap_on",
+            "single_entry_only","use_trailing_stop"
+        ):
+            settings[t] = (t in request.form)
+
+        # Numerics & strings
+        for f in (
+            "sma_length","rsi_len","rsi_overbought","rsi_oversold",
+            "macd_fast","macd_slow","macd_signal",
+            "bb_length","bb_std","vol_multiplier","vwap_threshold",
+            "atr_threshold","atr_pct","range_pct","gap_pct",
+            "trailing_stop_pct","sell_after_days",
+            "stop_loss_pct","take_profit_pct",
+            "starting_cash","max_per_trade","timeframe"
+        ):
+            if f in request.form:
+                v = request.form[f]
+                if f in ("rsi_len","sma_length","macd_fast","macd_slow","macd_signal","bb_length"):
+                    settings[f] = int(v)
+                elif f == "timeframe":
+                    settings[f] = v
+                else:
+                    settings[f] = float(v) if v != "" else ""
+
+        update_indicator_settings(settings)
+        return redirect(url_for("backtest_view"))
+
+    # 5) Build your symbol list & run the backtest
+    alerts = get_alerts()
+    symbols = [a["symbol"] for a in alerts]
+    trades, summary = run_full_backtest(settings, symbols)
+    # 6) Always return the rendered template on GET (and after redirect)
     return render_template(
         "backtest.html",
         settings=settings,
-        summary=summary,
         trades=trades,
-        sma_labels        = sma_labels,
-        rsi_len_labels    = rsi_len_labels,
-        rsi_ob_labels     = rsi_ob_labels,
-        rsi_os_labels     = rsi_os_labels,
-        macd_fast_labels  = macd_fast_labels,
-        macd_slow_labels  = macd_slow_labels,
-        macd_signal_labels= macd_signal_labels,
-        bb_length_labels  = bb_length_labels,
-        bb_std_labels     = bb_std_labels,
-        vol_mult_labels   = vol_mult_labels,
-        vwap_labels       = vwap_labels,
+        summary=summary,
+        sma_labels=sma_labels,
+        rsi_len_labels=rsi_len_labels,
+        rsi_ob_labels=rsi_ob_labels,
+        rsi_os_labels=rsi_os_labels,
+        macd_fast_labels=macd_fast_labels,
+        macd_slow_labels=macd_slow_labels,
+        macd_signal_labels=macd_signal_labels,
+        bb_length_labels=bb_length_labels,
+        bb_std_labels=bb_std_labels,
+        vol_mult_labels=vol_mult_labels,
+        vwap_labels=vwap_labels,
     )
+
 
 # near the top, after imports
 _is_scanner_running = False
