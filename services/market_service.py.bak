@@ -13,10 +13,8 @@ from services.alert_service import (
     generate_sparkline
 )
 from services.indicators import (
-    calculate_macd,
-    compute_rsi,
-    compute_bollinger,
-    compute_sma
+    compute_atr, daily_range_pct, gap_up_pct, price_above_sma,
+    compute_rsi, calculate_macd, compute_bollinger, compute_sma
 )
 from services.news_service import fetch_latest_headlines
 
@@ -26,8 +24,14 @@ logger = logging.getLogger(__name__)
 def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
     def _fetch():
         try:
-            return yf.download(sym, period=period, interval=interval,
-                               progress=False, threads=False)
+            return yf.download(
+                sym,
+                period=period,
+                interval=interval,
+                auto_adjust=False,    # ← explicitly disable auto-adjust
+                progress=False,
+                threads=False
+            )
         except Exception as e:
             logger.error(f"[ERROR] Yahoo download {sym} failed: {e}")
             return None
@@ -39,7 +43,6 @@ def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
         except FuturesTimeout:
             logger.error(f"[ERROR] Yahoo download {sym} timed out after {timeout}s")
             return None
-
 
 def _has_headlines(source):
     if hasattr(source, "empty"):
@@ -87,6 +90,36 @@ def analyze_symbol(sym):
     df = fetch_data_with_timeout(sym)
     if df is None or df.empty:
         return None
+
+    # ── B.1) Fetch daily df for volatility & gap filters ──
+    df_daily = fetch_data_with_timeout(sym, period='60d', interval='1d')
+    if df_daily is None or df_daily.empty:
+        return None
+
+    # ── B.2) New volatility & price filters ──
+    # 1) ATR % filter
+    if settings.get('atr_on'):
+        atr = compute_atr(df_daily)
+        if (atr / df_daily['close'].iloc[-1]) < settings.get('atr_pct', 0.01):
+            return None
+
+    # 2) Daily range % filter
+    if settings.get('range_on'):
+        if daily_range_pct(df_daily) < settings.get('range_pct', 0.01):
+            return None
+
+    # 3) Pre-market gap-up % filter
+    if settings.get('gap_on'):
+        prev_close = df_daily['close'].shift().iloc[-1]
+        today_open = fetch_open_price(sym)
+        if gap_up_pct(prev_close, today_open) < settings.get('gap_pct', 0.02):
+            return None
+
+    # 4) Price > SMA filter
+    if settings.get('price_sma_on'):
+        if not price_above_sma(df['Close'] if 'Close' in df else df['close'],
+                                length=settings.get('sma_length', 20)):
+            return None
 
        # ── C) Fetch live price ──
     try:

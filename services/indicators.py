@@ -2,6 +2,47 @@
 
 import pandas as pd
 
+def price_above_sma(df, length):
+    """
+    Returns True if the most recent close is above the Simple Moving Average.
+    Expects `df` with a 'Close' column and enough history for `length`.
+    """
+    # compute the rolling SMA
+    sma = df['Close'].rolling(window=length).mean()
+    # if there isn’t enough data yet, bail out
+    if sma.isna().all():
+        return False
+    latest_sma = sma.iloc[-1]
+    latest_close = df['Close'].iloc[-1]
+    return latest_close > latest_sma
+
+def daily_range_pct(df):
+    """
+    Compute the latest day’s high-low range as a percentage of the low.
+    Expects `df` with columns ['High','Low'] indexed chronologically.
+    Returns a float: (High_today - Low_today) / Low_today * 100.
+    """
+    # grab the most recent bar
+    high = df['High'].iloc[-1]
+    low  = df['Low'].iloc[-1]
+    if low == 0:
+        return 0.0
+    return (high - low) / low * 100
+
+def gap_up_pct(df):
+    """
+    Compute the latest gap-up percentage from yesterday’s close to today’s open.
+    Expects `df` with columns ['Open','Close'] indexed chronologically.
+    Returns a float: (Open_today - Close_yesterday) / Close_yesterday * 100.
+    """
+    # yesterday’s close
+    prev_close = df['Close'].iloc[-2]
+    # today’s open
+    today_open = df['Open'].iloc[-1]
+    if prev_close == 0:
+        return 0.0
+    return (today_open - prev_close) / prev_close * 100
+
 def calculate_macd(
     series: pd.Series,
     fast: int = 12,
@@ -65,3 +106,49 @@ def compute_sma(
     Returns a single float (the last SMA value).
     """
     return series.rolling(window=length).mean().iloc[-1]
+
+
+def compute_atr(
+    df: pd.DataFrame,
+    period: int = 14
+) -> float:
+    """
+    Compute the most recent ATR over `period` daily bars.
+    Expects df with columns ['high','low','close'] indexed by date.
+    Returns a single float (the last ATR value).
+    """
+    high = df['high']
+    low = df['low']
+    close = df['close']
+    prev_close = close.shift(1)
+    tr1 = high - low
+    tr2 = (high - prev_close).abs()
+    tr3 = (low - prev_close).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    atr = tr.rolling(window=period).mean().iloc[-1]
+    return atr
+
+
+def compute_daily_range_pct(
+    df: pd.DataFrame
+) -> float:
+    """
+    Compute the high-low percent range of the most recent daily bar.
+    Expects df with ['high','low','close'] and at least 2 rows.
+    Returns a float (range_pct).
+    """
+    today = df.iloc[-1]
+    prev_close = df['close'].shift(1).iloc[-1]
+    range_pct = (today['high'] - today['low']) / prev_close
+    return range_pct
+
+
+def compute_gap_pct(
+    prev_close: float,
+    today_open: float
+) -> float:
+    """
+    Compute pre-market gap percentage given yesterday's close and today's open.
+    Returns a float gap_pct.
+    """
+    return (today_open - prev_close) / prev_close
