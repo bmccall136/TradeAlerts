@@ -171,17 +171,32 @@ def backtest(
 def run_full_backtest(settings, symbols):
     """
     Iterate over symbols, call backtest(), and aggregate summary.
+    Ignores the backtest()'s net_pnl and recalculates all stats
+    from individual SELL-trade P/Ls.
     """
-    all_trades = []
+    all_trades     = []
+    all_sell_pnls  = []
+    total_win_pnl  = 0.0
+    total_loss_pnl = 0.0
+
     summary = {
-        'total_pnl': 0.0,
-        'num_trades': 0,
-        'wins': 0,
-        'losses': 0,
-        'by_symbol': {}
+        'symbols_tested': len(symbols),
+        'total_pnl':       0.0,
+        'num_trades':      0,
+        'wins':            0,
+        'losses':          0,
+        # these we'll fill in after loop:
+        'win_rate_pct':    0.0,
+        'avg_pnl_per_trade': 0.0,
+        'avg_win':         0.0,
+        'avg_loss':        0.0,
+        'best_trade_pnl':  None,
+        'worst_trade_pnl': None,
+        'by_symbol':       {}
     }
+
     for symbol in symbols:
-        trades, net_pnl = backtest(
+        result = backtest(
             symbol,
             settings.start_date,
             settings.end_date,
@@ -209,20 +224,58 @@ def run_full_backtest(settings, symbols):
             take_profit_pct=getattr(settings, 'take_profit_pct', 0.0),
             log_to_db=False
         )
-        all_trades.extend(trades)
-        summary['total_pnl'] += net_pnl
-        summary['num_trades'] += len(trades)
-        wins = sum(1 for t in trades if t['action']=='SELL' and t['pnl']>0)
-        losses = sum(1 for t in trades if t['action']=='SELL' and t['pnl']<=0)
-        summary['wins'] += wins
-        summary['losses'] += losses
+
+        trades_symbol = result[0] if result else []
+        all_trades.extend(trades_symbol)
+
+        # extract only SELLs
+        sells = [t for t in trades_symbol if t['action'] == 'SELL']
+        pnls = [t['pnl'] for t in sells]
+
+        pnl_symbol    = sum(pnls)
+        count_symbol  = len(pnls)
+        wins_symbol   = sum(1 for p in pnls if p > 0)
+        losses_symbol = count_symbol - wins_symbol
+        win_rate_sym  = (wins_symbol / count_symbol * 100) if count_symbol else 0.0
+        avg_pnl_sym   = (pnl_symbol / count_symbol) if count_symbol else 0.0
+
+        # accumulate global lists
+        all_sell_pnls.extend(pnls)
+        total_win_pnl  += sum(p for p in pnls if p > 0)
+        total_loss_pnl += sum(p for p in pnls if p <= 0)
+
+        # update grand totals
+        summary['total_pnl']  += pnl_symbol
+        summary['num_trades'] += count_symbol
+        summary['wins']       += wins_symbol
+        summary['losses']     += losses_symbol
+
+        # per‐symbol breakdown
         summary['by_symbol'][symbol] = {
-            'pnl': net_pnl,
-            'trades': len(trades),
-            'wins': wins,
-            'losses': losses
+            'pnl':           pnl_symbol,
+            'trades':        count_symbol,
+            'wins':          wins_symbol,
+            'losses':        losses_symbol,
+            'win_rate_pct':  round(win_rate_sym, 2),
+            'avg_pnl':       round(avg_pnl_sym, 2),
+            'best_trade':    max(pnls) if pnls else None,
+            'worst_trade':   min(pnls) if pnls else None,
         }
+
+    # now compute the overall derived stats
+    if summary['num_trades']:
+        summary['win_rate_pct']     = round(summary['wins'] / summary['num_trades'] * 100, 2)
+        summary['avg_pnl_per_trade']= round(summary['total_pnl'] / summary['num_trades'], 2)
+    if summary['wins']:
+        summary['avg_win'] = round(total_win_pnl / summary['wins'], 2)
+    if summary['losses']:
+        summary['avg_loss']= round(total_loss_pnl / summary['losses'], 2)
+    if all_sell_pnls:
+        summary['best_trade_pnl']= max(all_sell_pnls)
+        summary['worst_trade_pnl']= min(all_sell_pnls)
+
     return all_trades, summary
+
 
 # Alias for dashboard
 backtest_scanner = run_full_backtest

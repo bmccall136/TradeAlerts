@@ -13,9 +13,42 @@ from datetime import datetime, date, timedelta
 from dateutil.relativedelta import relativedelta
 from collections import namedtuple
 from types import SimpleNamespace
+import os
+import time
+import json
+import subprocess
+import threading
+import sqlite3
 import logging
-logger = logging.getLogger(__name__)
+import io
+import csv
+from requests.exceptions import HTTPError
+from pathlib import Path
+from datetime import datetime, date, timedelta
+from dateutil.relativedelta import relativedelta
+from collections import namedtuple
+from types import SimpleNamespace
 
+# ─── Load environment variables ───────────────────────────────
+from dotenv import load_dotenv, set_key
+load_dotenv()
+
+# ─── Indicator label dicts (shared) ──────────────────────────
+from labels import (
+    sma_labels,
+    rsi_len_labels,
+    rsi_ob_labels,
+    rsi_os_labels,
+    macd_fast_labels,
+    macd_slow_labels,
+    macd_signal_labels,
+    bb_length_labels,
+    bb_std_labels,
+    vol_mult_labels,
+    vwap_labels,
+)
+
+# ─── Core Flask imports ───────────────────────────────────────
 from flask import (
     Flask,
     request,
@@ -28,11 +61,13 @@ from flask import (
     session
 )
 
-# ── 1) Load your .env first ──────────────────────────────────
-from dotenv import load_dotenv, set_key
-load_dotenv()
-
-# ── 2) All other imports ────────────────────────────────────
+# ─── Service imports ──────────────────────────────────────────
+from services.indicators import (
+    compute_atr,
+    daily_range_pct,
+    gap_up_pct,
+    price_above_sma
+)
 from services.alert_service import (
     get_all_indicator_settings,
     update_indicator_settings,
@@ -51,47 +86,34 @@ from services.trading_helpers import (
     buy_stock,
     sell_stock,
     setup_simulation_db,
-    init_backtest_db,
+    init_backtest_db
 )
-# Dashboard.py, at the top
-from services.backtest_service   import run_full_backtest
+from services.backtest_service import run_full_backtest
 from services.simulation_service import run_simulation_loop, stop_simulation
-from services.market_service     import fetch_data_with_timeout
-from services.etrade_service     import fetch_etrade_quote
+from services.market_service import fetch_data_with_timeout
+from services.etrade_service import fetch_etrade_quote
 try:
     from services.broker_api import fetch_live_data
 except ImportError:
     fetch_live_data = None
 
-# ── DB file paths ───────────────────────────────────────────
-DB_PATH     = os.path.join(os.getcwd(), 'alerts.db')
-SIM_DB      = os.path.join(os.getcwd(), 'simulation.db')
-BACKTEST_DB = os.path.join(os.getcwd(), 'backtest.db')
-
-# ── Flask app ───────────────────────────────────────────────
-app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET', 'supersecret')
-
-# ── Logging configuration ───────────────────────────────────
-import logging
-
-# get your sim logger and make it print to the console at DEBUG
-sim_logger = logging.getLogger('sim')
-sim_logger.setLevel(logging.DEBUG)
-handler = logging.StreamHandler()
-handler.setFormatter(logging.Formatter(
-    "%(asctime)s %(levelname)-4s %(name)s: %(message)s"
-))
-sim_logger.addHandler(handler)
-
+# ─── Logging configuration ───────────────────────────────────
+logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s %(levelname)-5s %(name)s: %(message)s'
 )
-for lib in ('werkzeug', 'urllib3', 'requests_oauthlib', 'oauthlib', 'yfinance', 'peewee'):
-    logging.getLogger(lib).setLevel(logging.WARNING)
 
-# ── Timeframe presets & simulation defaults ─────────────────
+# ─── Flask app setup ─────────────────────────────────────────
+app = Flask(__name__)
+app.secret_key = os.environ.get('FLASK_SECRET', 'supersecret')
+
+# ─── Database file paths ─────────────────────────────────────
+DB_PATH     = os.path.join(os.getcwd(), 'alerts.db')
+SIM_DB      = os.path.join(os.getcwd(), 'simulation.db')
+BACKTEST_DB = os.path.join(os.getcwd(), 'backtest.db')
+
+# ─── Timeframe presets & simulation defaults ────────────────
 TIMEFRAME_DELTAS = {
     '1mo': {'months': 1},
     '3mo': {'months': 3},
@@ -99,10 +121,9 @@ TIMEFRAME_DELTAS = {
     '1y' : {'years': 1},
 }
 DEFAULT_STARTING_CASH = 10000.0
-DEFAULT_MAX_PER_TRADE = 1000.0
+DEFAULT_MAX_PER_TRADE  = 1000.0
 
-# ── E*TRADE OAuth configuration (production only) ──────────
-# Keys filled in directly as provided
+# ─── E*TRADE OAuth configuration (production only) ──────────
 CONSUMER_KEY       = '1e0978925ddea6a6addb5436e6ff2164'
 CONSUMER_SECRET    = '0fdac4a22a68112d7e855281bab9df70af85cfd023206d15d75bcf51f1390bc2'
 OAUTH_TOKEN        = 'mcjsKyZ+GEfimgLRexsERoevbOQ9EVRrN7iJ/I13Dwg='
@@ -112,12 +133,15 @@ REQUEST_TOKEN_URL  = f'{OAUTH_HOST}/oauth/request_token'
 ACCESS_TOKEN_URL   = f'{OAUTH_HOST}/oauth/access_token'
 AUTHORIZE_URL      = 'https://us.etrade.com/e/t/etws/authorize'
 ENV_PATH           = os.path.join(os.path.dirname(__file__), '.env')
-KEY_OAUTH_TOKEN        = 'OAUTH_TOKEN'
-KEY_OAUTH_TOKEN_SECRET = 'OAUTH_TOKEN_SECRET'
+KEY_OAUTH_TOKEN         = 'OAUTH_TOKEN'
+KEY_OAUTH_TOKEN_SECRET  = 'OAUTH_TOKEN_SECRET'
 
-# ── OAuth routes ────────────────────────────────────────────
-from flask import render_template, session, redirect, url_for, flash
+# ─── OAuth routes ────────────────────────────────────────────
 from requests_oauthlib import OAuth1Session
+@app.route('/oauth_callback')
+def oauth_callback():
+    # TODO: implement OAuth callback handling
+    pass
 
 @app.route('/etrade/auth')
 def etrade_start_auth():
@@ -181,6 +205,102 @@ def etrade_handle_callback():
 
 # ── …then the rest of your routes and logic follow below…
 
+@app.context_processor
+def inject_indicator_labels():
+    return {
+        # ── SMA lengths ──
+        'sma_labels': {
+            10: "SMA (10)",
+            20: "SMA (20)",
+            50: "SMA (50)",
+        },
+        # ── RSI lengths ──
+        'rsi_len_options': {
+            7:  "RSI (7)",
+            14: "RSI (14)",
+            21: "RSI (21)",
+        },
+        'rsi_len_labels': {
+            7:  "RSI (7)",
+            14: "RSI (14)",
+            21: "RSI (21)",
+        },
+        # ── RSI thresholds ──
+        'rsi_ob_labels': {
+            70: "Overbought ≥ 70",
+            80: "Overbought ≥ 80",
+            90: "Overbought ≥ 90",
+        },
+        'rsi_os_labels': {
+            30: "Oversold ≤ 30",
+            20: "Oversold ≤ 20",
+            10: "Oversold ≤ 10",
+        },
+        # ── MACD EMA labels ──
+        'macd_fast_labels': {
+            5:  "Fast EMA 5",
+            8:  "Fast EMA 8",
+            12: "Fast EMA 12",
+        },
+        'macd_slow_labels': {
+            17: "Slow EMA 17",
+            26: "Slow EMA 26",
+            35: "Slow EMA 35",
+        },
+        'macd_signal_labels': {
+            5:  "Signal EMA 5",
+            9:  "Signal EMA 9",
+            12: "Signal EMA 12",
+        },
+        # ── (Optional) MACD presets ──
+        'macd_presets': {
+            (12, 26, 9): "MACD (12,26,9)",
+            (5, 35, 5):  "MACD (5,35,5)",
+            (8, 17, 9):  "MACD (8,17,9)",
+        },
+        # ── Bollinger Bands ──
+        'bb_length_labels': {
+            20:  "BB Length 20",
+            50:  "BB Length 50",
+            100: "BB Length 100",
+        },
+        'bb_std_labels': {
+            2.0: "Std Dev ×2",
+            2.5: "Std Dev ×2.5",
+            3.0: "Std Dev ×3",
+        },
+        # ── Volume multiplier ──
+        'vol_multiplier_labels': {
+            1.0: "Vol ≥ 1× Avg",
+            1.5: "Vol ≥ 1.5× Avg",
+            2.0: "Vol ≥ 2× Avg",
+        },
+        # ── VWAP thresholds ──
+        'vwap_threshold_labels': {
+            0.0: "VWAP+ ≥ $0.00",
+            0.5: "VWAP+ ≥ $0.50",
+            1.0: "VWAP+ ≥ $1.00",
+        },
+        # ── ATR % filters ──
+        'atr_labels': {
+            0.5: "ATR ≥ 0.5%",
+            1.0: "ATR ≥ 1.0%",
+            1.5: "ATR ≥ 1.5%",
+        },
+        # ── Daily range % filters ──
+        'range_labels': {
+            0.5: "Range ≥ 0.5%",
+            1.0: "Range ≥ 1.0%",
+            1.5: "Range ≥ 1.5%",
+        },
+        # ── Pre-market gap-up % filters ──
+        'gap_labels': {
+            1.0: "Gap ≥ 1.0%",
+            2.0: "Gap ≥ 2.0%",
+            3.0: "Gap ≥ 3.0%",
+        },
+    }
+
 
 def fetch_current_price(symbol):
     try:
@@ -199,105 +319,141 @@ def extract_backtest_settings(args):
      start = today - relativedelta(**delta)
      end   = today
 
-     return BacktestSettings(
-         start_date        = args.get('start_date', start.isoformat()),
-         end_date          = args.get('end_date',   end.isoformat()),
-         starting_cash     = int(args.get('starting_cash',10000)),
-         max_per_trade     = int(args.get('max_per_trade',1000)),
-         timeframe         = tf,
-         trailing_stop_pct = float(args.get('trailing_stop_pct',0.0)),
-         sell_after_days   = int(args.get('sell_after_days')) if args.get('sell_after_days') else None,
-         sma_on            = 'sma_on' in args,
-         rsi_on            = 'rsi_on' in args,
-         macd_on           = 'macd_on' in args,
-         bb_on             = 'bb_on' in args,
-         vol_on            = 'vol_on' in args,
-         vwap_on           = 'vwap_on' in args,
-         news_on           = 'news_on' in args,
-         sma_length        = int(args.get('sma_length',20)),
-         rsi_len           = int(args.get('rsi_len',14)),
-         rsi_overbought    = int(args.get('rsi_overbought',70)),
-         rsi_oversold      = int(args.get('rsi_oversold',30)),
-         macd_fast         = int(args.get('macd_fast',12)),
-         macd_slow         = int(args.get('macd_slow',26)),
-         macd_signal       = int(args.get('macd_signal',9)),
-         bb_length         = int(args.get('bb_length',20)),
-         bb_std            = float(args.get('bb_std',2.0)),
-         vol_multiplier    = float(args.get('vol_multiplier',1.0)),
-         vwap_threshold    = float(args.get('vwap_threshold',0.0)),
-         single_entry_only = 'single_entry_only' in args,
-         use_trailing_stop = 'use_trailing_stop' in args,
-        # ── NEW ──
-        stop_loss_pct   = float(args.get('stop_loss_pct',   0.0)),
-        take_profit_pct = float(args.get('take_profit_pct', 0.0)),
-     )
+# ── 1) Define your settings tuples ───────────────────────────────────
 
+BacktestSettings = namedtuple('BacktestSettings', [
+    # ── date & capital ──
+    'start_date', 'end_date', 'starting_cash', 'max_per_trade', 'timeframe',
+    # ── core entry filters ──
+    'sma_on', 'rsi_on', 'macd_on', 'bb_on', 'vol_on', 'vwap_on', 'news_on',
+    # ── core numeric parameters ──
+    'sma_length', 'rsi_len', 'rsi_overbought', 'rsi_oversold',
+    'macd_fast', 'macd_slow', 'macd_signal',
+    'bb_length', 'bb_std', 'vol_multiplier', 'vwap_threshold',
+    # ── advanced entry filters ──
+    'atr_on', 'atr_pct', 'range_on', 'range_pct', 'gap_on', 'gap_pct',
+    'price_sma_on',
+    # ── exit behavior ──
+    'single_entry_only', 'use_trailing_stop',
+    'trailing_stop_pct', 'sell_after_days',
+    'stop_loss_pct', 'take_profit_pct'
+])
 
 SimulationSettings = namedtuple('SimulationSettings', [
-    # toggles
-    'sma_on','rsi_on','macd_on','bb_on','vol_on','vwap_on','news_on',
-    # numeric indicators
-    'sma_length','rsi_len','rsi_overbought','rsi_oversold',
-    'macd_fast','macd_slow','macd_signal',
-    'bb_length','bb_std','vol_multiplier','vwap_threshold',
-    # extra entry/exit flags
-    'rsi_slope_on','macd_hist_on','bb_breakout_on',
-    # exit parameters
-    'trailing_stop_pct','sell_after_days',
-    # behavioral flags
-    'single_entry_only','use_trailing_stop',
-    # cash settings
-   'starting_cash','max_per_trade',
-   'stop_loss_pct','take_profit_pct',
- ])
+    # ── entry toggles ──
+    'sma_on', 'rsi_on', 'macd_on', 'bb_on', 'vol_on', 'vwap_on', 'news_on',
+    # ── entry numeric ──
+    'sma_length', 'rsi_len', 'rsi_overbought', 'rsi_oversold',
+    'macd_fast', 'macd_slow', 'macd_signal',
+    'bb_length', 'bb_std', 'vol_multiplier', 'vwap_threshold',
+    # ── advanced entry filters ──
+    'atr_on', 'atr_pct', 'range_on', 'range_pct', 'gap_on', 'gap_pct',
+    'price_sma_on',
+    # ── extra entry/exit toggles ──
+    'rsi_slope_on', 'macd_hist_on', 'bb_breakout_on',
+    'single_entry_only', 'use_trailing_stop',
+    # ── exit behavior ──
+    'trailing_stop_pct', 'sell_after_days',
+    'stop_loss_pct', 'take_profit_pct',
+    # ── capital settings ──
+    'starting_cash', 'max_per_trade'
+])
 
+# ── 2) Extract backtest settings from args ───────────────────────────
+
+def extract_backtest_settings(args):
+    return BacktestSettings(
+        # date & capital
+        start_date        = args.get('start_date'),
+        end_date          = args.get('end_date'),
+        starting_cash     = float(args.get('starting_cash', 10000)),
+        max_per_trade     = float(args.get('max_per_trade', 1000)),
+        timeframe         = args.get('timeframe'),
+        # core entry filters
+        sma_on            = 'sma_on' in args,
+        rsi_on            = 'rsi_on' in args,
+        macd_on           = 'macd_on' in args,
+        bb_on             = 'bb_on' in args,
+        vol_on            = 'vol_on' in args,
+        vwap_on           = 'vwap_on' in args,
+        news_on           = 'news_on' in args,
+        # core numeric parameters
+        sma_length        = int(args.get('sma_length', 20)),
+        rsi_len           = int(args.get('rsi_len', 14)),
+        rsi_overbought    = int(args.get('rsi_ob', 70)),
+        rsi_oversold      = int(args.get('rsi_os', 30)),
+        macd_fast         = int(args.get('macd_fast', 12)),
+        macd_slow         = int(args.get('macd_slow', 26)),
+        macd_signal       = int(args.get('macd_signal', 9)),
+        bb_length         = int(args.get('bb_length', 20)),
+        bb_std            = float(args.get('bb_std', 2.0)),
+        vol_multiplier    = float(args.get('vol_multiplier', 1.0)),
+        vwap_threshold    = float(args.get('vwap_threshold', 0.0)),
+        # advanced entry filters
+        atr_on            = 'atr_on' in args,
+        atr_pct           = float(args.get('atr_pct', 1.0)) / 100,
+        range_on          = 'range_on' in args,
+        range_pct         = float(args.get('range_pct', 1.0)) / 100,
+        gap_on            = 'gap_on' in args,
+        gap_pct           = float(args.get('gap_pct', 2.0)) / 100,
+        price_sma_on      = 'price_sma_on' in args,
+        # exit behavior
+        single_entry_only = 'single_entry_only' in args,
+        use_trailing_stop = 'use_trailing_stop' in args,
+        trailing_stop_pct = float(args.get('trailing_stop_pct', 0.0)),
+        sell_after_days   = int(args.get('sell_after_days')) if args.get('sell_after_days') else None,
+        stop_loss_pct     = float(args.get('stop_loss_pct')  or 0.0),
+        take_profit_pct   = float(args.get('take_profit_pct') or 0.0),
+    )
+
+# ── 3) Extract simulation settings from args ──────────────────────────
 
 def extract_simulation_settings(args):
     return SimulationSettings(
-      sma_on            = 'sma_on' in args,
-      rsi_on            = 'rsi_on' in args,
-      macd_on           = 'macd_on' in args,
-      bb_on             = 'bb_on' in args,
-      vol_on            = 'vol_on' in args,
-      vwap_on           = 'vwap_on' in args,
-      news_on           = 'news_on' in args,
-      sma_length        = int(args.get('sma_length', 20)),
-      rsi_len           = int(args.get('rsi_len', 14)),
-      rsi_overbought    = int(args.get('rsi_overbought', 70)),
-      rsi_oversold      = int(args.get('rsi_oversold', 30)),
-      macd_fast         = int(args.get('macd_fast', 12)),
-      macd_slow         = int(args.get('macd_slow', 26)),
-      macd_signal       = int(args.get('macd_signal', 9)),
-      bb_length         = int(args.get('bb_length', 20)),
-      bb_std            = float(args.get('bb_std', 2.0)),
-      vol_multiplier    = float(args.get('vol_multiplier', 1.0)),
-      vwap_threshold    = float(args.get('vwap_threshold', 0.0)),
-      rsi_slope_on      = 'rsi_slope_on' in args,
-      macd_hist_on      = 'macd_hist_on' in args,
-      bb_breakout_on    = 'bb_breakout_on' in args,
-      # if the form field comes back empty, fall back to 0.0 instead of trying to float('')
-      trailing_stop_pct = float(args.get('trailing_stop_pct') or 0.0),
-      sell_after_days   = int(args.get('sell_after_days')) if args.get('sell_after_days') else None,
-      single_entry_only = 'single_entry_only' in args,
-      use_trailing_stop = 'use_trailing_stop' in args,
-      # ── here are the two you were missing ──
-      starting_cash     = float(args.get('starting_cash', 10000)),
-      max_per_trade     = float(args.get('max_per_trade', 1000)),
-      stop_loss_pct     = float(args.get('stop_loss_pct')  or 0.0),
-      take_profit_pct   = float(args.get('take_profit_pct') or 0.0),
+        # entry toggles
+        sma_on            = 'sma_on' in args,
+        rsi_on            = 'rsi_on' in args,
+        macd_on           = 'macd_on' in args,
+        bb_on             = 'bb_on' in args,
+        vol_on            = 'vol_on' in args,
+        vwap_on           = 'vwap_on' in args,
+        news_on           = 'news_on' in args,
+        # entry numeric
+        sma_length        = int(args.get('sma_length', 20)),
+        rsi_len           = int(args.get('rsi_len', 14)),
+        rsi_overbought    = int(args.get('rsi_overbought', 70)),
+        rsi_oversold      = int(args.get('rsi_oversold', 30)),
+        macd_fast         = int(args.get('macd_fast', 12)),
+        macd_slow         = int(args.get('macd_slow', 26)),
+        macd_signal       = int(args.get('macd_signal', 9)),
+        bb_length         = int(args.get('bb_length', 20)),
+        bb_std            = float(args.get('bb_std', 2.0)),
+        vol_multiplier    = float(args.get('vol_multiplier', 1.0)),
+        vwap_threshold    = float(args.get('vwap_threshold', 0.0)),
+        # advanced entry filters
+        atr_on            = 'atr_on' in args,
+        atr_pct           = float(args.get('atr_pct', 1.0)) / 100,
+        range_on          = 'range_on' in args,
+        range_pct         = float(args.get('range_pct', 1.0)) / 100,
+        gap_on            = 'gap_on' in args,
+        gap_pct           = float(args.get('gap_pct', 2.0)) / 100,
+        price_sma_on      = 'price_sma_on' in args,
+        # extra entry/exit toggles
+        rsi_slope_on      = 'rsi_slope_on' in args,
+        macd_hist_on      = 'macd_hist_on' in args,
+        bb_breakout_on    = 'bb_breakout_on' in args,
+        single_entry_only = 'single_entry_only' in args,
+        use_trailing_stop = 'use_trailing_stop' in args,
+        # exit behavior
+        trailing_stop_pct = float(args.get('trailing_stop_pct', 0.0)),
+        sell_after_days   = int(args.get('sell_after_days')) if args.get('sell_after_days') else None,
+        stop_loss_pct     = float(args.get('stop_loss_pct')  or 0.0),
+        take_profit_pct   = float(args.get('take_profit_pct') or 0.0),
+        # capital
+        starting_cash     = float(args.get('starting_cash', 10000)),
+        max_per_trade     = float(args.get('max_per_trade', 1000)),
     )
 
-BacktestSettings = namedtuple('BacktestSettings', [
-    'start_date','end_date','starting_cash','max_per_trade',
-    'timeframe','trailing_stop_pct','sell_after_days',
-    'sma_on','rsi_on','macd_on','bb_on','vol_on','vwap_on','news_on',
-    'sma_length','rsi_len','rsi_overbought','rsi_oversold',
-    'macd_fast','macd_slow','macd_signal',
-    'bb_length','bb_std','vol_multiplier','vwap_threshold',
-    'single_entry_only','use_trailing_stop',
-    # ── NEW ──
-    'stop_loss_pct','take_profit_pct'
-])
 def load_your_symbols():
     # reads your SP500 list
     with open('sp500_symbols.txt') as f:
@@ -310,7 +466,25 @@ BACKTEST_DB = 'backtest.db'
 @app.route('/backtest')
 def backtest_view():
     settings = extract_backtest_settings(request.args)
-    # load symbols
+# ── Volatility & Gap Defaults ──
+defaults = {
+    "atr14_on":      True,
+    "atr_threshold": 1.4,
+    "atr_pct_on":    True,
+    "atr_pct":       0.7,
+    "range_on":      True,
+    "range_pct":     1.2,
+    "gap_on":        True,
+    "gap_pct":       1.0,
+    # ─── New defaults for exits ───
+    "single_entry_only": True,
+    "use_trailing_stop":  True,
+    "trailing_stop_pct":  0.03,
+    "sell_after_days":    "",    # no default limit
+    "stop_loss_pct":      3.0,
+    "take_profit_pct":    7.0,
+ 
+# load symbols
     with open('sp500_symbols.txt') as f:
         symbols = [s.strip() for s in f if s.strip()]
 
@@ -336,11 +510,21 @@ def backtest_view():
             print(f"[Backtest] ERROR: {e}", file=sys.stderr)
 
     return render_template(
-        'backtest.html',
-        trades=trades,
-        summary=summary,
+        "backtest.html",
         settings=settings,
-        net_return=summary['total_pnl']
+        summary=summary,
+        trades=trades,
+        sma_labels        = sma_labels,
+        rsi_len_labels    = rsi_len_labels,
+        rsi_ob_labels     = rsi_ob_labels,
+        rsi_os_labels     = rsi_os_labels,
+        macd_fast_labels  = macd_fast_labels,
+        macd_slow_labels  = macd_slow_labels,
+        macd_signal_labels= macd_signal_labels,
+        bb_length_labels  = bb_length_labels,
+        bb_std_labels     = bb_std_labels,
+        vol_mult_labels   = vol_mult_labels,
+        vwap_labels       = vwap_labels,
     )
 
 # near the top, after imports
@@ -349,6 +533,7 @@ _is_scanner_running = False
 @app.route('/scanner_status')
 def scanner_status():
     return jsonify(running=_is_scanner_running)
+
 @app.route('/run_backtest', methods=['POST'])
 def run_backtest_route():
     # 1) Grab settings & symbols
@@ -363,7 +548,7 @@ def run_backtest_route():
     if not (isinstance(result, tuple) and len(result) == 2):
         logger.warning("run_full_backtest returned unexpected result: %r", result)
         flash("⚠️ Backtest didn’t produce any data—showing an empty run", "warning")
-        trades = []
+        trades  = []
         summary = {
             'total_pnl': 0.0,
             'num_trades': 0,
@@ -378,15 +563,12 @@ def run_backtest_route():
     conn = sqlite3.connect(BACKTEST_DB)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
-
-    # 4a) Insert the run
     cur.execute(
         "INSERT INTO backtest_runs (started_at, settings_json) VALUES (?, ?)",
         (datetime.utcnow().isoformat(), json.dumps(settings._asdict()))
     )
     run_id = cur.lastrowid
 
-    # 4b) Insert each trade
     for t in trades:
         cur.execute(
             """
@@ -916,36 +1098,82 @@ def index():
     # 1) Load persisted settings (or defaults if first run)
     settings = get_all_indicator_settings()
 
-    # 2) If the user clicked “Apply” (i.e. there's any query-string),
-    #    merge those overrides into `settings`, persist, then redirect.
-    if request.args:
-        # Boolean toggles: checked ⇒ present in request.args
-        for toggle in (
-            "sma_on","rsi_on","macd_on","bb_on","vol_on",
-            "vwap_on","news_on","rsi_slope_on","macd_hist_on","bb_breakout_on"
-        ):
-            settings[toggle] = (toggle in request.args)
+    # ── Best-Gainer & Volatility/Gap Defaults ──
+    defaults = {
+        # Core indicators
+        "sma_on":            True,
+        "sma_length":        10,            # SMA-10 may capture quicker moves
+        "rsi_on":            True,
+        "macd_on":           True,
+        "bb_on":             True,
+        "vol_on":            True,
+        "vol_multiplier":    2.0,           # use 1.5× volume spike by default
+        "vwap_on":           True,
+        "vwap_threshold":    0.5,           # require price ≥ $1.0 above VWAP
+        "news_on":           False,
 
-        # Numeric filters: parse back out of the query string
-        for field in (
-            "sma_length","rsi_len","rsi_overbought","rsi_oversold",
-            "macd_fast","macd_slow","macd_signal",
-            "bb_length","bb_std","vol_multiplier","vwap_threshold"
-        ):
-            if field in request.args:
-                val = request.args[field]
-                # floating‐point for the ones that need it:
-                if field in ("bb_std","vol_multiplier","vwap_threshold"):
-                    settings[field] = float(val)
+        # New volatility/gap filters
+        "atr14_on":          True,
+        "atr_threshold":     1.4,
+        "atr_pct_on":        True,
+        "atr_pct":           0.7,
+        "range_on":          True,
+        "range_pct":         1.2,
+        "gap_on":            True,
+        "gap_pct":           1.0,
+
+        # Next-gen toggles
+        "rsi_slope_on":      True,
+        "macd_hist_on":      True,
+        "bb_breakout_on":    True,
+
+        # Trade management
+        "single_entry_only": True,
+        "use_trailing_stop": True,
+        "trailing_stop_pct": 0.03,
+        "sell_after_days":   None,
+        "stop_loss_pct":     0.03,
+        "take_profit_pct":   0.07,
+    }
+
+    # If first load (no query-string), apply recommended defaults
+    if not request.args:
+        settings.update(defaults)
+    else:
+        # 2) Merge user overrides and redirect
+        toggles = (
+            "sma_on", "rsi_on", "macd_on", "bb_on", "vol_on",
+            "vwap_on", "news_on", "rsi_slope_on", "macd_hist_on", "bb_breakout_on",
+            "atr14_on", "atr_pct_on", "range_on", "gap_on",
+            "single_entry_only", "use_trailing_stop"
+        )
+        for t in toggles:
+            settings[t] = (t in request.args)
+
+        numeric = (
+            "sma_length", "rsi_len", "rsi_overbought", "rsi_oversold",
+            "macd_fast", "macd_slow", "macd_signal",
+            "bb_length", "bb_std", "vol_multiplier", "vwap_threshold",
+            "atr_threshold", "atr_pct", "range_pct", "gap_pct",
+            "trailing_stop_pct", "sell_after_days", "stop_loss_pct", "take_profit_pct"
+        )
+        for f in numeric:
+            if f in request.args:
+                val = request.args[f]
+                # Float fields
+                if f in (
+                    "bb_std", "vol_multiplier", "vwap_threshold",
+                    "atr_pct", "range_pct", "gap_pct",
+                    "trailing_stop_pct", "stop_loss_pct", "take_profit_pct"
+                ):
+                    settings[f] = float(val)
                 else:
-                    settings[field] = int(val)
+                    settings[f] = int(val)
 
-        # Persist and clean‐URL redirect
         update_indicator_settings(settings)
         return redirect(url_for("index"))
 
-    # 3) No query‐string ⇒ build your alerts with current settings,
-    #    update match_count, persist it, then render.
+    # 3) Build alerts, persist match count, then render
     alerts = get_alerts()
     settings["match_count"] = len(alerts)
     update_indicator_settings(settings)
@@ -959,6 +1187,4 @@ def index():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    # ← add debug=True (and use_reloader if you want)
     app.run(host="0.0.0.0", port=port, debug=True, use_reloader=True)
-

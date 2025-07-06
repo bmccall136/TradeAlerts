@@ -13,10 +13,8 @@ from services.alert_service import (
     generate_sparkline
 )
 from services.indicators import (
-    calculate_macd,
-    compute_rsi,
-    compute_bollinger,
-    compute_sma
+    compute_atr, daily_range_pct, gap_up_pct, price_above_sma,
+    compute_rsi, calculate_macd, compute_bollinger, compute_sma
 )
 from services.news_service import fetch_latest_headlines
 
@@ -92,6 +90,53 @@ def analyze_symbol(sym):
     df = fetch_data_with_timeout(sym)
     if df is None or df.empty:
         return None
+
+    # ── B.1) Fetch daily df for volatility & gap filters ──
+    df_daily = fetch_data_with_timeout(sym, period='60d', interval='1d')
+    if df_daily is None or df_daily.empty:
+        return None
+
+    # ── B.2) New market-gainer filters ──
+    # Compute prev_close, and grab today's high/low from df_daily
+    prev_close = df_daily['close'].shift(1).iloc[-1]
+    today_high = df_daily['high'].iloc[-1]
+    today_low  = df_daily['low'].iloc[-1]
+    today_close= df_daily['close'].iloc[-1]
+    today_open = fetch_open_price(sym)
+
+    # 1) ATR14 absolute threshold
+    if settings.get('atr_threshold_on'):
+        atr14 = compute_atr(df_daily, length=14)
+        if atr14 < settings.get('atr_threshold', 1.2):
+            return None
+
+    # 2) ATR14/Close % threshold
+    if settings.get('atr_pct_on'):
+        # reuse atr14 if already computed
+        try:
+            atr14
+        except NameError:
+            atr14 = compute_atr(df_daily, length=14)
+        if (atr14 / today_close * 100) < settings.get('atr_pct', 1.5):
+            return None
+
+    # 3) Daily range % filter: (High−Low)/PrevClose
+    if settings.get('range_on'):
+        daily_range = (today_high - today_low) / prev_close * 100
+        if daily_range < settings.get('range_pct', 4.0):
+            return None
+
+    # 4) Pre-market gap-up % filter: (Open−PrevClose)/PrevClose
+    if settings.get('gap_on'):
+        gap = (today_open - prev_close) / prev_close * 100
+        if gap < settings.get('gap_pct', 2.5):
+            return None
+
+    # 5) (existing) Price > SMA filter
+    if settings.get('price_sma_on'):
+        series = df['Close'] if 'Close' in df else df['close']
+        if not price_above_sma(series, length=settings.get('sma_length', 20)):
+            return None
 
        # ── C) Fetch live price ──
     try:
