@@ -391,7 +391,6 @@
     </label>
     <input type="hidden" name="range_pct" value="1.2">
   </div>
-</div>
   <!-- Gap % ≥ 1.0 -->
   <div class="col-auto d-flex align-items-center">
     <div class="form-check me-2">
@@ -410,7 +409,7 @@
     <input type="hidden" name="gap_pct" value="1.0">
   </div>
 </div>
-
+</div>
 
   {# ─── 4) Exit & Risk Parameters ─── #}
   <div class="row g-3 mb-4 align-items-end">

@@ -118,13 +118,17 @@ from labels import (
     bb_length_labels, bb_std_labels,
     vol_mult_labels, vwap_labels,
 )
+from flask import url_for
+import webbrowser
 
 try:
     from services.broker_api import fetch_live_data
 except ImportError:
     fetch_live_data = None
-# dashboard.py (near top)
+# near the top of dashboard.py
 _is_scanner_running = False
+_needs_auth          = False
+
 
 # ─── Logging configuration ───────────────────────────────────
 logger = logging.getLogger(__name__)
@@ -495,7 +499,7 @@ BACKTEST_DB = 'backtest.db'
 
 @app.route("/backtest", methods=["GET", "POST"])
 def backtest_view():
-    # ─── 0) Field‐lists for POST handling ─────────────────────────
+    # ─── 0) Helper field lists ────────────────────────────────
     boolean_fields = (
         "sma_on","rsi_on","macd_on","bb_on","vol_on","vwap_on","news_on",
         "rsi_slope_on","macd_hist_on","bb_breakout_on",
@@ -511,12 +515,13 @@ def backtest_view():
         "stop_loss_pct","take_profit_pct",
         "starting_cash","max_per_trade","timeframe"
     )
+    # which of the above convert to int rather than float
     int_fields = (
         "sma_length","rsi_len","rsi_overbought","rsi_oversold",
         "macd_fast","macd_slow","macd_signal","bb_length"
     )
 
-    # ─── 1) Defaults ──────────────────────────────────────────────
+    # ─── 1) Defaults ─────────────────────────────────────────
     defaults = {
         "sma_on": True,      "sma_length": 10,
         "rsi_on": True,      "rsi_len": 14,
@@ -528,50 +533,55 @@ def backtest_view():
         "vol_on": True,      "vol_multiplier": 2.0,
         "vwap_on": True,     "vwap_threshold": 0.5,
         "news_on": False,
+
         "rsi_slope_on": True,
         "macd_hist_on": True,
         "bb_breakout_on": True,
+
         "atr14_on": True,    "atr_threshold": 1.4,
         "atr_pct_on": True,  "atr_pct": 0.7,
         "range_on": True,    "range_pct": 1.2,
         "gap_on": True,      "gap_pct": 1.0,
+
         "single_entry_only": True,
         "use_trailing_stop": True,
         "trailing_stop_pct": 0.03,
         "sell_after_days": "",
         "stop_loss_pct": 3.0,
         "take_profit_pct": 7.0,
+
         "starting_cash": 10000,
         "max_per_trade": 1000,
         "timeframe": "1mo",
     }
 
-    # ─── 1.5) Load sticky or fill defaults ────────────────────────
+    # ─── 1.5) Load persisted (or fill in defaults) ────────────
     settings = load_settings(defaults)
 
-    # ─── 2) POST → merge, save, run backtest ─────────────────────
+    # ─── 2) If POST: merge form → settings, save, run backtest ─
     if request.method == "POST":
         # Booleans
         for b in boolean_fields:
             settings[b] = (b in request.form)
-        # Numerics & timeframe
+
+        # Numerics & strings
         for f in numeric_fields:
             if f in request.form:
                 v = request.form[f]
                 if f in int_fields:
                     settings[f] = int(v)
                 elif f == "timeframe":
-                    settings[f] = v
+                    settings[f] = v  # leave as string
                 else:
                     settings[f] = float(v) if v != "" else ""
 
         save_settings(settings)
 
-        # Always run full SP500 on backtest
+        # Build the FULL S&P500 symbol list
         symbols = get_symbols(simulation=True)
         logger.info("▶️ Running backtest on %d SP500 symbols", len(symbols))
 
-        # Prep dates
+        # Prepare a settings object with start/end dates
         settings_obj = SimpleNamespace(**settings)
         delta_args   = TIMEFRAME_DELTAS.get(settings_obj.timeframe, {})
         settings_obj.start_date = datetime.now().date() - relativedelta(**delta_args)
@@ -582,6 +592,7 @@ def backtest_view():
         summary = SimpleNamespace(**summary_dict)
         logger.info("✅ Backtest complete: %d trades, P&L=%.2f", len(trades), summary.total_pnl)
 
+        # Render results
         return render_template(
             "backtest.html",
             settings=settings,
@@ -600,7 +611,7 @@ def backtest_view():
             vwap_labels=vwap_labels,
         )
 
-    # ─── 3) GET → just render empty form ─────────────────────────
+    # ─── 3) GET: just show the form, no backtest ──────────────
     return render_template(
         "backtest.html",
         settings=settings,
@@ -619,10 +630,12 @@ def backtest_view():
         vwap_labels=vwap_labels,
     )
 
-
 @app.route('/scanner_status')
 def scanner_status():
-    return jsonify(running=_is_scanner_running)
+    return jsonify(
+      running=_is_scanner_running,
+     needs_auth=_needs_auth
+    )
 
 @app.route('/run_backtest', methods=['POST'])
 def run_backtest_route():
@@ -877,21 +890,25 @@ def export_simulation():
 def start_scanner():
     global _is_scanner_running
 
-    # ── ALWAYS clear out the old sim state ──
+    # 0) Ensure our simulation DB (and its `state` table) exist
+    setup_simulation_db()
+
+    # 1) Wipe & recreate all simulation tables (calls setup_simulation_db internally)
     nuke_simulation_db()
 
-    # seed your starting cash (pulled from the form on Alerts)
+    # 2) Seed starting cash from the form
     starting_cash = float(request.form.get('starting_cash', 10000))
     set_cash(starting_cash)
 
-    # also grab max_per_trade so we can hand it back to /simulation
+    # 3) Grab max_per_trade so the UI can echo it back
     max_per_trade = float(request.form.get('max_per_trade', 1000))
 
-    # build full SP500 list and start the thread
+    # 4) Build the full S&P 500 universe
     sim_settings = extract_simulation_settings(request.form)
-    symbols = get_symbols(simulation=True)
+    symbols      = get_symbols(simulation=True)
     logger.info("▶️ Starting simulation on %d SP500 symbols", len(symbols))
 
+    # 5) Kick off the background thread
     _is_scanner_running = True
     t = threading.Thread(
         target=run_simulation_loop,
@@ -901,13 +918,11 @@ def start_scanner():
     t.start()
 
     flash("▶️ Simulation started (DB nuked first)", "success")
-    # send the user back to the live simulation dashboard
     return redirect(url_for(
         'simulation',
         starting_cash=starting_cash,
         max_per_trade=max_per_trade
     ))
-
 
 # near the top of Dashboard.py
 DEFAULT_STARTING_CASH = 10000.0
@@ -961,10 +976,9 @@ def simulation():
             live_price = fetch_etrade_quote(symbol)
             logger.info(f"[PRICE] {symbol}: live price = {live_price}")
         except HTTPError as e:
-            # if it’s a 401, kick off the OAuth dance
-            if e.response is not None and e.response.status_code == 401:
-                logger.warning(f"[PRICE] {symbol}: 401 → redirecting to auth")
-                return redirect(url_for('etrade_start_auth'))
+            if e.response.status_code == 401:
+                webbrowser.open("http://localhost:5000/etrade/auth")
+                return
             # otherwise just fall back to the DB price
             logger.warning(f"[PRICE] {symbol}: live fetch failed ({e})")
             live_price = db_last_price
@@ -1251,8 +1265,18 @@ def index():
         # … your existing merge logic …
         save_settings(settings)
         return redirect(url_for("alerts_view"))
-
     alerts = get_alerts()
+    for a in alerts:
+        try:
+            a["live_price"] = float(fetch_live_data(a["symbol"]))
+        except HTTPError as e:
+            if e.response.status_code == 401:
+                webbrowser.open("http://localhost:5000/etrade/auth")
+                return
+
+            # else fall back to whatever you store or just skip
+            current_app.logger.warning(f"[PRICE] {a['symbol']}: fetch failed ({e})")
+            a["live_price"] = None
     return render_template("alerts.html",
                            alerts=alerts,
                            settings=settings,
