@@ -12,11 +12,18 @@ from services.trading_helpers import (
 )
 from services.market_service import fetch_data_with_timeout
 from services.etrade_service import fetch_etrade_quote
-
+from requests.exceptions import HTTPError
 import pandas_market_calendars as mcal
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import logging
+import webbrowser
+from flask import url_for
+# make sure Python can find dashboard.py on your PYTHONPATH
+import sys, os
+sys.path.append(os.getcwd())
+
+
 
 logger     = logging.getLogger("sim")
 sim_logger = logger
@@ -41,30 +48,36 @@ def seconds_until_open():
             return 0
     return 24*3600  # fallback
 
-def run_simulation_loop(settings):
+def run_simulation_loop(settings, symbols):
     logger.info(f"[sim] starting run with settings={settings}")
     nuke_simulation_db()
     set_cash(settings.starting_cash)
     logger.info(f"[sim] seed cash: {get_cash():.2f}")
-
-    positions = {}
-    symbols   = load_symbols()
+    logger.info(f"[sim] will scan {len(symbols)} symbols")
 
     while not _sim_stop:
-        # ─── wait for market open ─────────────────────────────
+        # wait for market open...
         wait = seconds_until_open()
         if wait > 0:
             logger.info(f"Market closed — sleeping {wait/60:.1f} min")
             time.sleep(min(wait, 60))
             continue
 
-        # ─── now market is open: one pass over each symbol ───────
+        # ─── ENTRY PASS ───────────────────────────────────
         for sym in symbols:
             try:
                 price_live = float(fetch_etrade_quote(sym))
-            except Exception as e:
+            except HTTPError as e:
+                if e.response is not None and e.response.status_code == 401:
+                    logger.warning(f"[sim] {sym}: 401 → launching OAuth flow")
+                    webbrowser.open("http://localhost:5000/etrade/auth")
+                    return
                 logger.warning(f"[sim] {sym}: price fetch failed ({e})")
                 continue
+
+            # always initialize your filter lists
+            decisions = []
+            reasons   = []
 
             # pull bars if any indicator is on
             df = None
@@ -73,18 +86,32 @@ def run_simulation_loop(settings):
                 settings.rsi_on,
                 settings.rsi_slope_on,
                 settings.macd_hist_on,
-                settings.stop_loss_pct,
-                settings.take_profit_pct,
                 settings.bb_on,
-                settings.vwap_on
+                settings.vwap_on,
+                settings.news_on,
             ]):
                 df = fetch_data_with_timeout(sym, period='1d', interval='1m')
                 if df is None or df.empty:
                     logger.warning(f"[sim] {sym}: no market data for indicators")
                     continue
 
-            decisions = []
-            reasons   = []
+            # …rest of your logic…
+
+
+        # 2) now that we have a price, always init our filter lists
+        decisions = []
+        reasons   = []
+ 
+         # pull bars if any indicator is on
+         df = None
+         if any([...]):
+             df = fetch_data_with_timeout(sym, period='1d', interval='1m')
+
+
+        # ─── now individual checks ───
+        if settings.sma_on:
+            sma = df['Close'].rolling(settings.sma_length).mean().iloc[-1]
+
 
             # SMA
             if settings.sma_on:
@@ -175,7 +202,7 @@ def run_simulation_loop(settings):
             decisions = [(d.iloc[0] if hasattr(d, 'iloc') else d) for d in decisions]
             # Log exactly which checks failed
             if decisions and not all(decisions):
-                sim_logger.debug(
+                logger.debug(
                     f"{sym}: "
                     + ", ".join(reasons)
                     + f"  →  passing? {all(decisions)}"
@@ -203,25 +230,23 @@ def run_simulation_loop(settings):
 
         # ─── exit logic ──────────────────────────────────────
         for sym, pos in list(positions.items()):
-            price_live   = float(fetch_etrade_quote(sym))
-            entry_price  = pos['entry_price']
-            pos['price'] = price_live
+            price_live  = float(fetch_etrade_quote(sym))
+            entry_price = pos['entry_price']
 
-            # 1) FIXED STOP-LOSS
-            if getattr(settings, 'stop_loss_pct', 0) > 0:
-                if price_live <= entry_price * (1 - settings.stop_loss_pct):
-                    sell_stock(sym, pos['qty'], price_live)
-                    logger.info(f"STOP-LOSS SELL {sym} x{pos['qty']} @ {price_live:.2f}")
-                    positions.pop(sym)
-                    continue
+            # stop‐loss
+            if settings.stop_loss_pct and price_live <= entry_price * (1 - settings.stop_loss_pct):
+                sell_stock(sym, pos['qty'], price_live)
+                logger.info(f"STOP-LOSS SELL {sym} @ {price_live:.2f}")
+                positions.pop(sym)
+                continue
 
-            # 2) FIXED TAKE-PROFIT
-            if getattr(settings, 'take_profit_pct', 0) > 0:
-                if price_live >= entry_price * (1 + settings.take_profit_pct):
-                    sell_stock(sym, pos['qty'], price_live)
-                    logger.info(f"TAKE-PROFIT SELL {sym} x{pos['qty']} @ {price_live:.2f}")
-                    positions.pop(sym)
-                    continue
+            # take‐profit
+            if settings.take_profit_pct and price_live >= entry_price * (1 + settings.take_profit_pct):
+                sell_stock(sym, pos['qty'], price_live)
+                logger.info(f"TAKE-PROFIT SELL {sym} @ {price_live:.2f}")
+                positions.pop(sym)
+                continue
+
 
             # 3) UPDATE PEAK for trailing-stop
             if price_live > pos['peak_price']:
