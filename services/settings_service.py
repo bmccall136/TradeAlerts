@@ -1,0 +1,32 @@
+from peewee import Model, SqliteDatabase, BooleanField, FloatField, IntegerField, CharField, TextField
+import json
+import os
+
+# point it at its own file
+DB = SqliteDatabase(os.path.join(os.getcwd(), 'settings.db'))
+
+class BaseModel(Model):
+    class Meta:
+        database = DB
+
+class Settings(BaseModel):
+    id           = IntegerField(primary_key=True, default=1)  # always use the single row “1”
+    data         = TextField()  # JSON blob of all your settings
+
+# call this at app startup
+def init_settings_db():
+    DB.connect()
+    DB.create_tables([Settings])
+    # seed if it doesn’t exist
+    if not Settings.select().where(Settings.id == 1).exists():
+        Settings.create(id=1, data=json.dumps({}))
+
+def load_settings(defaults):
+    row = Settings.get_by_id(1)
+    saved = json.loads(row.data or "{}")
+    # overlay defaults *under* saved so you fill in missing keys
+    merged = {**defaults, **saved}
+    return merged
+
+def save_settings(settings_dict):
+    Settings.update(data=json.dumps(settings_dict)).where(Settings.id == 1).execute()
