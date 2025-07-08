@@ -120,11 +120,73 @@ from labels import (
 )
 from flask import url_for
 import webbrowser
-
+from services.trading_helpers import setup_simulation_db
 try:
     from services.broker_api import fetch_live_data
 except ImportError:
     fetch_live_data = None
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.styles import ParagraphStyle
+import os
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+import os
+import io
+from types import SimpleNamespace
+from flask import Flask, request, send_file, flash, render_template
+from datetime import datetime
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+
+# ── Dynamic Unicode font registration ────────────────────────────────
+if os.name == 'nt':  # Windows
+    font_path = r"C:\Windows\Fonts\seguiemj.ttf"     # Segoe UI Emoji
+else:                # macOS/Linux
+    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+
+try:
+    pdfmetrics.registerFont(TTFont('UnicodeFont', font_path))
+    unicode_font_name = 'UnicodeFont'
+except Exception as e:
+    print(f"[WARN] Unicode font load failed ({e}), falling back to Helvetica")
+    unicode_font_name = 'Helvetica'
+# ─────────────────────────────────────────────────────────────────────
+
+# Pick a Unicode font path based on platform
+if os.name == 'nt':  # Windows
+    # Segoe UI Emoji ships with Windows 10+ and covers 🚀📊 etc.
+    font_path = r"C:\Windows\Fonts\seguiemj.ttf"
+else:
+    # Linux fallback
+    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+
+# Try to register it; if that fails, fall back to built-in Helvetica
+try:
+    unicode_font_name = 'UnicodeFont'
+except Exception as e:
+    print(f"[WARN] Unicode font registration failed ({e}), falling back to Helvetica")
+    unicode_font_name = 'Helvetica'
+
+# Register DejaVu Sans (bundled with most systems) for full Unicode support:
+# Make a paragraph style that uses DejaVuSans:
+unicode_style = ParagraphStyle(
+    'Unicode',
+    parent=getSampleStyleSheet()['Normal'],
+    fontName='DejaVuSans'
+)
+unicode_title = ParagraphStyle(
+    'UnicodeTitle',
+    parent=getSampleStyleSheet()['Title'],
+    fontName='DejaVuSans',
+    fontSize=24,
+    alignment=1  # center
+)
+
 # near the top of dashboard.py
 _is_scanner_running = False
 _needs_auth          = False
@@ -140,7 +202,7 @@ logging.basicConfig(
 # ─── Flask app setup ─────────────────────────────────────────
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET', 'supersecret')
-
+setup_simulation_db()
 # ─── Database file paths ─────────────────────────────────────
 DB_PATH     = os.path.join(os.getcwd(), 'alerts.db')
 SIM_DB      = os.path.join(os.getcwd(), 'simulation.db')
@@ -354,22 +416,28 @@ def extract_backtest_settings(args):
 
 # ── 1) Define your settings tuples ───────────────────────────────────
 
+from collections import namedtuple
+
 BacktestSettings = namedtuple('BacktestSettings', [
-    # ── date & capital ──
+    # date & capital
     'start_date', 'end_date', 'starting_cash', 'max_per_trade', 'timeframe',
-    # ── core entry filters ──
+
+    # core entry toggles
     'sma_on', 'rsi_on', 'macd_on', 'bb_on', 'vol_on', 'vwap_on', 'news_on',
-    # ── core numeric parameters ──
+
+    # core numeric parameters
     'sma_length', 'rsi_len', 'rsi_overbought', 'rsi_oversold',
     'macd_fast', 'macd_slow', 'macd_signal',
     'bb_length', 'bb_std', 'vol_multiplier', 'vwap_threshold',
-    # ── advanced entry filters ──
+
+    # advanced entry flags
+    'rsi_slope_on', 'macd_hist_on', 'bb_breakout_on', 'price_sma_on',
     'atr_on', 'atr_pct', 'range_on', 'range_pct', 'gap_on', 'gap_pct',
-    'price_sma_on',
-    # ── exit behavior ──
+
+    # exit behavior
     'single_entry_only', 'use_trailing_stop',
     'trailing_stop_pct', 'sell_after_days',
-    'stop_loss_pct', 'take_profit_pct'
+    'stop_loss_pct', 'take_profit_pct',
 ])
 
 SimulationSettings = namedtuple('SimulationSettings', [
@@ -410,6 +478,14 @@ def extract_backtest_settings(args):
         vol_on            = 'vol_on' in args,
         vwap_on           = 'vwap_on' in args,
         news_on           = 'news_on' in args,
+        rsi_slope_on      = 'rsi_slope_on' in args,
+        macd_hist_on      = 'macd_hist_on' in args,
+        bb_breakout_on    = 'bb_breakout_on' in args,
+        price_sma_on      = 'price_sma_on' in args,
+        atr_on            = 'atr_on' in args,
+        range_on          = 'range_on' in args,
+        gap_on            = 'gap_on' in args,
+
         # core numeric parameters
         sma_length        = int(args.get('sma_length', 20)),
         rsi_len           = int(args.get('rsi_len', 14)),
@@ -423,13 +499,9 @@ def extract_backtest_settings(args):
         vol_multiplier    = float(args.get('vol_multiplier', 1.0)),
         vwap_threshold    = float(args.get('vwap_threshold', 0.0)),
         # advanced entry filters
-        atr_on            = 'atr_on' in args,
         atr_pct           = float(args.get('atr_pct', 1.0)) / 100,
-        range_on          = 'range_on' in args,
         range_pct         = float(args.get('range_pct', 1.0)) / 100,
-        gap_on            = 'gap_on' in args,
         gap_pct           = float(args.get('gap_pct', 2.0)) / 100,
-        price_sma_on      = 'price_sma_on' in args,
         # exit behavior
         single_entry_only = 'single_entry_only' in args,
         use_trailing_stop = 'use_trailing_stop' in args,
@@ -740,6 +812,159 @@ def nuke_db():
         flash(f'❌ Error nuking DB: {e}', 'danger')
     return redirect(url_for('index'))
 
+from io import BytesIO
+from flask import make_response
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+
+from types import SimpleNamespace
+
+import io
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table
+from reportlab.lib.styles import getSampleStyleSheet
+
+from reportlab.lib.enums import TA_CENTER
+from reportlab.platypus import Paragraph, Table, TableStyle, Spacer
+from reportlab.lib import colors
+
+from services.backtest_service import run_full_backtest
+from services.market_service    import get_symbols
+from dashboard         import extract_backtest_settings  # wherever you defined it
+from flask import send_file
+
+@app.route('/export_backtest_pdf')
+def export_backtest_pdf():
+    # 1) rebuild settings & run backtest
+    settings = extract_backtest_settings(request.args)
+
+    # ── REPLACE THESE TWO LINES ──
+    # symbols, trades, summary_dict = get_symbols_and_backtest(settings)
+    # summary = SimpleNamespace(**summary_dict)
+    # ── WITH THESE TWO LINES ──
+    symbols = get_symbols(simulation=True)
+    trades, summary_dict = run_full_backtest(settings, symbols)
+    summary = SimpleNamespace(**summary_dict)
+
+    # 2) PDF setup
+    buf    = io.BytesIO()
+    doc    = SimpleDocTemplate(buf, pagesize=letter)
+    styles = getSampleStyleSheet()
+
+    # Ensure you have registered a Unicode-capable font earlier:
+    #   pdfmetrics.registerFont(TTFont('UnicodeFont', font_path))
+    #   unicode_font_name = 'UnicodeFont'
+    unicode_title = ParagraphStyle(
+        'UnicodeTitle',
+        parent=styles['Title'],
+        fontName=unicode_font_name,
+        fontSize=24,
+        alignment=1
+    )
+    unicode_style = ParagraphStyle(
+        'Unicode',
+        parent=styles['Normal'],
+        fontName=unicode_font_name
+    )
+
+    elems = []
+
+    # 3) 🚀 Title
+    elems.append(Spacer(1, 12))
+    elems.append(Paragraph("🚀 TradeAlerts 🚀", unicode_title))
+    elems.append(Spacer(1, 12))
+
+    # 4) Summary table
+    summary_data = [
+        ["Starting Cash",    f"${settings.starting_cash:.2f}"],
+        ["Total P&L",        f"${summary.total_pnl:.2f}"],
+        ["Current Cash",     f"${settings.starting_cash + summary.total_pnl:.2f}"],
+        ["P&L %",            f"{(summary.total_pnl / settings.starting_cash * 100):.2f}%"],
+        ["Total Trades",     str(summary.num_trades)],
+        ["Win %",            f"{summary.win_rate_pct:.1f}%"],
+        ["Avg P/L / Trade",  f"${summary.avg_pnl_per_trade:.2f}"],
+        ["Best Trade",       f"${summary.best_trade_pnl:.2f}"],
+        ["Worst Trade",      f"${summary.worst_trade_pnl:.2f}"],
+    ]
+    tbl = Table(summary_data, hAlign='CENTER')
+    tbl.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (1, 0), '#a8d8ea'),
+        ('TEXTCOLOR',  (0, 0), (1, 0), 'white'),
+        ('ALIGN',      (0, 0), (-1, -1), 'CENTER'),
+        ('GRID',       (0, 0), (-1, -1), 0.5, colors.grey),
+    ]))
+    elems.append(tbl)
+    elems.append(Spacer(1, 12))
+
+    # 5) Enabled indicators (human-readable)
+    indicator_labels = []
+
+    # Core toggles:
+    if settings.sma_on:
+        indicator_labels.append(f"SMA ({settings.sma_length})")
+    if settings.rsi_on:
+        indicator_labels.append(f"RSI ({settings.rsi_len})")
+    if settings.macd_on:
+        indicator_labels.append(f"MACD ({settings.macd_fast},{settings.macd_slow},{settings.macd_signal})")
+    if settings.bb_on:
+        indicator_labels.append(f"BB ({settings.bb_length},σ={settings.bb_std})")
+    if settings.vol_on:
+        indicator_labels.append(f"Vol ≥ {settings.vol_multiplier}×")
+    if settings.vwap_on:
+        indicator_labels.append("VWAP+")
+    if settings.news_on:
+        indicator_labels.append("News")
+
+    # Advanced entry filters:
+    if getattr(settings, 'rsi_slope_on', False):
+        indicator_labels.append("RSI Slope ⤴")
+    if getattr(settings, 'macd_hist_on', False):
+        indicator_labels.append("MACD Hist 📊")
+    if getattr(settings, 'bb_breakout_on', False):
+        indicator_labels.append("BB Breakout 💥")
+    if getattr(settings, 'price_sma_on', False):
+        indicator_labels.append(f"Price>SMA({settings.sma_length})")
+    if getattr(settings, 'atr_on', False):
+        indicator_labels.append(f"ATR ≥ {settings.atr_pct*100:.1f}%")
+    if getattr(settings, 'range_on', False):
+        indicator_labels.append(f"Range ≥ {settings.range_pct*100:.1f}%")
+    if getattr(settings, 'gap_on', False):
+        indicator_labels.append(f"Gap ≥ {settings.gap_pct*100:.1f}%")
+
+    elems.append(Paragraph("Enabled Indicators:", styles['Heading3']))
+    elems.append(Spacer(1, 6))
+    elems.append(Paragraph(", ".join(indicator_labels), unicode_style))
+    elems.append(Spacer(1, 12))
+
+
+    # 6) Trade log
+    data = [['Symbol', 'Date', 'Action', 'Price', 'Qty', 'P/L']] + [
+        [
+            t['symbol'],
+            t['date'],
+            t['action'],
+            f"{t['price']:.2f}",
+            str(t['qty']),
+            f"{t['pnl']:.2f}" if t.get('pnl') is not None else ""
+        ]
+        for t in trades
+    ]
+    trade_tbl = Table(data, hAlign='CENTER')
+    trade_tbl.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+        ('ALIGN',      (0, 0), (-1, -1), 'CENTER'),
+        ('GRID',       (0, 0), (-1, -1), 0.25, colors.grey),
+    ]))
+    elems.append(trade_tbl)
+
+    # 7) Finish and send
+    doc.build(elems)
+    buf.seek(0)
+    return send_file(
+        buf,
+        mimetype='application/pdf',
+        download_name='backtest_report.pdf'
+    )
 
 @app.route('/clear_all', methods=['POST'])
 def clear_all_alerts():
