@@ -68,30 +68,40 @@
         N/A
       {% endif %}
     </div>
-    <div class="col">
-      <strong>P&L %:</strong>
-      {{ ((summary.total_pnl | default(0.0)) / settings.starting_cash * 100) 
-         | round(2) }}%
-    </div>
-  </div>
+   </div>
 {% endif %}
 
 
 
 
-  <div class="d-flex align-items-center position-relative mb-4">
-    <a href="{{ url_for('export_backtest') }}" class="btn btn-outline-light position-absolute start-0">
+<div class="d-flex align-items-center position-relative mb-4">
+
+  <!-- EXPORT BUTTONS -->
+  <div class="position-absolute start-0 d-flex gap-2">
+    <a href="{{ url_for('export_backtest') }}"
+       class="btn btn-outline-light">
       <i class="bi bi-download"></i> Export CSV
     </a>
-    <h2 class="text-warning mb-0 mx-auto">Backtest Dashboard</h2>
-    <form method="POST" action="{{ url_for('reset_backtest') }}" class="position-absolute end-0">
-      <button type="submit" class="btn btn-outline-danger">
-        <i class="bi bi-x-circle"></i> Reset Backtest DB
-      </button>
-    </form>
+    <a href="{{ url_for('export_backtest_pdf') }}"
+       class="btn btn-outline-light">
+      <i class="bi bi-file-earmark-pdf"></i> Export PDF
+    </a>
   </div>
 
- <form id="backtest-form" method="POST" action="{{ url_for('backtest_view') }}">
+  <!-- CENTERED TITLE -->
+  <h2 class="text-warning mb-0 mx-auto">Backtest Dashboard</h2>
+
+  <!-- RESET BUTTON -->
+  <form method="POST"
+        action="{{ url_for('reset_backtest') }}"
+        class="position-absolute end-0">
+    <button type="submit" class="btn btn-outline-danger">
+      <i class="bi bi-x-circle"></i> Reset Backtest DB
+    </button>
+  </form>
+
+</div>
+
 
     <div class="filter-toggle-group mb-4 d-flex align-items-center flex-wrap">
       {% set toggles = [
@@ -103,23 +113,41 @@
         {'name':'vwap_on','label':'VWAP','icon':'bi-calculator'},
         {'name':'news_on','label':'News','icon':'bi-newspaper'}
       ] %}
-      {% for t in toggles %}
-        <div class="form-check form-switch me-3 mb-2">
-          <input class="form-check-input" type="checkbox" id="{{ t.name }}" name="{{ t.name }}" {% if settings[t.name] %}checked{% endif %}>
-          <label class="form-check-label" for="{{ t.name }}">
-            <i class="bi {{ t.icon }}"></i> {{ t.label }}
-          </label>
-        </div>
-      {% endfor %}
-      <button type="submit" class="btn btn-success ms-auto">
-        <i class="bi bi-arrow-repeat"></i> Run Backtest
-      </button>
-		<!-- add this directly after your Run Backtest button -->
-		<span id="backtest-status" class="text-success ms-3" style="display:none; font-weight:bold;">
-		  Backtest running…
-		</span>
- 
- </div>
+<!-- full‐width flex container, space-between -->
+<div class="d-flex w-100 justify-content-between align-items-center flex-wrap mb-4">
+
+  <!-- left side: all your switches -->
+  <div class="d-flex flex-wrap align-items-center">
+    {% for t in toggles %}
+      <div class="form-check form-switch me-3 mb-2">
+        <input class="form-check-input" type="checkbox"
+               id="{{ t.name }}" name="{{ t.name }}"
+               {% if settings[t.name] %}checked{% endif %}>
+        <label class="form-check-label" for="{{ t.name }}">
+          <i class="bi {{ t.icon }}"></i> {{ t.label }}
+        </label>
+      </div>
+    {% endfor %}
+  </div>
+
+  <!-- right side: run button + status -->
+  <form id="backtest-form"
+        class="d-flex align-items-center ms-auto"
+        method="POST"
+        action="{{ url_for('run_backtest_route') }}">
+    <button type="submit" class="btn btn-success">
+      <i class="bi bi-arrow-repeat"></i> Run Backtest
+    </button>
+    <span id="backtest-status"
+          class="text-success ms-3"
+          style="display:none; font-weight:bold;">
+      Backtest running…
+    </span>
+  </form>
+
+</div>
+
+
 
 {# ─── 2) Numeric Filters ─── #}
 <div class="row g-2 align-items-end mb-4">
