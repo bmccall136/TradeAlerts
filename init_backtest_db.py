@@ -1,7 +1,7 @@
 # init_backtest_db.py
 import sqlite3
 
-conn = sqlite3.connect('backtest.db')
+conn = sqlite3.connect('BACKTEST_DB')
 c = conn.cursor()
 
 # drop old tables if they exist

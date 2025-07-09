@@ -2,19 +2,19 @@
 
 import pandas as pd
 
-def price_above_sma(df, length):
+def price_above_sma(price_series: pd.Series, length: int = 20) -> bool:
     """
-    Returns True if the most recent close is above the Simple Moving Average.
-    Expects `df` with a 'Close' column and enough history for `length`.
+    Return True if the last price is above its SMA(length), given
+    a pandas Series of prices.
     """
-    # compute the rolling SMA
-    sma = df['Close'].rolling(window=length).mean()
-    # if there isn’t enough data yet, bail out
-    if sma.isna().all():
+    # compute the rolling SMA over the series
+    sma = price_series.rolling(window=length).mean()
+    # if there isn’t enough data yet or SMA is NaN, bail out
+    if len(sma) < length or pd.isna(sma.iloc[-1]):
         return False
-    latest_sma = sma.iloc[-1]
-    latest_close = df['Close'].iloc[-1]
-    return latest_close > latest_sma
+    # compare last price to last SMA
+    return price_series.iloc[-1] > sma.iloc[-1]
+
 
 def daily_range_pct(df):
     """

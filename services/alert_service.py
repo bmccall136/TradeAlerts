@@ -5,10 +5,15 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import io
 from datetime import datetime
+from pathlib import Path
+import sqlite3
+
+ALERTS_DB = Path(__file__).parent.parent / 'alerts.db'
+print(f"🧭 Using ALERTS_DB → {ALERTS_DB.resolve()}")
 
 # Database paths
-ALERTS_DB = 'alerts.db'
-DB_PATH = 'alerts.db'
+ALERTS_DB = 'simulation.db'
+DB_PATH = 'simulation.db'
 
 # ----------------------------------------------------------------------------
 # Indicator Settings Table (run once via init script):
@@ -40,7 +45,27 @@ DB_PATH = 'alerts.db'
 # );
 # INSERT OR IGNORE INTO indicator_settings (id) VALUES (1);
 # ---------------------------------------------------------------------------
-
+def _ensure_alerts_table():
+    """Create the alerts table if missing."""
+    conn = sqlite3.connect(str(ALERTS_DB))
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS alerts (
+            symbol       TEXT PRIMARY KEY,
+            name         TEXT,
+            price        REAL,
+            time         TEXT,
+            trigger      TEXT,
+            alert_type   TEXT,
+            vwap         REAL,
+            vwap_diff    REAL,
+            qty          INTEGER,
+            buy          BOOLEAN
+        )
+    """)
+    conn.commit()
+    conn.close()
+    
 def save_indicator_settings(
     match_count,
     sma_on,     sma_length,
@@ -55,7 +80,7 @@ def save_indicator_settings(
     """
     Insert or update the single row (id=1) in indicator_settings with all parameters.
     """
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = sqlite3.connect(ALERTS_DB, timeout=30)
     conn.execute("PRAGMA journal_mode = WAL;")
     cur = conn.cursor()
     cur.execute("INSERT OR IGNORE INTO indicator_settings (id) VALUES (1);")
@@ -91,48 +116,30 @@ def save_indicator_settings(
 
 def get_all_indicator_settings():
     """
-    Fetch the single row (id=1) of indicator_settings,
-    merge with defaults, and convert toggles to bool.
+    Load indicator settings from the DB if the table exists,
+    otherwise fall back to your simulation_config.json.
     """
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    row = conn.execute(
-        "SELECT * FROM indicator_settings WHERE id = 1;"
-    ).fetchone()
-    conn.close()
+    import sqlite3, json, os
 
-    defaults = {
-        'match_count':     0,
-        'sma_on':          True,  'sma_length':     20,
-        'rsi_on':          True,  'rsi_len':        14,
-        'rsi_overbought':  70,    'rsi_oversold':   30,
-        'macd_on':         False, 'macd_fast':      12,
-        'macd_slow':       26,    'macd_signal':    9,
-        'bb_on':           False, 'bb_length':      20,
-        'bb_std':          2.0,
-        'vol_on':          False, 'vol_multiplier': 1.0,
-        'vwap_on':         True,  'vwap_threshold': 0.5,
-        'news_on':         False,
-        'rsi_slope_on':    False, 'macd_hist_on':   False, 'bb_breakout_on': False
-    }
+    try:
+        # attempt to read from the indicator_settings table
+        conn = sqlite3.connect(os.getenv("ALERT_DB_PATH", DB_PATH))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM indicator_settings LIMIT 1;").fetchone()
+        conn.close()
+        if not row:
+            return {}
+        # convert sqlite3.Row to a plain dict
+        return {k: row[k] for k in row.keys()}
 
-    if not row:
-        return defaults
-
-    settings = defaults.copy()
-    for key in row.keys():
-        if key in settings:
-            settings[key] = row[key]
-
-    for flag in [
-        'sma_on', 'rsi_on', 'macd_on', 'bb_on', 'vol_on',
-        'vwap_on', 'news_on', 'rsi_slope_on', 'macd_hist_on', 'bb_breakout_on'
-    ]:
-        settings[flag] = bool(settings.get(flag, False))
-
-    settings['match_count'] = int(settings.get('match_count', 0))
-    return settings
-
+    except sqlite3.OperationalError:
+        # table doesn’t exist → load JSON
+        try:
+            cfg_path = os.path.join(os.path.dirname(__file__), "..", "simulation_config.json")
+            with open(cfg_path) as f:
+                return json.load(f)
+        except FileNotFoundError:
+            return {}
 
 # Alias for external import
 get_indicator_settings = get_all_indicator_settings
@@ -142,7 +149,7 @@ def update_indicator_settings(settings: dict):
     Persist a full settings dict (toggling flags + numerics) into the single
     row (id=1) of indicator_settings.
     """
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = sqlite3.connect(SIMULATION_DB , timeout=30)
     conn.execute("PRAGMA journal_mode = WAL;")
     cur = conn.cursor()
     # ensure our single‐row exists
@@ -216,18 +223,17 @@ def generate_sparkline(prices):
 
 
 def get_active_alerts():
-    """
-    Return list of dicts for alerts where cleared=0, deduped by symbol.
-    """
-    conn = sqlite3.connect(ALERTS_DB)
+    # guarantee the table’s there before we query it
+    _ensure_alerts_table()
+
+    conn = sqlite3.connect(str(ALERTS_DB))
+    conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    c.execute(
-        "SELECT id, symbol, name, price, vwap, vwap_diff, triggers, sparkline, timestamp"
-        " FROM alerts WHERE cleared=0 ORDER BY timestamp DESC"
-    )
-    rows = c.fetchall()
-    columns = [d[0] for d in c.description]
+    c.execute("SELECT * FROM alerts ORDER BY timestamp DESC")
+    rows = [dict(r) for r in c.fetchall()]
     conn.close()
+    return rows
+
 
     seen, alerts = set(), []
     from services.news_service import fetch_latest_headlines

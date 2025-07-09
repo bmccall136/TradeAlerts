@@ -4,7 +4,6 @@ import logging
 from pathlib import Path
 
 from services.trading_helpers import (
-    nuke_simulation_db,
     set_cash,
     get_cash,
     buy_stock,
@@ -50,7 +49,6 @@ def seconds_until_open():
 
 def run_simulation_loop(settings, symbols):
     logger.info(f"[sim] starting run with settings={settings}")
-    nuke_simulation_db()
     set_cash(settings.starting_cash)
     logger.info(f"[sim] seed cash: {get_cash():.2f}")
     logger.info(f"[sim] will scan {len(symbols)} symbols")
@@ -75,7 +73,7 @@ def run_simulation_loop(settings, symbols):
                 logger.warning(f"[sim] {sym}: price fetch failed ({e})")
                 continue
 
-            # always initialize your filter lists
+            # initialize filter lists
             decisions = []
             reasons   = []
 
@@ -95,23 +93,12 @@ def run_simulation_loop(settings, symbols):
                     logger.warning(f"[sim] {sym}: no market data for indicators")
                     continue
 
-            # …rest of your logic…
-
-
-        # 2) now that we have a price, always init our filter lists
-        decisions = []
-        reasons   = []
- 
-         # pull bars if any indicator is on
-         df = None
-         if any([...]):
-             df = fetch_data_with_timeout(sym, period='1d', interval='1m')
-
-
-        # ─── now individual checks ───
-        if settings.sma_on:
-            sma = df['Close'].rolling(settings.sma_length).mean().iloc[-1]
-
+            # ─── now individual checks ───
+            if settings.sma_on:
+                sma = df['Close'].rolling(settings.sma_length).mean().iloc[-1]
+                ok  = price_live > sma
+                decisions.append(ok)
+                reasons.append(f"SMA pass? {ok}")
 
             # SMA
             if settings.sma_on:

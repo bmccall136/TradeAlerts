@@ -4,11 +4,8 @@ import logging
 from pathlib import Path
 
 from services.trading_helpers import (
-    nuke_simulation_db,
     set_cash,
     get_cash,
-    buy_stock,
-    sell_stock
 )
 from services.market_service import fetch_data_with_timeout
 from services.etrade_service import fetch_etrade_quote
@@ -50,7 +47,6 @@ def seconds_until_open():
 
 def run_simulation_loop(settings, symbols):
     logger.info(f"[sim] starting run with settings={settings}")
-    nuke_simulation_db()
     set_cash(settings.starting_cash)
     logger.info(f"[sim] seed cash: {get_cash():.2f}")
     logger.info(f"[sim] will scan {len(symbols)} symbols")
