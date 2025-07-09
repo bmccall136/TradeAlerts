@@ -1,0 +1,84 @@
+import sys, os
+sys.path.insert(0, os.getcwd())
+
+import logging
+
+# ─── Configure logging before anything else ─────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] %(name)s %(levelname)s: %(message)s',
+    datefmt='%H:%M:%S'
+)
+
+import os, sys
+# ensure the script’s own directory is on sys.path
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+import time
+import json
+
+# 1) Point alerts into the simulation database
+from settings import SIMULATION_DB
+os.environ["ALERT_DB_PATH"] = SIMULATION_DB
+
+# 2) Import core services after setting DB path
+from services.alert_service    import insert_alert
+from services.trading_helpers  import (
+    setup_simulation_db,
+    check_if_position_open,
+    enter_trade,
+    check_exit_orders,
+    compute_qty
+)
+from services.market_service   import get_symbols, analyze_symbol
+from dashboard                 import extract_simulation_settings
+
+def main():
+    # a) Load one-time filter settings
+    cfg = json.load(open('simulation_config.json'))
+    settings = extract_simulation_settings(cfg)
+    print(f"[SIM] Starting/resuming simulation with settings: {settings}")
+
+    # b) Initialize simulation DB (create tables if missing)
+    setup_simulation_db()
+
+    # c) Load symbol list
+    symbols = get_symbols(simulation=True)
+    print(f"[SIM] Scanning {len(symbols)} symbols every minute…")
+
+    # d) Main loop
+    while True:
+        logging.info(f"🔁 Scan cycle start: {time.strftime('%H:%M:%S')}")
+        for sym in symbols:
+            # ── call analyze_symbol with your JSON settings override ──
+            result = analyze_symbol(
+                sym,
+                simulation=True,
+                settings_override=settings
+            )
+
+            # always log what analyze_symbol returned
+            if result is None:
+                logging.info(f"{sym}: no data / skipped")
+            else:
+                logging.info(f"{sym}: price={result['price']:.2f} – triggers={result['triggers'] or '–'}")
+
+            # ── ENTRY logic ──
+            if result and result['triggers'] and not check_if_position_open(sym):
+                qty = compute_qty(settings, result['price'])
+                enter_trade(
+                    symbol=sym,
+                    price=result['price'],
+                    qty=qty,
+                    timestamp=result['timestamp'],
+                    settings=settings
+                )
+
+        # ── EXIT logic ──
+        check_exit_orders(settings)
+
+        logging.info("💤 Cycle complete, sleeping 60 s…")
+        time.sleep(60)
+
+
+if __name__ == "__main__":
+    main()

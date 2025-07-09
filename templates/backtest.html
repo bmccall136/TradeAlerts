@@ -82,10 +82,13 @@
        class="btn btn-outline-light">
       <i class="bi bi-download"></i> Export CSV
     </a>
-    <a href="{{ url_for('export_backtest_pdf') }}"
-       class="btn btn-outline-light">
-      <i class="bi bi-file-earmark-pdf"></i> Export PDF
-    </a>
+	<a
+	  href="{{ url_for('export_backtest_pdf', **request.args) }}"
+	  class="btn btn-primary"
+	>
+	  Export PDF
+	</a>
+
   </div>
 
   <!-- CENTERED TITLE -->

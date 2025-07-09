@@ -68,12 +68,7 @@
         N/A
       {% endif %}
     </div>
-    <div class="col">
-      <strong>P&L %:</strong>
-      {{ ((summary.total_pnl | default(0.0)) / settings.starting_cash * 100) 
-         | round(2) }}%
-    </div>
-  </div>
+   </div>
 {% endif %}
 
 

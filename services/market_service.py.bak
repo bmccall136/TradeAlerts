@@ -28,7 +28,7 @@ def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
                 sym,
                 period=period,
                 interval=interval,
-                auto_adjust=False,    # ← explicitly disable auto-adjust
+                auto_adjust=False,
                 progress=False,
                 threads=False
             )
@@ -44,35 +44,41 @@ def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
             logger.error(f"[ERROR] Yahoo download {sym} timed out after {timeout}s")
             return None
 
-def _has_headlines(source):
-    if hasattr(source, "empty"):
-        return not source.empty
+
+def _has_headlines(src):
+    if hasattr(src, "empty"):
+        return not src.empty
     try:
-        return len(source) > 0
+        return len(src) > 0
     except Exception:
         return False
 
 
-def _match_tags(conditions):
-    """Return list of tags where condition is True."""
-    return [tag for cond, tag in conditions if cond]
+def _match_tags(conds):
+    return [tag for cond, tag in conds if cond]
 
 
-def analyze_symbol(sym):
+def analyze_symbol(sym, simulation=False, settings_override=None):
     # ── A) Load settings ──
-    settings     = get_all_indicator_settings()
-    match_count  = settings.get('match_count', 0)
+    if simulation and settings_override is not None:
+        if hasattr(settings_override, "_asdict"):
+            settings = settings_override._asdict()
+        else:
+            settings = dict(settings_override)
+    else:
+        settings = get_all_indicator_settings()
 
-    sma_on        = bool(settings.get('sma_on', 1))
-    rsi_on        = bool(settings.get('rsi_on', 1))
-    macd_on       = bool(settings.get('macd_on', 1))
-    bb_on         = bool(settings.get('bb_on', 1))
-    vol_on        = bool(settings.get('vol_on', 1))
-    vwap_on       = bool(settings.get('vwap_on', 1))
-    news_on       = bool(settings.get('news_on', 0))
-    rsi_slope_on  = bool(settings.get('rsi_slope_on', 0))
-    macd_hist_on  = bool(settings.get('macd_hist_on', 0))
-    bb_breakout_on= bool(settings.get('bb_breakout_on', 0))
+    # booleans & numeric thresholds
+    sma_on   = bool(settings.get('sma_on', 1))
+    rsi_on   = bool(settings.get('rsi_on', 1))
+    macd_on  = bool(settings.get('macd_on', 1))
+    bb_on    = bool(settings.get('bb_on', 1))
+    vol_on   = bool(settings.get('vol_on', 1))
+    vwap_on  = bool(settings.get('vwap_on', 1))
+    news_on  = bool(settings.get('news_on', 0))
+    rsi_slope_on   = bool(settings.get('rsi_slope_on', 0))
+    macd_hist_on   = bool(settings.get('macd_hist_on', 0))
+    bb_breakout_on = bool(settings.get('bb_breakout_on', 0))
 
     sma_length    = settings['sma_length']
     rsi_len       = settings['rsi_len']
@@ -86,148 +92,108 @@ def analyze_symbol(sym):
     vol_multiplier= settings['vol_multiplier']
     vwap_threshold= settings['vwap_threshold']
 
-    # ── B) Fetch price data ──
-    df = fetch_data_with_timeout(sym)
+    # ── B) Fetch price history ──
+    if simulation:
+        df = fetch_data_with_timeout(sym, period='180d', interval='1d')
+    else:
+        df = fetch_data_with_timeout(sym, period='1d',   interval='1m')
     if df is None or df.empty:
+        logger.warning(f"[DATA] {sym}: no bars → skipping")
         return None
 
-    # ── B.1) Fetch daily df for volatility & gap filters ──
+    # normalize multi‐index columns and lowercase
+    df.columns = [
+        c[0].lower() if isinstance(c, tuple) else c.lower()
+        for c in df.columns
+    ]
+
+    # ── C) Daily bars for volatility/gap ──
     df_daily = fetch_data_with_timeout(sym, period='60d', interval='1d')
     if df_daily is None or df_daily.empty:
+        logger.warning(f"[DATA] {sym}: no daily bars → skipping")
         return None
 
-    # ── B.2) New volatility & price filters ──
-    # 1) ATR % filter
-    if settings.get('atr_on'):
-        atr = compute_atr(df_daily)
-        if (atr / df_daily['close'].iloc[-1]) < settings.get('atr_pct', 0.01):
-            return None
-
-    # 2) Daily range % filter
-    if settings.get('range_on'):
-        if daily_range_pct(df_daily) < settings.get('range_pct', 0.01):
-            return None
-
-    # 3) Pre-market gap-up % filter
-    if settings.get('gap_on'):
-        prev_close = df_daily['close'].shift().iloc[-1]
-        today_open = fetch_open_price(sym)
-        if gap_up_pct(prev_close, today_open) < settings.get('gap_pct', 0.02):
-            return None
-
-    # 4) Price > SMA filter
-    if settings.get('price_sma_on'):
-        if not price_above_sma(df['Close'] if 'Close' in df else df['close'],
-                                length=settings.get('sma_length', 20)):
-            return None
-
-       # ── C) Fetch live price ──
-    try:
-        price_live = fetch_etrade_quote(sym)
-    except Exception:
-        return None
-    if not price_live:
-        return None
-    # ── LOGGING ──
-    logger.info(f"[PRICE]  {sym}: fetched live price = {price_live}")
-
-
-    # ── D) Company name ──
-    try:
-        info   = yf.Ticker(sym).info
-        company= info.get('longName') or info.get('shortName') or sym
-    except:
-        company= sym
-
-    # ── E) Prepare close series ──
-    close_col    = df['Close']
-    price_series = (close_col.iloc[:,0] if isinstance(close_col, pd.DataFrame)
-                    else close_col)
-    last_price   = price_series.iloc[-1]
-    # ── F) Compute indicators ──
-    sma_val       = compute_sma(price_series, length=sma_length)
-    rsi_series    = compute_rsi(price_series, period=rsi_len)
-    rsi_val       = rsi_series.iloc[-1]
-
-    macd_line, sig = calculate_macd(
-        price_series,
-        fast=macd_fast,
-        slow=macd_slow,
-        signal=macd_signal
-    )
-
-    bb_up, bb_mid, bb_low = compute_bollinger(
-        price_series,
-        window=bb_length,
-        num_std=bb_std
-    )
-
-    rsi_slope  = rsi_series.diff().iloc[-1]
-    macd_hist  = (macd_line - sig).iloc[-1]
-    bb_breakout = (
-        last_price > bb_up.iloc[-1]
-        and price_series.iloc[-2] <= bb_up.iloc[-2]
-    )
-
-    # Volume filter
-    vol_series  = df['Volume']
-    vol_current = vol_series.iloc[-1]
-    avg_vol20   = vol_series.rolling(20).mean().iloc[-1]
-    vol_trigger = vol_current >= vol_multiplier * avg_vol20
-
-    # True rolling VWAP over the intraday bars
-    tp       = (df['High'] + df['Low'] + df['Close']) / 3
-    vwap_ser = (tp * vol_series).cumsum() / vol_series.cumsum()
-    latest_vwap  = vwap_ser.iloc[-1]
-    vwap_diff    = price_live - latest_vwap
-    vwap_trigger = vwap_diff >= vwap_threshold
-
-    toggles_enabled = sum([
-        sma_on, rsi_on, macd_on, bb_on,
-        vol_on, vwap_on,
-        rsi_slope_on, macd_hist_on, bb_breakout_on
-    ])
-
-    # ── G) Build & check minimum non-news triggers ──
-    conds_primary = [
-        (sma_on     and last_price > sma_val,            'SMA'),
-        (rsi_on     and rsi_val > rsi_ob,                'RSI_OB'),
-        (rsi_on     and rsi_val < rsi_os,                'RSI_OS'),
-        (macd_on    and macd_line.iloc[-1] > sig.iloc[-1],'MACD'),
-        (bb_on      and last_price > bb_up.iloc[-1],     'BB'),
-        (vol_on     and vol_trigger,                     'VOLUME'),
-        (vwap_on    and vwap_trigger,                    'VWAP'),
-        (rsi_slope_on and rsi_slope > 0,                 'RSI_SLOPE'),
-        (macd_hist_on and macd_hist > 0,                 'MACD_HIST'),
-        (bb_breakout_on and bb_breakout,                 'BB_BREAK'),
+    df_daily.columns = [
+        c[0].lower() if isinstance(c, tuple) else c.lower()
+        for c in df_daily.columns
     ]
 
-    # ── H) Fetch news ──
-    headlines = []
-    if news_on:
+    # ── D) Determine “live” price ──
+    if simulation:
+        price_live = float(df['close'].iloc[-1])
+        logger.info(f"[SIM ]  {sym}: price = {price_live}")
+    else:
         try:
-            headlines = fetch_latest_headlines(sym)
+            price_live = fetch_etrade_quote(sym)
+            logger.info(f"[PRICE]  {sym}: price = {price_live}")
         except Exception as e:
-            logger.warning(f"[NEWS] {sym}: {e}")
-        if _has_headlines(headlines):
-            logger.info(f"[NEWS] {sym}: got news")
+            logger.error(f"[E*TRADE] {sym}: {e}")
+            return None
 
-    # ── J) Build display tags ──
-    conds_display = [
-        (sma_on     and last_price > sma_val,          f"SMA 📈 ({sma_length})"),
-        (rsi_on     and rsi_val > rsi_ob,              'RSI 📈'),
-        (macd_on    and macd_line.iloc[-1] > sig.iloc[-1], 'MACD 🚀'),
-        (bb_on      and last_price > bb_up.iloc[-1],   'BB 📈'),
-        (vol_on     and vol_trigger,                   f"VOL 🔊 ({vol_current/avg_vol20:.2f}×)"),
-        (vwap_on    and vwap_trigger,                  f"VWAP+ (${vwap_diff:.2f})"),
-        (news_on    and _has_headlines(headlines),     '📰'),
-        (rsi_slope_on and rsi_slope > 0,               "RSI Slope ⤴"),
-        (macd_hist_on and macd_hist > 0,               "MACD Hist 📊"),
-        (bb_breakout_on and bb_breakout,               "BB Breakout 💥"),
+    # ── E) Company name ──
+    try:
+        info    = yf.Ticker(sym).info
+        company = info.get('longName') or info.get('shortName') or sym
+    except Exception:
+        company = sym
+
+    # ── F) Market-gainer filters ──
+    prev_close = df_daily['close'].shift(1).iloc[-1]
+    today_high = df_daily['high'].iloc[-1]
+    today_low  = df_daily['low'].iloc[-1]
+    today_open = df_daily['open'].iloc[-1]
+
+    # ── G) Indicators ──
+    cs = df['close']
+    last_price = float(cs.iloc[-1])
+
+    sma_val    = compute_sma(cs, length=sma_length)
+    rsi_series = compute_rsi(cs, period=rsi_len)
+    rsi_val    = rsi_series.iloc[-1]
+    macd_line, sig = calculate_macd(cs, fast=macd_fast, slow=macd_slow, signal=macd_signal)
+    bb_up, bb_mid, bb_low = compute_bollinger(cs, window=bb_length, num_std=bb_std)
+    rsi_slope = rsi_series.diff().iloc[-1]
+    macd_hist = (macd_line - sig).iloc[-1]
+    bb_break = (last_price > bb_up.iloc[-1] and cs.iloc[-2] <= bb_up.iloc[-2])
+
+    vol_series  = df['volume']
+    vol_cur     = vol_series.iloc[-1]
+    avg_vol20   = vol_series.rolling(20).mean().iloc[-1]
+    vol_trig    = vol_cur >= vol_multiplier * avg_vol20
+
+    tp     = (df['high'] + df['low'] + df['close']) / 3
+    vwap   = (tp * vol_series).cumsum() / vol_series.cumsum()
+    latest_vwap = float(vwap.iloc[-1])
+    vwap_diff   = price_live - latest_vwap
+    vwap_trig   = vwap_diff >= vwap_threshold
+
+    # ── H) Build tags ──
+    conds = [
+        (sma_on   and last_price > sma_val,           f"SMA 📈 ({sma_length})"),
+        (rsi_on   and rsi_val    > rsi_ob,            'RSI 📈'),
+        (macd_on  and macd_line.iloc[-1] > sig.iloc[-1], 'MACD 🚀'),
+        (bb_on    and last_price > bb_up.iloc[-1],    'BB 📈'),
+        (vol_on   and vol_trig,                       f"VOL 🔊 ({vol_cur/avg_vol20:.2f}×)"),
+        (vwap_on  and vwap_trig,                      f"VWAP+ (${vwap_diff:.2f})"),
+        (rsi_slope_on  and rsi_slope > 0,             "RSI Slope ⤴"),
+        (macd_hist_on  and macd_hist > 0,             "MACD Hist 📊"),
+        (bb_breakout_on and bb_break,                 "BB Breakout 💥"),
     ]
-    display = _match_tags(conds_display)
+    tags = _match_tags(conds)
 
-    # ── K) Insert & return ──
+    if news_on:
+        heads = fetch_latest_headlines(sym)
+        if _has_headlines(heads):
+            tags.append('📰')
+
+    # ── I) Sparkline ──
+    try:
+        intr = yf.Ticker(sym).history(period='1d', interval='1m', auto_adjust=False)
+        spark = generate_sparkline(intr['Close'] if 'Close' in intr else intr.iloc[:,0])
+    except Exception:
+        spark = generate_sparkline(cs.tolist())
+
+    # ── J) Insert & return ──
     payload = {
         'symbol':    sym,
         'price':     price_live,
@@ -235,56 +201,22 @@ def analyze_symbol(sym):
         'name':      company,
         'vwap':      round(latest_vwap, 2),
         'vwap_diff': round(vwap_diff, 2),
-        'triggers':  ','.join(display),
+        'triggers':  ','.join(tags),
+        'sparkline': spark
     }
-    # ── L) Fetch intraday or fallback to daily for sparkline ──
-    try:
-        intraday = yf.Ticker(sym).history(
-            period='1d',
-            interval='1m',
-            auto_adjust=False
-        )
-        if intraday is not None and not intraday.empty:
-            close_intraday = intraday['Close']
-            if isinstance(close_intraday, pd.DataFrame):
-                close_intraday = close_intraday.iloc[:, 0]
-            spark_data = close_intraday.tolist()
-            logger.info(f"[SPARK] {sym}: using intraday data ({len(spark_data)} pts)")
-        else:
-            spark_data = price_series.tolist()
-            logger.info(f"[SPARK] {sym}: no intraday → daily data ({len(spark_data)} pts)")
-    except Exception as e:
-        spark_data = price_series.tolist()
-        logger.warning(f"[SPARK] {sym}: intraday fetch failed ({e}) → daily ({len(spark_data)} pts)")
-
-    payload['sparkline'] = generate_sparkline(spark_data)
-
-    # ── M) Insert & return ──
     insert_alert(**payload)
-    logger.info(f"[ALERT] {sym}: {display}")
+    logger.info(f"[ALERT] {sym}: {tags}")
     return payload
 
-# services/market_service.py
 
-import os
-import pandas as pd
-
-def get_symbols(simulation=False,
-                clean_path='sp500_symbols_clean.txt'):
-    """
-    - If simulation=False (your live scanner), fall back to the wiki scrape.
-    - If simulation=True (your backtest), load from the cleaned file.
-    """
+def get_symbols(simulation=False, clean_path='sp500_symbols_clean.txt'):
     if simulation:
-        # backtest: only tickers that passed Yahoo data check
         try:
             with open(clean_path) as f:
-                return [line.strip().upper() for line in f if line.strip()]
+                return [l.strip().upper() for l in f if l.strip()]
         except FileNotFoundError:
-            print(f"[WARN] '{clean_path}' not found, returning empty list.")
+            logger.warning(f"'{clean_path}' not found → no symbols")
             return []
-
-    # scanner: original live scrape
     try:
         tables = pd.read_html(
             "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
@@ -298,10 +230,5 @@ def get_symbols(simulation=False,
                 .str.upper()
                 .tolist())
     except Exception:
-        # fallback to bundled symbols.txt
-        path = os.path.join(os.path.dirname(__file__), 'symbols.txt')
-        if os.path.exists(path):
-            return [l.strip().upper() for l in open(path) if l.strip()]
-        return ['AAPL', 'MSFT', 'GOOG', 'TSLA']
-
-
+        fallback = os.path.join(os.path.dirname(__file__), 'symbols.txt')
+        return [l.strip().upper() for l in open(fallback) if l.strip()]

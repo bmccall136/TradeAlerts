@@ -1,0 +1,42 @@
+{
+  "sma_on": true,
+  "rsi_on": true,
+  "macd_on": true,
+  "bb_on": true,
+  "vol_on": true,
+  "vwap_on": true,
+  "news_on": false,
+
+  "sma_length": 20,
+  "rsi_len": 14,
+  "rsi_overbought": 70,
+  "rsi_oversold": 30,
+  "macd_fast": 12,
+  "macd_slow": 26,
+  "macd_signal": 9,
+  "bb_length": 20,
+  "bb_std": 2.0,
+  "vol_multiplier": 1.0,
+  "vwap_threshold": 0.0,
+
+  "rsi_slope_on": true,
+  "macd_hist_on": true,
+  "bb_breakout_on": true,
+  "price_sma_on": true,
+  "atr_on": true,
+  "atr_pct": 1.0,
+  "range_on": true,
+  "range_pct": 1.0,
+  "gap_on": true,
+  "gap_pct": 2.0,
+
+  "single_entry_only": true,
+  "use_trailing_stop": true,
+  "trailing_stop_pct": 0.05,
+  "sell_after_days": 7,
+  "stop_loss_pct": 3.0,
+  "take_profit_pct": 7.0,
+
+  "starting_cash": 10000,
+  "max_per_trade": 1000
+}

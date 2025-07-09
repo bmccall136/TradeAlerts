@@ -1,6 +1,7 @@
 import sqlite3
 import os
 from datetime import datetime
+from settings import SIMULATION_DB
 
 # Path to your simulation database file; adjust as needed
 SIM_DB = os.path.join(os.getcwd(), 'simulation.db')
@@ -8,7 +9,7 @@ SIM_DB = os.path.join(os.getcwd(), 'simulation.db')
 
 def init_simulation_db():
     print("🔧 initializing simulation.db schema…")
-    conn = sqlite3.connect(SIM_DB, detect_types=sqlite3.PARSE_DECLTYPES)
+    conn = sqlite3.connect(SIMULATION_DB, detect_types=sqlite3.PARSE_DECLTYPES)
     cur = conn.cursor()
 
     # drop tables if they exist
@@ -35,6 +36,16 @@ def init_simulation_db():
       );
     """)
 
+    cur.execute("""
+         CREATE TABLE IF NOT EXISTS positions (
+             symbol    TEXT,
+             entry_ts  TIMESTAMP,
+             entry_px  REAL,
+             qty       INTEGER,
+             stop_px   REAL,
+             target_px REAL
+         )
+     """)
     # recreate simulation_trades
     cur.execute("""
       CREATE TABLE simulation_trades (
@@ -47,6 +58,22 @@ def init_simulation_db():
         pnl REAL
       );
     """)
+    # ── ensure alerts table exists so insert_alert() can run ──
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS alerts (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol     TEXT NOT NULL,
+            price      REAL NOT NULL,
+            time       TEXT NOT NULL,  -- <-- FIXED
+            cleared    TEXT,
+            name       TEXT,
+            vwap       REAL,
+            vwap_diff  REAL,
+            triggers   TEXT,
+            sparkline  BLOB
+        )
+    """)
+
 
     # initialize the one row of state
     cur.execute("INSERT INTO state (id, cash, realized_pl) VALUES (1, 10000, 0);")

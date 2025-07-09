@@ -1,83 +1,96 @@
-# services/trading_helpers.py
-
 import sqlite3
-from datetime import datetime
-from config import SIM_DB, BACKTEST_DB
+from datetime import datetime, timedelta
+from pathlib import Path
+from settings import SIMULATION_DB, BACKTEST_DB
+import logging
 
-# ─── Internal connect helper ────────────────────────────────
+# a module‐level logger for trading_helpers:
+logger = logging.getLogger(__name__)
+ 
+# at the top of services/trading_helpers.py
+from services.broker_api import buy_stock, sell_stock
+
+
 def _connect():
-    return sqlite3.connect(SIM_DB, detect_types=sqlite3.PARSE_DECLTYPES)
-
-# ─── Schema setup ──────────────────────────────────────────
+    return sqlite3.connect(SIMULATION_DB, detect_types=sqlite3.PARSE_DECLTYPES)
 def setup_simulation_db():
     """
-    Ensure the simulation schema exists and seed the state row.
-    Tables:
-      - state       (id=1, cash REAL, realized_pl REAL)
-      - holdings    (symbol TEXT PK, qty INT, avg_cost REAL, last_price REAL)
-      - simulation_trades
+    Create our core simulation tables (state, holdings, positions,
+    simulation_trades, alerts) if they don’t already exist.
     """
-    conn = _connect()
+    conn = sqlite3.connect(SIMULATION_DB, detect_types=sqlite3.PARSE_DECLTYPES)
     cur  = conn.cursor()
 
-    # State table
+    # state table
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS state (
-      id           INTEGER PRIMARY KEY CHECK (id = 1),
-      cash         REAL    NOT NULL DEFAULT 0.0,
-      realized_pl  REAL    NOT NULL DEFAULT 0.0
-    );
-    """)
-    cur.execute("INSERT OR IGNORE INTO state (id, cash, realized_pl) VALUES (1, 0.0, 0.0);")
-
-    # Holdings table
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS holdings (
-      symbol      TEXT PRIMARY KEY,
-      qty         INTEGER NOT NULL,
-      avg_cost    REAL    NOT NULL,
-      last_price  REAL    NOT NULL
-    );
+        CREATE TABLE IF NOT EXISTS state (
+            id           INTEGER PRIMARY KEY CHECK (id = 1),
+            cash         REAL DEFAULT 0,
+            realized_pl  REAL DEFAULT 0
+        )
     """)
 
-    # Trades table
+    # holdings table
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS simulation_trades (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      symbol     TEXT    NOT NULL,
-      action     TEXT    NOT NULL CHECK (action IN ('BUY','SELL')),
-      price      REAL    NOT NULL,
-      qty        INTEGER NOT NULL,
-      trade_time TEXT    NOT NULL,
-      pnl        REAL
-    );
+        CREATE TABLE IF NOT EXISTS holdings (
+            symbol     TEXT PRIMARY KEY,
+            qty        INTEGER NOT NULL,
+            avg_cost   REAL NOT NULL,
+            last_price REAL NOT NULL
+        )
     """)
+
+    # open positions (for exit logic)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS positions (
+            symbol    TEXT,
+            entry_ts  TIMESTAMP,
+            entry_px  REAL,
+            qty       INTEGER,
+            stop_px   REAL,
+            target_px REAL
+        )
+    """)
+
+    # trade history
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS simulation_trades (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol     TEXT NOT NULL,
+            action     TEXT CHECK(action IN ('BUY','SELL')) NOT NULL,
+            price      REAL NOT NULL,
+            qty        INTEGER NOT NULL,
+            trade_time TEXT NOT NULL,
+            pnl        REAL
+        )
+    """)
+
+    # ── ALERTS: drop old and recreate with `timestamp` ──
+    cur.execute("DROP TABLE IF EXISTS alerts;")
+    cur.execute("""
+        CREATE TABLE alerts (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol     TEXT    NOT NULL,
+            price      REAL    NOT NULL,
+            timestamp  TEXT    NOT NULL,    -- renamed from `time`
+            cleared    TEXT,
+            name       TEXT,
+            vwap       REAL,
+            vwap_diff  REAL,
+            triggers   TEXT,
+            sparkline  BLOB
+        )
+    """)
+
+    # ensure we have one row in state
+    cur.execute("INSERT OR IGNORE INTO state (id, cash, realized_pl) VALUES (1, 10000, 0);")
 
     conn.commit()
     conn.close()
-def load_your_symbols():
-    """Load your symbol list from the SP500 file."""
-    with open(Path(__file__).parent.parent / "sp500_symbols.txt") as f:
-        return [s.strip() for s in f if s.strip()]
 
-# ─── Hard reset ─────────────────────────────────────────────
-def nuke_simulation_db():
-    """
-    Drop & recreate the entire simulation schema with fresh state.
-    """
-    conn = _connect()
-    cur  = conn.cursor()
-    cur.executescript("""
-    DROP TABLE IF EXISTS state;
-    DROP TABLE IF EXISTS holdings;
-    DROP TABLE IF EXISTS simulation_trades;
-    """)
-    conn.commit()
-    conn.close()
-    setup_simulation_db()
-
-# ─── Data accessors ─────────────────────────────────────────
+# ——— Cash accessors —————————————————————————————
 def get_cash() -> float:
+    """Return current cash balance."""
     conn = _connect()
     cur  = conn.cursor()
     cur.execute("SELECT cash FROM state WHERE id = 1;")
@@ -86,169 +99,226 @@ def get_cash() -> float:
     return float(row[0]) if row else 0.0
 
 def set_cash(amount: float):
+    """Overwrite cash balance (used by dashboard reset etc)."""
     conn = _connect()
     cur  = conn.cursor()
     cur.execute("UPDATE state SET cash = ? WHERE id = 1;", (amount,))
     conn.commit()
     conn.close()
+# ─── Internal connect helper ────────────────────────────────
+def _connect(db: str = 'simulation'):
+    return sqlite3.connect(SIMULATION_DB, detect_types=sqlite3.PARSE_DECLTYPES)
 
-def get_realized_pl() -> float:
+# ─── Portfolio accessors ────────────────────────────────────
+def check_if_position_open(symbol: str) -> bool:
+    """
+    Return True if there's any net long position for the symbol.
+    """
     conn = _connect()
     cur  = conn.cursor()
-    cur.execute("SELECT realized_pl FROM state WHERE id = 1;")
+    cur.execute("SELECT qty FROM holdings WHERE symbol = ?", (symbol,))
     row = cur.fetchone()
     conn.close()
-    return float(row[0]) if row else 0.0
+    return (row[0] if row else 0) > 0
 
-def get_unrealized_pl() -> float:
-    conn     = _connect()
-    cur      = conn.cursor()
-    cur.execute("SELECT symbol, qty, avg_cost, last_price FROM holdings;")
-    total = 0.0
-    for sym, qty, avg, last in cur.fetchall():
-        total += (last - avg) * qty
-    conn.close()
-    return total
+def compute_qty(settings, price: float) -> int:
+    """
+    Compute shares to buy based on max_per_trade.
+    """
+    return max(1, int(settings.max_per_trade / price))
 
-import sqlite3
-
-def get_holdings():
-    conn = _connect()
-    conn.row_factory = sqlite3.Row
-    cur  = conn.cursor()
-    cur.execute("SELECT symbol, qty, avg_cost, last_price FROM holdings;")
-    rows = cur.fetchall()
-    conn.close()
-    return rows
-
-
-    formatted = []
-    for symbol, qty, avg_cost, last_price in rows:
-        value      = last_price * qty
-        change     = last_price - avg_cost
-        change_pct = (change / avg_cost * 100) if avg_cost else 0.0
-        total_gain = change * qty
-        day_gain   = total_gain
-
-        formatted.append({
-            'symbol'      : symbol,
-            'qty'         : qty,
-            'price_paid'  : round(avg_cost,    2),
-            'last_price'  : round(last_price,  2),
-            'value'       : round(value,       2),
-            'day_gain'    : round(day_gain,    2),
-            'total_gain'  : round(total_gain,  2),
-            'change_pct'  : round(change_pct,  1),
-        })
-
-    return formatted
-
-
-def get_trades():
+# ——— New ENTER/EXIT logic —————————————————————————————
+def enter_trade(symbol, price, qty, timestamp, settings):
     conn = _connect()
     cur  = conn.cursor()
-    cur.execute("""
-      SELECT symbol, action, price, qty, trade_time, pnl
-        FROM simulation_trades
-       ORDER BY trade_time;
-    """)
-    rows = cur.fetchall()
-    conn.close()
-    return rows
 
-# ─── Trading operations ─────────────────────────────────────
-def buy_stock(symbol: str, qty: int, price: float, trade_time: str = None):
-    conn = _connect()
-    cur  = conn.cursor()
-    # check cash
-    cur.execute("SELECT cash, realized_pl FROM state WHERE id = 1;")
-    cash_now, realized = cur.fetchone()
+    # 1) check cash
+    cur.execute("SELECT cash FROM state WHERE id=1")
+    cash = cur.fetchone()[0]
     cost = price * qty
-    if cash_now < cost:
+    if cash < cost:
+        logger.warning(f"Not enough cash to BUY {qty}×{symbol}@{price:.2f} (have ${cash:.2f}, need ${cost:.2f})")
         conn.close()
-        raise ValueError("Insufficient cash")
-    tstamp = trade_time or datetime.utcnow().isoformat(sep=' ')
-    # record trade
-    cur.execute("""
-      INSERT INTO simulation_trades
-        (symbol, action, price, qty, trade_time, pnl)
-      VALUES (?, 'BUY', ?, ?, ?, NULL);
-    """, (symbol, price, qty, tstamp))
-    # deduct cash
-    cur.execute("UPDATE state SET cash = cash - ? WHERE id = 1;", (cost,))
-    # upsert holding
-    cur.execute("SELECT qty, avg_cost FROM holdings WHERE symbol = ?;", (symbol,))
+        return False
+
+    # 2) record the buy
+    cur.execute(
+        "INSERT INTO simulation_trades (symbol, action, price, qty, trade_time) VALUES (?,?,?,?,?)",
+        (symbol, 'BUY', price, qty, timestamp)
+    )
+
+    # 3) deduct cash
+    cur.execute("UPDATE state SET cash = cash - ? WHERE id = 1", (cost,))
+
+    # 4) update holdings: new_avg = (old_avg*old_qty + cost) / (old_qty + qty)
+    cur.execute("SELECT qty, avg_cost FROM holdings WHERE symbol = ?", (symbol,))
     row = cur.fetchone()
     if row:
         old_qty, old_avg = row
         new_qty = old_qty + qty
-        new_avg = ((old_avg * old_qty) + cost) / new_qty
+        new_avg = (old_avg * old_qty + cost) / new_qty
         cur.execute("""
-          UPDATE holdings
-             SET qty = ?, avg_cost = ?, last_price = ?
-           WHERE symbol = ?;
+            UPDATE holdings
+               SET qty       = ?,
+                   avg_cost  = ?,
+                   last_price= ?
+             WHERE symbol = ?
         """, (new_qty, new_avg, price, symbol))
     else:
         cur.execute("""
-          INSERT INTO holdings (symbol, qty, avg_cost, last_price)
-          VALUES (?, ?, ?, ?);
+            INSERT INTO holdings(symbol, qty, avg_cost, last_price)
+            VALUES (?, ?, ?, ?)
         """, (symbol, qty, price, price))
 
     conn.commit()
     conn.close()
+    logger.info(f"ENTER  {symbol}  qty={qty} @ {price:.2f}, cash left=${cash-cost:.2f}")
+    return True
 
-def sell_stock(symbol: str, qty: int, price: float, trade_time: str = None):
+def check_exit_orders(settings) -> None:
+    """
+    Scan open positions and execute sells based on stop-loss, take-profit, and time-based exits.
+    """
     conn = _connect()
     cur  = conn.cursor()
-    # load state and holding
-    cur.execute("SELECT cash, realized_pl FROM state WHERE id = 1;")
-    cash_now, realized = cur.fetchone()
-    cur.execute("SELECT qty, avg_cost FROM holdings WHERE symbol = ?;", (symbol,))
-    row = cur.fetchone()
-    if not row or row[0] < qty:
-        conn.close()
-        raise ValueError("Not enough shares")
-    old_qty, avg_cost = row
-    proceeds = price * qty
+    cur.execute("SELECT symbol, qty, avg_cost FROM holdings;")
+    positions = cur.fetchall()
+    conn.close()
+
+    from services.broker_api import sell_stock
+
+    for symbol, qty, avg_cost in positions:
+        try:
+            current = fetch_etrade_quote(symbol)
+        except Exception:
+            continue
+
+        pnl_pct = ((current - avg_cost) / avg_cost * 100) if avg_cost else 0.0
+
+        # stop-loss
+        if settings.stop_loss_pct and pnl_pct <= -settings.stop_loss_pct:
+            sell_stock(symbol, qty, current)
+            continue
+
+        # take-profit
+        if settings.take_profit_pct and pnl_pct >= settings.take_profit_pct:
+            sell_stock(symbol, qty, current)
+            continue
+
+        # time-based exit
+        if settings.sell_after_days:
+            conn2 = _connect()
+            c2    = conn2.cursor()
+            c2.execute(
+                "SELECT trade_time FROM simulation_trades "
+                "WHERE symbol=? AND action='BUY' "
+                "ORDER BY trade_time ASC LIMIT 1;",
+                (symbol,)
+            )
+            first_time = c2.fetchone()[0]
+            conn2.close()
+            # if held longer than configured days
+            from datetime import datetime, timedelta
+            entry_dt = datetime.fromisoformat(first_time)
+            if datetime.utcnow() - entry_dt >= timedelta(days=settings.sell_after_days):
+                sell_stock(symbol, qty, current)
+
+def exit_trade(symbol: str, price: float, qty: int, trade_time: str):
+    conn = _connect()
+    c    = conn.cursor()
+
+    # 1) record the SELL
+    c.execute("""
+      INSERT INTO simulation_trades(symbol, action, price, qty, trade_time)
+      VALUES (?, 'SELL', ?, ?, ?)
+    """, (symbol, price, qty, trade_time))
+
+    # 2) credit cash
+    c.execute("UPDATE state SET cash = cash + ? WHERE id = 1;", (price * qty,))
+
+    # 3) realized P/L
+    c.execute("SELECT avg_cost FROM holdings WHERE symbol = ?", (symbol,))
+    avg_cost = c.fetchone()[0]
     pl = (price - avg_cost) * qty
-    tstamp = trade_time or datetime.utcnow().isoformat(sep=' ')
-    # record trade
-    cur.execute("""
-      INSERT INTO simulation_trades
-        (symbol, action, price, qty, trade_time, pnl)
-      VALUES (?, 'SELL', ?, ?, ?, ?);
-    """, (symbol, price, qty, tstamp, pl))
-    # update holding
-    new_qty = old_qty - qty
-    if new_qty:
-        cur.execute("""
+    c.execute("UPDATE state SET realized_pl = realized_pl + ? WHERE id = 1;", (pl,))
+
+    # 4) shrink or delete holdings
+    c.execute("SELECT qty FROM holdings WHERE symbol = ?", (symbol,))
+    current_qty = c.fetchone()[0]
+    if qty < current_qty:
+        new_qty = current_qty - qty
+        c.execute("""
           UPDATE holdings
              SET qty = ?, last_price = ?
-           WHERE symbol = ?;
+           WHERE symbol = ?
         """, (new_qty, price, symbol))
     else:
-        cur.execute("DELETE FROM holdings WHERE symbol = ?;", (symbol,))
-    # credit cash & realized P/L
-    cur.execute("""
-      UPDATE state
-         SET cash = cash + ?, realized_pl = realized_pl + ?
-       WHERE id = 1;
-    """, (proceeds, pl))
+        c.execute("DELETE FROM holdings WHERE symbol = ?", (symbol,))
 
     conn.commit()
     conn.close()
+# ─── Portfolio overview ─────────────────────────────────────────
+def get_holdings() -> list:
+    """
+    Return a list of current holdings as tuples:
+      (symbol:str, qty:int, avg_cost:float, last_price:float)
+    """
+    conn = _connect()
+    cur  = conn.cursor()
+    cur.execute("SELECT symbol, qty, avg_cost, last_price FROM holdings;")
+    rows = cur.fetchall()
+    conn.close()
+    return rows
 
-# ─── Backtest DB init ──────────────────────────────────────
+# ─── Trade history ─────────────────────────────────────────
+def get_trades(limit: int = 100) -> list:
+    """
+    Return the most recent simulated trades as:
+      [(trade_time, symbol, action, qty, price, pnl), ...]
+    """
+    conn = _connect()
+    cur  = conn.cursor()
+    cur.execute("""
+      SELECT trade_time, symbol, action, qty, price, pnl
+        FROM simulation_trades
+       ORDER BY trade_time DESC
+       LIMIT ?
+    """, (limit,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+# ─── P/L metrics ────────────────────────────────────────────
+def get_realized_pl() -> float:
+    """Return total realized P/L from your simulation state."""
+    conn = _connect()
+    cur  = conn.cursor()
+    cur.execute("SELECT realized_pl FROM state WHERE id = 1;")
+    row = cur .fetchone()
+    conn.close()
+    return float(row[0]) if row else 0.0
+
+def get_unrealized_pl() -> float:
+    """
+    Sum up (last_price - avg_cost) * qty for all open holdings.
+    """
+    conn = _connect()
+    cur  = conn.cursor()
+    cur.execute("SELECT qty, avg_cost, last_price FROM holdings;")
+    total = 0.0
+    for qty, avg_cost, last_price in cur.fetchall():
+        total += (last_price - avg_cost) * qty
+    conn.close()
+    return total
 def init_backtest_db():
-    from config import BACKTEST_SCHEMA
+    """
+    Create the backtest database schema (independent of simulation).
+    """
+    from settings import BACKTEST_DB
+    # You may already have BACKTEST_SCHEMA defined somewhere
+    from config import BACKTEST_SCHEMA  
+
     conn = sqlite3.connect(BACKTEST_DB)
     conn.executescript(BACKTEST_SCHEMA)
     conn.commit()
     conn.close()
-
-# ensure schema is ready whenever this module is imported
-# … all your functions …
-
-# at the very end of services/trading_helpers.py:
-from .trading_helpers import setup_simulation_db
-setup_simulation_db()

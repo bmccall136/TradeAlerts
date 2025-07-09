@@ -84,15 +84,12 @@ from services.alert_service import (
     generate_sparkline
 )
 from services.trading_helpers import (
-    nuke_simulation_db,
     set_cash,
     get_holdings,
     get_trades,
     get_realized_pl,
     get_unrealized_pl,
     get_cash,
-    buy_stock,
-    sell_stock,
     setup_simulation_db,
     init_backtest_db
 )
@@ -838,13 +835,16 @@ def export_backtest_pdf():
     # 1) rebuild settings & run backtest
     settings = extract_backtest_settings(request.args)
 
-    # ── REPLACE THESE TWO LINES ──
-    # symbols, trades, summary_dict = get_symbols_and_backtest(settings)
-    # summary = SimpleNamespace(**summary_dict)
-    # ── WITH THESE TWO LINES ──
+    # DEBUG: log out the settings we received
+    app.logger.debug(f"PDF export settings: {settings}")
+
+    # 2) Load symbols and run backtest
     symbols = get_symbols(simulation=True)
     trades, summary_dict = run_full_backtest(settings, symbols)
     summary = SimpleNamespace(**summary_dict)
+
+    # … rest of your export logic …
+
 
     # 2) PDF setup
     buf    = io.BytesIO()
@@ -969,7 +969,7 @@ def export_backtest_pdf():
 @app.route('/clear_all', methods=['POST'])
 def clear_all_alerts():
     print("✅ /clear_all route hit")
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(ALERTS_DB )
     conn.execute("DELETE FROM alerts")
     conn.commit()
     conn.close()
@@ -978,7 +978,7 @@ def clear_all_alerts():
 @app.route('/clear/<int:id>', methods=['POST'])
 def clear_alert(id):
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(ALERTS_DB)
         conn.execute("DELETE FROM alerts WHERE id=?", (id,))
         conn.commit()
         conn.close()
@@ -1005,9 +1005,14 @@ def launch_auth():
 BACKTEST_DB = os.path.join(os.getcwd(), 'backtest.db')
 
 
-# ────────────────────────────────────────────────────────
-# 2) RUN BACKTEST (wipe + run + log)
-# ────────────────────────────────────────────────────────
+from services.trading_helpers import setup_simulation_db  # you already have this
+
+@app.route('/simulation/reset', methods=['POST'])
+def nuke_simulation_db():
+    # re‐initialize your simulation schema
+    setup_simulation_db()
+    flash("Simulation DB reset!", "success")
+    return redirect(url_for('simulation'))
 
 @app.route('/reset_backtest', methods=['POST'])
 def reset_backtest():
@@ -1026,7 +1031,7 @@ def simulation():
     for t in raw_trades:
         # Case A: dict
         if isinstance(t, dict):
-            trade_time = t.get('trade_time') or t.get('time')
+            trade_time = t.get('trade_time') or t.get('timestamp')
             symbol     = t.get('symbol')
             action     = t.get('action')
             qty        = t.get('qty')
@@ -1046,7 +1051,7 @@ def simulation():
             continue
 
     formatted_trades.append({
-        'time':   t.get('time'),
+        'timestamp':   t.get('timestamp'),
         'symbol': t.get('symbol'),
         'action': t.get('action'),
         'qty':    int(t.get('qty')),
@@ -1094,10 +1099,10 @@ def export_simulation():
 
     cw.writerow([])
     cw.writerow(['-- TRADES --'])
-    cw.writerow(['time','symbol','action','qty','price','pl'])
+    cw.writerow(['timestamp','symbol','action','qty','price','pl'])
     for t in trades:
         cw.writerow([
-            t['time'],
+            t['timestamp'],
             t['symbol'],
             t['action'],
             t['qty'],
@@ -1117,9 +1122,6 @@ def start_scanner():
 
     # 0) Ensure our simulation DB (and its `state` table) exist
     setup_simulation_db()
-
-    # 1) Wipe & recreate all simulation tables (calls setup_simulation_db internally)
-    nuke_simulation_db()
 
     # 2) Seed starting cash from the form
     starting_cash = float(request.form.get('starting_cash', 10000))
@@ -1187,25 +1189,45 @@ def cost_basis(symbol):
             total_cost += qty * price
 
     return (total_cost / total_qty) if total_qty else 0.0
+from services.alert_service    import insert_alert
+from services.trading_helpers  import (
+    setup_simulation_db,
+    check_if_position_open,
+    enter_trade,
+    check_exit_orders,
+    compute_qty
+)
+import json
+import webbrowser
+from requests.exceptions import HTTPError
+from flask import current_app
 
-@app.route('/simulation')
+from services.trading_helpers import get_cash, get_holdings, get_realized_pl, get_unrealized_pl
+from services.trading_helpers import get_trades
+from services.etrade_service import fetch_etrade_quote
+from dashboard import extract_simulation_settings
+
+@app.route("/simulation")
 def simulation():
-    cash = get_cash()
-    raw_holdings = get_holdings()
-    formatted_holdings = []
-    unrealized_pnl = sum(h['total_gain'] for h in formatted_holdings)
-    realized_pnl   = get_realized_pl()
+    # ── 0) Load your sim config & build settings ──
+    cfg = json.load(open("simulation_config.json"))
+    settings = extract_simulation_settings(cfg)
 
-    for symbol, qty, avg_cost, db_last_price in raw_holdings:
+    # ── 1) Cash & P/L ──
+    cash          = float(get_cash())
+    unrealized_pnl= get_unrealized_pl()
+    realized_pnl  = get_realized_pl()
+
+    # ── 2) Holdings ──
+    formatted_holdings = []
+    for symbol, qty, avg_cost, db_last_price in get_holdings():
         try:
             live_price = fetch_etrade_quote(symbol)
-            logger.info(f"[PRICE] {symbol}: live price = {live_price}")
         except HTTPError as e:
             if e.response.status_code == 401:
                 webbrowser.open("http://localhost:5000/etrade/auth")
-                return
-            # otherwise just fall back to the DB price
-            logger.warning(f"[PRICE] {symbol}: live fetch failed ({e})")
+                return  # auth flow triggered
+            current_app.logger.warning(f"[PRICE] {symbol}: fetch failed ({e})")
             live_price = db_last_price
 
         value      = live_price * qty
@@ -1214,62 +1236,39 @@ def simulation():
         day_gain   = total_gain
 
         formatted_holdings.append({
-            'symbol'     : symbol,
-            'qty'        : qty,
-            'price_paid' : avg_cost,
-            'last_price' : live_price,
-            'day_gain'   : day_gain,
-            'total_gain' : total_gain,
-            'change_pct' : change_pct,
-            'value'      : value,
+            "symbol"     : symbol,
+            "qty"        : qty,
+            "price_paid" : avg_cost,
+            "last_price" : live_price,
+            "day_gain"   : day_gain,
+            "total_gain" : total_gain,
+            "change_pct" : change_pct,
+            "value"      : value,
         })
 
-    # …the rest of formatting trades, pulling P/L, then render_template…
-
-
-    # ── C) format trades
-    raw_trades = get_trades()
+    # ── 3) Trade history ──
     formatted_trades = []
-    for t in raw_trades:
-        if isinstance(t, dict):
-            trade_time = t.get('time') or t.get('trade_time')
-            symbol     = t['symbol']
-            action     = t['action']
-            qty        = t['qty']
-            price      = float(t.get('price', 0))
-            pl         = float(t.get('pnl') or t.get('pl') or 0)
-        else:
-            trade_time, symbol, action, qty, price, pl = t
-
+    for symbol, action, price, qty, trade_time, pnl in get_trades(limit=50):
         formatted_trades.append({
-            'time'   : trade_time,
-            'symbol' : symbol,
-            'action' : action,
-            'qty'    : qty,
-            'price'  : price,
-            'pl'     : pl,
+            "symbol"    : symbol,
+            "action"    : action,
+            "price"     : price,
+            "qty"       : qty,
+            "time"      : trade_time,
+            "pnl"       : pnl if pnl is not None else "—",
         })
 
-    # ── D) echo back your form-supplied settings
-    starting_cash = float(request.args.get('starting_cash', DEFAULT_STARTING_CASH))
-    max_per_trade = float(request.args.get('max_per_trade',   DEFAULT_MAX_PER_TRADE))
-
-    # ── E) compute P/L totals
-    unrealized_pnl = get_unrealized_pl()
-    realized_pnl   = get_realized_pl()
-
-    # ── F) render once, with everything defined
+    # ── 4) Render ──
     return render_template(
-        'simulation.html',
-        cash=cash,
-        holdings=formatted_holdings,
-        history=formatted_trades,
-        starting_cash=starting_cash,
-        max_per_trade=max_per_trade,
-        unrealized_pnl=unrealized_pnl,
-        realized_pnl=realized_pnl,
-        is_running=_is_scanner_running
+        "simulation.html",
+        cash=           cash,
+        unrealized_pnl= unrealized_pnl,
+        realized_pnl=   realized_pnl,
+        formatted_holdings= formatted_holdings,
+        formatted_trades=   formatted_trades,
+        settings=            settings,
     )
+
 
 @app.route("/simulation/buy", methods=["POST"])
 def simulation_buy():
@@ -1358,7 +1357,7 @@ def export_alerts():
 
     # Adjust these keys to whatever your alert dict actually uses:
     for a in alerts:
-        last = a.get('last_match_time')  # or .get('time') if that's your field
+        last = a.get('last_match_time')  # or .get('timestamp') if that's your field
         filters = ";".join(a.get('matched_filters', []))
         writer.writerow([ a['symbol'], last, filters ])
 
@@ -1493,20 +1492,44 @@ def index():
     alerts = get_alerts()
     for a in alerts:
         try:
-            a["live_price"] = float(fetch_live_data(a["symbol"]))
+    # normalize whatever fetch_live_data() returns into a float:
+            raw = fetch_live_data(a["symbol"])
+            if isinstance(raw, dict):
+                # Pull out the right key from your broker dict
+                price = raw.get("price") or raw.get("last") or raw.get("last_trade") or 0
+            else:
+                price = raw
+            a["live_price"] = float(price)
+        except Exception:
+            # On any error, fall back to None
+            a["live_price"] = None
+            if isinstance(raw, dict):
+        # tweak these keys to match whatever your broker_api returns
+                price = raw.get("price") or raw.get("last") or raw.get("last_trade") or 0
+            else:
+                price = raw
+            try:
+                a["live_price"] = float(price)
+            except (TypeError, ValueError):
+                a["live_price"] = None
         except HTTPError as e:
+            # if we’re not authorized, kick off the OAuth flow
             if e.response.status_code == 401:
                 webbrowser.open("http://localhost:5000/etrade/auth")
-                return
-
-            # else fall back to whatever you store or just skip
+                return redirect(url_for("index"))
+            # otherwise just log & fall back
             current_app.logger.warning(f"[PRICE] {a['symbol']}: fetch failed ({e})")
             a["live_price"] = None
-    return render_template("alerts.html",
-                           alerts=alerts,
-                           settings=settings,
-                           # … your label dicts …)
+        except Exception as e:
+            current_app.logger.error(f"[PRICE] {a['symbol']}: unexpected error ({e})")
+            a["live_price"] = None
 
+    # ── once all alerts have been annotated, render exactly one template ──
+    return render_template(
+        "alerts.html",
+        alerts=alerts,
+        settings=settings,
+        # …any other label/context dicts you pass in…
     )
 
 

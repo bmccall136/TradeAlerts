@@ -1,0 +1,10 @@
+# settings.py
+
+# Live alerts database (never dropped)
+ALERTS_DB = 'alerts.db'
+
+# Backtest database (re-initialized each run)
+BACKTEST_DB = 'backtest.db'
+
+# (Optional) Simulation database
+SIM_DB = 'simulation.db'
