@@ -1,14 +1,24 @@
 import sqlite3
 import os
+import json
 from datetime import datetime
 from settings import SIMULATION_DB
 
 # Path to your simulation database file; adjust as needed
 SIM_DB = os.path.join(os.getcwd(), 'simulation.db')
 
-
 def init_simulation_db():
     print("🔧 initializing simulation.db schema…")
+
+    # Load starting_cash from config
+    try:
+        with open("simulation_config.json") as f:
+            cfg = json.load(f)
+            starting_cash = float(cfg.get("starting_cash", 10000))
+    except Exception as e:
+        print(f"⚠️ Failed to load starting_cash from config: {e}")
+        starting_cash = 10000
+
     conn = sqlite3.connect(SIMULATION_DB, detect_types=sqlite3.PARSE_DECLTYPES)
     cur = conn.cursor()
 
@@ -30,57 +40,4 @@ def init_simulation_db():
     cur.execute("""
       CREATE TABLE holdings (
         symbol TEXT PRIMARY KEY,
-        qty INTEGER NOT NULL,
-        avg_cost REAL NOT NULL,
-        last_price REAL NOT NULL
-      );
-    """)
-
-    cur.execute("""
-         CREATE TABLE IF NOT EXISTS positions (
-             symbol    TEXT,
-             entry_ts  TIMESTAMP,
-             entry_px  REAL,
-             qty       INTEGER,
-             stop_px   REAL,
-             target_px REAL
-         )
-     """)
-    # recreate simulation_trades
-    cur.execute("""
-      CREATE TABLE simulation_trades (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        symbol TEXT NOT NULL,
-        action TEXT CHECK (action IN ('BUY','SELL')) NOT NULL,
-        price REAL NOT NULL,
-        qty INTEGER NOT NULL,
-        trade_time TEXT NOT NULL,
-        pnl REAL
-      );
-    """)
-    # ── ensure alerts table exists so insert_alert() can run ──
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS alerts (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol     TEXT NOT NULL,
-            price      REAL NOT NULL,
-            timestamp  TEXT NOT NULL,
-            cleared    TEXT,
-            name       TEXT,
-            vwap       REAL,
-            vwap_diff  REAL,
-            triggers   TEXT,
-            sparkline  BLOB
-        )
-    """)
-
-
-    # initialize the one row of state
-    cur.execute("INSERT INTO state (id, cash, realized_pl) VALUES (1, 10000, 0);")
-
-    conn.commit()
-    conn.close()
-
-
-if __name__ == '__main__':
-    init_simulation_db()
+        qty INTEGER NOT N

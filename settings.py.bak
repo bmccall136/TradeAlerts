@@ -1,10 +1,4 @@
-# settings.py
-
-# Live alerts database (never dropped)
-ALERTS_DB = 'alerts.db'
-
-# Backtest database (re-initialized each run)
-BACKTEST_DB = 'backtest.db'
-
-# (Optional) Simulation database
-SIM_DB = 'simulation.db'
+import os            # ← make sure you have this line!
+BASE_DIR    = os.path.dirname(__file__)
+SIMULATION_DB = os.path.join(BASE_DIR, 'simulation.db')
+BACKTEST_DB   = os.path.join(BASE_DIR, 'backtest.db')

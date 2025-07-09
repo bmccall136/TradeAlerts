@@ -7,6 +7,7 @@ from services.market_service import get_symbols, analyze_symbol
 from services.alert_service import insert_alert
 import sys
 import logging
+from settings import ALERTS_DB, SIMULATION_DB
 
 logging.basicConfig(
     level=logging.INFO,
