@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
  
 # at the top of services/trading_helpers.py
 from services.broker_api import buy_stock, sell_stock
+from settings import SIMULATION_DB
 
 
 def _connect():
@@ -89,14 +90,12 @@ def setup_simulation_db():
     conn.close()
 
 # ——— Cash accessors —————————————————————————————
-def get_cash() -> float:
-    """Return current cash balance."""
-    conn = _connect()
-    cur  = conn.cursor()
-    cur.execute("SELECT cash FROM state WHERE id = 1;")
-    row = cur.fetchone()
-    conn.close()
-    return float(row[0]) if row else 0.0
+def get_cash():
+    conn = sqlite3.connect(SIMULATION_DB)
+    cur = conn.cursor()
+    cur.execute("SELECT cash FROM state WHERE id = 1")
+    return cur.fetchone()[0]
+
 
 def set_cash(amount: float):
     """Overwrite cash balance (used by dashboard reset etc)."""
@@ -106,7 +105,7 @@ def set_cash(amount: float):
     conn.commit()
     conn.close()
 # ─── Internal connect helper ────────────────────────────────
-def _connect(db: str = 'simulation'):
+def _connect(db: str = 'SIMULATION_DB'):
     return sqlite3.connect(SIMULATION_DB, detect_types=sqlite3.PARSE_DECLTYPES)
 
 # ─── Portfolio accessors ────────────────────────────────────
@@ -127,48 +126,50 @@ def compute_qty(settings, price: float) -> int:
     """
     return max(1, int(settings.max_per_trade / price))
 
-# ——— New ENTER/EXIT logic —————————————————————————————
+import logging
+logger = logging.getLogger(__name__)
+
 def enter_trade(symbol, price, qty, timestamp, settings):
     conn = _connect()
     cur  = conn.cursor()
 
-    # 1) Record the trade
+    # 1) record the trade
     cur.execute(
-        "INSERT INTO simulation_trades (symbol, action, price, qty, trade_time) "
-        "VALUES (?, 'BUY', ?, ?, ?)",
-        (symbol, price, qty, timestamp)
+        "INSERT INTO simulation_trades (symbol, action, price, qty, trade_time) VALUES (?,?,?,?,?)",
+        (symbol, 'BUY', price, qty, timestamp)
     )
 
-    # 2) Deduct cash
-    cur.execute("SELECT cash FROM state WHERE id = 1;")
+    # 2) deduct cash
+    cur.execute("SELECT cash FROM state WHERE id = 1")
     cash = cur.fetchone()[0]
-    new_cash = cash - price * qty
-    cur.execute("UPDATE state SET cash = ? WHERE id = 1;", (new_cash,))
+    cost = price * qty
+    new_cash = cash - cost
+    cur.execute("UPDATE state SET cash = ? WHERE id = 1", (new_cash,))
 
-    # 3) Upsert holdings
-    cur.execute("SELECT qty, avg_cost FROM holdings WHERE symbol = ?;", (symbol,))
+    # 3) update holdings
+    cur.execute("SELECT qty, avg_cost FROM holdings WHERE symbol = ?", (symbol,))
     row = cur.fetchone()
     if row:
-        old_qty, old_cost = row
-        combined_qty = old_qty + qty
-        # new avg_cost = weighted average
-        new_avg = (old_cost * old_qty + price * qty) / combined_qty
-        cur.execute(
-            "UPDATE holdings SET qty = ?, avg_cost = ?, last_price = ? "
-            "WHERE symbol = ?;",
-            (combined_qty, new_avg, price, symbol)
-        )
+        old_qty, old_avg = row
+        total_cost = old_avg * old_qty + cost
+        new_qty = old_qty + qty
+        new_avg  = total_cost / new_qty
+        cur.execute("""
+            UPDATE holdings
+               SET qty = ?, avg_cost = ?, last_price = ?
+             WHERE symbol = ?
+        """, (new_qty, new_avg, price, symbol))
     else:
-        cur.execute(
-            "INSERT INTO holdings (symbol, qty, avg_cost, last_price) "
-            "VALUES (?, ?, ?, ?)",
-            (symbol, qty, price, price)
-        )
+        cur.execute("""
+            INSERT INTO holdings(symbol, qty, avg_cost, last_price)
+            VALUES (?, ?, ?, ?)
+        """, (symbol, qty, price, price))
 
     conn.commit()
     conn.close()
 
     logger.info(f"ENTER  {symbol}  qty={qty} @ {price:.2f}, cash left=${new_cash:.2f}")
+
 
 def check_exit_orders(settings) -> None:
     """

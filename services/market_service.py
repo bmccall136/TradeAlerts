@@ -7,11 +7,6 @@ import yfinance as yf
 import pandas as pd
 
 from services.etrade_service import fetch_etrade_quote
-from services.alert_service import (
-    get_all_indicator_settings,
-    insert_alert,
-    generate_sparkline
-)
 from services.indicators import (
     compute_atr, daily_range_pct, gap_up_pct, price_above_sma,
     compute_rsi, calculate_macd, compute_bollinger, compute_sma
@@ -186,13 +181,6 @@ def analyze_symbol(sym, simulation=False, settings_override=None):
         if _has_headlines(heads):
             tags.append('📰')
 
-    # ── I) Sparkline ──
-    try:
-        intr = yf.Ticker(sym).history(period='1d', interval='1m', auto_adjust=False)
-        spark = generate_sparkline(intr['Close'] if 'Close' in intr else intr.iloc[:,0])
-    except Exception:
-        spark = generate_sparkline(cs.tolist())
-
     # ── J) Insert & return ──
     payload = {
         'symbol':    sym,
@@ -202,10 +190,8 @@ def analyze_symbol(sym, simulation=False, settings_override=None):
         'vwap':      round(latest_vwap, 2),
         'vwap_diff': round(vwap_diff, 2),
         'triggers':  ','.join(tags),
-        'sparkline': spark
     }
-    insert_alert(**payload)
-    logger.info(f"[ALERT] {sym}: {tags}")
+    logger.info(f"[SIM] ALERT {sym}: {tags}")
     return payload
 
 

@@ -29,13 +29,11 @@ from dateutil.relativedelta import relativedelta
 from collections import namedtuple
 from types import SimpleNamespace
 from flask import request, redirect, url_for, render_template
-from services.alert_service import get_all_indicator_settings, update_indicator_settings, get_alerts
 from services.backtest_service import run_full_backtest
 from types import SimpleNamespace
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from flask import request, redirect, url_for, render_template
-from services.alert_service import get_all_indicator_settings, update_indicator_settings, get_alerts
 from services.backtest_service import run_full_backtest
 # ─── Load environment variables ───────────────────────────────
 from dotenv import load_dotenv, set_key
@@ -76,13 +74,6 @@ from services.indicators import (
     gap_up_pct,
     price_above_sma
 )
-from services.alert_service import (
-    get_all_indicator_settings,
-    update_indicator_settings,
-    get_alerts,
-    insert_alert,
-    generate_sparkline
-)
 from services.trading_helpers import (
     set_cash,
     get_holdings,
@@ -105,7 +96,6 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from flask import request, redirect, url_for, render_template
 from services.settings_service import load_settings, save_settings
-from services.alert_service     import get_alerts
 from services.backtest_service  import run_full_backtest
 from services.market_service    import get_symbols
 from labels import (
@@ -201,7 +191,6 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET', 'supersecret')
 setup_simulation_db()
 # ─── Database file paths ─────────────────────────────────────
-DB_PATH     = os.path.join(os.getcwd(), 'alerts.db')
 SIM_DB      = os.path.join(os.getcwd(), 'simulation.db')
 BACKTEST_DB = os.path.join(os.getcwd(), 'backtest.db')
 
@@ -1005,9 +994,14 @@ def launch_auth():
 BACKTEST_DB = os.path.join(os.getcwd(), 'backtest.db')
 
 
-# ────────────────────────────────────────────────────────
-# 2) RUN BACKTEST (wipe + run + log)
-# ────────────────────────────────────────────────────────
+from services.trading_helpers import setup_simulation_db  # you already have this
+
+@app.route('/simulation/reset', methods=['POST'])
+def nuke_simulation_db():
+    # re‐initialize your simulation schema
+    setup_simulation_db()
+    flash("Simulation DB reset!", "success")
+    return redirect(url_for('simulation'))
 
 @app.route('/reset_backtest', methods=['POST'])
 def reset_backtest():
@@ -1184,7 +1178,6 @@ def cost_basis(symbol):
             total_cost += qty * price
 
     return (total_cost / total_qty) if total_qty else 0.0
-from services.alert_service    import insert_alert
 from services.trading_helpers  import (
     setup_simulation_db,
     check_if_position_open,
@@ -1199,71 +1192,82 @@ from flask import current_app
 
 from services.trading_helpers import get_cash, get_holdings, get_realized_pl, get_unrealized_pl
 from services.trading_helpers import get_trades
+from flask import Blueprint, redirect, url_for
+from services.trading_helpers import setup_simulation_db, set_cash
+from dashboard import extract_simulation_settings
+
+sim_bp = Blueprint('simulation', __name__)
+from services.trading_helpers import set_cash, get_cash
+@sim_bp.route('/simulation/reset', methods=['POST'])
+def reset_sim():
+    # 1) Rebuild all tables:
+    setup_simulation_db()
+
+    # 2) Load your JSON config and apply starting cash:
+    cfg = json.load(open('simulation_config.json'))
+    settings = extract_simulation_settings(cfg)
+    set_cash(settings.starting_cash)
+    logging.info(f"[SIM] Seed cash set to: ${get_cash():.2f}")
+    return redirect(url_for('simulation.simulation'))
+
+
 from services.etrade_service import fetch_etrade_quote
 from dashboard import extract_simulation_settings
 
+from services.trading_helpers import (
+    get_cash,
+    get_unrealized_pl,
+    get_realized_pl,
+    get_holdings,
+    get_trades,
+)
+
 @app.route("/simulation")
 def simulation():
-    # ── 0) Load your sim config & build settings ──
-    cfg = json.load(open("simulation_config.json"))
-    settings = extract_simulation_settings(cfg)
+    # load the summary numbers
+    cash           = get_cash()
+    unrealized_pnl = get_unrealized_pl()
+    realized_pnl   = get_realized_pl()
 
-    # ── 1) Cash & P/L ──
-    cash          = float(get_cash())
-    unrealized_pnl= get_unrealized_pl()
-    realized_pnl  = get_realized_pl()
+    # pull current positions and trade history
+    raw_h = get_holdings()
+    # turn them into dicts your template expects
+    holdings = [
+        {
+            'symbol'     : sym,
+            'qty'        : qty,
+            'price_paid' : avg_cost,
+            'last_price' : last_price,
+            'day_gain'   : (last_price - avg_cost) * qty,
+            'total_gain' : (last_price - avg_cost) * qty,
+            'change_pct' : (last_price - avg_cost) / (avg_cost or 1) * 100,
+            'value'      : last_price * qty,
+        }
+        for sym, qty, avg_cost, last_price in raw_h
+    ]
 
-    # ── 2) Holdings ──
-    formatted_holdings = []
-    for symbol, qty, avg_cost, db_last_price in get_holdings():
-        try:
-            live_price = fetch_etrade_quote(symbol)
-        except HTTPError as e:
-            if e.response.status_code == 401:
-                webbrowser.open("http://localhost:5000/etrade/auth")
-                return  # auth flow triggered
-            current_app.logger.warning(f"[PRICE] {symbol}: fetch failed ({e})")
-            live_price = db_last_price
+    raw_t = get_trades()
+    history = [
+        {
+            'time'   : t[0],
+            'symbol' : t[1],
+            'action' : t[2],
+            'qty'    : t[3],
+            'price'  : t[4],
+            'pl'     : t[5],
+        }
+        for t in raw_t
+    ]
 
-        value      = live_price * qty
-        total_gain = (live_price - avg_cost) * qty
-        change_pct = (total_gain / (avg_cost * qty) * 100) if avg_cost else 0.0
-        day_gain   = total_gain
-
-        formatted_holdings.append({
-            "symbol"     : symbol,
-            "qty"        : qty,
-            "price_paid" : avg_cost,
-            "last_price" : live_price,
-            "day_gain"   : day_gain,
-            "total_gain" : total_gain,
-            "change_pct" : change_pct,
-            "value"      : value,
-        })
-
-    # ── 3) Trade history ──
-    formatted_trades = []
-    for symbol, action, price, qty, trade_time, pnl in get_trades(limit=50):
-        formatted_trades.append({
-            "symbol"    : symbol,
-            "action"    : action,
-            "price"     : price,
-            "qty"       : qty,
-            "time"      : trade_time,
-            "pnl"       : pnl if pnl is not None else "—",
-        })
-
-    # ── 4) Render ──
     return render_template(
         "simulation.html",
-        cash=           cash,
-        unrealized_pnl= unrealized_pnl,
-        realized_pnl=   realized_pnl,
-        formatted_holdings= formatted_holdings,
-        formatted_trades=   formatted_trades,
-        settings=            settings,
+        cash=cash,
+        unrealized_pnl=unrealized_pnl,
+        realized_pnl=realized_pnl,
+        holdings=holdings,
+        history=history,
     )
-
+print(f"[DEBUG] Cash in DB: {cash}")
 
 @app.route("/simulation/buy", methods=["POST"])
 def simulation_buy():
@@ -1424,108 +1428,12 @@ def export_backtest():
         headers={"Content-Disposition":"attachment;filename=backtest.csv"},
     )
 
-
-from services.settings_service import init_settings_db, load_settings, save_settings
-
-# At the top of your module, right after imports:
-init_settings_db()
-
-from services.settings_service import load_settings, save_settings
-from services.alert_service import get_alerts
+from flask import redirect, url_for
 
 @app.route("/", methods=["GET"])
 def index():
-    defaults = {
-        # ─── Core toggles & lengths ───
-        "sma_on": True,
-        "sma_length": 10,
-        "rsi_on": True,
-        "rsi_len": 14,
-        "rsi_overbought": 70,
-        "rsi_oversold": 30,
-        "macd_on": True,
-        "macd_fast": 12,
-        "macd_slow": 26,
-        "macd_signal": 9,
-        "bb_on": True,
-        "bb_length": 20,
-        "bb_std": 2.0,
-        "vol_on": True,
-        "vol_multiplier": 2.0,
-        "vwap_on": True,
-        "vwap_threshold": 0.5,
-        "news_on": False,
+    return redirect(url_for("simulation"))
 
-        # ─── New Filters ───
-        "rsi_slope_on": True,
-        "macd_hist_on": True,
-        "bb_breakout_on": True,
-        "atr14_on": True,
-        "atr_threshold": 1.4,
-        "atr_pct_on": True,
-        "atr_pct": 0.7,
-        "range_on": True,
-        "range_pct": 1.2,
-        "gap_on": True,
-        "gap_pct": 1.0,
-
-        # ─── Risk / Exit Controls ───
-        "single_entry_only": True,
-        "use_trailing_stop": True,
-        "trailing_stop_pct": 0.03,
-        "sell_after_days": "",       # blank = no time limit
-        "stop_loss_pct": 3.0,
-        "take_profit_pct": 7.0,
-    }
-
-    settings = load_settings(defaults)
-
-    if request.args:
-        # … your existing merge logic …
-        save_settings(settings)
-        return redirect(url_for("alerts_view"))
-    alerts = get_alerts()
-    for a in alerts:
-        try:
-    # normalize whatever fetch_live_data() returns into a float:
-            raw = fetch_live_data(a["symbol"])
-            if isinstance(raw, dict):
-                # Pull out the right key from your broker dict
-                price = raw.get("price") or raw.get("last") or raw.get("last_trade") or 0
-            else:
-                price = raw
-            a["live_price"] = float(price)
-        except Exception:
-            # On any error, fall back to None
-            a["live_price"] = None
-            if isinstance(raw, dict):
-        # tweak these keys to match whatever your broker_api returns
-                price = raw.get("price") or raw.get("last") or raw.get("last_trade") or 0
-            else:
-                price = raw
-            try:
-                a["live_price"] = float(price)
-            except (TypeError, ValueError):
-                a["live_price"] = None
-        except HTTPError as e:
-            # if we’re not authorized, kick off the OAuth flow
-            if e.response.status_code == 401:
-                webbrowser.open("http://localhost:5000/etrade/auth")
-                return redirect(url_for("index"))
-            # otherwise just log & fall back
-            current_app.logger.warning(f"[PRICE] {a['symbol']}: fetch failed ({e})")
-            a["live_price"] = None
-        except Exception as e:
-            current_app.logger.error(f"[PRICE] {a['symbol']}: unexpected error ({e})")
-            a["live_price"] = None
-
-    # ── once all alerts have been annotated, render exactly one template ──
-    return render_template(
-        "alerts.html",
-        alerts=alerts,
-        settings=settings,
-        # …any other label/context dicts you pass in…
-    )
 
 
 if __name__ == "__main__":

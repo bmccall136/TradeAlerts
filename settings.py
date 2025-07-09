@@ -1,4 +1,6 @@
-# settings.py
-ALERTS_DB     = 'alerts.db'        # live alerts (flask)
-BACKTEST_DB   = 'backtest.db'      # backtests (flask)
-SIMULATION_DB = 'simulation.db'    # standalone simulation
+import os            # ← make sure you have this line!
+BASE_DIR    = os.path.dirname(__file__)
+SIMULATION_DB = os.path.join(BASE_DIR, 'simulation.db')
+BACKTEST_DB   = os.path.join(BASE_DIR, 'backtest.db')
+# Used to control simulation loop externally (e.g., stop it gracefully)
+_sim_stop = False

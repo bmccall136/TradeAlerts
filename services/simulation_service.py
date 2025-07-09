@@ -9,6 +9,8 @@ from services.trading_helpers import (
 )
 from services.market_service import fetch_data_with_timeout
 from services.etrade_service import fetch_etrade_quote
+from settings import SIMULATION_DB
+from settings import _sim_stop
 from requests.exceptions import HTTPError
 import pandas_market_calendars as mcal
 from datetime import datetime, timedelta
@@ -31,6 +33,34 @@ _sim_stop  = False
 ET = ZoneInfo("America/New_York")
 
 nyse = mcal.get_calendar("NYSE")
+import sqlite3
+from settings import SIMULATION_DB
+
+def insert_or_update_holding(symbol, qty, avg_cost, last_price):
+    conn = sqlite3.connect(SIMULATION_DB)
+    c = conn.cursor()
+
+    # Try updating first (in case the symbol already exists)
+    c.execute("SELECT qty, avg_cost FROM holdings WHERE symbol = ?", (symbol,))
+    row = c.fetchone()
+
+    if row:
+        old_qty, old_avg = row
+        new_qty = old_qty + qty
+        new_avg_cost = ((old_avg * old_qty) + (avg_cost * qty)) / new_qty
+        c.execute('''
+            UPDATE holdings
+            SET qty = ?, avg_cost = ?, last_price = ?
+            WHERE symbol = ?
+        ''', (new_qty, new_avg_cost, last_price, symbol))
+    else:
+        c.execute('''
+            INSERT INTO holdings (symbol, qty, avg_cost, last_price)
+            VALUES (?, ?, ?, ?)
+        ''', (symbol, qty, avg_cost, last_price))
+
+    conn.commit()
+    conn.close()
 
 def seconds_until_open():
     now = datetime.now(ET)
@@ -45,11 +75,15 @@ def seconds_until_open():
             return 0
     return 24*3600  # fallback
 
+from settings import _sim_stop
 def run_simulation_loop(settings, symbols):
     logger.info(f"[sim] starting run with settings={settings}")
     set_cash(settings.starting_cash)
+    positions = {}
+    logger.info(f"[INIT] Starting cash set to ${get_cash():.2f}")
     logger.info(f"[sim] seed cash: {get_cash():.2f}")
     logger.info(f"[sim] will scan {len(symbols)} symbols")
+    logger.info("🔁 Starting scan loop iteration")
 
     while not _sim_stop:
         # wait for market open...
@@ -61,15 +95,14 @@ def run_simulation_loop(settings, symbols):
 
         # ─── ENTRY PASS ───────────────────────────────────
         for sym in symbols:
+            logger.debug(f"🔍 Fetching price for {sym}")
             try:
                 price_live = float(fetch_etrade_quote(sym))
-            except HTTPError as e:
-                if e.response is not None and e.response.status_code == 401:
-                    logger.warning(f"[sim] {sym}: 401 → launching OAuth flow")
-                    webbrowser.open("http://localhost:5000/etrade/auth")
-                    return
+                logger.debug(f"✅ Price fetch success for {sym}: {price_live}")
+            except Exception as e:
                 logger.warning(f"[sim] {sym}: price fetch failed ({e})")
                 continue
+
 
             # initialize filter lists
             decisions = []
@@ -87,6 +120,7 @@ def run_simulation_loop(settings, symbols):
                 settings.news_on,
             ]):
                 df = fetch_data_with_timeout(sym, period='1d', interval='1m')
+                logger.debug(f"📊 Got historical bars for {sym}: {len(df)} rows")
                 if df is None or df.empty:
                     logger.warning(f"[sim] {sym}: no market data for indicators")
                     continue
@@ -112,7 +146,8 @@ def run_simulation_loop(settings, symbols):
                 down    = -delta.clip(upper=0)
                 rs      = up.ewm(span=settings.rsi_len).mean() / down.ewm(span=settings.rsi_len).mean()
                 rsi_ser = 100 - (100 / (1 + rs))
-                latest  = rsi_ser.iloc[-1]
+                raw = rsi_ser.iloc[-1]
+                latest = float(raw.item()) if hasattr(raw, 'item') else float(raw)
                 ok      = latest < settings.rsi_oversold
                 decisions.append(ok)
                 reasons.append(f"RSI({settings.rsi_len})={latest:.1f} pass? {ok}")
@@ -140,7 +175,7 @@ def run_simulation_loop(settings, symbols):
 
                 # always coerce to float
                 try:
-                    latest_hist = float(raw_hist)
+                    latest_hist = float(raw_hist.iloc[0]) if hasattr(raw_hist, 'iloc') else float(raw_hist)
                 except (TypeError, ValueError):
                     # fallback in case it's a zero-dim pandas object
                     latest_hist = raw_hist.item() if hasattr(raw_hist, 'item') else float(raw_hist)
@@ -192,17 +227,44 @@ def run_simulation_loop(settings, symbols):
                     + ", ".join(reasons)
                     + f"  →  passing? {all(decisions)}"
                 )
+            # Summary logging per symbol
+            if decisions:
+                pass_count = sum(bool(d) for d in decisions)
+                total = len(decisions)
+                all_passed = pass_count == total
+
+                icon = "🚀" if all_passed else "⚠️" if pass_count > 0 else "❌"
+                summary = f"{sym}: ${price_live:.2f} {icon} → {pass_count}/{total} passed"
+
+                # Clean reasons: strip pandas dtype garbage
+                clean_reasons = []
+                for r in reasons:
+                    clean = str(r).split(", dtype:")[0]  # cut off dtype info
+                    clean = clean.replace("\n", " ").replace("Name:", "").strip()
+                    clean_reasons.append(clean)
+
+                logger.info(f"{summary} – {'; '.join(clean_reasons)}")
+            else:
+                logger.info(f"{sym}: ${price_live:.2f} ❓ No indicators active or data missing")
 
             if not decisions or not all(decisions):
                 continue
 
-            # calculate qty & buy
             qty = calculate_qty(settings, {'price': price_live})
-            if qty < 1:
+            total_cost = qty * price_live
+            available_cash = get_cash()
+
+            # ⛔ skip if not affordable
+            if qty < 1 or total_cost > available_cash:
+                logger.info(f"[SKIP] Not enough cash to buy {sym} x{qty} → need ${total_cost:.2f}, have ${available_cash:.2f}")
                 continue
+
             try:
                 buy_stock(sym, qty, price_live)
+                insert_or_update_holding(sym, qty, price_live, price_live)
                 logger.info(f"BUY  {sym} x{qty} @ {price_live:.2f}")
+
+
                 positions[sym] = {
                     'entry_time': datetime.utcnow(),
                     'qty':        qty,
@@ -215,6 +277,7 @@ def run_simulation_loop(settings, symbols):
 
         # ─── exit logic ──────────────────────────────────────
         for sym, pos in list(positions.items()):
+            logger.debug(f"⏭ Finished processing {sym}")
             price_live  = float(fetch_etrade_quote(sym))
             entry_price = pos['entry_price']
 
