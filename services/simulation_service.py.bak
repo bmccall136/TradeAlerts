@@ -125,7 +125,16 @@ from services.trading_helpers import (
     compute_qty,
     get_cash,
 )
-from services.market_service import analyze_symbol, market_is_open, seconds_until_open
+from services.trading_helpers     import (
+    buy_stock,
+    set_cash,
+    insert_trade,
+    insert_or_update_holding,
+    market_is_open,
+    seconds_until_open,
+)
+from services.market_service       import analyze_symbol
+# …the rest of your imports…
 from services.risk_management import wash_sale_prohibited, funds_not_settled
 from services.trading_helpers import setup_simulation_db, check_exit_orders
 import logging
@@ -172,21 +181,14 @@ def run_simulation_loop(settings: SimulationSettings):
             # B) count & log ALERT x/y
             triggers = result["triggers"]
             passed   = len(triggers)
-            total    = sum((
-                settings.sma_on,
-                settings.rsi_on,
-                settings.macd_on,
-                settings.bb_on,
-                settings.vol_on,
-                settings.vwap_on,
-                settings.news_on,
-                settings.rsi_slope_on,
-                settings.macd_hist_on,
-                settings.bb_breakout_on,
-            ))
-            icon = "🚀" if passed == total else "⚠️" if passed else "❌"
-            logger.info(f"[SIM] ALERT {sym} ({passed}/{total}) {icon}: {triggers}")
-
+            indicator_keys = [
+                "sma_on","rsi_on","macd_on","bb_on","vol_on","vwap_on","news_on",
+                "rsi_slope_on","macd_hist_on","bb_breakout_on","price_sma_on",
+                "atr_on","atr_pct_on","range_on","gap_on",
+            ]
+            total_indicators = sum(1 for k in indicator_keys if getattr(settings, k, False))
+            icon = "🚀" if passed == total_indicators else "⚠️" if passed else "❌"
+            logger.info(f"[SIM] ALERT {sym} ({passed}/{total_indicators}) {icon}: {triggers}")
             # C) entry guard: only if all passed
             if passed != total:
                 continue

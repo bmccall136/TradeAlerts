@@ -141,6 +141,8 @@ import logging
 
 logger = logging.getLogger("sim")
 
+# services/simulation_service.py
+
 def run_simulation_loop(settings: SimulationSettings):
     """
     Main simulation loop. `settings` is built by extract_simulation_settings().
@@ -152,13 +154,22 @@ def run_simulation_loop(settings: SimulationSettings):
         setup_simulation_db()
 
     # 2) seed starting cash
-    from services.trading_helpers import set_cash, get_cash
     set_cash(settings.starting_cash)
     logger.info(f"[SIM] seed cash: ${get_cash():.2f}")
 
-    # 3) load symbols
-    symbols = get_symbols(simulation=True)
+    # 3) load symbols and figure out how many indicators are on
+    symbols = get_symbols()
     logger.info(f"[SIM] Scanning {len(symbols)} symbols every minute…")
+
+    indicator_keys = [
+        "sma_on", "rsi_on", "macd_on", "bb_on", "vol_on", "vwap_on", "news_on",
+        "rsi_slope_on", "macd_hist_on", "bb_breakout_on", "price_sma_on",
+        "atr_on", "atr_pct_on", "range_on", "gap_on",
+    ]
+    total_indicators = sum(1 for k in indicator_keys if getattr(settings, k, False))
+
+    trade_log = []
+    positions = {}
 
     while not _sim_stop:
         # ── market pause logic ─────────────────────────
@@ -168,49 +179,35 @@ def run_simulation_loop(settings: SimulationSettings):
             time.sleep(wait)
             continue
 
-        # ── one pass over all symbols ───────────────────
+        logger.info("🔁 Starting scan loop iteration")
         for sym in symbols:
-            now = datetime.utcnow().isoformat()
-
-            # A) analyze
+            # 4) pull your consolidated analyze_symbol() result
             result = analyze_symbol(sym, settings)
-            if not result or not result.get("triggers"):
-                # nothing to do
+            if not result:
+                logger.debug(f"{sym}: no data / skipped")
                 continue
 
-            # B) count & log ALERT x/y
-            triggers = result["triggers"]
-            passed   = len(triggers)
-            total    = sum((
-                settings.sma_on,
-                settings.rsi_on,
-                settings.macd_on,
-                settings.bb_on,
-                settings.vol_on,
-                settings.vwap_on,
-                settings.news_on,
-                settings.rsi_slope_on,
-                settings.macd_hist_on,
-                settings.bb_breakout_on,
-            ))
-            icon = "🚀" if passed == total else "⚠️" if passed else "❌"
+            price   = result["price"]      if isinstance(result, dict) else result.price
+            triggers = result["triggers"]  if isinstance(result, dict) else result.triggers
+            passed  = len(triggers)
+            total   = total_indicators
+            icon    = "🚀" if passed == total else "⚠️" if passed else "❌"
             logger.info(f"[SIM] ALERT {sym} ({passed}/{total}) {icon}: {triggers}")
 
-            # C) entry guard: only if all passed
+            # 5) entry guard: only when everything passed
             if passed != total:
                 continue
 
-            # D) wash-sale & settlement
-            ts_now = datetime.utcnow()
-            if wash_sale_prohibited(sym, ts_now, trade_log):
+            # 6) wash-sale & settlement
+            now = datetime.utcnow()
+            if wash_sale_prohibited(sym, now, trade_log):
                 logger.info(f"⛔ Skipping {sym} due to wash-sale rule")
                 continue
-            if funds_not_settled(sym, ts_now):
+            if funds_not_settled(sym, now):
                 logger.info(f"⛔ Skipping {sym} – funds not yet settled")
                 continue
 
-            # E) sizing & affordability
-            price        = result["price"]
+            # 7) sizing & affordability
             qty          = compute_qty(settings, price)
             cost         = qty * price
             cash_on_hand = get_cash()
@@ -218,22 +215,23 @@ def run_simulation_loop(settings: SimulationSettings):
                 logger.info(f"[SKIP] {sym} cost ${cost:.2f} vs cash ${cash_on_hand:.2f}")
                 continue
 
-            # F) BUY!
+            # 8) BUY!
             try:
                 buy_stock(sym, qty, price)
                 insert_trade(sym, "BUY", price, qty)
                 insert_or_update_holding(sym, qty, price, price)
-                trade_log.append({"symbol": sym, "action": "BUY", "time": ts_now})
-                positions[sym] = {"entry_time": ts_now, "qty": qty, "entry_price": price}
-                logger.info(f"✅ BUY   {sym} x{qty} @ {price:.2f}")
+                trade_log.append({"symbol": sym, "action": "BUY", "time": now})
+                positions[sym] = {"entry_time": now, "qty": qty, "entry_price": price}
+                logger.info(f"✅ BUY {sym} x{qty} @ {price:.2f}")
             except Exception as e:
-                logger.error(f"❌ BUY failed {sym}: {e}", exc_info=True)
+                logger.error(f"❌ Failed to BUY {sym}: {e}")
 
         # ─── exit logic ─────────────────────────────────────────
         check_exit_orders(settings)
 
         logger.info("⏸ Scan complete – sleeping 60s…")
         time.sleep(settings.poll_interval or 60)
+
 
 def stop_simulation():
     global _sim_stop
