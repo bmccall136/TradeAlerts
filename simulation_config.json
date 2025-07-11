@@ -38,5 +38,6 @@
   "take_profit_pct": 7.0,
 
   "starting_cash": 1000,
-  "max_per_trade": 200
+  "max_per_trade": 200,
+  "pause_when_market_closed": false
 }

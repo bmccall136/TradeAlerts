@@ -1,28 +1,118 @@
+import logging
 import sqlite3
 from datetime import datetime, timedelta
-from pathlib import Path
+from zoneinfo import ZoneInfo
 from settings import SIMULATION_DB, BACKTEST_DB
-import logging
 
-# a module‐level logger for trading_helpers:
 logger = logging.getLogger(__name__)
- 
-# at the top of services/trading_helpers.py
-from services.broker_api import buy_stock, sell_stock
-from settings import SIMULATION_DB
+ET     = ZoneInfo("America/New_York")
+
+def _connect():
+    return sqlite3.connect(SIMULATION_DB, detect_types=sqlite3.PARSE_DECLTYPES)
+
+def insert_or_update_holding(symbol: str, qty: int, avg_cost: float, last_price: float):
+    """
+    Upsert into the holdings table: if the symbol exists, update its qty, avg_cost, last_price;
+    otherwise insert a new row.
+    """
+    conn = _connect()
+    cur  = conn.cursor()
+
+    cur.execute("SELECT qty, avg_cost FROM holdings WHERE symbol = ?", (symbol,))
+    row = cur.fetchone()
+
+    if row:
+        old_qty, old_avg = row
+        total_cost = old_avg * old_qty + avg_cost * qty
+        new_qty    = old_qty + qty
+        new_avg    = total_cost / new_qty
+        cur.execute("""
+            UPDATE holdings
+               SET qty = ?, avg_cost = ?, last_price = ?
+             WHERE symbol = ?
+        """, (new_qty, new_avg, last_price, symbol))
+    else:
+        cur.execute("""
+            INSERT INTO holdings(symbol, qty, avg_cost, last_price)
+            VALUES (?, ?, ?, ?)
+        """, (symbol, qty, avg_cost, last_price))
+
+    conn.commit()
+    conn.close()
+
+def record_trade(symbol: str, price: float, qty: int, action: str, pnl: float = None):
+    """
+    Insert one trade into simulation_trades for your simulation run.
+    """
+    ts   = datetime.now(ET).isoformat()
+    conn = sqlite3.connect(SIMULATION_DB, detect_types=sqlite3.PARSE_DECLTYPES)
+    cur  = conn.cursor()
+    cur.execute(
+      "INSERT INTO simulation_trades (symbol, action, price, qty, trade_time, pnl) "
+      "VALUES (?, ?, ?, ?, ?, ?)",
+      (symbol, action.upper(), price, qty, ts, pnl)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_positions() -> dict:
+    """
+    Return a dict of net position sizes by symbol.
+    """
+    conn = sqlite3.connect(SIMULATION_DB)
+    cur  = conn.cursor()
+    cur.execute(
+      "SELECT symbol, SUM(CASE WHEN action='BUY' THEN qty ELSE -qty END) "
+      "FROM simulation_trades GROUP BY symbol"
+    )
+    positions = {sym: net for sym, net in cur.fetchall()}
+    conn.close()
+    return positions
+
+def buy_stock(symbol, qty, price, trade_time=None):
+    # … your existing cash deduction & holdings update …
+    insert_trade(symbol, 'BUY', price, qty)
+def sell_stock(symbol, qty, price, trade_time=None):
+    # … your existing cash add & holdings update …
+    # compute pnl from avg_cost if you want:
+    avg_cost = get_avg_cost(symbol)      # however you stored it
+    pnl      = (price - avg_cost) * qty
+    insert_trade(symbol, 'SELL', price, qty, pnl)
+
+def insert_trade(symbol: str, action: str, price: float, qty: int, pnl: float = None):
+    """
+    Record a simulated trade in the simulation_trades table.
+    """
+    conn = sqlite3.connect(SIMULATION_DB, detect_types=sqlite3.PARSE_DECLTYPES)
+    cur  = conn.cursor()
+    cur.execute("""
+        INSERT INTO simulation_trades
+          (symbol, action, price, qty, trade_time, pnl)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (
+        symbol,
+        action.upper(),                     # 'BUY' or 'SELL'
+        price,
+        qty,
+        datetime.utcnow().isoformat(),      # ISO timestamp
+        pnl
+    ))
+    conn.commit()
+    conn.close()
 
 
 def _connect():
     return sqlite3.connect(SIMULATION_DB, detect_types=sqlite3.PARSE_DECLTYPES)
 def setup_simulation_db():
     """
-    Create our core simulation tables (state, holdings, positions,
-    simulation_trades, alerts) if they don’t already exist.
+    Create core simulation tables (state, holdings, positions,
+    trades, alerts, wash sales) if they don’t already exist.
     """
     conn = sqlite3.connect(SIMULATION_DB, detect_types=sqlite3.PARSE_DECLTYPES)
     cur  = conn.cursor()
 
-    # state table
+    # ── State ──
     cur.execute("""
         CREATE TABLE IF NOT EXISTS state (
             id           INTEGER PRIMARY KEY CHECK (id = 1),
@@ -31,7 +121,7 @@ def setup_simulation_db():
         )
     """)
 
-    # holdings table
+    # ── Holdings ──
     cur.execute("""
         CREATE TABLE IF NOT EXISTS holdings (
             symbol     TEXT PRIMARY KEY,
@@ -41,39 +131,51 @@ def setup_simulation_db():
         )
     """)
 
-    # open positions (for exit logic)
+    # ── Open positions ──
     cur.execute("""
         CREATE TABLE IF NOT EXISTS positions (
-            symbol    TEXT,
-            entry_ts  TIMESTAMP,
-            entry_px  REAL,
-            qty       INTEGER,
-            stop_px   REAL,
-            target_px REAL
+            symbol     TEXT,
+            entry_ts   TIMESTAMP,
+            entry_px   REAL,
+            qty        INTEGER,
+            stop_px    REAL,
+            target_px  REAL
         )
     """)
 
-    # trade history
+    # ── Trade history ──
     cur.execute("""
         CREATE TABLE IF NOT EXISTS simulation_trades (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol     TEXT NOT NULL,
-            action     TEXT CHECK(action IN ('BUY','SELL')) NOT NULL,
-            price      REAL NOT NULL,
-            qty        INTEGER NOT NULL,
-            trade_time TEXT NOT NULL,
-            pnl        REAL
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol      TEXT NOT NULL,
+            action      TEXT CHECK(action IN ('BUY','SELL')) NOT NULL,
+            price       REAL NOT NULL,
+            qty         INTEGER NOT NULL,
+            trade_time  TEXT NOT NULL,
+            pnl         REAL
         )
     """)
 
-    # ── ALERTS: drop old and recreate with `timestamp` ──
-    cur.execute("DROP TABLE IF EXISTS alerts;")
+    # ── Wash sale log ──
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS wash_sales (
+            id     INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT,
+            time   TEXT,
+            qty    INTEGER,
+            price  REAL,
+            p_l    REAL
+        )
+    """)
+
+    # ── Alerts (wipe and recreate for timestamp precision) ──
+    cur.execute("DROP TABLE IF EXISTS alerts")
     cur.execute("""
         CREATE TABLE alerts (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             symbol     TEXT    NOT NULL,
             price      REAL    NOT NULL,
-            timestamp  TEXT    NOT NULL,    -- renamed from `time`
+            timestamp  TEXT    NOT NULL,
             cleared    TEXT,
             name       TEXT,
             vwap       REAL,
@@ -83,15 +185,16 @@ def setup_simulation_db():
         )
     """)
 
-    # ensure we have one row in state
+    # ── Ensure singleton state row ──
     cur.execute("INSERT OR IGNORE INTO state (id, cash, realized_pl) VALUES (1, 10000, 0);")
 
     conn.commit()
     conn.close()
 
+
 # ——— Cash accessors —————————————————————————————
 def get_cash():
-    conn = sqlite3.connect(SIM_DB)
+    conn = sqlite3.connect(SIMULATION_DB)
     cur = conn.cursor()
     cur.execute("SELECT cash FROM state WHERE id = 1")
     return cur.fetchone()[0]
@@ -108,6 +211,19 @@ def set_cash(amount: float):
 def _connect(db: str = 'SIMULATION_DB'):
     return sqlite3.connect(SIMULATION_DB, detect_types=sqlite3.PARSE_DECLTYPES)
 
+from datetime import datetime, timedelta
+
+def was_recent_loss_sale(symbol, buy_date, trade_log, days=30):
+    """
+    Check if this symbol had a loss-sale in the past `days` before `buy_date`.
+    """
+    cutoff = buy_date - timedelta(days=days)
+    for trade in reversed(trade_log):  # assumes newest trades are last
+        if trade['symbol'] == symbol and trade['action'] == 'SELL':
+            if trade['time'] >= cutoff and trade['p_l'] < 0:
+                return True
+    return False
+
 # ─── Portfolio accessors ────────────────────────────────────
 def check_if_position_open(symbol: str) -> bool:
     """
@@ -123,7 +239,11 @@ def check_if_position_open(symbol: str) -> bool:
 def compute_qty(settings, price: float) -> int:
     """
     Compute shares to buy based on max_per_trade.
+    Returns 0 if price is zero or negative.
     """
+    if price <= 0:
+        # avoid division-by-zero or weird negative prices
+        return 0
     return max(1, int(settings.max_per_trade / price))
 
 import logging
@@ -169,6 +289,17 @@ def enter_trade(symbol, price, qty, timestamp, settings):
     conn.close()
 
     logger.info(f"ENTER  {symbol}  qty={qty} @ {price:.2f}, cash left=${new_cash:.2f}")
+
+def log_trade_for_wash_sale(symbol, trade_time, qty, price, p_l):
+    conn = sqlite3.connect(SIMULATION_DB, detect_types=sqlite3.PARSE_DECLTYPES)
+    c    = conn.cursor()
+    c.execute(
+        "INSERT INTO wash_sales (symbol, time, qty, price, p_l) VALUES (?, ?, ?, ?, ?)",
+        (symbol, trade_time.isoformat(), qty, price, p_l)
+    )
+    conn.commit()
+    conn.close()
+
 
 
 def check_exit_orders(settings) -> None:

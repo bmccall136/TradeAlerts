@@ -45,7 +45,7 @@ def main():
 
     # c) Hand off to the official loop
     from services.simulation_service import run_simulation_loop
-    run_simulation_loop(settings, symbols)
+    run_simulation_loop(settings)
 
 
 if __name__ == "__main__":
