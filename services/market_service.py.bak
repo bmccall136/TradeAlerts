@@ -8,14 +8,9 @@ import pandas as pd
 
 from services.etrade_service import fetch_etrade_quote
 from services.indicators import (
-    compute_sma,
-    compute_rsi,
-    # calculate_macd() is the real name in indicators.py
-    calculate_macd    as compute_macd,
-    # compute_bollinger() is the real name in indicators.py
-    compute_bollinger as compute_bollinger_bands,
-    compute_volume_multiplier,
-    compute_vwap,
+    compute_sma, compute_rsi, compute_macd, compute_bollinger_bands,
+    compute_volume_multiplier, compute_vwap, compute_atr,
+    daily_range_pct, gap_up_pct
 )
 
 from services.news_service import fetch_latest_headlines
@@ -71,7 +66,13 @@ from services.indicators      import (
     compute_volume_multiplier,
     compute_vwap,
 )
-from services.trading_helpers import compute_qty
+from services.trading_helpers import (
+     buy_stock,
+     set_cash,
+     insert_trade,
+     insert_or_update_holding,
+     compute_qty,
+     )
 from services.etrade_service  import fetch_etrade_quote
 from services.risk_management import enforce_wash_sale, enforce_settlement
 import yfinance as yf
@@ -89,11 +90,17 @@ def analyze_symbol(symbol: str, settings: SimulationSettings) -> Dict[str, Any]:
     # 1) Unpack settings
     s = settings.__dict__
 
-    # 2) Fetch intraday bars (for SMA, RSI, MACD, BB, VWAP, volume)
+    # 2) Fetch intraday bars
     df = fetch_data_with_timeout(symbol)
     if df is None or df.empty:
         logger.warning(f"[DATA] {symbol}: no intraday bars → skip")
         return {}
+
+    # ── normalize intraday columns ────────────────────────
+    df.columns = [
+        c[0].lower() if isinstance(c, tuple) else c.lower()
+        for c in df.columns
+    ]
 
     # 3) Fetch daily bars (for range, gap, ATR, etc)
     df_daily = fetch_data_with_timeout(symbol, period='60d', interval='1d')
@@ -101,12 +108,20 @@ def analyze_symbol(symbol: str, settings: SimulationSettings) -> Dict[str, Any]:
         logger.warning(f"[DATA] {symbol}: no daily bars → skip")
         return {}
 
-    close_col = df['Close']
+    # ── normalize daily columns ────────────────────────────
+    df_daily.columns = [
+        c[0].lower() if isinstance(c, tuple) else c.lower()
+        for c in df_daily.columns
+    ]
+
+    # now it’s safe to pull from lowercase names
+    close_col = df['close']
     if isinstance(close_col, pd.DataFrame):
-        # multi-column case: pick the first column
+        # multi-column case: pick first column
         close_series = close_col.iloc[:, 0]
     else:
         close_series = close_col
+
 
     # 4) “Live” price: always use E*TRADE, but fallback to bar-close on error
     try:
@@ -120,14 +135,14 @@ def analyze_symbol(symbol: str, settings: SimulationSettings) -> Dict[str, Any]:
 
     logger.debug(f"[PRICE] {symbol}: price_live = {price_live:.2f}")
 
-    # 5) Run indicators and collect tags
+    # ─── 5) Run indicators and collect tags ─────────────────────────────────
     tags = []
 
     # use our squeezed series for all further indicator calls
-    close = close_series
-    high  = df_daily['High'].iloc[-1]
-    low   = df_daily['Low'].iloc[-1]
-    prev_close = df_daily['Close'].shift(1).iloc[-1]
+    close      = close_series
+    high       = df_daily['high'].iloc[-1]
+    low        = df_daily['low'].iloc[-1]
+    prev_close = df_daily['close'].shift(1).iloc[-1]
 
     # — SMA —
     if s.get("sma_on"):
@@ -138,7 +153,7 @@ def analyze_symbol(symbol: str, settings: SimulationSettings) -> Dict[str, Any]:
     # — RSI —
     if s.get("rsi_on"):
         rsi_series = compute_rsi(close, s["rsi_len"])
-        rsi_val = rsi_series.iloc[-1]
+        rsi_val    = rsi_series.iloc[-1]
         if rsi_val > s["rsi_overbought"]:
             tags.append("RSI 📈")
 
@@ -172,6 +187,37 @@ def analyze_symbol(symbol: str, settings: SimulationSettings) -> Dict[str, Any]:
         vwap_val = compute_vwap(df, s["vwap_threshold"])
         if price_live - vwap_val >= s["vwap_threshold"]:
             tags.append("VWAP+ 💰")
+
+    # — Price > SMA toggle (if you still want it) —
+    if s.get("price_sma_on"):
+        sma_val = compute_sma(close, s["sma_length"])
+        if price_live > sma_val:
+            tags.append(f"Price>SMA({s['sma_length']})")
+
+    # — ATR14 ≥ X —
+    if s.get("atr_on"):
+        atr_val = compute_atr(df_daily, period=s.get("atr_len", 14))
+        if atr_val >= s.get("atr_threshold", 0.0):
+            tags.append(f"ATR{s.get('atr_len',14)} ≥ {s['atr_threshold']:.1f}")
+
+    # — ATR % ≥ Y —
+    if s.get("atr_pct_on"):
+        atr_val    = compute_atr(df_daily, period=s.get("atr_len", 14))
+        atr_percent = (atr_val / price_live * 100) if price_live > 0 else 0.0
+        if atr_percent >= s.get("atr_pct", 0.0):
+            tags.append(f"ATR % ≥ {s['atr_pct']:.1f}%")
+
+    # — Range % ≥ Z —
+    if s.get("range_on"):
+        range_pct = daily_range_pct(df_daily)
+        if range_pct >= s.get("range_pct", 0.0):
+            tags.append(f"Range % ≥ {s['range_pct']:.1f}%")
+
+    # — Gap % ≥ W —
+    if s.get("gap_on"):
+        gap_pct = gap_up_pct(df_daily)
+        if gap_pct >= s.get("gap_pct", 0.0):
+            tags.append(f"Gap % ≥ {s['gap_pct']:.1f}%")
 
     # — Risk / wash‐sale / settlement (if you use them) —
     # enforce_wash_sale, enforce_settlement can be called here if desired

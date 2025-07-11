@@ -17,29 +17,36 @@ def price_above_sma(price_series: pd.Series, length: int = 20) -> bool:
     return price_series.iloc[-1] > sma.iloc[-1]
 
 
-def daily_range_pct(df):
+# services/indicators.py
+
+def daily_range_pct(df: pd.DataFrame) -> float:
     """
     Compute the latest day’s high-low range as a percentage of the low.
-    Expects `df` with columns ['High','Low'] indexed chronologically.
+    Expects df with lowercase columns ['high','low'], indexed chronologically.
     Returns a float: (High_today - Low_today) / Low_today * 100.
     """
-    # grab the most recent bar
-    high = df['High'].iloc[-1]
-    low  = df['Low'].iloc[-1]
+    # pick the right columns
+    high_col = 'high' if 'high' in df.columns else 'High'
+    low_col  = 'low'  if 'low'  in df.columns else 'Low'
+
+    high = df[high_col].iloc[-1]
+    low  = df[low_col].iloc[-1]
     if low == 0:
         return 0.0
     return (high - low) / low * 100
 
-def gap_up_pct(df):
+
+def gap_up_pct(df: pd.DataFrame) -> float:
     """
     Compute the latest gap-up percentage from yesterday’s close to today’s open.
-    Expects `df` with columns ['Open','Close'] indexed chronologically.
+    Expects df with lowercase ['open','close'] columns, indexed chronologically.
     Returns a float: (Open_today - Close_yesterday) / Close_yesterday * 100.
     """
-    # yesterday’s close
-    prev_close = df['Close'].iloc[-2]
-    # today’s open
-    today_open = df['Open'].iloc[-1]
+    open_col  = 'open'  if 'open'  in df.columns else 'Open'
+    close_col = 'close' if 'close' in df.columns else 'Close'
+
+    prev_close = df[close_col].iloc[-2]
+    today_open = df[open_col].iloc[-1]
     if prev_close == 0:
         return 0.0
     return (today_open - prev_close) / prev_close * 100
@@ -164,76 +171,70 @@ import pandas as pd
 import numpy as np
 import math
 
+# services/indicators.py
+
 def compute_volume_multiplier(
     df: pd.DataFrame,
-    multiplier: float
+    window: int = 20
 ) -> float:
     """
-    Compute the ratio of the latest volume to its N-period average,
-    scaled by `multiplier`. Expects df['Volume'].
+    Compute the latest volume multiplier: last_vol / avg_vol.
+    Expects df with a 'volume' column (lowercase) normalized already.
+    Returns a single float.
     """
-    # 1) Pull the volume column as a pure NumPy array
-    vols_arr = df['Volume'].to_numpy()
+    # Use lowercase 'volume' column
+    if 'volume' not in df.columns:
+        raise KeyError("compute_volume_multiplier: expected 'volume' in df.columns")
+    vols = df['volume']
 
-    # 2) Determine lookback window (at least 1)
-    window = max(1, int(abs(multiplier)))
-
-    # 3) If not enough data, bail
-    if len(vols_arr) < window:
+    # take the last `window` bars
+    window_slice = vols.tail(window)
+    if window_slice.empty:
         return 0.0
 
-    # 4) Compute average over the last `window` values
-    window_arr = vols_arr[-window:]
-    avg_vol    = window_arr.mean()
+    # average over that window
+    avg_vol = float(window_slice.mean())
+    last_vol = float(vols.iloc[-1])
 
-    # 5) Last volume
-    last_vol   = vols_arr[-1]
-
-    # 6) Guard against NaN or zero
-    if math.isnan(avg_vol) or avg_vol == 0.0:
+    # guard against zero/NaN
+    if avg_vol == 0.0 or np.isnan(avg_vol):
         return 0.0
 
-    # 7) Return the ratio scaled by multiplier
-    # force to a Python float so f-strings like {vol_ratio:.1f} work
-    ratio = (last_vol / avg_vol) * multiplier
-    return float(ratio)
-    
+    return last_vol / avg_vol
+
 import pandas as pd
 import numpy as np
 import math
 
+# services/indicators.py
+
 def compute_vwap(
     df: pd.DataFrame,
-    threshold: float = 0.0
+    threshold: float = None
 ) -> float:
     """
-    Compute VWAP from df with columns ['High','Low','Close','Volume'].
-    Returns a single float.
+    Compute the most recent VWAP (volume weighted average price)
+    from a DataFrame with lower-cased columns ['high','low','close','volume'].
+    
+    The `threshold` argument is accepted for backwards compatibility but ignored here.
     """
-    # pull columns as numpy arrays
-    highs  = df['High'].to_numpy()
-    lows   = df['Low'].to_numpy()
-    closes = df['Close'].to_numpy()
-    vols   = df['Volume'].to_numpy()
+    # sanity-check
+    missing = [col for col in ("high","low","close","volume") if col not in df.columns]
+    if missing:
+        raise KeyError(f"compute_vwap: missing columns {missing} in df")
 
-    if len(highs) == 0 or len(vols) == 0:
+    # typical price × volume
+    tp      = (df["high"] + df["low"] + df["close"]) / 3.0
+    tp_vol  = (tp * df["volume"]).cumsum()
+    cum_vol = df["volume"].cumsum()
+
+    # avoid division by zero on the very first bars
+    last_cum_vol = cum_vol.iloc[-1]
+    if last_cum_vol == 0:
         return 0.0
 
-    # typical price per bar
-    typical = (highs + lows + closes) / 3.0
-
-    # cumulative sums
-    tp_vol    = np.cumsum(typical * vols)
-    cum_vol   = np.cumsum(vols)
-
-    last_tp_vol  = tp_vol[-1]
-    last_vol_cum = cum_vol[-1]
-
-    # guard against bad data
-    if math.isnan(last_vol_cum) or last_vol_cum == 0.0:
-        return 0.0
-
-    return last_tp_vol / last_vol_cum
+    latest_vwap = tp_vol.iloc[-1] / last_cum_vol
+    return float(latest_vwap)
 
 # backwards-compatibility aliases for market_service imports:
 compute_macd            = calculate_macd
