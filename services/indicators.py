@@ -1,6 +1,7 @@
 # services/indicators.py
 
 import pandas as pd
+import math
 
 def price_above_sma(price_series: pd.Series, length: int = 20) -> bool:
     """
@@ -152,3 +153,88 @@ def compute_gap_pct(
     Returns a float gap_pct.
     """
     return (today_open - prev_close) / prev_close
+# services/indicators.py
+
+import pandas as pd
+import math
+
+# services/indicators.py
+
+import pandas as pd
+import numpy as np
+import math
+
+def compute_volume_multiplier(
+    df: pd.DataFrame,
+    multiplier: float
+) -> float:
+    """
+    Compute the ratio of the latest volume to its N-period average,
+    scaled by `multiplier`. Expects df['Volume'].
+    """
+    # 1) Pull the volume column as a pure NumPy array
+    vols_arr = df['Volume'].to_numpy()
+
+    # 2) Determine lookback window (at least 1)
+    window = max(1, int(abs(multiplier)))
+
+    # 3) If not enough data, bail
+    if len(vols_arr) < window:
+        return 0.0
+
+    # 4) Compute average over the last `window` values
+    window_arr = vols_arr[-window:]
+    avg_vol    = window_arr.mean()
+
+    # 5) Last volume
+    last_vol   = vols_arr[-1]
+
+    # 6) Guard against NaN or zero
+    if math.isnan(avg_vol) or avg_vol == 0.0:
+        return 0.0
+
+    # 7) Return the ratio scaled by multiplier
+    # force to a Python float so f-strings like {vol_ratio:.1f} work
+    ratio = (last_vol / avg_vol) * multiplier
+    return float(ratio)
+    
+import pandas as pd
+import numpy as np
+import math
+
+def compute_vwap(
+    df: pd.DataFrame,
+    threshold: float = 0.0
+) -> float:
+    """
+    Compute VWAP from df with columns ['High','Low','Close','Volume'].
+    Returns a single float.
+    """
+    # pull columns as numpy arrays
+    highs  = df['High'].to_numpy()
+    lows   = df['Low'].to_numpy()
+    closes = df['Close'].to_numpy()
+    vols   = df['Volume'].to_numpy()
+
+    if len(highs) == 0 or len(vols) == 0:
+        return 0.0
+
+    # typical price per bar
+    typical = (highs + lows + closes) / 3.0
+
+    # cumulative sums
+    tp_vol    = np.cumsum(typical * vols)
+    cum_vol   = np.cumsum(vols)
+
+    last_tp_vol  = tp_vol[-1]
+    last_vol_cum = cum_vol[-1]
+
+    # guard against bad data
+    if math.isnan(last_vol_cum) or last_vol_cum == 0.0:
+        return 0.0
+
+    return last_tp_vol / last_vol_cum
+
+# backwards-compatibility aliases for market_service imports:
+compute_macd            = calculate_macd
+compute_bollinger_bands = compute_bollinger
