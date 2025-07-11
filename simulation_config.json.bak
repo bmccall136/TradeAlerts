@@ -1,5 +1,4 @@
 {
-  // ─── Core toggles ───────────────────────────
   "sma_on": true,
   "rsi_on": true,
   "macd_on": true,
@@ -8,7 +7,6 @@
   "vwap_on": true,
   "news_on": false,
 
-  // ─── Core params ────────────────────────────
   "sma_length": 20,
   "rsi_len": 14,
   "rsi_overbought": 70,
@@ -18,29 +16,29 @@
   "macd_signal": 9,
   "bb_length": 20,
   "bb_std": 2.0,
-  "vol_multiplier": 1.0,
+  "vol_multiplier": 1.5,
   "vwap_threshold": 0.0,
 
-  // ─── Indicator toggles ──────────────────────
   "rsi_slope_on": true,
   "macd_hist_on": true,
   "bb_breakout_on": true,
+
   "price_sma_on": true,
+  "price_sma_len": 5,
 
-  // ─── Your 4 new filters ─────────────────────
+  "min_signals": 5,
+
   "atr_on": true,
-  "atr_threshold": 1.4,    // ATR14 ≥ 1.4
-
+  "atr_threshold": 2.0,
   "atr_pct_on": true,
-  "atr_pct": 0.7,          // ATR % ≥ 0.7 %
+  "atr_pct": 0.7,
 
   "range_on": true,
-  "range_pct": 1.2,        // Range % ≥ 1.2 %
+  "range_pct": 1.5,
 
   "gap_on": true,
-  "gap_pct": 1.0,          // Gap % ≥ 1.0 %
+  "gap_pct": 1.0,
 
-  // ─── Risk & run control ─────────────────────
   "single_entry_only": true,
   "use_trailing_stop": true,
   "trailing_stop_pct": 0.05,
@@ -49,9 +47,9 @@
   "stop_loss_pct": 3.0,
   "take_profit_pct": 7.0,
 
-  // ─── Sizing & misc ─────────────────────────
   "starting_cash": 1000,
   "max_per_trade": 200,
-  "pause_when_market_closed": false,
-  "nuke_db": false
+  "pause_when_market_closed": true,
+  "nuke_db": false,
+  "poll_interval": 0.0
 }
