@@ -178,7 +178,9 @@ def analyze_symbol(symbol: str, settings: SimulationSettings) -> Dict[str, Any]:
 
     # — Volume Multiplier —
     if s.get("vol_on"):
-        vol_ratio = compute_volume_multiplier(df, s["vol_multiplier"])
+        # compute_volume_multiplier(df, window=20) by default
+        vol_ratio = compute_volume_multiplier(df)
+        # now compare against your threshold
         if vol_ratio >= s["vol_multiplier"]:
             tags.append(f"VOL 🔊({vol_ratio:.1f}×)")
 
@@ -218,6 +220,13 @@ def analyze_symbol(symbol: str, settings: SimulationSettings) -> Dict[str, Any]:
         gap_pct = gap_up_pct(df_daily)
         if gap_pct >= s.get("gap_pct", 0.0):
             tags.append(f"Gap % ≥ {s['gap_pct']:.1f}%")
+
+    # — Price vs. SMA —
+    if s.get("price_sma_on"):
+        sma_last = compute_sma(close, s["sma_length"])   # ← returns float
+        if price_live > sma_last:
+            tags.append(f"Price>SMA({s['sma_length']})")
+                
 
     # — Risk / wash‐sale / settlement (if you use them) —
     # enforce_wash_sale, enforce_settlement can be called here if desired

@@ -190,10 +190,10 @@ def analyze_symbol(symbol: str, settings: SimulationSettings) -> Dict[str, Any]:
         if price_live - vwap_val >= s["vwap_threshold"]:
             tags.append("VWAP+ 💰")
 
-    # — Price > SMA toggle (if you still want it) —
+    # — Price vs. SMA —
     if s.get("price_sma_on"):
-        sma_val = compute_sma(close, s["sma_length"])
-        if price_live > sma_val:
+        sma_last = compute_sma(close, s["sma_length"])   # float
+        if price_live > sma_last:
             tags.append(f"Price>SMA({s['sma_length']})")
 
     # — ATR14 ≥ X —
@@ -220,6 +220,13 @@ def analyze_symbol(symbol: str, settings: SimulationSettings) -> Dict[str, Any]:
         gap_pct = gap_up_pct(df_daily)
         if gap_pct >= s.get("gap_pct", 0.0):
             tags.append(f"Gap % ≥ {s['gap_pct']:.1f}%")
+
+    # — Price vs. SMA —
+    if s.get("price_sma_on"):
+        sma_last = compute_sma(close, s["sma_length"])   # ← returns float
+        if price_live > sma_last:
+            tags.append(f"Price>SMA({s['sma_length']})")
+                
 
     # — Risk / wash‐sale / settlement (if you use them) —
     # enforce_wash_sale, enforce_settlement can be called here if desired

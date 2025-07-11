@@ -17,29 +17,36 @@ def price_above_sma(price_series: pd.Series, length: int = 20) -> bool:
     return price_series.iloc[-1] > sma.iloc[-1]
 
 
-def daily_range_pct(df):
+# services/indicators.py
+
+def daily_range_pct(df: pd.DataFrame) -> float:
     """
     Compute the latest day’s high-low range as a percentage of the low.
-    Expects `df` with columns ['High','Low'] indexed chronologically.
+    Expects df with lowercase columns ['high','low'], indexed chronologically.
     Returns a float: (High_today - Low_today) / Low_today * 100.
     """
-    # grab the most recent bar
-    high = df['High'].iloc[-1]
-    low  = df['Low'].iloc[-1]
+    # pick the right columns
+    high_col = 'high' if 'high' in df.columns else 'High'
+    low_col  = 'low'  if 'low'  in df.columns else 'Low'
+
+    high = df[high_col].iloc[-1]
+    low  = df[low_col].iloc[-1]
     if low == 0:
         return 0.0
     return (high - low) / low * 100
 
-def gap_up_pct(df):
+
+def gap_up_pct(df: pd.DataFrame) -> float:
     """
     Compute the latest gap-up percentage from yesterday’s close to today’s open.
-    Expects `df` with columns ['Open','Close'] indexed chronologically.
+    Expects df with lowercase ['open','close'] columns, indexed chronologically.
     Returns a float: (Open_today - Close_yesterday) / Close_yesterday * 100.
     """
-    # yesterday’s close
-    prev_close = df['Close'].iloc[-2]
-    # today’s open
-    today_open = df['Open'].iloc[-1]
+    open_col  = 'open'  if 'open'  in df.columns else 'Open'
+    close_col = 'close' if 'close' in df.columns else 'Close'
+
+    prev_close = df[close_col].iloc[-2]
+    today_open = df[open_col].iloc[-1]
     if prev_close == 0:
         return 0.0
     return (today_open - prev_close) / prev_close * 100

@@ -3,50 +3,49 @@ import sqlite3
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from settings import SIMULATION_DB, BACKTEST_DB
-
-logger = logging.getLogger(__name__)
-ET     = ZoneInfo("America/New_York")
-
+import pandas as pd
 import pandas_market_calendars as mcal
 
+ET   = ZoneInfo("America/New_York")
+nyse = mcal.get_calendar("NYSE")
+
+
 def market_is_open() -> bool:
-    """
-    Return True if the NYSE is open right now in America/New_York time.
-    """
-    now = datetime.now(ET)
-    # weekends closed
-    if now.weekday() >= 5:
-        return False
+    now   = datetime.now(ET)
+    today = now.date()
 
-    cal   = mcal.get_calendar("NYSE")
-    sched = cal.schedule(start_date=now.date(), end_date=now.date())
+    # fetch just today's schedule
+    sched = nyse.schedule(start_date=today, end_date=today)
     if sched.empty:
+        # not a trading day
         return False
 
-    # market_open, market_close come back as Timestamp with tz
-    open_dt  = sched.at[now.date(), "market_open"].tz_convert(ET)
-    close_dt = sched.at[now.date(), "market_close"].tz_convert(ET)
-    return open_dt <= now <= close_dt
+    # grab the only row
+    row     = sched.iloc[0]
+    open_dt = row["market_open"].tz_convert(ET)
+    close_dt= row["market_close"].tz_convert(ET)
+
+    return open_dt <= now < close_dt
+
 
 def seconds_until_open() -> float:
-    """
-    Seconds from now until the next NYSE open.
-    """
-    now = datetime.now(ET)
-    cal = mcal.get_calendar("NYSE")
+    now   = datetime.now(ET)
+    today = now.date()
 
-    # check today/tomorrow/day after
-    for d in range(3):
-        dt = now.date() + timedelta(days=d)
-        sched = cal.schedule(start_date=dt, end_date=dt)
-        if sched.empty:
-            continue
-        open_dt = sched.at[dt, "market_open"].tz_convert(ET)
+    # look out 7 days for the next open
+    sched = nyse.schedule(
+        start_date=today,
+        end_date=today + timedelta(days=7)
+    )
+    # iterate rows in order
+    for _, row in sched.iterrows():
+        open_dt = row["market_open"].tz_convert(ET)
         if open_dt > now:
             return (open_dt - now).total_seconds()
 
-    # fallback 24h
+    # fallback: wait one full day
     return 24 * 3600
+
 
 def _connect():
     return sqlite3.connect(SIMULATION_DB, detect_types=sqlite3.PARSE_DECLTYPES)

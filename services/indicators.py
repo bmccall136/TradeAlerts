@@ -42,13 +42,20 @@ def gap_up_pct(df: pd.DataFrame) -> float:
     Expects df with lowercase ['open','close'] columns, indexed chronologically.
     Returns a float: (Open_today - Close_yesterday) / Close_yesterday * 100.
     """
+    # pick the right column names (lowercase-first)
     open_col  = 'open'  if 'open'  in df.columns else 'Open'
     close_col = 'close' if 'close' in df.columns else 'Close'
 
+    # need at least two bars to compute a gap
+    if len(df) < 2:
+        return 0.0
+
     prev_close = df[close_col].iloc[-2]
     today_open = df[open_col].iloc[-1]
+
     if prev_close == 0:
         return 0.0
+
     return (today_open - prev_close) / prev_close * 100
 
 def calculate_macd(
