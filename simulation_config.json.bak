@@ -1,10 +1,10 @@
 {
-  "sma_on": true,
-  "rsi_on": true,
-  "macd_on": true,
-  "bb_on": true,
-  "vol_on": true,
-  "vwap_on": true,
+  "sma_on": false,
+  "rsi_on": false,
+  "macd_on": false,
+  "bb_on": false,
+  "vol_on": false,
+  "vwap_on": false,
   "news_on": false,
 
   "sma_length": 20,
@@ -19,21 +19,21 @@
   "vol_multiplier": 1.5,
   "vwap_threshold": 0.0,
 
-  "rsi_slope_on": true,
-  "macd_hist_on": true,
-  "bb_breakout_on": true,
+  "rsi_slope_on": false,
+  "macd_hist_on": false,
+  "bb_breakout_on": false,
 
-  "price_sma_on": true,
+  "price_sma_on": false,
   "price_sma_len": 5,
 
   "min_signals": 5,
 
-  "atr_on": true,
+  "atr_on": false,
   "atr_threshold": 2.0,
-  "atr_pct_on": true,
+  "atr_pct_on": false,
   "atr_pct": 0.7,
 
-  "range_on": true,
+  "range_on": false,
   "range_pct": 1.5,
 
   "gap_on": true,
@@ -51,5 +51,5 @@
   "max_per_trade": 200,
   "pause_when_market_closed": true,
   "nuke_db": false,
-  "poll_interval": 0.0
+  "poll_interval": 0.05
 }

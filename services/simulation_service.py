@@ -1,6 +1,5 @@
 # services/simulation_service.py
 
-import os
 import csv
 import time
 import logging
@@ -8,7 +7,6 @@ from pathlib import Path
 from datetime import datetime, timedelta, time as dt_time
 from zoneinfo import ZoneInfo
 
-import pandas as pd
 import pandas_market_calendars as mcal
 
 from settings import SIMULATION_DB, _sim_stop
@@ -19,10 +17,7 @@ from services.trading_helpers import (
     get_cash,
     insert_trade,
     insert_or_update_holding,
-    record_trade,
-    get_positions,
     compute_qty,
-    market_is_open,
     seconds_until_open,
     check_exit_orders,
 )
@@ -37,82 +32,80 @@ logger = logging.getLogger("sim")
 ET   = ZoneInfo("America/New_York")
 nyse = mcal.get_calendar("NYSE")
 
-def market_is_open():
-    today     = datetime.now(ET).date()
-    schedule  = nyse.schedule(start_date=today, end_date=today)
-    if schedule.empty:
+# ── helper to avoid name clash ─────────────────────────────
+def _is_market_open():
+    today = datetime.now(ET).date()
+    sched = nyse.schedule(start_date=today, end_date=today)
+    if sched.empty:
         return False
+    open_t  = sched.iloc[0].market_open.time()
+    close_t = sched.iloc[0].market_close.time()
+    now_t   = datetime.now(ET).time()
+    return open_t <= now_t <= close_t
 
-    row              = schedule.iloc[0]
-    market_open_ts   = row.market_open
-    market_close_ts  = row.market_close
-    now_time         = datetime.now(ET).time()
-    normal_open      = dt_time(9, 30)
-    normal_close     = dt_time(16, 0)
-
-    return (
-        (market_open_ts.time() <= now_time <= market_close_ts.time())
-        and
-        (normal_open <= now_time <= normal_close)
-    )
-
-def seconds_until_open():
-    now      = datetime.now(ET)
-    schedule = nyse.schedule(
-        start_date=now.date(),
-        end_date=(now + timedelta(days=2)).date()
-    )
-    for _, row in schedule.iterrows():
-        open_dt  = row.market_open.tz_convert(ET)
-        close_dt = row.market_close.tz_convert(ET)
-        if now < open_dt:
-            return (open_dt - now).total_seconds()
-        if open_dt <= now <= close_dt:
-            return 0
-    return 24 * 3600
-
-# ── trigger log CSV ───────────────────────────────────────
+# ── trigger-log CSV path ───────────────────────────────────
 LOGFILE = Path("logs/triggers.csv")
 LOGFILE.parent.mkdir(parents=True, exist_ok=True)
 
-# write header row once
-if not LOGFILE.exists():
-    with open(LOGFILE, "w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.writer(f)
-        writer.writerow(["timestamp", "symbol", "trigger"])
-        # ── main simulation loop ──────────────────────────────────
+
 def run_simulation_loop(settings: SimulationSettings):
     """
     Main simulation loop. `settings` is a SimulationSettings object.
     """
-
-    # 1) DB setup (and optionally wipe)
+    # ── 1) DB setup ─────────────────────────────────────────
     setup_simulation_db()
-    if settings.nuke_db:
+    if getattr(settings, "nuke_db", False):
         setup_simulation_db()
 
-    # 2) seed starting cash
+    # ── 2) Seed cash ────────────────────────────────────────
     set_cash(settings.starting_cash)
     logger.info(f"[SIM] seed cash: ${get_cash():.2f}")
 
-    # 3) load symbols & count active indicators
+    # ── 3) Load symbols ─────────────────────────────────────
     symbols = get_symbols()
     logger.info(f"[SIM] Scanning {len(symbols)} symbols every loop…")
 
-    indicator_keys = [
-        "sma_on", "rsi_on", "macd_on", "bb_on", "vol_on", "vwap_on", "news_on",
-        "rsi_slope_on", "macd_hist_on", "bb_breakout_on", "price_sma_on",
-        "atr_on", "atr_pct_on", "range_on", "gap_on",
+    # ── 4) Build indicator columns from settings ────────────
+    INDICATOR_COLUMNS = [
+        f"SMA 📈({settings.sma_length})",
+        "RSI 📈",
+        "MACD 🚀",
+        "BB 📈",
+        "VOL 🔊",
+        "VWAP+ 💰",
+        f"Price>SMA({settings.sma_length})",
+        f"ATR14 ≥ {settings.atr_threshold}",
+        f"ATR % ≥ {settings.atr_pct}%",
+        f"Range % ≥ {settings.range_pct}%",
+        f"Gap % ≥ {settings.gap_pct}%",
     ]
-    total_indicators = sum(1 for k in indicator_keys if getattr(settings, k, False))
 
-    trade_log = []     # for wash-sale tracking
-    positions = {}     # current open positions
+    # ── 5) CSV header ────────────────────────────────────────
+    if not LOGFILE.exists():
+        LOGFILE.parent.mkdir(exist_ok=True)
+        with open(LOGFILE, "w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.writer(f)
+            writer.writerow(["timestamp", "symbol"] + INDICATOR_COLUMNS + ["buy"])
 
-    # ←── this 'while' must be indented 4 spaces, not 0! ──→
+    # ── 6) Count enabled filters ─────────────────────────────
+    indicator_keys = [
+        "sma_on", "rsi_on", "macd_on", "bb_on",
+        "vol_on", "vwap_on",
+        "price_sma_on", "atr_on", "atr_pct_on",
+        "range_on", "gap_on",
+    ]
+    total_enabled  = sum(1 for k in indicator_keys if getattr(settings, k, False))
+    total_possible = len(INDICATOR_COLUMNS)   # 11
+    # we only ever buy when *all* enabled pass:
+    threshold      = total_enabled
+
+    # ── Prepare in-memory trade log for wash‐sale checks ─────
+    trade_log: list[dict] = []
+
+    # ── 7) Main loop ────────────────────────────────────────
     while not _sim_stop:
-        # ── pause if market closed ─────────────────────
-        if settings.pause_when_market_closed and not market_is_open():
+        # pause if market closed
+        if settings.pause_when_market_closed and not _is_market_open():
             wait = seconds_until_open()
             logger.info(f"[SIM] Market closed — sleeping {wait:.1f}s")
             time.sleep(wait)
@@ -120,71 +113,68 @@ def run_simulation_loop(settings: SimulationSettings):
 
         logger.info("🔁 Starting scan loop iteration")
         for sym in symbols:
-            # 4) pull your consolidated analyze_symbol() result
-            result   = analyze_symbol(sym, settings)
-            triggers = result.get("triggers", [])
-
-            # write any triggers to CSV
-            if triggers:
-                ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                with open(LOGFILE, "a", newline="", encoding="utf-8-sig") as f:
-                    writer = csv.writer(f)
-                    for trig in triggers:
-                        writer.writerow([ts, sym, trig])
-                        if not result:
-                            logger.debug(f"{sym}: no data / skipped")
-                            continue
-
-            price  = result["price"] if isinstance(result, dict) else result.price
-            passed = len(triggers)
-            icon   = "🚀" if passed == total_indicators else "⚠️" if passed else "❌"
-            logger.info(f"[SIM] ALERT {sym} ({passed}/{total_indicators}) {icon}: {triggers}")
-
-            # 5) only buy when **all** indicators passed
-            if passed != total_indicators:
+            # pull analysis result
+            result = analyze_symbol(sym, settings)
+            if not result or "price" not in result:
                 continue
 
-            # …rest of your wash‐sale, sizing, buy logic, exit logic…
+            price        = result["price"]
+            triggers     = result.get("triggers", [])
+            passed_total = len(triggers)
+            buy_flag     = int(passed_total == total_enabled)
 
+            # build a 0/1 flag for each indicator column
+            flags = [int(col in triggers) for col in INDICATOR_COLUMNS]
 
-            now = datetime.utcnow()
-            # 6) enforce wash-sale & settlement
-            if wash_sale_prohibited(sym, now, trade_log):
+            # append one CSV row per symbol
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with open(LOGFILE, "a", newline="", encoding="utf-8-sig") as f:
+                csv.writer(f).writerow([ts, sym] + flags + [buy_flag])
+
+            # log summaries
+            logger.info(f"[SIM] ALERT {sym} ({passed_total}/{total_possible}) total : {triggers}")
+            logger.info(f"[SIM] ALERT {sym} ({buy_flag}/1) for buy")
+
+            # only buy if every enabled indicator passed
+            if buy_flag == 0:
+                continue
+
+            # ── 8) wash-sale & settlement ────────────────────────
+            now_dt = datetime.utcnow()
+            if wash_sale_prohibited(sym, now_dt, trade_log):
                 logger.info(f"⛔ Skipping {sym} due to wash-sale rule")
                 continue
-            if funds_not_settled(sym, now):
+            if funds_not_settled(sym, now_dt):
                 logger.info(f"⛔ Skipping {sym}: funds not yet settled")
                 continue
 
-            # 7) size order
-            qty          = compute_qty(settings, price)
-            cost         = qty * price
-            cash_on_hand = get_cash()
-            if qty < 1 or cost > cash_on_hand:
-                logger.info(f"[SKIP] {sym} cost ${cost:.2f} vs cash ${cash_on_hand:.2f}")
+            # ── 9) size order ────────────────────────────────────
+            qty  = compute_qty(settings, price)
+            cost = qty * price
+            if qty < 1 or cost > get_cash():
+                logger.info(f"[SKIP] {sym} cost ${cost:.2f} vs cash ${get_cash():.2f}")
                 continue
 
-            # 8) BUY
+            # ── 🔫 BUY ───────────────────────────────────────────
             try:
                 buy_stock(sym, qty, price)
                 insert_trade(sym, "BUY", price, qty)
                 insert_or_update_holding(sym, qty, price, price)
-                trade_log.append({"symbol": sym, "action": "BUY", "time": now})
-                positions[sym] = {"entry_time": now, "qty": qty, "entry_price": price}
+                trade_log.append({"symbol": sym, "action": "BUY", "time": now_dt})
                 logger.info(f"✅ BUY {sym} x{qty} @ ${price:.2f}")
             except Exception as e:
                 logger.error(f"❌ Failed to BUY {sym}: {e}")
 
-        # ── exit logic ────────────────────────────────────
+        # ── 10) exit logic ────────────────────────────────────
         check_exit_orders(settings)
 
-        # ── sleep or immediate restart ───────────────────
-        sleep_secs = getattr(settings, "poll_interval", 0.0)
-        if sleep_secs > 0:
-            logger.info(f"⏸ Scan complete — sleeping {sleep_secs:.1f}s…")
-            time.sleep(sleep_secs)
-        else:
-            logger.debug("⏸ Scan complete — restarting immediately")
+        # ── 11) loop delay ───────────────────────────────────
+        delay = getattr(settings, "poll_interval", 0)
+        if delay > 0:
+            logger.info(f"⏸ Scan complete — sleeping {delay:.1f}s…")
+            time.sleep(delay)
+
+
 
 def stop_simulation():
     global _sim_stop
