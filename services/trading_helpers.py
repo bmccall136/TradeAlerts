@@ -110,15 +110,55 @@ def get_positions() -> dict:
     conn.close()
     return positions
 
-def buy_stock(symbol, qty, price, trade_time=None):
-    # … your existing cash deduction & holdings update …
+def get_avg_cost(symbol: str) -> float:
+    """
+    Fetch the current average cost per share for `symbol` from holdings.
+    Returns 0.0 if you don’t hold any.
+    """
+    conn = _connect()
+    cur  = conn.cursor()
+    cur.execute("SELECT avg_cost FROM holdings WHERE symbol = ?", (symbol,))
+    row = cur.fetchone()
+    conn.close()
+    return float(row[0]) if row else 0.0
+    
+def buy_stock(symbol: str, qty: int, price: float, trade_time=None):
+    """
+    Simulate buying `qty` shares of `symbol` @ `price`.
+    Deducts cash, logs the trade, and updates holdings.
+    """
+    # 1) Deduct cash
+    cost = price * qty
+    current_cash = get_cash()
+    set_cash(current_cash - cost)
+
+    # 2) Record the trade
     insert_trade(symbol, 'BUY', price, qty)
-def sell_stock(symbol, qty, price, trade_time=None):
-    # … your existing cash add & holdings update …
-    # compute pnl from avg_cost if you want:
-    avg_cost = get_avg_cost(symbol)      # however you stored it
+
+    # 3) Upsert the position
+    #    avg_cost here is the price you just paid
+    insert_or_update_holding(symbol, qty, price, price)
+
+
+def sell_stock(symbol: str, qty: int, price: float, trade_time=None):
+    """
+    Simulate selling `qty` shares of `symbol` @ `price`.
+    Credits cash, logs the trade (with PnL), and updates holdings.
+    """
+    # 1) Credit cash
+    proceeds = price * qty
+    current_cash = get_cash()
+    set_cash(current_cash + proceeds)
+
+    # 2) Compute P/L against your avg cost
+    avg_cost = get_avg_cost(symbol)
     pnl      = (price - avg_cost) * qty
+
+    # 3) Record the trade
     insert_trade(symbol, 'SELL', price, qty, pnl)
+
+    # 4) Reduce your position, keeping avg_cost the same for remaining shares
+    insert_or_update_holding(symbol, -qty, avg_cost, price)
 
 def insert_trade(symbol: str, action: str, price: float, qty: int, pnl: float = None):
     """

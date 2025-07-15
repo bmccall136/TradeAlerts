@@ -8,7 +8,8 @@ from datetime import datetime, timedelta, time as dt_time
 from zoneinfo import ZoneInfo
 
 import pandas_market_calendars as mcal
-
+from services.etrade_service    import fetch_etrade_quote
+from services.trading_helpers  import buy_stock, sell_stock
 from settings import SIMULATION_DB, _sim_stop
 from services.settings_schema import SimulationSettings
 from services.trading_helpers import (
@@ -23,7 +24,6 @@ from services.trading_helpers import (
 )
 from services.market_service import analyze_symbol, get_symbols
 from services.risk_management import wash_sale_prohibited, funds_not_settled
-from services.broker_api import buy_stock, sell_stock
 
 # ── module-level logger ─────────────────────────────────────
 logger = logging.getLogger("sim")
@@ -144,7 +144,7 @@ def run_simulation_loop(settings: SimulationSettings):
             if wash_sale_prohibited(sym, now_dt, trade_log):
                 logger.info(f"⛔ Skipping {sym} due to wash-sale rule")
                 continue
-            if funds_not_settled(sym, now_dt):
+            if funds_not_settled(sym, now_dt, trade_log):
                 logger.info(f"⛔ Skipping {sym}: funds not yet settled")
                 continue
 
@@ -157,7 +157,7 @@ def run_simulation_loop(settings: SimulationSettings):
 
             # ── 🔫 BUY ───────────────────────────────────────────
             try:
-                buy_stock(sym, qty, price)
+                buy_stock(sym, qty, price, now_dt)
                 insert_trade(sym, "BUY", price, qty)
                 insert_or_update_holding(sym, qty, price, price)
                 trade_log.append({"symbol": sym, "action": "BUY", "time": now_dt})
