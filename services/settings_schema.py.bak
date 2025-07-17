@@ -64,9 +64,11 @@ class SimulationSettings:
     nuke_db:                   bool    = False
     pause_when_market_closed:  bool    = True
     max_per_trade:             float   = 1000.0
-
+    # how many seconds to sleep between full scans (if not market-paused)
+    poll_interval:   float   = 60.0
     # ─── Starting capital ─────────────────────────────────────────────────
     starting_cash:    float   = 10000.0
+    timeframe: Optional[str] = None   # ← add this line
 
 def extract_simulation_settings(args) -> SimulationSettings:
     """
@@ -120,10 +122,13 @@ def extract_simulation_settings(args) -> SimulationSettings:
         pause_when_market_closed= bool(args.get("pause_when_market_closed", True)),
         nuke_db                 = bool(args.get("nuke_db", False)),
         max_per_trade           = float(args.get("max_per_trade", 1000.0)),
+        # optional override for scan interval (seconds)
+        poll_interval         = float(args.get("poll_interval", 60.0)),
 
-        # Starting capital
-        starting_cash           = float(args.get("starting_cash", 10000.0)),
-    )
+        # (optional) timeframe key so extract_simulation_settings can accept it
+        timeframe: Optional[str] = None   # ← correct
+        )
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────

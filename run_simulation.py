@@ -1,41 +1,57 @@
 #!/usr/bin/env python3
-import sys, os
-sys.path.insert(0, os.getcwd())
-
-import logging
-logger = logging.getLogger("sim")
-
-# ─── Configure logging before anything else ─────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] %(name)s %(levelname)s: %(message)s',
-    datefmt='%H:%M:%S'
+# ─── UTF-8 console logger ────────────────────────────────────────────────────
+console = logging.StreamHandler(sys.stdout)
+console.setLevel(logging.INFO)
+console.setFormatter(
+    logging.Formatter("[%(asctime)s] %(name)s %(levelname)s: %(message)s")
 )
+# Force UTF-8 on Windows consoles
+try:
+    console.stream.reconfigure(encoding="utf-8")
+except AttributeError:
+    # older Python / non-reconfigurable streams: wrap in a TextIOWrapper
+    import io
+    console.stream = io.TextIOWrapper(
+        console.stream.buffer,
+        encoding="utf-8",
+        errors="replace",
+        line_buffering=True
+    )
 
-import os, sys
-# ensure the script’s own directory is on sys.path
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
-import time
-import json
+logger.addHandler(console)
 
-# 1) Point alerts into the simulation database
+
+# (Optional) also log to console
+console = logging.StreamHandler()
+console.setFormatter(handler.formatter)
+logger.addHandler(console)
+
+# ─── Environment & DB setup ─────────────────────────────────────────────────
 from settings import SIMULATION_DB
 os.environ["ALERT_DB_PATH"] = SIMULATION_DB
 
-# 2) Import core services after setting DB path
+# ─── Core imports ───────────────────────────────────────────────────────────
 from services.trading_helpers  import (
     setup_simulation_db,
     check_if_position_open,
     enter_trade,
     check_exit_orders,
-    compute_qty
+    compute_qty,
 )
-from services.market_service   import get_symbols, analyze_symbol
-from dashboard                 import extract_simulation_settings
+from services.settings_schema import (
+    SimulationSettings,
+    extract_simulation_settings,
+)
+from services.market_service   import (
+    get_symbols,
+    analyze_symbol,
+)
 
+# now the rest of your run_simulation logic…
 def main():
     # a) Load settings from config
     cfg = json.load(open('simulation_config.json'))
+    cfg.pop('timeframe', None)
     settings = extract_simulation_settings(cfg)
 
     # b) Load symbol list
