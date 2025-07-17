@@ -1,13 +1,13 @@
 {
-  "sma_on": false,
+  "sma_on": true,
   "rsi_on": false,
   "macd_on": false,
   "bb_on": false,
   "vol_on": false,
-  "vwap_on": false,
+  "vwap_on": true,
   "news_on": false,
 
-  "sma_length": 20,
+  "sma_length": 50,
   "rsi_len": 14,
   "rsi_overbought": 70,
   "rsi_oversold": 30,
@@ -17,16 +17,16 @@
   "bb_length": 20,
   "bb_std": 2.0,
   "vol_multiplier": 1.5,
-  "vwap_threshold": 0.0,
+  "vwap_threshold": 0.5,
 
   "rsi_slope_on": false,
   "macd_hist_on": false,
-  "bb_breakout_on": false,
+  "bb_breakout_on": true,
 
   "price_sma_on": false,
   "price_sma_len": 5,
 
-  "min_signals": 5,
+  "min_signals": 2,
 
   "atr_on": false,
   "atr_threshold": 2.0,
@@ -36,7 +36,7 @@
   "range_on": false,
   "range_pct": 1.5,
 
-  "gap_on": true,
+  "gap_on": false,
   "gap_pct": 1.0,
 
   "single_entry_only": true,
@@ -44,12 +44,12 @@
   "trailing_stop_pct": 0.05,
   "sell_after_days": 1,
 
-  "stop_loss_pct": 3.0,
-  "take_profit_pct": 7.0,
+  "stop_loss_pct": 0.03,
+  "take_profit_pct": 0.07,
 
   "starting_cash": 1000,
   "max_per_trade": 200,
-  "pause_when_market_closed": true,
+  "pause_when_market_closed": false,
   "nuke_db": false,
-  "poll_interval": 0.05
+  "poll_interval": 60.0
 }

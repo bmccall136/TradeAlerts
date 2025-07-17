@@ -101,6 +101,7 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from flask import request, redirect, url_for, render_template
 from services.settings_service import load_settings, save_settings
+from services.settings_schema import SimulationSettings, extract_simulation_settings
 from services.backtest_service  import run_full_backtest
 from services.market_service    import get_symbols
 from flask import url_for
@@ -516,51 +517,6 @@ def extract_backtest_settings(args):
 
 # ── 3) Extract simulation settings from args ──────────────────────────
 
-@dataclass
-class SimulationSettings:
-    sma_on:            bool = True
-    rsi_on:            bool = True
-    macd_on:           bool = True
-    bb_on:             bool = True
-    vol_on:            bool = True
-    vwap_on:           bool = True
-    news_on:           bool = False
-
-    sma_length:        int  = 20
-    rsi_len:           int  = 14
-    rsi_overbought:    int  = 70
-    rsi_oversold:      int  = 30
-    macd_fast:         int  = 12
-    macd_slow:         int  = 26
-    macd_signal:       int  = 9
-    bb_length:         int  = 20
-    bb_std:            float= 2.0
-    vol_multiplier:    float= 1.0
-    vwap_threshold:    float= 0.0
-
-    atr_on:            bool = False
-    atr_pct:           float= 0.01   # fraction already divided by 100
-    range_on:          bool = False
-    range_pct:         float= 0.01
-    gap_on:            bool = False
-    gap_pct:           float= 0.02
-
-    price_sma_on:      bool = False
-
-    rsi_slope_on:      bool = False
-    macd_hist_on:      bool = False
-    bb_breakout_on:    bool = False
-
-    single_entry_only: bool = True
-    use_trailing_stop: bool = True
-
-    trailing_stop_pct: float= 0.0
-    sell_after_days:   Optional[int] = None
-    stop_loss_pct:     float= 0.0
-    take_profit_pct:   float= 0.0
-
-    starting_cash:     float=10000.0
-    max_per_trade:     float=1000.0
 
 def load_your_symbols():
     # reads your SP500 list
@@ -1221,10 +1177,22 @@ def simulation_view():
       for s,q,ac,lp in get_holdings()
     ]
 
-    history = [
-      dict(time=t, symbol=s, action=a, qty=q, price=p, pl=pl)
-      for t,s,a,q,p,pl in get_trades()
-    ]
+    # AFTER
+    history = []
+    for t, s, a, q, p, pl in get_trades():
+        try:
+            pl_val = float(pl)
+        except (TypeError, ValueError):
+            pl_val = 0.0
+        history.append({
+            'time':   t,
+            'symbol': s,
+            'action': a,
+            'qty':    q,
+            'price':  p,
+            'pl':     pl_val,
+        })
+
 
     return render_template("simulation.html",
                            cash=cash,

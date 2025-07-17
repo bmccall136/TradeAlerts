@@ -243,6 +243,70 @@ def compute_vwap(
     latest_vwap = tp_vol.iloc[-1] / last_cum_vol
     return float(latest_vwap)
 
-# backwards-compatibility aliases for market_service imports:
-compute_macd            = calculate_macd
-compute_bollinger_bands = compute_bollinger
+import pandas as pd
+
+def bb_bounds(df: pd.DataFrame, length: int, std: float):
+    """
+    Returns (upper_band, middle_band, lower_band) for Bollinger Bands.
+    """
+    ma  = df['Close'].rolling(length).mean()
+    sd  = df['Close'].rolling(length).std()
+    return ma + std * sd, ma, ma - std * sd
+
+def compute_macd(df: pd.DataFrame, fast: int, slow: int, signal: int):
+    """
+    Returns (macd_line, signal_line) for the classic MACD.
+    """
+    exp1 = df['Close'].ewm(span=fast, adjust=False).mean()
+    exp2 = df['Close'].ewm(span=slow, adjust=False).mean()
+    macd_line = exp1 - exp2
+    sig_line  = macd_line.ewm(span=signal, adjust=False).mean()
+    return macd_line, sig_line
+
+def compute_rsi(df: pd.DataFrame, length: int):
+    """
+    Returns a pandas Series of RSI values.
+    """
+    delta = df['Close'].diff()
+    up    = delta.clip(lower=0)
+    down  = -delta.clip(upper=0)
+    ma_up   = up.ewm(com=length-1, adjust=False).mean()
+    ma_down = down.ewm(com=length-1, adjust=False).mean()
+    rs      = ma_up / ma_down
+    return 100 - (100 / (1 + rs))
+
+# services/indicators.py
+
+import pandas as pd
+
+def compute_bollinger_bands(df: pd.DataFrame, length: int, std: float):
+    """
+    Given a DataFrame with a 'Close' column, return three pd.Series:
+      upper_band, middle_band (SMA), lower_band
+    """
+    ma    = df['Close'].rolling(window=length).mean()
+    sd    = df['Close'].rolling(window=length).std()
+    upper = ma + std * sd
+    lower = ma - std * sd
+    return upper, ma, lower
+
+def compute_volume_multiplier(df: pd.DataFrame, multiplier: float):
+    """
+    Return a pd.Series mask of True where volume ≥ multiplier × average volume.
+    """
+    avg_vol = df['Volume'].rolling(window=20).mean()
+    return df['Volume'] >= multiplier * avg_vol
+
+def compute_vwap(df: pd.DataFrame):
+    """
+    Volume‐weighted average price over the whole df.
+    Returns a pd.Series of the same length.
+    """
+    vp = (df['Close'] * df['Volume']).cumsum()
+    v  = df['Volume'].cumsum()
+    return vp / v
+
+# (You already have compute_atr, daily_range_pct, gap_up_pct, etc. defined above.)
+
+# Make sure your __all__ (if any) includes these names, or simply rely on
+# Python’s default of exporting everything that doesn’t start with “_”.

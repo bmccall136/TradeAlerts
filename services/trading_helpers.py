@@ -52,8 +52,10 @@ def _connect():
 
 def insert_or_update_holding(symbol: str, qty: int, avg_cost: float, last_price: float):
     """
-    Upsert into the holdings table: if the symbol exists, update its qty, avg_cost, last_price;
-    otherwise insert a new row.
+    Upsert into holdings:
+      • on buy (qty>0), add to position and recompute avg_cost  
+      • on partial sell (new_qty>0), reduce qty & keep same avg_cost  
+      • on full sell (new_qty<=0), delete the row  
     """
     conn = _connect()
     cur  = conn.cursor()
@@ -63,15 +65,22 @@ def insert_or_update_holding(symbol: str, qty: int, avg_cost: float, last_price:
 
     if row:
         old_qty, old_avg = row
-        total_cost = old_avg * old_qty + avg_cost * qty
+        total_cost = old_avg * old_qty + avg_cost * qty  # qty may be negative
         new_qty    = old_qty + qty
-        new_avg    = total_cost / new_qty
-        cur.execute("""
-            UPDATE holdings
-               SET qty = ?, avg_cost = ?, last_price = ?
-             WHERE symbol = ?
-        """, (new_qty, new_avg, last_price, symbol))
+
+        if new_qty > 0:
+            # only recompute avg if we’re increasing or partially reducing with weighted cost
+            new_avg = total_cost / new_qty
+            cur.execute("""
+                UPDATE holdings
+                   SET qty = ?, avg_cost = ?, last_price = ?
+                 WHERE symbol = ?
+            """, (new_qty, new_avg, last_price, symbol))
+        else:
+            # sold out or oversold—just remove the row
+            cur.execute("DELETE FROM holdings WHERE symbol = ?", (symbol,))
     else:
+        # brand new buy
         cur.execute("""
             INSERT INTO holdings(symbol, qty, avg_cost, last_price)
             VALUES (?, ?, ?, ?)
@@ -79,6 +88,7 @@ def insert_or_update_holding(symbol: str, qty: int, avg_cost: float, last_price:
 
     conn.commit()
     conn.close()
+
 
 def record_trade(symbol: str, price: float, qty: int, action: str, pnl: float = None):
     """
@@ -124,41 +134,37 @@ def get_avg_cost(symbol: str) -> float:
     
 def buy_stock(symbol: str, qty: int, price: float, trade_time=None):
     """
-    Simulate buying `qty` shares of `symbol` @ `price`.
-    Deducts cash, logs the trade, and updates holdings.
+    Record a buy: deduct cash, insert trade, upsert holding.
     """
-    # 1) Deduct cash
     cost = price * qty
     current_cash = get_cash()
+    if cost > current_cash:
+        raise RuntimeError(f"Not enough cash: need {cost:.2f}, have {current_cash:.2f}")
+    # 1) debit cash
     set_cash(current_cash - cost)
 
-    # 2) Record the trade
-    insert_trade(symbol, 'BUY', price, qty)
+    # 2) log trade
+    insert_trade(symbol, "BUY", price, qty, trade_time)
 
-    # 3) Upsert the position
-    #    avg_cost here is the price you just paid
+    # 3) update holdings: add qty at this price
     insert_or_update_holding(symbol, qty, price, price)
 
 
-def sell_stock(symbol: str, qty: int, price: float, trade_time=None):
-    """
-    Simulate selling `qty` shares of `symbol` @ `price`.
-    Credits cash, logs the trade (with PnL), and updates holdings.
-    """
-    # 1) Credit cash
-    proceeds = price * qty
-    current_cash = get_cash()
-    set_cash(current_cash + proceeds)
+def sell_stock(symbol, qty, price, trade_time=None):
+    # 1) credit your cash account
+    proceeds = qty * price
+    set_cash(get_cash() + proceeds)
 
-    # 2) Compute P/L against your avg cost
+    # 2) compute P/L
     avg_cost = get_avg_cost(symbol)
-    pnl      = (price - avg_cost) * qty
+    pnl = (price - avg_cost) * qty
 
-    # 3) Record the trade
-    insert_trade(symbol, 'SELL', price, qty, pnl)
+    # 3) log trade
+    insert_trade(symbol, "SELL", price, qty, pnl, trade_time)
 
-    # 4) Reduce your position, keeping avg_cost the same for remaining shares
+    # 4) update holdings: subtract qty
     insert_or_update_holding(symbol, -qty, avg_cost, price)
+
 
 def insert_trade(symbol: str, action: str, price: float, qty: int, pnl: float = None):
     """
@@ -504,6 +510,17 @@ def get_realized_pl() -> float:
     row = cur .fetchone()
     conn.close()
     return float(row[0]) if row else 0.0
+
+def get_position_qty(symbol: str) -> int:
+    """
+    Return the current share count for `symbol` (0 if not held).
+    """
+    conn = _connect()
+    cur  = conn.cursor()
+    cur.execute("SELECT qty FROM holdings WHERE symbol = ?", (symbol,))
+    row = cur.fetchone()
+    conn.close()
+    return row[0] if row else 0
 
 def get_unrealized_pl() -> float:
     """

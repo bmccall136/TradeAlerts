@@ -34,28 +34,41 @@ def wash_sale_prohibited(symbol: str, current_date: datetime, trade_log: list[di
     delta_days = (current_date - last_sale_date).days
 
 
-def funds_not_settled(trade_date: date, settlement_days: int = 2) -> bool:
+def funds_not_settled(symbol: str, current_date: datetime, trade_log: list[dict]) -> bool:
     """
-    Returns True if funds from a trade on `trade_date` are not yet settled.
-    Settlement occurs `settlement_days` after the trade date.
+    Return True if there’s a BUY for `symbol` in trade_log whose settlement
+    period (T+2 by default) hasn’t elapsed as of today.
     """
-# ensure trade_date is a date, not a string
-if isinstance(trade_date, str):
-    try:
-        # if ISO format with time
-        td = datetime.fromisoformat(trade_date)
-    except ValueError:
-        # fallback to any parser
-        td = parser.parse(trade_date)
-else:
-    td = trade_date
+    # find the most recent *buy* of this symbol
+    trade_date = None
+    for trade in reversed(trade_log):
+        if trade["symbol"] == symbol and trade["action"] == "BUY":
+            trade_date = trade["time"]
+            break
+    if not trade_date:
+        return False
 
-# if we got a datetime, pull out just the date
-if isinstance(td, datetime):
-    td = td.date()
+    # ── normalize trade_date into a date object ──
+    # (this block MUST be indented inside the function!)
+    if isinstance(trade_date, str):
+        try:
+            td = datetime.fromisoformat(trade_date)
+        except ValueError:
+            td = parser.parse(trade_date)
+    else:
+        td = trade_date
 
-# now do the days-difference safely
-delta_days = (date.today() - td).days
+    # if we got a datetime, convert to date
+    if isinstance(td, datetime):
+        td = td.date()
+
+    # now calculate days since trade
+    delta_days = (date.today() - td).days
+
+    # assume T+2 settlement
+    settlement_days = getattr(trade, "settlement_days", 2)
+    return delta_days < settlement_days
+
 
 def enforce_wash_sale(symbol, trade_log, buy_date, days=30):
     """
