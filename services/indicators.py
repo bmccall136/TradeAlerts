@@ -76,23 +76,36 @@ def calculate_macd(
     return macd_line, signal_line
 
 
-def compute_rsi(
-    series: pd.Series,
-    period: int = 14
-) -> pd.Series:
-    """
-    Compute the RSI (Relative Strength Index) over the given period.
-    Returns a Pandas Series of length equal to `series`.
-    """
-    delta = series.diff()
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
-    avg_gain = gain.rolling(window=period).mean()
-    avg_loss = loss.rolling(window=period).mean()
-    rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi.fillna(0)
+import pandas as pd
 
+def compute_rsi(obj, length):
+    # if you passed a Series, just use it directly
+    if isinstance(obj, pd.Series):
+        close = obj
+    else:
+        # otherwise assume DataFrame with a "Close" column
+        close = obj["Close"]
+    delta = close.diff()
+    gain  = delta.clip(lower=0)
+    loss  = -delta.clip(upper=0)
+    avg_gain = gain.rolling(length).mean()
+    avg_loss = loss.rolling(length).mean()
+    rs = avg_gain / avg_loss
+    return 100 - (100 / (1 + rs))
+
+def compute_macd(data, fast, slow, signal):
+    """Accepts either a pd.Series of closes or a DataFrame with .columns including 'close' or 'Close'."""
+    if isinstance(data, pd.Series):
+        close = data
+    else:
+        key = 'close' if 'close' in data.columns else 'Close'
+        close = data[key]
+
+    exp1 = close.ewm(span=fast, adjust=False).mean()
+    exp2 = close.ewm(span=slow, adjust=False).mean()
+    macd_line = exp1 - exp2
+    sig_line  = macd_line.ewm(span=signal, adjust=False).mean()
+    return macd_line, sig_line
 
 def compute_bollinger(
     series: pd.Series,
@@ -167,53 +180,10 @@ def compute_gap_pct(
     Returns a float gap_pct.
     """
     return (today_open - prev_close) / prev_close
-# services/indicators.py
-
-import pandas as pd
-import math
-
-# services/indicators.py
 
 import pandas as pd
 import numpy as np
 import math
-
-# services/indicators.py
-
-def compute_volume_multiplier(
-    df: pd.DataFrame,
-    window: int = 20
-) -> float:
-    """
-    Compute the latest volume multiplier: last_vol / avg_vol.
-    Expects df with a 'volume' column (lowercase) normalized already.
-    Returns a single float.
-    """
-    # Use lowercase 'volume' column
-    if 'volume' not in df.columns:
-        raise KeyError("compute_volume_multiplier: expected 'volume' in df.columns")
-    vols = df['volume']
-
-    # take the last `window` bars
-    window_slice = vols.tail(window)
-    if window_slice.empty:
-        return 0.0
-
-    # average over that window
-    avg_vol = float(window_slice.mean())
-    last_vol = float(vols.iloc[-1])
-
-    # guard against zero/NaN
-    if avg_vol == 0.0 or np.isnan(avg_vol):
-        return 0.0
-
-    return last_vol / avg_vol
-
-import pandas as pd
-import numpy as np
-import math
-
-# services/indicators.py
 
 def compute_vwap(
     df: pd.DataFrame,
@@ -249,25 +219,15 @@ def bb_bounds(df: pd.DataFrame, length: int, std: float):
     """
     Returns (upper_band, middle_band, lower_band) for Bollinger Bands.
     """
-    ma  = df['Close'].rolling(length).mean()
-    sd  = df['Close'].rolling(length).std()
+    ma  = df['close'].rolling(length).mean()
+    sd  = df['close'].rolling(length).std()
     return ma + std * sd, ma, ma - std * sd
-
-def compute_macd(df: pd.DataFrame, fast: int, slow: int, signal: int):
-    """
-    Returns (macd_line, signal_line) for the classic MACD.
-    """
-    exp1 = df['Close'].ewm(span=fast, adjust=False).mean()
-    exp2 = df['Close'].ewm(span=slow, adjust=False).mean()
-    macd_line = exp1 - exp2
-    sig_line  = macd_line.ewm(span=signal, adjust=False).mean()
-    return macd_line, sig_line
 
 def compute_rsi(df: pd.DataFrame, length: int):
     """
     Returns a pandas Series of RSI values.
     """
-    delta = df['Close'].diff()
+    delta = df['close'].diff()
     up    = delta.clip(lower=0)
     down  = -delta.clip(upper=0)
     ma_up   = up.ewm(com=length-1, adjust=False).mean()
@@ -279,31 +239,48 @@ def compute_rsi(df: pd.DataFrame, length: int):
 
 import pandas as pd
 
-def compute_bollinger_bands(df: pd.DataFrame, length: int, std: float):
+import pandas as pd
+
+# services/indicators.py
+
+import pandas as pd
+
+def compute_bollinger_bands(df_or_series, length: int, std: float):
     """
-    Given a DataFrame with a 'Close' column, return three pd.Series:
-      upper_band, middle_band (SMA), lower_band
+    Given either a DataFrame with a 'Close' column or a Series of closes,
+    return (upper_band, middle_band, lower_band) as pd.Series.
     """
-    ma    = df['Close'].rolling(window=length).mean()
-    sd    = df['Close'].rolling(window=length).std()
+    # pick out the Close series
+    if isinstance(df_or_series, pd.DataFrame):
+        close = df_or_series['close']
+    else:
+        close = df_or_series
+
+    # moving average and standard deviation
+    ma = close.rolling(window=length).mean()
+    sd = close.rolling(window=length).std()
+
+    # bands
     upper = ma + std * sd
     lower = ma - std * sd
+
     return upper, ma, lower
 
-def compute_volume_multiplier(df: pd.DataFrame, multiplier: float):
+
+def compute_volume_multiplier(df: pd.DataFrame, multiplier: float) -> pd.Series:
     """
-    Return a pd.Series mask of True where volume ≥ multiplier × average volume.
+    Return a boolean mask Series: True where df['Volume'] ≥ multiplier × avg_vol (20‑bar rolling).
     """
-    avg_vol = df['Volume'].rolling(window=20).mean()
-    return df['Volume'] >= multiplier * avg_vol
+    avg_vol = df['volume'].rolling(window=20).mean()
+    return df['volume'] >= multiplier * avg_vol
 
 def compute_vwap(df: pd.DataFrame):
     """
     Volume‐weighted average price over the whole df.
     Returns a pd.Series of the same length.
     """
-    vp = (df['Close'] * df['Volume']).cumsum()
-    v  = df['Volume'].cumsum()
+    vp = (df['close'] * df['Volume']).cumsum()
+    v  = df['volume'].cumsum()
     return vp / v
 
 # (You already have compute_atr, daily_range_pct, gap_up_pct, etc. defined above.)

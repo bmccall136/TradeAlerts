@@ -1,0 +1,10 @@
+@echo off
+REM — Switch console to UTF‑8
+chcp 65001 >nul
+
+REM — Set the window title (with 🚀)
+title 🚀 TradeAlerts Runner
+
+REM — Launch PowerShell, cd into this folder, and run your script
+powershell -NoExit -ExecutionPolicy Bypass -Command ^
+    "cd '%~dp0'; python .\run_simulation.py"
