@@ -4,26 +4,23 @@ from dataclasses import dataclass, field
 from typing import Optional
 from datetime import date, timedelta
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Simulation settings (for live scanner)
-# ─────────────────────────────────────────────────────────────────────────────
 @dataclass
 class SimulationSettings:
     # ─── Core toggles ────────────────────────────────────────────────────────
     sma_on:           bool
     rsi_on:           bool
     macd_on:          bool
-    bb_on:            bool
-    vol_on:           bool
+    bb_on:            bool        # general Bollinger‑Bands indicator
+    vol_on:          bool     # <— newly added
+    bb_breakout_on:   bool        # <— newly added      vol_on:           bool
     vwap_on:          bool
     news_on:          bool
     rsi_slope_on:     bool
     macd_hist_on:     bool
-    bb_breakout_on:   bool
     price_sma_on:     bool
 
     # ─── Core parameters ─────────────────────────────────────────────────────
-    sma_length:       int
+    sma_length:       int   # <— renamed to match code
     rsi_len:          int
     rsi_overbought:   int
     rsi_oversold:     int
@@ -35,7 +32,7 @@ class SimulationSettings:
     vol_multiplier:   float
     vwap_threshold:   float
 
-    # ─── Absolute/percent‐based filters ─────────────────────────────────────
+    # ─── Absolute / percent‐based filters ────────────────────────────────────
     atr_on:           bool    = False   # “ATR14 ≥ X”
     atr_len:          int     = 14
     atr_threshold:    float   = 1.4
@@ -49,21 +46,24 @@ class SimulationSettings:
     gap_on:           bool    = False   # “Gap % ≥ W”
     gap_pct:          float   = 1.0
 
-    # ─── Risk & exit rules defaults ─────────────────────────────────────────
-    trailing_stop_pct: float         = 0.05
+    # ─── Risk & exit rules ───────────────────────────────────────────────────
+    trailing_stop_pct: float = 0.05
+    stop_loss_pct:     float = 0.03    # <— newly added
+    take_profit_pct:   float = 0.07    # <— newly added
     sell_after_days:   Optional[int] = None
     single_entry_only: bool          = True
     use_trailing_stop: bool          = True
 
-    # ─── Run‐control flags & sizing ────────────────────────────────────────
-    nuke_db:                   bool    = False
-    pause_when_market_closed:  bool    = True
-    max_per_trade:             float   = 1000.0
-    poll_interval:             float   = 60.0
-
+    # ─── Run‑control flags & sizing ─────────────────────────────────────────
+    nuke_db:                  bool  = False
+    pause_when_market_closed: bool  = True
+    max_per_trade:            float = 1000.0
+    poll_interval:            float = 60.0
+    min_signals:               int     = 1
     # ─── Starting capital & optional timeframe ──────────────────────────────
     starting_cash:    float         = 10000.0
     timeframe:        Optional[str] = None
+
 
 
 def extract_simulation_settings(args) -> SimulationSettings:

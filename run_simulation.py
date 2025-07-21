@@ -1,37 +1,62 @@
-#!/usr/bin/env python3
-# ─── UTF-8 console logger ────────────────────────────────────────────────────
-console = logging.StreamHandler(sys.stdout)
-console.setLevel(logging.INFO)
+import sys, io, logging
+import os
+import sys
+import io
+import json
+import logging
+from logging.handlers import TimedRotatingFileHandler
+from pathlib import Path
+from dotenv import load_dotenv
+
+# ─── Enable UTF-8 & ANSI on Windows ─────────────────────────────────────────
+os.system("")                      # enable ANSI colors on Win10+
+sys.stdout.reconfigure(encoding="utf-8")
+
+# ─── Load environment variables ──────────────────────────────────────────────
+env_path = Path(__file__).parent / '.env'
+load_dotenv(env_path)
+
+# DEBUG: confirm E*TRADE credentials are loaded
+print("E*TRADE Consumer Key:", os.getenv("CONSUMER_KEY"))
+
+# ─── Logger setup ───────────────────────────────────────────────────────────
+logger = logging.getLogger("sim")
+logger.setLevel(logging.DEBUG)
+
+# File handler: rotates daily, keeps 7 days
+dir_logs = Path(__file__).parent / 'logs'
+dir_logs.mkdir(exist_ok=True)
+file_handler = TimedRotatingFileHandler(
+    dir_logs / 'triggers.log', when='midnight', interval=1, backupCount=7
+)
+file_handler.setLevel(logging.INFO)
+file_handler.suffix = "%Y-%m-%d"
+file_formatter = logging.Formatter(
+    "[%(asctime)s] %(name)s %(levelname)s: %(message)s"
+)
+file_handler.setFormatter(file_formatter)
+logger.addHandler(file_handler)
+
+# ── Always‑UTF‑8 console handler ────────────────────────────────────────
+utf8_console = io.TextIOWrapper(
+    sys.stdout.buffer,
+    encoding="utf-8",
+    errors="replace",
+    line_buffering=True
+)
+console = logging.StreamHandler(utf8_console)
+console.setLevel(logging.DEBUG)
 console.setFormatter(
     logging.Formatter("[%(asctime)s] %(name)s %(levelname)s: %(message)s")
 )
-# Force UTF-8 on Windows consoles
-try:
-    console.stream.reconfigure(encoding="utf-8")
-except AttributeError:
-    # older Python / non-reconfigurable streams: wrap in a TextIOWrapper
-    import io
-    console.stream = io.TextIOWrapper(
-        console.stream.buffer,
-        encoding="utf-8",
-        errors="replace",
-        line_buffering=True
-    )
-
 logger.addHandler(console)
 
-
-# (Optional) also log to console
-console = logging.StreamHandler()
-console.setFormatter(handler.formatter)
-logger.addHandler(console)
-
-# ─── Environment & DB setup ─────────────────────────────────────────────────
+# ─── Environment for simulation DB ───────────────────────────────────────────
 from settings import SIMULATION_DB
 os.environ["ALERT_DB_PATH"] = SIMULATION_DB
 
-# ─── Core imports ───────────────────────────────────────────────────────────
-from services.trading_helpers  import (
+# ─── Core imports (after env & logging) ─────────────────────────────────────
+from services.trading_helpers import (
     setup_simulation_db,
     check_if_position_open,
     enter_trade,
@@ -42,27 +67,33 @@ from services.settings_schema import (
     SimulationSettings,
     extract_simulation_settings,
 )
-from services.market_service   import (
+from services.market_service import (
     get_symbols,
     analyze_symbol,
 )
+from services.simulation_service import (
+    run_simulation_loop,
+    stop_simulation,
+)
 
-# now the rest of your run_simulation logic…
+# ─── Main routine ────────────────────────────────────────────────────────────
 def main():
-    # a) Load settings from config
-    cfg = json.load(open('simulation_config.json'))
-    cfg.pop('timeframe', None)
+    # load simulation config
+    cfg_path = Path(__file__).parent / 'simulation_config.json'
+    with open(cfg_path) as f:
+        cfg = json.load(f)
+
+    # extract settings & initialize DB
     settings = extract_simulation_settings(cfg)
 
-    # b) Load symbol list
-    symbols = get_symbols(simulation=True)
-    print(f"[SIM] Scanning {len(symbols)} symbols every minute…")
+    setup_simulation_db()
 
+    # start the simulation loop
+    try:
+        run_simulation_loop(settings)
+    except KeyboardInterrupt:
+        logger.info("Simulation interrupted, stopping...")
+        stop_simulation()
 
-    # c) Hand off to the official loop
-    from services.simulation_service import run_simulation_loop
-    run_simulation_loop(settings)
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
