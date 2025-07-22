@@ -150,13 +150,13 @@ def _is_market_open():
 
 
 def run_simulation_loop(settings: SimulationSettings):
-    setup_simulation_db()
+    # Only rebuild & reseed if the user explicitly requested it
     if settings.nuke_db:
         setup_simulation_db()
+        set_cash(settings.starting_cash)
+        logger.info(f"[SIM] seed cash: ${get_cash():.2f}")
 
-    set_cash(settings.starting_cash)
-    logger.info(f"[SIM] seed cash: ${get_cash():.2f}")
-
+    # …now pick up from whatever state was in the DB…
     symbols = get_symbols(simulation=True)
     TRIGGER_LABELS = [
         f"Price > SMA{settings.sma_length}",

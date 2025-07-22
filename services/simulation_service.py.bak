@@ -150,9 +150,11 @@ def _is_market_open():
 
 
 def run_simulation_loop(settings: SimulationSettings):
-    setup_simulation_db()
     if settings.nuke_db:
         setup_simulation_db()
+    else:
+        # assume DB is already initialized elsewhere
+        pass
 
     set_cash(settings.starting_cash)
     logger.info(f"[SIM] seed cash: ${get_cash():.2f}")
@@ -189,9 +191,9 @@ def run_simulation_loop(settings: SimulationSettings):
         logger.info("Starting scan loop iteration")
 
         for sym in symbols:
-           price, triggered, passed = analyze_symbol(sym, settings)
-           # now buy if we met the minimum‐signals threshold
-           buy_flag = int(passed and len(triggered) >= settings.min_signals)
+            price, triggered, passed = analyze_symbol(sym, settings)
+            # now buy if we met the minimum‐signals threshold
+            buy_flag = int(passed and len(triggered) >= settings.min_signals)
             flags    = [int(lbl in triggered) for lbl in TRIGGER_LABELS]
 
             ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
