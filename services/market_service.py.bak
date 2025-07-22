@@ -190,10 +190,10 @@ def analyze_symbol(symbol: str, settings: SimulationSettings) -> Dict[str, Any]:
         if price_live - vwap_val >= s["vwap_threshold"]:
             tags.append("VWAP+ 💰")
 
-    # — Price > SMA toggle (if you still want it) —
+    # — Price vs. SMA —
     if s.get("price_sma_on"):
-        sma_val = compute_sma(close, s["sma_length"])
-        if price_live > sma_val:
+        sma_last = compute_sma(close, s["sma_length"])   # float
+        if price_live > sma_last:
             tags.append(f"Price>SMA({s['sma_length']})")
 
     # — ATR14 ≥ X —

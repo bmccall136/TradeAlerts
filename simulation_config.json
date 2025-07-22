@@ -48,7 +48,7 @@
 
   "starting_cash": 1000,
   "max_per_trade": 200,
-  "pause_when_market_closed": false,
+  "pause_when_market_closed": true,
   "nuke_db": false,
   "poll_interval": 60.0
 }

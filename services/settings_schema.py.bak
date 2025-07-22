@@ -1,8 +1,9 @@
 # services/settings_schema.py
-
 from dataclasses import dataclass, field
 from typing import Optional
 from datetime import date, timedelta
+import os
+
 
 @dataclass
 class SimulationSettings:
@@ -11,15 +12,16 @@ class SimulationSettings:
     rsi_on:           bool
     macd_on:          bool
     bb_on:            bool        # general Bollinger‑Bands indicator
-    bb_breakout_on:   bool        # <— newly added      vol_on:           bool
-    vwap_on:          bool
-    news_on:          bool
-    rsi_slope_on:     bool
-    macd_hist_on:     bool
-    price_sma_on:     bool
+    vol_on:           bool        # volume filter
+    vwap_on:          bool        # VWAP threshold check
+    news_on:          bool        # news‐driven signals
+    rsi_slope_on:     bool        # slope of RSI indicator
+    macd_hist_on:     bool        # MACD histogram crossover
+    bb_breakout_on:   bool        # Bollinger‐Bands breakout
+    price_sma_on:     bool        # price vs SMA check
 
     # ─── Core parameters ─────────────────────────────────────────────────────
-    sma_length:       int   # <— renamed to match code
+    sma_length:       int
     rsi_len:          int
     rsi_overbought:   int
     rsi_oversold:     int
@@ -30,25 +32,26 @@ class SimulationSettings:
     bb_std:           float
     vol_multiplier:   float
     vwap_threshold:   float
+    price_sma_len:    int        # period for price vs SMA
 
     # ─── Absolute / percent‐based filters ────────────────────────────────────
-    atr_on:           bool    = False   # “ATR14 ≥ X”
+    atr_on:           bool    = False
     atr_len:          int     = 14
     atr_threshold:    float   = 1.4
 
-    atr_pct_on:       bool    = False   # “ATR % ≥ Y”
+    atr_pct_on:       bool    = False
     atr_pct:          float   = 0.7
 
-    range_on:         bool    = False   # “Range % ≥ Z”
+    range_on:         bool    = False
     range_pct:        float   = 1.2
 
-    gap_on:           bool    = False   # “Gap % ≥ W”
+    gap_on:           bool    = False
     gap_pct:          float   = 1.0
 
     # ─── Risk & exit rules ───────────────────────────────────────────────────
     trailing_stop_pct: float = 0.05
-    stop_loss_pct:     float = 0.03    # <— newly added
-    take_profit_pct:   float = 0.07    # <— newly added
+    stop_loss_pct:     float = 0.03
+    take_profit_pct:   float = 0.07
     sell_after_days:   Optional[int] = None
     single_entry_only: bool          = True
     use_trailing_stop: bool          = True
@@ -58,11 +61,11 @@ class SimulationSettings:
     pause_when_market_closed: bool  = True
     max_per_trade:            float = 1000.0
     poll_interval:            float = 60.0
-    min_signals:               int     = 1
+    min_signals:              int   = 1    # minimum triggers before action
+
     # ─── Starting capital & optional timeframe ──────────────────────────────
     starting_cash:    float         = 10000.0
     timeframe:        Optional[str] = None
-
 
 
 def extract_simulation_settings(args) -> SimulationSettings:
@@ -95,6 +98,7 @@ def extract_simulation_settings(args) -> SimulationSettings:
         bb_std                  = float(args.get("bb_std",         2.0)),
         vol_multiplier          = float(args.get("vol_multiplier", 2.0)),
         vwap_threshold          = float(args.get("vwap_threshold", 0.0)),
+        price_sma_len           = int(args.get("price_sma_len",   50)),
 
         # Filters
         atr_on                  = "atr_on"           in args,
@@ -109,19 +113,22 @@ def extract_simulation_settings(args) -> SimulationSettings:
 
         # Risk & exit
         trailing_stop_pct       = float(args.get("trailing_stop_pct", 0.05)),
+        stop_loss_pct           = float(args.get("stop_loss_pct",     0.03)),
+        take_profit_pct         = float(args.get("take_profit_pct",   0.07)),
         sell_after_days         = int(args.get("sell_after_days")) if args.get("sell_after_days") else None,
         single_entry_only       = "single_entry_only" in args,
         use_trailing_stop       = "use_trailing_stop" in args,
 
-        # Run-control & sizing
-        nuke_db                 = bool(args.get("nuke_db", False)),
-        pause_when_market_closed= bool(args.get("pause_when_market_closed", True)),
-        max_per_trade           = float(args.get("max_per_trade", 1000.0)),
-        poll_interval           = float(args.get("poll_interval", 60.0)),
+        # Run‑control & sizing
+        nuke_db                  = bool(args.get("nuke_db", False)),
+        pause_when_market_closed = bool(args.get("pause_when_market_closed", True)),
+        max_per_trade            = float(args.get("max_per_trade", 1000.0)),
+        poll_interval            = float(args.get("poll_interval", 60.0)),
+        min_signals              = int(args.get("min_signals", 1)),      # ← add this!
 
-        # Starting capital & timeframe
-        starting_cash           = float(args.get("starting_cash", 10000.0)),
-        timeframe               = args.get("timeframe"),  # if not provided, stays None
+        # ─── Starting capital & optional timeframe ──────────────────────────────
+        starting_cash   = float(args.get("starting_cash", 10000.0)),
+        timeframe       = args.get("timeframe"),  # if not provided, stays None
     )
 
 

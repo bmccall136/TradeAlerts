@@ -324,13 +324,20 @@ def check_if_position_open(symbol: str) -> bool:
 
 def compute_qty(settings, price: float) -> int:
     """
-    Compute shares to buy based on max_per_trade.
-    Returns 0 if price is zero or negative.
+    Compute shares to buy so that:
+      – cost ≤ max_per_trade
+      – cost ≤ available cash
+    Returns 0 if price > max_per_trade or if you literally can't afford one share.
     """
     if price <= 0:
-        # avoid division-by-zero or weird negative prices
         return 0
-    return max(1, int(settings.max_per_trade / price))
+    # max shares by your per‑trade budget
+    max_by_size = int(settings.max_per_trade / price)
+    # max shares by your cash balance
+    max_by_cash = int(get_cash() / price)
+    # if either is zero, we can’t buy any
+    return min(max_by_size, max_by_cash)
+
 
 import logging
 logger = logging.getLogger(__name__)

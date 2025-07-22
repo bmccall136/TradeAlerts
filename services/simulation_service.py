@@ -13,7 +13,7 @@ import pandas_market_calendars as mcal
 from services.market_service    import fetch_data_with_timeout, get_symbols
 from services.etrade_service     import fetch_etrade_quote
 from services.settings_schema   import SimulationSettings
-from services.trading_helpers   import (
+from services.trading_helpers import (
     buy_stock, get_position_qty, setup_simulation_db,
     set_cash, get_cash, insert_or_update_holding,
     compute_qty, seconds_until_open, check_exit_orders,
@@ -25,6 +25,8 @@ from services.indicators        import (
     compute_vwap, compute_atr,
     daily_range_pct, gap_up_pct
 )
+from .portfolio import get_holdings
+from .settings_schema import SIM_DB_PATH, SimulationSettings
 
 logger = logging.getLogger("sim")
 ET   = ZoneInfo("America/New_York")
@@ -138,104 +140,113 @@ def analyze_symbol(symbol: str, settings: SimulationSettings):
     passed_all = len(triggered) >= settings.min_signals
     return price, triggered, passed_all
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+ET   = ZoneInfo("America/New_York")
+nyse = mcal.get_calendar("NYSE")
+
 def _is_market_open():
-    today = datetime.now(ET).date()
+    # grab “now” in New York
+    now_et = datetime.now(ET)
+    today  = now_et.date()
+
+    # what NYSE thinks today’s hours are
     sched = nyse.schedule(start_date=today, end_date=today)
     if sched.empty:
+        logger.debug(f"[MARKET] No session today ({today})")
         return False
-    open_t  = sched.iloc[0].market_open.time()
-    close_t = sched.iloc[0].market_close.time()
-    now_t   = datetime.now(ET).time()
-    return open_t <= now_t <= close_t
 
+    # these come back as pandas.Timestamp (tz=America/New_York)
+    open_dt  = sched.iloc[0].market_open.to_pydatetime()
+    close_dt = sched.iloc[0].market_close.to_pydatetime()
 
+    # debug output—verify all three in your logs
+    logger.debug(
+        f"[MARKET] now_et   = {now_et!r}\n"
+        f"          open_dt  = {open_dt!r}\n"
+        f"          close_dt = {close_dt!r}"
+    )
+
+    return open_dt <= now_et <= close_dt
 def run_simulation_loop(settings: SimulationSettings):
-    # Only rebuild & reseed if the user explicitly requested it
+    setup_simulation_db()
     if settings.nuke_db:
-        setup_simulation_db()
-        set_cash(settings.starting_cash)
-        logger.info(f"[SIM] seed cash: ${get_cash():.2f}")
+         setup_simulation_db()
 
-    # …now pick up from whatever state was in the DB…
+    set_cash(settings.starting_cash)
+    logger.info(f"[SIM] seed cash: ${get_cash():.2f}")
+
+    # grab your universe here:
     symbols = get_symbols(simulation=True)
-    TRIGGER_LABELS = [
-        f"Price > SMA{settings.sma_length}",
-        "RSI 📈", "MACD 🚀", "BB breakout",
-        f"Vol ×{settings.vol_multiplier}", "VWAP+ 💰",
-        f"ATR{settings.atr_len} ≥ {settings.atr_threshold}",
-        f"ATR % ≥ {settings.atr_pct}%",
-        f"Range % ≥ {settings.range_pct}",
-        f"Gap % ≥ {settings.gap_pct}",
-    ]
-    total_enabled = sum(getattr(settings, k) for k in [
-        "price_sma_on","rsi_on","macd_on","bb_on",
-        "vol_on","vwap_on","atr_on","atr_pct_on",
-        "range_on","gap_on",
-    ])
-
-    if not LOGFILE.exists():
-        with open(LOGFILE, "w", newline="", encoding="utf-8-sig") as f:
-            csv.writer(f).writerow(["timestamp","symbol"] + TRIGGER_LABELS + ["buy"])
-
-    trade_log = []
-
     while True:
+        # pause if market is closed…
         if settings.pause_when_market_closed and not _is_market_open():
             wait = seconds_until_open()
             logger.info(f"[SIM] Market closed — sleeping {wait:.1f}s")
             time.sleep(wait)
             continue
 
-        logger.info("Starting scan loop iteration")
+        logger.info("🔁 Starting scan loop iteration")
 
+        # 4) iterate the universe you fetched up front
         for sym in symbols:
             price, triggered, passed = analyze_symbol(sym, settings)
-            # now buy if we met the minimum‐signals threshold
-            buy_flag = int(passed and len(triggered) >= settings.min_signals)
-            flags    = [int(lbl in triggered) for lbl in TRIGGER_LABELS]
-
-            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            with open(LOGFILE, "a", newline="", encoding="utf-8-sig") as f:
-                csv.writer(f).writerow([ts, sym] + flags + [buy_flag])
-
-            if get_position_qty(sym) > 0:
-                insert_or_update_holding(
-                    sym, qty=0,
-                    avg_cost=get_avg_cost(sym),
-                    last_price=price
-                )
-
-            logger.info(f"[SIM] ALERT {sym} ({len(triggered)}/{total_enabled}) -> {triggered}")
-            logger.info(f"[SIM] ALERT {sym} ({buy_flag}/1) required")
-
-            if not buy_flag:
+            if price is None:
                 continue
-            if settings.single_entry_only and get_position_qty(sym) > 0:
-                logger.info(f"⛔ Already holding {sym}; skipping")
+            logger.info(f"[SIM] ALERT {sym}: {len(triggered)}/{settings.min_signals} indicators passed → {triggered}")
+
+            buy_flag = int(passed and len(triggered) >= settings.min_signals)
+
+            # skip if we don't want to enter / already in / etc.
+            if not buy_flag or (settings.single_entry_only and get_position_qty(sym) > 0):
                 continue
 
             now_dt = datetime.utcnow()
-            # … your wash‑sale & settlement checks here …
-
             qty  = compute_qty(settings, price)
-            cost = qty * price
-            if qty < 1 or cost > get_cash():
-                logger.info(f"[SKIP] {sym} cost ${cost:.2f} vs cash ${get_cash():.2f}")
-                continue
+        # calculate total cost
+        cost = qty * price
 
-            try:
-                buy_stock(sym, qty, price, now_dt)
-                trade_log.append({"symbol": sym, "action": "BUY", "time": now_dt})
-                logger.info(f"✅ BUY {sym} x{qty} @ ${price:.2f}")
-            except Exception as e:
-                logger.error(f"❌ BUY failed for {sym}: {e}")
+        # don’t attempt a buy if qty is zero or we lack cash
+        if qty < 1 or cost > get_cash():
+            logger.info(
+                f"[SIM] insufficient cash for {sym}: need ${cost:.2f}, have ${get_cash():.2f}"
+            )
+            continue
 
-            check_exit_orders(settings)
+        # try/except must line up exactly here
+        try:
+            buy_stock(sym, qty, price, now_dt)
+            # deduct cash *after* a successful buy
+            set_cash(get_cash() - cost)
+            logger.info(
+                f"✅ BUY {sym} x{qty} @ ${price:.2f} (cash → ${get_cash():.2f})"
+            )
+        except Exception as e:
+            logger.error(f"❌ Failed to BUY {sym}: {e}")
 
+        # now handle any exit orders
+        check_exit_orders(settings)
+        # … end of your symbol loop …
+
+        # log current holdings every iteration
+        holdings = get_holdings()
+        if holdings:
+            logger.info("[SIM] Current holdings:")
+            for symbol, qty, avg_cost in holdings:
+                logger.info(f"    • {symbol}: {qty} shares @ ${avg_cost:.2f}")
+        else:
+            logger.info("[SIM] No holdings")
+
+        # sleep or loop‑back as before
+        time.sleep(settings.loop_delay)
+
+        # … rest of your code …
+
+        # 5) sleep until next scan
         if settings.poll_interval > 0:
             logger.info(f"⏸ Scan complete — sleeping {settings.poll_interval:.1f}s")
             time.sleep(settings.poll_interval)
-
 
 def stop_simulation():
     raise NotImplementedError("Foreground loop; use CTRL‑C to stop")
