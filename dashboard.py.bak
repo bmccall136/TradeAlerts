@@ -13,6 +13,8 @@ from datetime import datetime, date, timedelta
 from dateutil.relativedelta import relativedelta
 from collections import namedtuple
 from types import SimpleNamespace
+from services.etrade_service import fetch_etrade_quote
+
 import os
 import json
 import subprocess
@@ -101,6 +103,7 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from flask import request, redirect, url_for, render_template
 from services.settings_service import load_settings, save_settings
+from services.settings_schema import SimulationSettings, extract_simulation_settings
 from services.backtest_service  import run_full_backtest
 from services.market_service    import get_symbols
 from flask import url_for

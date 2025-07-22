@@ -13,6 +13,8 @@ from datetime import datetime, date, timedelta
 from dateutil.relativedelta import relativedelta
 from collections import namedtuple
 from types import SimpleNamespace
+from services.etrade_service import fetch_etrade_quote
+
 import os
 import json
 import subprocess
@@ -1163,21 +1165,44 @@ from services.trading_helpers    import get_cash, get_holdings, get_trades, get_
 
 @app.route("/simulation")
 def simulation_view():
-    # This just renders the dashboard; the loop is running in background
     cash         = get_cash()
     unrealized   = get_unrealized_pl()
     realized     = get_realized_pl()
 
-    holdings = [
-      dict(symbol=s, qty=q, price_paid=ac, last_price=lp,
-           day_gain=(lp-ac)*q,
-           total_gain=(lp-ac)*q,
-           change_pct=(lp-ac)/(ac or 1)*100,
-           value=lp*q)
-      for s,q,ac,lp in get_holdings()
-    ]
+    # 1) get your DB rows
+    raw = get_holdings()   # each row is (symbol, qty, price_paid, last_price_placeholder)
+    holdings = []
+    for symbol, qty, price_paid, _ in raw:
+        holdings.append({
+            'symbol':      symbol,
+            'qty':         qty,
+            'price_paid':  price_paid,
+            # we'll overwrite last_price below…
+            'last_price':  None,
+            'change':      None,
+            'change_pct':  None,
+            'day_gain':    None,
+            'total_gain':  None,
+            'value':       None,
+        })
 
-    # AFTER
+    # 2) punch in live prices & recalc
+    for h in holdings:
+        try:
+            live = fetch_etrade_quote(h['symbol'])
+            app.logger.debug(f"[PRICE] {h['symbol']}: E*TRADE price = {live}")
+            h['last_price'] = round(live, 2)
+
+            change = h['last_price'] - h['price_paid']
+            h['change']     = round(change, 2)
+            h['change_pct'] = round((change / h['price_paid']*100) if h['price_paid'] else 0, 1)
+            h['total_gain'] = round(change * h['qty'], 2)
+            h['day_gain']   = h['total_gain']
+            h['value']      = round(h['last_price'] * h['qty'], 2)
+        except Exception as e:
+            app.logger.warning(f"[PRICE] {h['symbol']} fetch failed: {e}")
+
+    # rebuild your history exactly as before…
     history = []
     for t, s, a, q, p, pl in get_trades():
         try:
@@ -1193,13 +1218,14 @@ def simulation_view():
             'pl':     pl_val,
         })
 
-
-    return render_template("simulation.html",
-                           cash=cash,
-                           unrealized_pnl=unrealized,
-                           realized_pnl=realized,
-                           holdings=holdings,
-                           history=history)
+    return render_template(
+        "simulation.html",
+        cash=cash,
+        unrealized_pnl=unrealized,
+        realized_pnl=realized,
+        holdings=holdings,
+        history=history
+    )
 
 @app.route("/simulation/buy", methods=["POST"])
 def simulation_buy():

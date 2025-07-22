@@ -1,0 +1,25 @@
+from flask import Flask
+from api import api                           # existing /api blueprint
+from blueprints.alerts.views import alerts_bp
+from blueprints.simulation.views import simulation_bp
+from blueprints.status.views import status_bp
+
+def create_app():
+    # Serve static files from 'static/' under the '/assets' URL path
+    app = Flask(
+        __name__,
+        static_folder='static',
+        static_url_path='/assets',
+        template_folder='templates'  # templates directory
+    )
+
+    # Register blueprints (no separate static_bp needed)
+    app.register_blueprint(api)               # serves /api endpoints
+    app.register_blueprint(alerts_bp)         # mounts at '/'
+    app.register_blueprint(simulation_bp, url_prefix='/simulation')
+    app.register_blueprint(status_bp)         # for /reconnect_api
+
+    return app
+
+if __name__ == '__main__':
+    create_app().run(debug=True)
