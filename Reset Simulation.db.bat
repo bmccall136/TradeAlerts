@@ -1,7 +1,24 @@
 @echo off
-REM — Switch console to UTF‑8
+REM ── UTF‑8 Console ─────────────────────────────────────────────────────────
 chcp 65001 >nul
 
+REM ── Go to script directory ────────────────────────────────────────────────
+pushd "%~dp0"
 
-REM — Launch PowerShell, stay open, cd into this folder, and run the dashboard
-powershell -NoExit -ExecutionPolicy Bypass -Command "cd '%~dp0'; del simulation.db; python .\init_simulation_db.py"
+REM ── Delete old simulation DB ─────────────────────────────────────────────
+if exist "simulation.db" (
+    echo Removing old simulation.db...
+    del /q "simulation.db"
+) else (
+    echo No simulation.db found.
+)
+
+REM ── (Re)initialize the DB ────────────────────────────────────────────────
+echo Initializing simulation database...
+python init_simulation_db.py
+
+REM ── Keep console open ────────────────────────────────────────────────────
+echo.
+pause
+
+popd

@@ -522,10 +522,14 @@ def extract_backtest_settings(args):
 
 def load_your_symbols():
     # reads your SP500 list
-    with open('sp500_symbols.txt') as f:
-        return [line.strip() for line in f if line.strip()]
-        logging.debug(f"[sim] symbols to scan: {symbols[:5]}… ({len(symbols)} total)")
+    settings = extract_simulation_settings(cfg)
 
+    # make sure you load or define your symbols before calling the loop
+    with open("sp500_symbols.txt") as f:
+        symbols = [line.strip() for line in f if line.strip()]
+
+    # pass both settings and symbols
+    run_simulation_loop(settings, symbols)
 
 BACKTEST_DB = 'backtest.db'
 
@@ -1047,26 +1051,12 @@ def export_simulation():
 def start_scanner():
     global _is_scanner_running
 
-    # 0) Ensure our simulation DB (and its `state` table) exist
     setup_simulation_db()
-
-    # 2) Seed starting cash from the form
-    starting_cash = float(request.form.get('starting_cash', 10000))
-    set_cash(starting_cash)
-
-    # 3) Grab max_per_trade so the UI can echo it back
-    max_per_trade = float(request.form.get('max_per_trade', 1000))
-
-    # 4) Build the full S&P 500 universe
-    sim_settings = extract_simulation_settings(request.form)
-    symbols      = get_symbols(simulation=True)
-    logger.info("▶️ Starting simulation on %d SP500 symbols", len(symbols))
-
-    # 5) Kick off the background thread
+    symbols = get_symbols(simulation=True)
     _is_scanner_running = True
     t = threading.Thread(
         target=run_simulation_loop,
-        args=(sim_settings, symbols),
+        args=(sim_settings,),
         daemon=True
     )
     t.start()
@@ -1171,20 +1161,19 @@ def simulation_view():
 
     # 1) get your DB rows
     raw = get_holdings()   # each row is (symbol, qty, price_paid, last_price_placeholder)
-    holdings = []
-    for symbol, qty, price_paid, _ in raw:
-        holdings.append({
-            'symbol':      symbol,
-            'qty':         qty,
-            'price_paid':  price_paid,
-            # we'll overwrite last_price below…
-            'last_price':  None,
-            'change':      None,
-            'change_pct':  None,
-            'day_gain':    None,
-            'total_gain':  None,
-            'value':       None,
-        })
+    holdings = [
+      dict(
+        symbol=s,
+        qty=q,
+        price_paid=ac,
+        last_price=(lp if lp is not None else 0.0),
+        day_gain=((lp or 0) - ac)*q,
+        total_gain=((lp or 0) - ac)*q,
+        change_pct=(((lp or 0) - ac)/(ac or 1))*100,
+        value=(lp or 0)*q,
+      )
+      for s,q,ac,lp in get_holdings()
+    ]
 
     # 2) punch in live prices & recalc
     for h in holdings:
