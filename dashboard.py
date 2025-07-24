@@ -130,6 +130,10 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from services.trading_helpers import setup_simulation_db
+
+# before any get_cash()/buy()/sell() calls:
+setup_simulation_db()
 
 # ── Dynamic Unicode font registration ────────────────────────────────
 if os.name == 'nt':  # Windows

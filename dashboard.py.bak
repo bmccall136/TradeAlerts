@@ -1053,7 +1053,6 @@ def start_scanner():
 
     setup_simulation_db()
     symbols = get_symbols(simulation=True)
-    …
     _is_scanner_running = True
     t = threading.Thread(
         target=run_simulation_loop,
