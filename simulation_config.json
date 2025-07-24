@@ -26,7 +26,7 @@
   "price_sma_on": true,
   "price_sma_len": 50,
 
-  "min_signals": 3,
+  "min_signals": 4,
 
   "atr_on": false,
   "atr_threshold": 2.0,
@@ -48,7 +48,7 @@
 
   "starting_cash": 1000,
   "max_per_trade": 200,
-  "pause_when_market_closed": true,
+  "pause_when_market_closed": false,
   "nuke_db": false,
   "poll_interval": 60.0
 }

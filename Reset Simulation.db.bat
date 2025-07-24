@@ -13,9 +13,6 @@ if exist "simulation.db" (
     echo No simulation.db found.
 )
 
-REM ── (Re)initialize the DB ────────────────────────────────────────────────
-echo Initializing simulation database...
-python init_simulation_db.py
 
 REM ── Keep console open ────────────────────────────────────────────────────
 echo.

@@ -7,6 +7,10 @@ from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from dotenv import load_dotenv
 import os, ctypes
+from services.trading_helpers import setup_simulation_db
+
+# before any get_cash()/buy()/sell() calls:
+setup_simulation_db()
 
 # switch Windows console into UTF‑8 mode
 os.system('chcp 65001 > nul')                 # simpler, fires off "chcp 65001"
