@@ -272,3 +272,15 @@ def get_symbols(simulation=False, clean_path='sp500_symbols_clean.txt'):
     except Exception:
         fallback = os.path.join(os.path.dirname(__file__), 'symbols.txt')
         return [l.strip().upper() for l in open(fallback) if l.strip()]
+
+
+def fetch_etrade_quote(symbol: str) -> float:
+    resp = client.get_quote(symbol)   # however you call E*TRADE
+    all_data = resp['quoteResponse']['All'][0]
+    # Try extended hours first
+    ext = all_data.get('ExtendedHourQuoteDetail') or {}
+    ext_price = ext.get('lastTrade')
+    if ext_price and ext_price > 0:
+        return ext_price
+    # Fallback to regular hours
+    return all_data.get('lastTrade') or 0.0

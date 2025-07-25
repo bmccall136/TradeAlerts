@@ -14,6 +14,7 @@ from services.indicators import (
 )
 
 from services.news_service import fetch_latest_headlines
+from services.settings_schema import SimulationSettings
 
 logger = logging.getLogger(__name__)
 

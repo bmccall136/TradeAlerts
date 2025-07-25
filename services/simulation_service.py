@@ -17,7 +17,7 @@ from services.trading_helpers import (
     buy_stock, get_position_qty, setup_simulation_db,
     set_cash, get_cash, insert_or_update_holding,
     compute_qty, seconds_until_open, check_exit_orders,
-    get_avg_cost, get_holdings
+    get_avg_cost, get_holdings, check_if_position_open
 )
 from services.indicators        import (
     compute_sma, compute_rsi, compute_macd,
@@ -219,7 +219,6 @@ def run_simulation_loop(settings: SimulationSettings):
             # d) execute buy
             try:
                 buy_stock(sym, qty, live_px, now_dt)
-                set_cash(get_cash() - cost)
                 logger.info(f"✅ BUY {sym} x{qty} @ ${live_px:.2f} (cash → ${get_cash():.2f})")
             except Exception as e:
                 logger.error(f"❌ Failed to BUY {sym}: {e}")

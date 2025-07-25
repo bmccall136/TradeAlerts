@@ -1387,7 +1387,40 @@ from flask import redirect, url_for
 
 @app.route("/", methods=["GET"])
 def index():
-    return redirect(url_for("simulation"))
+    # 1) Ensure DB and tables exist (and seed cash if first run)
+    setup_simulation_db()
+
+    # 2) Load raw holdings from SQLite
+    raw = get_holdings()   # List of tuples: (symbol, qty, avg_cost, last_price)
+
+    # 3) Build a context list with all the fields your template needs
+    holdings = []
+    for symbol, qty, avg_cost, last_price in raw:
+        day_gain   = round(last_price - avg_cost, 2)
+        change_pct = round((last_price - avg_cost) / avg_cost * 100, 1) if avg_cost else 0.0
+        total_gain = round(day_gain * qty, 2)
+        value      = round(last_price * qty, 2)
+        holdings.append({
+            "symbol":     symbol,
+            "last_price": last_price,
+            "day_gain":   day_gain,
+            "change_pct": change_pct,
+            "qty":        qty,
+            "price_paid": avg_cost,
+            "total_gain": total_gain,
+            "value":      value,
+        })
+
+    # 4) Load your JSON‐based config so the template can show settings if needed
+    with open(CONFIG_PATH) as f:
+        config = json.load(f)
+
+    # 5) Render the template, passing both holdings *and* config
+    return render_template(
+        "index.html",
+        holdings=holdings,
+        config=config
+    )
 
 
 

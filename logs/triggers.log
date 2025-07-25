@@ -735,3 +735,371 @@
 [2025-07-24 21:16:45,973] sim INFO: [SIM] insufficient cash for BIIB: need $0.00, have $0.00
 [2025-07-24 21:16:54,664] sim INFO: [SIM] ALERT CHRW: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
 [2025-07-24 21:16:54,875] sim INFO: [SIM] insufficient cash for CHRW: need $0.00, have $0.00
+[2025-07-24 21:17:29,175] sim INFO: [SIM] seed cash: $1000.00
+[2025-07-24 21:17:29,177] sim INFO: 🔁 Starting scan loop iteration
+[2025-07-24 21:17:51,541] sim INFO: [SIM] ALERT ADI: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:17:51,762] sim INFO: [SIM] insufficient cash for ADI: need $0.00, have $1000.00
+[2025-07-24 21:18:14,964] sim INFO: [SIM] ALERT BIIB: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:18:15,218] sim INFO: ✅ BUY BIIB x1 @ $132.59 (cash → $734.82)
+[2025-07-24 21:18:15,222] sim INFO: [SIM] Current holdings:
+[2025-07-24 21:18:15,222] sim INFO:     • BIIB: 1 shares @ $132.59 (last price: $132.59)
+[2025-07-24 21:18:28,581] sim INFO: [SIM] ALERT CHRW: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:18:28,855] sim INFO: ✅ BUY CHRW x1 @ $103.17 (cash → $528.48)
+[2025-07-24 21:18:28,857] sim INFO: [SIM] Current holdings:
+[2025-07-24 21:18:28,857] sim INFO:     • BIIB: 1 shares @ $132.59 (last price: $132.59)
+[2025-07-24 21:18:28,858] sim INFO:     • CHRW: 1 shares @ $103.17 (last price: $103.17)
+[2025-07-24 21:19:39,249] sim INFO: [SIM] ALERT EXPD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:19:39,623] sim INFO: ✅ BUY EXPD x1 @ $116.91 (cash → $294.66)
+[2025-07-24 21:19:39,628] sim INFO: [SIM] Current holdings:
+[2025-07-24 21:19:39,628] sim INFO:     • BIIB: 1 shares @ $132.59 (last price: $132.59)
+[2025-07-24 21:19:39,629] sim INFO:     • CHRW: 1 shares @ $103.17 (last price: $103.17)
+[2025-07-24 21:19:39,629] sim INFO:     • EXPD: 1 shares @ $116.91 (last price: $116.91)
+[2025-07-24 21:21:15,879] sim INFO: [SIM] ALERT MNST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:21:16,555] sim INFO: ✅ BUY MNST x3 @ $60.18 (cash → $-66.42)
+[2025-07-24 21:21:16,559] sim INFO: [SIM] Current holdings:
+[2025-07-24 21:21:16,560] sim INFO:     • BIIB: 1 shares @ $132.59 (last price: $132.59)
+[2025-07-24 21:21:16,560] sim INFO:     • CHRW: 1 shares @ $103.17 (last price: $103.17)
+[2025-07-24 21:21:16,560] sim INFO:     • EXPD: 1 shares @ $116.91 (last price: $116.91)
+[2025-07-24 21:21:16,560] sim INFO:     • MNST: 3 shares @ $60.18 (last price: $60.18)
+[2025-07-24 21:22:04,237] sim INFO: [SIM] ALERT RMD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:22:04,411] sim INFO: [SIM] insufficient cash for RMD: need $0.00, have $-66.42
+[2025-07-24 21:22:09,363] sim INFO: [SIM] ALERT CRM: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:22:09,541] sim INFO: [SIM] insufficient cash for CRM: need $0.00, have $-66.42
+[2025-07-24 21:22:31,441] sim INFO: [SIM] ALERT TER: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:22:31,640] sim INFO: [SIM] insufficient cash for TER: need $0.00, have $-66.42
+[2025-07-24 21:23:10,505] sim INFO: [SIM] ALERT WST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:23:10,694] sim INFO: [SIM] insufficient cash for WST: need $0.00, have $-66.42
+[2025-07-24 21:23:21,137] sim INFO: 🔁 Starting scan loop iteration
+[2025-07-24 21:23:53,176] sim INFO: [SIM] ALERT ADI: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:23:53,363] sim INFO: [SIM] insufficient cash for ADI: need $0.00, have $-66.42
+[2025-07-24 21:24:24,600] sim INFO: [SIM] ALERT BIIB: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:24:25,326] sim INFO: [SIM] insufficient cash for BIIB: need $0.00, have $-66.42
+[2025-07-24 21:24:39,488] sim INFO: [SIM] ALERT CHRW: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:24:39,742] sim INFO: [SIM] insufficient cash for CHRW: need $0.00, have $-66.42
+[2025-07-24 21:26:16,788] sim INFO: [SIM] ALERT EXPD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:26:17,263] sim INFO: [SIM] insufficient cash for EXPD: need $0.00, have $-66.42
+[2025-07-24 21:28:19,193] sim INFO: [SIM] ALERT MNST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:28:19,414] sim INFO: [SIM] insufficient cash for MNST: need $-60.18, have $-66.42
+[2025-07-24 21:29:11,973] sim INFO: [SIM] ALERT RMD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:29:12,141] sim INFO: [SIM] insufficient cash for RMD: need $0.00, have $-66.42
+[2025-07-24 21:29:18,283] sim INFO: [SIM] ALERT CRM: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:29:18,479] sim INFO: [SIM] insufficient cash for CRM: need $0.00, have $-66.42
+[2025-07-24 21:29:45,042] sim INFO: [SIM] ALERT TER: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:29:45,238] sim INFO: [SIM] insufficient cash for TER: need $0.00, have $-66.42
+[2025-07-24 21:30:19,423] sim INFO: [SIM] ALERT WST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:30:20,769] sim INFO: [SIM] insufficient cash for WST: need $0.00, have $-66.42
+[2025-07-24 21:30:28,958] sim INFO: 🔁 Starting scan loop iteration
+[2025-07-24 21:30:50,503] sim INFO: [SIM] ALERT ADI: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:30:50,647] sim INFO: [SIM] insufficient cash for ADI: need $0.00, have $-66.42
+[2025-07-24 21:31:07,829] sim INFO: [SIM] ALERT BIIB: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:31:07,997] sim INFO: [SIM] insufficient cash for BIIB: need $0.00, have $-66.42
+[2025-07-24 21:31:16,383] sim INFO: [SIM] ALERT CHRW: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:31:16,575] sim INFO: [SIM] insufficient cash for CHRW: need $0.00, have $-66.42
+[2025-07-24 21:32:29,554] sim INFO: [SIM] ALERT EXPD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:32:29,751] sim INFO: [SIM] insufficient cash for EXPD: need $0.00, have $-66.42
+[2025-07-24 21:34:20,638] sim INFO: [SIM] ALERT MNST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:34:20,846] sim INFO: [SIM] insufficient cash for MNST: need $-60.18, have $-66.42
+[2025-07-24 21:35:14,565] sim INFO: [SIM] ALERT RMD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:35:14,773] sim INFO: [SIM] insufficient cash for RMD: need $0.00, have $-66.42
+[2025-07-24 21:35:19,366] sim INFO: [SIM] ALERT CRM: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:35:19,609] sim INFO: [SIM] insufficient cash for CRM: need $0.00, have $-66.42
+[2025-07-24 21:35:41,366] sim INFO: [SIM] ALERT TER: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:35:41,571] sim INFO: [SIM] insufficient cash for TER: need $0.00, have $-66.42
+[2025-07-24 21:36:29,488] sim INFO: [SIM] seed cash: $1000.00
+[2025-07-24 21:36:29,490] sim INFO: 🔁 Starting scan loop iteration
+[2025-07-24 21:36:52,315] sim INFO: [SIM] ALERT ADI: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:36:52,508] sim INFO: [SIM] insufficient cash for ADI: need $0.00, have $1000.00
+[2025-07-24 21:37:09,684] sim INFO: [SIM] ALERT BIIB: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:37:09,952] sim INFO: ✅ BUY BIIB x1 @ $132.59 (cash → $867.41)
+[2025-07-24 21:37:09,958] sim INFO: [SIM] Current holdings:
+[2025-07-24 21:37:09,958] sim INFO:     • BIIB: 1 shares @ $132.59 (last price: $132.59)
+[2025-07-24 21:37:18,404] sim INFO: [SIM] ALERT CHRW: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:37:18,641] sim INFO: ✅ BUY CHRW x1 @ $103.17 (cash → $764.24)
+[2025-07-24 21:37:18,642] sim INFO: [SIM] Current holdings:
+[2025-07-24 21:37:18,643] sim INFO:     • BIIB: 1 shares @ $132.59 (last price: $132.59)
+[2025-07-24 21:37:18,643] sim INFO:     • CHRW: 1 shares @ $103.17 (last price: $103.17)
+[2025-07-24 21:38:30,531] sim INFO: [SIM] ALERT EXPD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:38:30,754] sim INFO: ✅ BUY EXPD x1 @ $116.91 (cash → $647.33)
+[2025-07-24 21:38:30,757] sim INFO: [SIM] Current holdings:
+[2025-07-24 21:38:30,757] sim INFO:     • BIIB: 1 shares @ $132.59 (last price: $132.59)
+[2025-07-24 21:38:30,757] sim INFO:     • CHRW: 1 shares @ $103.17 (last price: $103.17)
+[2025-07-24 21:38:30,757] sim INFO:     • EXPD: 1 shares @ $116.91 (last price: $116.91)
+[2025-07-24 21:40:12,402] sim INFO: [SIM] ALERT MNST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:40:12,647] sim INFO: ✅ BUY MNST x3 @ $60.18 (cash → $466.79)
+[2025-07-24 21:40:12,649] sim INFO: [SIM] Current holdings:
+[2025-07-24 21:40:12,650] sim INFO:     • BIIB: 1 shares @ $132.59 (last price: $132.59)
+[2025-07-24 21:40:12,650] sim INFO:     • CHRW: 1 shares @ $103.17 (last price: $103.17)
+[2025-07-24 21:40:12,650] sim INFO:     • EXPD: 1 shares @ $116.91 (last price: $116.91)
+[2025-07-24 21:40:12,650] sim INFO:     • MNST: 3 shares @ $60.18 (last price: $60.18)
+[2025-07-24 21:41:05,969] sim INFO: [SIM] ALERT RMD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:41:06,145] sim INFO: [SIM] insufficient cash for RMD: need $0.00, have $466.79
+[2025-07-24 21:41:11,910] sim INFO: [SIM] ALERT CRM: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:41:12,111] sim INFO: [SIM] insufficient cash for CRM: need $0.00, have $466.79
+[2025-07-24 21:41:36,539] sim INFO: [SIM] ALERT TER: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:41:36,803] sim INFO: ✅ BUY TER x2 @ $91.33 (cash → $284.13)
+[2025-07-24 21:41:36,805] sim INFO: [SIM] Current holdings:
+[2025-07-24 21:41:36,806] sim INFO:     • BIIB: 1 shares @ $132.59 (last price: $132.59)
+[2025-07-24 21:41:36,806] sim INFO:     • CHRW: 1 shares @ $103.17 (last price: $103.17)
+[2025-07-24 21:41:36,806] sim INFO:     • EXPD: 1 shares @ $116.91 (last price: $116.91)
+[2025-07-24 21:41:36,806] sim INFO:     • MNST: 3 shares @ $60.18 (last price: $60.18)
+[2025-07-24 21:41:36,807] sim INFO:     • TER: 2 shares @ $91.33 (last price: $91.33)
+[2025-07-24 21:42:08,570] sim INFO: [SIM] ALERT WST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:42:08,741] sim INFO: [SIM] insufficient cash for WST: need $0.00, have $284.13
+[2025-07-24 21:42:16,366] sim INFO: 🔁 Starting scan loop iteration
+[2025-07-24 21:42:37,252] sim INFO: [SIM] ALERT ADI: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:42:37,634] sim INFO: [SIM] insufficient cash for ADI: need $0.00, have $284.13
+[2025-07-24 21:42:55,307] sim INFO: [SIM] ALERT BIIB: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:42:55,590] sim INFO: ✅ BUY BIIB x1 @ $132.59 (cash → $151.54)
+[2025-07-24 21:42:55,594] sim INFO: [SIM] Current holdings:
+[2025-07-24 21:42:55,595] sim INFO:     • BIIB: 2 shares @ $132.59 (last price: $132.59)
+[2025-07-24 21:42:55,595] sim INFO:     • CHRW: 1 shares @ $103.17 (last price: $103.17)
+[2025-07-24 21:42:55,596] sim INFO:     • EXPD: 1 shares @ $116.91 (last price: $116.91)
+[2025-07-24 21:42:55,596] sim INFO:     • MNST: 3 shares @ $60.18 (last price: $60.18)
+[2025-07-24 21:42:55,597] sim INFO:     • TER: 2 shares @ $91.33 (last price: $91.33)
+[2025-07-24 21:43:04,951] sim INFO: [SIM] ALERT CHRW: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:43:05,184] sim INFO: ✅ BUY CHRW x1 @ $103.17 (cash → $48.37)
+[2025-07-24 21:43:05,186] sim INFO: [SIM] Current holdings:
+[2025-07-24 21:43:05,186] sim INFO:     • BIIB: 2 shares @ $132.59 (last price: $132.59)
+[2025-07-24 21:43:05,186] sim INFO:     • CHRW: 2 shares @ $103.17 (last price: $103.17)
+[2025-07-24 21:43:05,186] sim INFO:     • EXPD: 1 shares @ $116.91 (last price: $116.91)
+[2025-07-24 21:43:05,187] sim INFO:     • MNST: 3 shares @ $60.18 (last price: $60.18)
+[2025-07-24 21:43:05,187] sim INFO:     • TER: 2 shares @ $91.33 (last price: $91.33)
+[2025-07-24 21:44:34,218] sim INFO: [SIM] ALERT EXPD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:44:35,058] sim INFO: [SIM] insufficient cash for EXPD: need $0.00, have $48.37
+[2025-07-24 21:46:51,731] sim INFO: [SIM] ALERT MNST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:46:52,587] sim INFO: [SIM] insufficient cash for MNST: need $0.00, have $48.37
+[2025-07-24 21:47:58,959] sim INFO: [SIM] ALERT RMD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:47:59,170] sim INFO: [SIM] insufficient cash for RMD: need $0.00, have $48.37
+[2025-07-24 21:48:03,893] sim INFO: [SIM] ALERT CRM: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:48:04,078] sim INFO: [SIM] insufficient cash for CRM: need $0.00, have $48.37
+[2025-07-24 21:48:35,718] sim INFO: [SIM] ALERT TER: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:48:36,570] sim INFO: [SIM] insufficient cash for TER: need $0.00, have $48.37
+[2025-07-24 21:49:26,234] sim INFO: [SIM] ALERT WST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:49:26,427] sim INFO: [SIM] insufficient cash for WST: need $0.00, have $48.37
+[2025-07-24 21:49:38,866] sim INFO: 🔁 Starting scan loop iteration
+[2025-07-24 21:50:07,584] sim INFO: [SIM] ALERT ADI: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:50:07,769] sim INFO: [SIM] insufficient cash for ADI: need $0.00, have $48.37
+[2025-07-24 21:50:31,306] sim INFO: [SIM] ALERT BIIB: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:50:32,663] sim INFO: [SIM] insufficient cash for BIIB: need $0.00, have $48.37
+[2025-07-24 21:50:46,944] sim INFO: [SIM] ALERT CHRW: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:50:47,822] sim INFO: [SIM] insufficient cash for CHRW: need $0.00, have $48.37
+[2025-07-24 21:52:16,263] sim INFO: [SIM] ALERT EXPD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:52:17,033] sim INFO: [SIM] insufficient cash for EXPD: need $0.00, have $48.37
+[2025-07-24 21:54:08,080] sim INFO: [SIM] ALERT MNST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:54:08,307] sim INFO: [SIM] insufficient cash for MNST: need $0.00, have $48.37
+[2025-07-24 21:55:00,286] sim INFO: [SIM] ALERT RMD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:55:00,507] sim INFO: [SIM] insufficient cash for RMD: need $0.00, have $48.37
+[2025-07-24 21:55:07,493] sim INFO: [SIM] ALERT CRM: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:55:07,702] sim INFO: [SIM] insufficient cash for CRM: need $0.00, have $48.37
+[2025-07-24 21:55:34,572] sim INFO: [SIM] ALERT TER: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:55:35,245] sim INFO: [SIM] insufficient cash for TER: need $0.00, have $48.37
+[2025-07-24 21:56:14,977] sim INFO: [SIM] ALERT WST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:56:15,202] sim INFO: [SIM] insufficient cash for WST: need $0.00, have $48.37
+[2025-07-24 21:56:24,661] sim INFO: 🔁 Starting scan loop iteration
+[2025-07-24 21:56:50,975] sim INFO: [SIM] ALERT ADI: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:56:51,221] sim INFO: [SIM] insufficient cash for ADI: need $0.00, have $48.37
+[2025-07-24 21:57:08,950] sim INFO: [SIM] ALERT BIIB: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:57:09,125] sim INFO: [SIM] insufficient cash for BIIB: need $0.00, have $48.37
+[2025-07-24 21:57:19,340] sim INFO: [SIM] ALERT CHRW: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:57:19,515] sim INFO: [SIM] insufficient cash for CHRW: need $0.00, have $48.37
+[2025-07-24 21:58:28,475] sim INFO: [SIM] ALERT EXPD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 21:58:28,681] sim INFO: [SIM] insufficient cash for EXPD: need $0.00, have $48.37
+[2025-07-24 22:00:00,218] sim INFO: [SIM] ALERT MNST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:00:00,410] sim INFO: [SIM] insufficient cash for MNST: need $0.00, have $48.37
+[2025-07-24 22:01:00,736] sim INFO: [SIM] ALERT RMD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:01:00,938] sim INFO: [SIM] insufficient cash for RMD: need $0.00, have $48.37
+[2025-07-24 22:01:07,389] sim INFO: [SIM] ALERT CRM: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:01:07,614] sim INFO: [SIM] insufficient cash for CRM: need $0.00, have $48.37
+[2025-07-24 22:01:37,206] sim INFO: [SIM] ALERT TER: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:01:37,414] sim INFO: [SIM] insufficient cash for TER: need $0.00, have $48.37
+[2025-07-24 22:02:14,630] sim INFO: [SIM] ALERT WST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:02:15,001] sim INFO: [SIM] insufficient cash for WST: need $0.00, have $48.37
+[2025-07-24 22:02:23,179] sim INFO: 🔁 Starting scan loop iteration
+[2025-07-24 22:02:45,284] sim INFO: [SIM] ALERT ADI: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:02:45,481] sim INFO: [SIM] insufficient cash for ADI: need $0.00, have $48.37
+[2025-07-24 22:03:03,668] sim INFO: [SIM] ALERT BIIB: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:03:03,885] sim INFO: [SIM] insufficient cash for BIIB: need $0.00, have $48.37
+[2025-07-24 22:03:13,407] sim INFO: [SIM] ALERT CHRW: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:03:13,637] sim INFO: [SIM] insufficient cash for CHRW: need $0.00, have $48.37
+[2025-07-24 22:05:02,903] sim INFO: [SIM] ALERT EXPD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:05:03,121] sim INFO: [SIM] insufficient cash for EXPD: need $0.00, have $48.37
+[2025-07-24 22:07:13,174] sim INFO: [SIM] ALERT MNST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:07:13,342] sim INFO: [SIM] insufficient cash for MNST: need $0.00, have $48.37
+[2025-07-24 22:08:23,334] sim INFO: [SIM] ALERT RMD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:08:23,538] sim INFO: [SIM] insufficient cash for RMD: need $0.00, have $48.37
+[2025-07-24 22:08:31,028] sim INFO: [SIM] ALERT CRM: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:08:31,190] sim INFO: [SIM] insufficient cash for CRM: need $0.00, have $48.37
+[2025-07-24 22:09:05,268] sim INFO: [SIM] ALERT TER: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:09:05,441] sim INFO: [SIM] insufficient cash for TER: need $0.00, have $48.37
+[2025-07-24 22:09:41,657] sim INFO: [SIM] ALERT WST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:09:41,870] sim INFO: [SIM] insufficient cash for WST: need $0.00, have $48.37
+[2025-07-24 22:09:52,406] sim INFO: 🔁 Starting scan loop iteration
+[2025-07-24 22:10:23,647] sim INFO: [SIM] ALERT ADI: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:10:23,807] sim INFO: [SIM] insufficient cash for ADI: need $0.00, have $48.37
+[2025-07-24 22:10:44,528] sim INFO: [SIM] ALERT BIIB: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:10:44,753] sim INFO: [SIM] insufficient cash for BIIB: need $0.00, have $48.37
+[2025-07-24 22:10:58,067] sim INFO: [SIM] ALERT CHRW: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:10:58,267] sim INFO: [SIM] insufficient cash for CHRW: need $0.00, have $48.37
+[2025-07-24 22:12:25,941] sim INFO: [SIM] ALERT EXPD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:12:26,651] sim INFO: [SIM] insufficient cash for EXPD: need $0.00, have $48.37
+[2025-07-24 22:14:43,115] sim INFO: [SIM] ALERT MNST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:14:43,976] sim INFO: [SIM] insufficient cash for MNST: need $0.00, have $48.37
+[2025-07-24 22:15:58,273] sim INFO: [SIM] ALERT RMD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:15:58,441] sim INFO: [SIM] insufficient cash for RMD: need $0.00, have $48.37
+[2025-07-24 22:16:04,513] sim INFO: [SIM] ALERT CRM: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:16:04,728] sim INFO: [SIM] insufficient cash for CRM: need $0.00, have $48.37
+[2025-07-24 22:16:34,951] sim INFO: [SIM] ALERT TER: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:16:35,135] sim INFO: [SIM] insufficient cash for TER: need $0.00, have $48.37
+[2025-07-24 22:17:19,184] sim INFO: [SIM] ALERT WST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:17:19,380] sim INFO: [SIM] insufficient cash for WST: need $0.00, have $48.37
+[2025-07-24 22:17:31,675] sim INFO: 🔁 Starting scan loop iteration
+[2025-07-24 22:18:03,412] sim INFO: [SIM] ALERT ADI: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:18:04,330] sim INFO: [SIM] insufficient cash for ADI: need $0.00, have $48.37
+[2025-07-24 22:18:34,095] sim INFO: [SIM] ALERT BIIB: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:18:34,314] sim INFO: [SIM] insufficient cash for BIIB: need $0.00, have $48.37
+[2025-07-24 22:18:44,847] sim INFO: [SIM] ALERT CHRW: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:18:45,036] sim INFO: [SIM] insufficient cash for CHRW: need $0.00, have $48.37
+[2025-07-24 22:19:55,716] sim INFO: [SIM] ALERT EXPD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:19:55,922] sim INFO: [SIM] insufficient cash for EXPD: need $0.00, have $48.37
+[2025-07-24 22:21:36,320] sim INFO: [SIM] ALERT MNST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:21:36,521] sim INFO: [SIM] insufficient cash for MNST: need $0.00, have $48.37
+[2025-07-24 22:22:26,793] sim INFO: [SIM] ALERT RMD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:22:27,022] sim INFO: [SIM] insufficient cash for RMD: need $0.00, have $48.37
+[2025-07-24 22:22:32,622] sim INFO: [SIM] ALERT CRM: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:22:32,833] sim INFO: [SIM] insufficient cash for CRM: need $0.00, have $48.37
+[2025-07-24 22:22:57,057] sim INFO: [SIM] ALERT TER: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:22:57,272] sim INFO: [SIM] insufficient cash for TER: need $0.00, have $48.37
+[2025-07-24 22:23:33,438] sim INFO: [SIM] ALERT WST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:23:33,629] sim INFO: [SIM] insufficient cash for WST: need $0.00, have $48.37
+[2025-07-24 22:23:42,381] sim INFO: 🔁 Starting scan loop iteration
+[2025-07-24 22:24:06,544] sim INFO: [SIM] ALERT ADI: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:24:06,722] sim INFO: [SIM] insufficient cash for ADI: need $0.00, have $48.37
+[2025-07-24 22:24:24,940] sim INFO: [SIM] ALERT BIIB: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:24:25,151] sim INFO: [SIM] insufficient cash for BIIB: need $0.00, have $48.37
+[2025-07-24 22:24:34,192] sim INFO: [SIM] ALERT CHRW: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:24:34,380] sim INFO: [SIM] insufficient cash for CHRW: need $0.00, have $48.37
+[2025-07-24 22:25:45,293] sim INFO: [SIM] ALERT EXPD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:25:45,475] sim INFO: [SIM] insufficient cash for EXPD: need $0.00, have $48.37
+[2025-07-24 22:27:34,993] sim INFO: [SIM] ALERT MNST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:27:35,181] sim INFO: [SIM] insufficient cash for MNST: need $0.00, have $48.37
+[2025-07-24 22:28:28,390] sim INFO: [SIM] ALERT RMD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:28:28,586] sim INFO: [SIM] insufficient cash for RMD: need $0.00, have $48.37
+[2025-07-24 22:28:33,997] sim INFO: [SIM] ALERT CRM: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:28:34,168] sim INFO: [SIM] insufficient cash for CRM: need $0.00, have $48.37
+[2025-07-24 22:28:59,216] sim INFO: [SIM] ALERT TER: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:28:59,449] sim INFO: [SIM] insufficient cash for TER: need $0.00, have $48.37
+[2025-07-24 22:29:31,486] sim INFO: [SIM] ALERT WST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:29:31,639] sim INFO: [SIM] insufficient cash for WST: need $0.00, have $48.37
+[2025-07-24 22:29:39,289] sim INFO: 🔁 Starting scan loop iteration
+[2025-07-24 22:30:02,592] sim INFO: [SIM] ALERT ADI: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:30:02,817] sim INFO: [SIM] insufficient cash for ADI: need $0.00, have $48.37
+[2025-07-24 22:30:24,799] sim INFO: [SIM] ALERT BIIB: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:30:24,982] sim INFO: [SIM] insufficient cash for BIIB: need $0.00, have $48.37
+[2025-07-24 22:30:37,462] sim INFO: [SIM] ALERT CHRW: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:30:37,680] sim INFO: [SIM] insufficient cash for CHRW: need $0.00, have $48.37
+[2025-07-24 22:31:53,753] sim INFO: [SIM] ALERT EXPD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:31:53,988] sim INFO: [SIM] insufficient cash for EXPD: need $0.00, have $48.37
+[2025-07-24 22:33:34,788] sim INFO: [SIM] ALERT MNST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:33:34,994] sim INFO: [SIM] insufficient cash for MNST: need $0.00, have $48.37
+[2025-07-24 22:34:20,473] sim INFO: [SIM] ALERT RMD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:34:20,658] sim INFO: [SIM] insufficient cash for RMD: need $0.00, have $48.37
+[2025-07-24 22:34:26,267] sim INFO: [SIM] ALERT CRM: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:34:26,494] sim INFO: [SIM] insufficient cash for CRM: need $0.00, have $48.37
+[2025-07-24 22:34:49,241] sim INFO: [SIM] ALERT TER: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:34:49,621] sim INFO: [SIM] insufficient cash for TER: need $0.00, have $48.37
+[2025-07-24 22:35:23,902] sim INFO: [SIM] ALERT WST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:35:24,073] sim INFO: [SIM] insufficient cash for WST: need $0.00, have $48.37
+[2025-07-24 22:35:34,661] sim INFO: 🔁 Starting scan loop iteration
+[2025-07-24 22:36:02,895] sim INFO: [SIM] ALERT ADI: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:36:03,103] sim INFO: [SIM] insufficient cash for ADI: need $0.00, have $48.37
+[2025-07-24 22:36:23,369] sim INFO: [SIM] ALERT BIIB: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:36:23,577] sim INFO: [SIM] insufficient cash for BIIB: need $0.00, have $48.37
+[2025-07-24 22:36:34,439] sim INFO: [SIM] ALERT CHRW: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:36:34,609] sim INFO: [SIM] insufficient cash for CHRW: need $0.00, have $48.37
+[2025-07-24 22:37:51,187] sim INFO: [SIM] ALERT EXPD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:37:51,396] sim INFO: [SIM] insufficient cash for EXPD: need $0.00, have $48.37
+[2025-07-24 22:39:27,049] sim INFO: [SIM] ALERT MNST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:39:27,300] sim INFO: [SIM] insufficient cash for MNST: need $0.00, have $48.37
+[2025-07-24 22:40:15,929] sim INFO: [SIM] ALERT RMD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:40:16,197] sim INFO: [SIM] insufficient cash for RMD: need $0.00, have $48.37
+[2025-07-24 22:40:20,838] sim INFO: [SIM] ALERT CRM: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:40:21,106] sim INFO: [SIM] insufficient cash for CRM: need $0.00, have $48.37
+[2025-07-24 22:40:41,869] sim INFO: [SIM] ALERT TER: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:40:42,125] sim INFO: [SIM] insufficient cash for TER: need $0.00, have $48.37
+[2025-07-24 22:41:14,810] sim INFO: [SIM] ALERT WST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:41:15,025] sim INFO: [SIM] insufficient cash for WST: need $0.00, have $48.37
+[2025-07-24 22:41:22,938] sim INFO: 🔁 Starting scan loop iteration
+[2025-07-24 22:41:48,077] sim INFO: [SIM] ALERT ADI: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:41:48,263] sim INFO: [SIM] insufficient cash for ADI: need $0.00, have $48.37
+[2025-07-24 22:42:05,751] sim INFO: [SIM] ALERT BIIB: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:42:05,945] sim INFO: [SIM] insufficient cash for BIIB: need $0.00, have $48.37
+[2025-07-24 22:42:14,966] sim INFO: [SIM] ALERT CHRW: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:42:15,220] sim INFO: [SIM] insufficient cash for CHRW: need $0.00, have $48.37
+[2025-07-24 22:43:23,887] sim INFO: [SIM] ALERT EXPD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:43:24,108] sim INFO: [SIM] insufficient cash for EXPD: need $0.00, have $48.37
+[2025-07-24 22:44:57,436] sim INFO: [SIM] ALERT MNST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:44:57,620] sim INFO: [SIM] insufficient cash for MNST: need $0.00, have $48.37
+[2025-07-24 22:45:15,908] sim INFO: [SIM] seed cash: $48.37
+[2025-07-24 22:45:15,909] sim INFO: 🔁 Starting scan loop iteration
+[2025-07-24 22:45:38,180] sim INFO: [SIM] ALERT ADI: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:45:38,352] sim INFO: [SIM] insufficient cash for ADI: need $0.00, have $48.37
+[2025-07-24 22:45:59,222] sim INFO: [SIM] ALERT BIIB: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:45:59,403] sim INFO: [SIM] insufficient cash for BIIB: need $0.00, have $48.37
+[2025-07-24 22:46:09,466] sim INFO: [SIM] ALERT CHRW: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:46:09,654] sim INFO: [SIM] insufficient cash for CHRW: need $0.00, have $48.37
+[2025-07-24 22:47:29,926] sim INFO: [SIM] ALERT EXPD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:47:30,171] sim INFO: [SIM] insufficient cash for EXPD: need $0.00, have $48.37
+[2025-07-24 22:49:00,310] sim INFO: [SIM] ALERT MNST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:49:00,560] sim INFO: [SIM] insufficient cash for MNST: need $0.00, have $48.37
+[2025-07-24 22:49:57,134] sim INFO: [SIM] ALERT RMD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:49:57,322] sim INFO: [SIM] insufficient cash for RMD: need $0.00, have $48.37
+[2025-07-24 22:50:03,735] sim INFO: [SIM] ALERT CRM: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:50:03,949] sim INFO: [SIM] insufficient cash for CRM: need $0.00, have $48.37
+[2025-07-24 22:50:30,392] sim INFO: [SIM] ALERT TER: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:50:30,618] sim INFO: [SIM] insufficient cash for TER: need $0.00, have $48.37
+[2025-07-24 22:51:05,662] sim INFO: [SIM] ALERT WST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:51:05,853] sim INFO: [SIM] insufficient cash for WST: need $0.00, have $48.37
+[2025-07-24 22:51:15,213] sim INFO: 🔁 Starting scan loop iteration
+[2025-07-24 22:51:54,792] sim WARNING: No data for AWK; skipping
+[2025-07-24 22:51:58,980] sim INFO: [SIM] ALERT ADI: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:51:59,213] sim INFO: [SIM] insufficient cash for ADI: need $0.00, have $48.37
+[2025-07-24 22:52:20,806] sim INFO: [SIM] ALERT BIIB: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:52:21,064] sim INFO: [SIM] insufficient cash for BIIB: need $0.00, have $48.37
+[2025-07-24 22:52:30,958] sim INFO: [SIM] ALERT CHRW: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:52:31,149] sim INFO: [SIM] insufficient cash for CHRW: need $0.00, have $48.37
+[2025-07-24 22:53:36,094] sim INFO: [SIM] ALERT EXPD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:53:36,320] sim INFO: [SIM] insufficient cash for EXPD: need $0.00, have $48.37
+[2025-07-24 22:55:08,793] sim INFO: [SIM] ALERT MNST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:55:08,995] sim INFO: [SIM] insufficient cash for MNST: need $0.00, have $48.37
+[2025-07-24 22:55:59,698] sim INFO: [SIM] ALERT RMD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:55:59,937] sim INFO: [SIM] insufficient cash for RMD: need $0.00, have $48.37
+[2025-07-24 22:56:04,749] sim INFO: [SIM] ALERT CRM: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:56:04,976] sim INFO: [SIM] insufficient cash for CRM: need $0.00, have $48.37
+[2025-07-24 22:56:26,053] sim INFO: [SIM] ALERT TER: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:56:26,296] sim INFO: [SIM] insufficient cash for TER: need $0.00, have $48.37
+[2025-07-24 22:57:01,505] sim INFO: [SIM] ALERT WST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:57:01,741] sim INFO: [SIM] insufficient cash for WST: need $0.00, have $48.37
+[2025-07-24 22:57:10,684] sim INFO: 🔁 Starting scan loop iteration
+[2025-07-24 22:57:34,388] sim INFO: [SIM] ALERT ADI: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:57:34,598] sim INFO: [SIM] insufficient cash for ADI: need $0.00, have $48.37
+[2025-07-24 22:57:51,986] sim INFO: [SIM] ALERT BIIB: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:57:52,192] sim INFO: [SIM] insufficient cash for BIIB: need $0.00, have $48.37
+[2025-07-24 22:58:01,257] sim INFO: [SIM] ALERT CHRW: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:58:01,526] sim INFO: [SIM] insufficient cash for CHRW: need $0.00, have $48.37
+[2025-07-24 22:59:15,161] sim INFO: [SIM] ALERT EXPD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 22:59:15,458] sim INFO: [SIM] insufficient cash for EXPD: need $0.00, have $48.37
+[2025-07-24 23:01:06,081] sim INFO: [SIM] ALERT MNST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 23:01:06,316] sim INFO: [SIM] insufficient cash for MNST: need $0.00, have $48.37
+[2025-07-24 23:01:57,283] sim INFO: [SIM] ALERT RMD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 23:01:58,746] sim INFO: [SIM] insufficient cash for RMD: need $0.00, have $48.37
+[2025-07-24 23:02:04,741] sim INFO: [SIM] ALERT CRM: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 23:02:04,933] sim INFO: [SIM] insufficient cash for CRM: need $0.00, have $48.37
+[2025-07-24 23:02:25,637] sim INFO: [SIM] ALERT TER: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 23:02:25,820] sim INFO: [SIM] insufficient cash for TER: need $0.00, have $48.37
+[2025-07-24 23:03:02,875] sim INFO: [SIM] ALERT WST: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 23:03:03,076] sim INFO: [SIM] insufficient cash for WST: need $0.00, have $48.37
+[2025-07-24 23:03:13,724] sim INFO: 🔁 Starting scan loop iteration
+[2025-07-24 23:03:43,411] sim INFO: [SIM] ALERT ADI: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-24 23:03:43,756] sim INFO: [SIM] insufficient cash for ADI: need $0.00, have $48.37
+[2025-07-24 23:04:11,705] sim INFO: [SIM] seed cash: $1000.00
+[2025-07-24 23:04:11,707] sim INFO: 🔁 Starting scan loop iteration
