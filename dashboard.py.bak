@@ -130,6 +130,10 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from services.trading_helpers import setup_simulation_db
+
+# before any get_cash()/buy()/sell() calls:
+setup_simulation_db()
 
 # ── Dynamic Unicode font registration ────────────────────────────────
 if os.name == 'nt':  # Windows
@@ -1381,9 +1385,23 @@ def export_backtest():
 
 from flask import redirect, url_for
 
-@app.route("/", methods=["GET"])
+@app.route("/")
 def index():
-    return redirect(url_for("simulation"))
+    raw = get_holdings()
+    holdings = []
+    for symbol, qty, avg_cost, last_price in raw:
+        holdings.append({
+            "symbol":     symbol,
+            "last_price": last_price,
+            "day_gain":   round(last_price - avg_cost, 2),        # or however you compute daily P/L
+            "change_pct": round((last_price - avg_cost) / avg_cost * 100, 1),
+            "qty":        qty,
+            "price_paid": avg_cost,                               # ← map avg_cost here
+            "total_gain": round((last_price - avg_cost) * qty, 2),
+            "value":      round(last_price * qty, 2),
+        })
+    return render_template("index.html", holdings=holdings, …)
+
 
 
 

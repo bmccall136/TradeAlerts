@@ -22,50 +22,64 @@ def _connect():
 print(f"▶︎ TradingHelpers loaded; simulation DB path is {DB_PATH.resolve()}")
 
 # ─── Initialization ────────────────────────────────────────
-from pathlib import Path
-import sqlite3
-import json
-
-# … at top of services/trading_helpers.py …
-DB_PATH = Path(__file__).resolve().parent.parent / "simulation.db"
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "simulation_config.json"
-
 def setup_simulation_db():
-    # detect “first run” by seeing if the file existed before we connect
+    """
+    Create and seed the simulation database with:
+      - state: singleton row for cash & realized P/L
+      - holdings: current positions
+      - simulation_trades: audit trail
+    Seeds starting cash from simulation_config.json on first DB creation.
+    """
+    from pathlib import Path
+    import json
+
+    # detect initial run by absence of file
     first_run = not DB_PATH.exists()
 
-    conn = sqlite3.connect(DB_PATH, detect_types=sqlite3.PARSE_DECLTYPES)
+    conn = _connect()
     cur = conn.cursor()
 
-    # create your tables
-    cur.execute("""CREATE TABLE IF NOT EXISTS state (
-                       id INTEGER PRIMARY KEY CHECK(id = 1),
-                       cash REAL NOT NULL,
-                       realized_pl REAL NOT NULL DEFAULT 0.0
-                   );""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS holdings (
-                       symbol TEXT PRIMARY KEY,
-                       qty INTEGER NOT NULL,
-                       avg_cost REAL NOT NULL,
-                       last_price REAL NOT NULL
-                   );""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS simulation_trades (
-                       id INTEGER PRIMARY KEY AUTOINCREMENT,
-                       symbol TEXT NOT NULL,
-                       action TEXT NOT NULL CHECK(action IN ('BUY','SELL')),
-                       price REAL NOT NULL,
-                       qty INTEGER NOT NULL,
-                       trade_time TEXT NOT NULL,
-                       pnl REAL
-                   );""")
+    # state table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS state (
+            id           INTEGER PRIMARY KEY CHECK(id = 1),
+            cash         REAL    NOT NULL,
+            realized_pl  REAL    NOT NULL DEFAULT 0.0
+        );
+    """)
+    # holdings table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS holdings (
+            symbol     TEXT    PRIMARY KEY,
+            qty        INTEGER NOT NULL,
+            avg_cost   REAL    NOT NULL,
+            last_price REAL    NOT NULL
+        );
+    """)
+    # simulation_trades table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS simulation_trades (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol     TEXT    NOT NULL,
+            action     TEXT    NOT NULL CHECK(action IN ('BUY','SELL')),
+            price      REAL    NOT NULL,
+            qty        INTEGER NOT NULL,
+            trade_time TEXT    NOT NULL,
+            pnl        REAL
+        );
+    """)
 
-    # only seed cash if the DB was just created
+    # seed starting cash from JSON on first creation
     if first_run:
-        # load starting_cash from your config JSON
-        cfg = json.loads(CONFIG_PATH.read_text())
-        starting = cfg.get("starting_cash", 0.0)
-        cur.execute("INSERT OR IGNORE INTO state(id, cash, realized_pl) VALUES (1, ?, 0.0);", (starting,))
-        print(f"▶︎ Seeded simulation.db with starting cash = ${starting:.2f}")
+        cfg_path = Path(__file__).resolve().parent.parent / "simulation_config.json"
+        if cfg_path.exists():
+            cfg = json.loads(cfg_path.read_text())
+            starting = cfg.get("starting_cash", 0.0)
+            cur.execute(
+                "INSERT OR IGNORE INTO state(id, cash, realized_pl) VALUES (1, ?, 0.0);",
+                (starting,)
+            )
+            print(f"▶︎ Seeded new simulation.db with starting cash = ${starting:.2f}")
 
     conn.commit()
     conn.close()
