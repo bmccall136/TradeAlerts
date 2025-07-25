@@ -4,8 +4,8 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import pandas_market_calendars as mcal
 
-# Database path
-DB_PATH = Path(__file__).parent / "simulation.db"
+# Database path (project root)
+DB_PATH = Path(__file__).resolve().parent.parent / "simulation.db"
 
 # Timezone and market calendar
 ET = ZoneInfo("America/New_York")
@@ -18,11 +18,14 @@ def _connect():
     """
     return sqlite3.connect(DB_PATH, detect_types=sqlite3.PARSE_DECLTYPES)
 
+# Print DB path on import for verification
+print(f"▶︎ TradingHelpers loaded; simulation DB path is {DB_PATH.resolve()}")
+
 # ─── Initialization ────────────────────────────────────────
 def setup_simulation_db():
     """
-    Create and seed the simulation DB:
-      - state: cash & realized P/L
+    Create and seed the simulation database with:
+      - state: singleton row for cash & realized P/L
       - holdings: current positions
       - simulation_trades: audit trail
     """
@@ -42,7 +45,7 @@ def setup_simulation_db():
     # holdings table
     cur.execute("""
         CREATE TABLE IF NOT EXISTS holdings (
-            symbol     TEXT PRIMARY KEY,
+            symbol     TEXT    PRIMARY KEY,
             qty        INTEGER NOT NULL,
             avg_cost   REAL    NOT NULL,
             last_price REAL    NOT NULL
@@ -67,7 +70,9 @@ def setup_simulation_db():
 
 # ─── Cash accessors ────────────────────────────────────────
 def _ensure_state():
-    """Ensure the state row exists with defaults."""
+    """
+    Ensure the state table has its singleton row.
+    """
     conn = _connect()
     cur = conn.cursor()
     cur.execute("INSERT OR IGNORE INTO state (id, cash, realized_pl) VALUES (1, 0.0, 0.0);")
@@ -96,7 +101,9 @@ def get_cash() -> float:
 # ─── Trade recording ──────────────────────────────────────
 def insert_trade(symbol: str, action: str, price: float, qty: int,
                  pnl: float = None, trade_time: str = None):
-    """Record a BUY or SELL in simulation_trades."""
+    """
+    Record a BUY or SELL event into simulation_trades.
+    """
     ts = trade_time or datetime.now(timezone.utc).isoformat()
     conn = _connect()
     cur = conn.cursor()
@@ -108,9 +115,9 @@ def insert_trade(symbol: str, action: str, price: float, qty: int,
     conn.close()
 
 # ─── Holdings management ─────────────────────────────────
-def insert_or_update_holding(symbol: str, qty: int, price: float, last_price: float):
+def insert_or_update_holding(symbol: str, qty: int, avg_cost: float, last_price: float):
     """
-    Upsert into holdings: adjust qty, recompute avg_cost on buys.
+    Upsert into holdings: adjust qty and recompute avg_cost for buys.
     """
     conn = _connect()
     cur = conn.cursor()
@@ -120,7 +127,7 @@ def insert_or_update_holding(symbol: str, qty: int, price: float, last_price: fl
         old_qty, old_avg = row
         new_qty = old_qty + qty
         if new_qty > 0:
-            total_cost = old_avg * old_qty + price * qty
+            total_cost = old_avg * old_qty + avg_cost * qty
             new_avg = total_cost / new_qty
             cur.execute(
                 "UPDATE holdings SET qty=?, avg_cost=?, last_price=? WHERE symbol=?;",
@@ -131,21 +138,23 @@ def insert_or_update_holding(symbol: str, qty: int, price: float, last_price: fl
     else:
         cur.execute(
             "INSERT INTO holdings(symbol, qty, avg_cost, last_price) VALUES (?,?,?,?);",
-            (symbol, qty, price, last_price)
+            (symbol, qty, avg_cost, last_price)
         )
     conn.commit()
     conn.close()
 
 # ─── Quantity computation ─────────────────────────────────
 def compute_qty(settings, price: float) -> int:
-    """Compute number of shares: limited by max_per_trade and available cash."""
+    """
+    Determine shares to buy, limited by max_per_trade and available cash.
+    """
     if price <= 0:
         return 0
     max_by_size = int(settings.max_per_trade / price)
     max_by_cash = int(get_cash() / price)
     return min(max_by_size, max_by_cash)
 
-# ─── Execution helpers ────────────────────────────────────
+# ─── Order execution helpers ───────────────────────────────
 def buy_stock(symbol: str, qty: int, price: float, trade_time: str = None):
     cost = qty * price
     cash = get_cash()
@@ -153,20 +162,22 @@ def buy_stock(symbol: str, qty: int, price: float, trade_time: str = None):
         raise RuntimeError(f"Not enough cash: need {cost:.2f}, have {cash:.2f}")
     set_cash(cash - cost)
     insert_trade(symbol, 'BUY', price, qty, None, trade_time)
-    insert_or_update_holding(symbol, qty, price, price)
+    insert_or_update_holding(symbol, qty, avg_cost=price, last_price=price)
 
 
 def sell_stock(symbol: str, qty: int, price: float, trade_time: str = None):
     proceeds = qty * price
     set_cash(get_cash() + proceeds)
-    avg_cost = get_avg_cost(symbol)
-    pnl = (price - avg_cost) * qty
+    avg = get_avg_cost(symbol)
+    pnl = (price - avg) * qty
     insert_trade(symbol, 'SELL', price, qty, pnl, trade_time)
-    insert_or_update_holding(symbol, -qty, avg_cost, price)
+    insert_or_update_holding(symbol, qty=-qty, avg_cost=avg, last_price=price)
 
 # ─── Backtest helpers ─────────────────────────────────────
 def init_backtest_db():
-    """Initialize backtest DB using BACKTEST_SCHEMA."""
+    """
+    Initialize backtest database using BACKTEST_SCHEMA.
+    """
     from settings import BACKTEST_DB
     from config import BACKTEST_SCHEMA
     conn = sqlite3.connect(BACKTEST_DB)
@@ -178,16 +189,16 @@ def init_backtest_db():
 def enter_trade(symbol: str, price: float, time, trigger: str,
                 alert_type: str, name: str, vwap: float,
                 vwap_diff: float, qty: int, buy: int):
-    """Record a trade in backtest trades table."""
+    """
+    Record a backtest trade into the trades table.
+    """
     conn = sqlite3.connect(BACKTEST_DB)
     cur = conn.cursor()
     ts = time.isoformat() if hasattr(time, 'isoformat') else str(time)
     cur.execute(
-        """
-        INSERT INTO trades
-            (symbol, name, price, time, trigger, alert_type, vwap, vwap_diff, qty, buy)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-        """,
+        "INSERT INTO trades"
+        "  (symbol, name, price, time, trigger, alert_type, vwap, vwap_diff, qty, buy)"
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
         (symbol, name, price, ts, trigger, alert_type, vwap, vwap_diff, qty, buy)
     )
     conn.commit()

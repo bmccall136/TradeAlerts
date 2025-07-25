@@ -4,8 +4,8 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import pandas_market_calendars as mcal
 
-# Database path
-DB_PATH = Path(__file__).parent / "simulation.db"
+# Database path (project root)
+DB_PATH = Path(__file__).resolve().parent.parent / "simulation.db"
 
 # Timezone and market calendar
 ET = ZoneInfo("America/New_York")
@@ -18,51 +18,54 @@ def _connect():
     """
     return sqlite3.connect(DB_PATH, detect_types=sqlite3.PARSE_DECLTYPES)
 
+# Print DB path on import for verification
+print(f"▶︎ TradingHelpers loaded; simulation DB path is {DB_PATH.resolve()}")
+
 # ─── Initialization ────────────────────────────────────────
+from pathlib import Path
+import sqlite3
+import json
+
+# … at top of services/trading_helpers.py …
+DB_PATH = Path(__file__).resolve().parent.parent / "simulation.db"
+CONFIG_PATH = Path(__file__).resolve().parent.parent / "simulation_config.json"
+
 def setup_simulation_db():
-    """
-    Create and seed the simulation database with:
-      - state: singleton row for cash & realized P/L
-      - holdings: current positions
-      - simulation_trades: audit trail of trades
-    """
-    conn = _connect()
+    # detect “first run” by seeing if the file existed before we connect
+    first_run = not DB_PATH.exists()
+
+    conn = sqlite3.connect(DB_PATH, detect_types=sqlite3.PARSE_DECLTYPES)
     cur = conn.cursor()
 
-    # state table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS state (
-            id           INTEGER PRIMARY KEY CHECK(id = 1),
-            cash         REAL    NOT NULL,
-            realized_pl  REAL    NOT NULL DEFAULT 0.0
-        );
-    """)
-    cur.execute(
-        "INSERT OR IGNORE INTO state (id, cash, realized_pl) VALUES (1, 0.0, 0.0);"
-    )
+    # create your tables
+    cur.execute("""CREATE TABLE IF NOT EXISTS state (
+                       id INTEGER PRIMARY KEY CHECK(id = 1),
+                       cash REAL NOT NULL,
+                       realized_pl REAL NOT NULL DEFAULT 0.0
+                   );""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS holdings (
+                       symbol TEXT PRIMARY KEY,
+                       qty INTEGER NOT NULL,
+                       avg_cost REAL NOT NULL,
+                       last_price REAL NOT NULL
+                   );""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS simulation_trades (
+                       id INTEGER PRIMARY KEY AUTOINCREMENT,
+                       symbol TEXT NOT NULL,
+                       action TEXT NOT NULL CHECK(action IN ('BUY','SELL')),
+                       price REAL NOT NULL,
+                       qty INTEGER NOT NULL,
+                       trade_time TEXT NOT NULL,
+                       pnl REAL
+                   );""")
 
-    # holdings table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS holdings (
-            symbol     TEXT    PRIMARY KEY,
-            qty        INTEGER NOT NULL,
-            avg_cost   REAL    NOT NULL,
-            last_price REAL    NOT NULL
-        );
-    """)
-
-    # simulation_trades table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS simulation_trades (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol     TEXT    NOT NULL,
-            action     TEXT    NOT NULL CHECK(action IN ('BUY','SELL')),
-            price      REAL    NOT NULL,
-            qty        INTEGER NOT NULL,
-            trade_time TEXT    NOT NULL,
-            pnl        REAL
-        );
-    """)
+    # only seed cash if the DB was just created
+    if first_run:
+        # load starting_cash from your config JSON
+        cfg = json.loads(CONFIG_PATH.read_text())
+        starting = cfg.get("starting_cash", 0.0)
+        cur.execute("INSERT OR IGNORE INTO state(id, cash, realized_pl) VALUES (1, ?, 0.0);", (starting,))
+        print(f"▶︎ Seeded simulation.db with starting cash = ${starting:.2f}")
 
     conn.commit()
     conn.close()
@@ -74,9 +77,7 @@ def _ensure_state():
     """
     conn = _connect()
     cur = conn.cursor()
-    cur.execute(
-        "INSERT OR IGNORE INTO state (id, cash, realized_pl) VALUES (1, 0.0, 0.0);"
-    )
+    cur.execute("INSERT OR IGNORE INTO state (id, cash, realized_pl) VALUES (1, 0.0, 0.0);")
     conn.commit()
     conn.close()
 
@@ -163,16 +164,16 @@ def buy_stock(symbol: str, qty: int, price: float, trade_time: str = None):
         raise RuntimeError(f"Not enough cash: need {cost:.2f}, have {cash:.2f}")
     set_cash(cash - cost)
     insert_trade(symbol, 'BUY', price, qty, None, trade_time)
-    insert_or_update_holding(symbol, qty, price, price)
+    insert_or_update_holding(symbol, qty, avg_cost=price, last_price=price)
 
 
 def sell_stock(symbol: str, qty: int, price: float, trade_time: str = None):
     proceeds = qty * price
     set_cash(get_cash() + proceeds)
-    avg_cost = get_avg_cost(symbol)
-    pnl = (price - avg_cost) * qty
+    avg = get_avg_cost(symbol)
+    pnl = (price - avg) * qty
     insert_trade(symbol, 'SELL', price, qty, pnl, trade_time)
-    insert_or_update_holding(symbol, -qty, avg_cost, price)
+    insert_or_update_holding(symbol, qty=-qty, avg_cost=avg, last_price=price)
 
 # ─── Backtest helpers ─────────────────────────────────────
 def init_backtest_db():
@@ -276,9 +277,6 @@ def get_unrealized_pl() -> float:
 
 # ─── Exit logic ──────────────────────────────────────────
 def check_exit_orders(settings) -> None:
-    """
-    Run stop-loss, take-profit, and time-based exits for open positions.
-    """
     from services.broker_api import sell_stock as broker_sell
     for symbol, qty, avg_cost, _ in get_holdings():
         try:
@@ -307,7 +305,6 @@ def check_exit_orders(settings) -> None:
 
 # ─── Market calendar ─────────────────────────────────────
 def market_is_open() -> bool:
-    """Return True if NYSE is currently open."""
     now = datetime.now(ET)
     sched = nyse.schedule(start_date=now.date(), end_date=now.date())
     if sched.empty:
@@ -317,7 +314,6 @@ def market_is_open() -> bool:
 
 
 def seconds_until_open() -> float:
-    """Seconds until next NYSE open."""
     now = datetime.now(ET)
     sched = nyse.schedule(start_date=now.date(), end_date=now.date() + timedelta(days=7))
     for _, row in sched.iterrows():
