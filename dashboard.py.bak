@@ -15,6 +15,9 @@ from collections import namedtuple
 from types import SimpleNamespace
 from services.etrade_service import fetch_etrade_quote
 
+# Path to your JSON config (adjust filename if different)
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), "simulation_config.json")
+
 import os
 import json
 import subprocess
@@ -1385,24 +1388,48 @@ def export_backtest():
 
 from flask import redirect, url_for
 
-@app.route("/")
+ @app.route("/", methods=["GET"])
 def index():
+    # 1) Ensure DB and tables exist (and seed cash if first run)
+    setup_simulation_db()
+
+    # 2) Load raw holdings from SQLite
     raw = get_holdings()
+
+    # 3) Build your holdings list…
     holdings = []
     for symbol, qty, avg_cost, last_price in raw:
+        # …compute day_gain, change_pct, total_gain, value…
         holdings.append({
             "symbol":     symbol,
             "last_price": last_price,
-            "day_gain":   round(last_price - avg_cost, 2),        # or however you compute daily P/L
-            "change_pct": round((last_price - avg_cost) / avg_cost * 100, 1),
+            "day_gain":   day_gain,
+            "change_pct": change_pct,
             "qty":        qty,
-            "price_paid": avg_cost,                               # ← map avg_cost here
-            "total_gain": round((last_price - avg_cost) * qty, 2),
-            "value":      round(last_price * qty, 2),
+            "price_paid": avg_cost,
+            "total_gain": total_gain,
+            "value":      value,
         })
-    return render_template("index.html", holdings=holdings, …)
+
+    # 4) Load JSON config
+    with open(CONFIG_PATH) as f:
+        config = json.load(f)
+
+    # 5) Get cash and P/L metrics (must be indented inside index)
+    cash            = get_cash()
+    unrealized_pnl  = get_unrealized_pl()   # note the “_pnl” suffix
+    realized_pnl    = get_realized_pl()
 
 
+    # 6) Render the template, passing EVERYTHING your template uses
+    return render_template(
+        "simulation.html",
+        holdings=holdings,
+        config=config,
+        cash=cash,
+        unrealized_pnl=unrealized_pnl,
+        realized_pnl=realized_pnl
+    )
 
 
 if __name__ == "__main__":

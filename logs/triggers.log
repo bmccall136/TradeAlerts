@@ -1103,3 +1103,5 @@
 [2025-07-24 23:03:43,756] sim INFO: [SIM] insufficient cash for ADI: need $0.00, have $48.37
 [2025-07-24 23:04:11,705] sim INFO: [SIM] seed cash: $1000.00
 [2025-07-24 23:04:11,707] sim INFO: 🔁 Starting scan loop iteration
+[2025-07-24 23:05:06,986] sim INFO: [SIM] seed cash: $1000.00
+[2025-07-24 23:05:07,568] sim INFO: [SIM] Market closed — sleeping 37492.6s
