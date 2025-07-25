@@ -15,6 +15,9 @@ from collections import namedtuple
 from types import SimpleNamespace
 from services.etrade_service import fetch_etrade_quote
 
+# Path to your JSON config (adjust filename if different)
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), "simulation_config.json")
+
 import os
 import json
 import subprocess
@@ -1391,15 +1394,12 @@ def index():
     setup_simulation_db()
 
     # 2) Load raw holdings from SQLite
-    raw = get_holdings()   # List of tuples: (symbol, qty, avg_cost, last_price)
+    raw = get_holdings()
 
-    # 3) Build a context list with all the fields your template needs
+    # 3) Build your holdings list…
     holdings = []
     for symbol, qty, avg_cost, last_price in raw:
-        day_gain   = round(last_price - avg_cost, 2)
-        change_pct = round((last_price - avg_cost) / avg_cost * 100, 1) if avg_cost else 0.0
-        total_gain = round(day_gain * qty, 2)
-        value      = round(last_price * qty, 2)
+        # …compute day_gain, change_pct, total_gain, value…
         holdings.append({
             "symbol":     symbol,
             "last_price": last_price,
@@ -1411,17 +1411,25 @@ def index():
             "value":      value,
         })
 
-    # 4) Load your JSON‐based config so the template can show settings if needed
+    # 4) Load JSON config
     with open(CONFIG_PATH) as f:
         config = json.load(f)
 
-    # 5) Render the template, passing both holdings *and* config
-    return render_template(
-        "index.html",
-        holdings=holdings,
-        config=config
-    )
+    # 5) Get cash and P/L metrics (must be indented inside index)
+    cash            = get_cash()
+    unrealized_pnl  = get_unrealized_pl()   # note the “_pnl” suffix
+    realized_pnl    = get_realized_pl()
 
+
+    # 6) Render the template, passing EVERYTHING your template uses
+    return render_template(
+        "simulation.html",
+        holdings=holdings,
+        config=config,
+        cash=cash,
+        unrealized_pnl=unrealized_pnl,
+        realized_pnl=realized_pnl
+    )
 
 
 if __name__ == "__main__":
