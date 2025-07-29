@@ -274,20 +274,21 @@ def get_position_qty(symbol: str) -> int:
     return row[0] if row else 0
 
 
+def get_unrealized_pl() -> float:
+    """Sum of (current_price – avg_cost)×qty for all open positions."""
+    total = 0.0
+    for symbol, qty, avg_cost, last_price in get_holdings():
+        total += (last_price - avg_cost) * qty
+    return total
+
 def get_realized_pl() -> float:
+    """Sum of all closed‐trade P/L stored in state.realized_pl."""
     conn = _connect()
-    cur = conn.cursor()
+    cur  = conn.cursor()
     cur.execute("SELECT realized_pl FROM state WHERE id=1;")
     row = cur.fetchone()
     conn.close()
     return float(row[0]) if row else 0.0
-
-
-def get_unrealized_pl() -> float:
-    total = 0.0
-    for sym, qty, avg_cost, last_price in get_holdings():
-        total += (last_price - avg_cost) * qty
-    return total
 
 # ─── Exit logic ──────────────────────────────────────────
 def check_exit_orders(settings) -> None:
@@ -317,25 +318,60 @@ def check_exit_orders(settings) -> None:
             if datetime.utcnow() - entry >= timedelta(days=settings.sell_after_days):
                 broker_sell(symbol, qty, current)
 
-# ─── Market calendar ─────────────────────────────────────
+from datetime import timedelta
+
+POST_OPEN_BUFFER = timedelta(minutes=0)
+
 def market_is_open() -> bool:
     now = datetime.now(ET)
     sched = nyse.schedule(start_date=now.date(), end_date=now.date())
     if sched.empty:
         return False
+
     row = sched.iloc[0]
-    return row['market_open'].tz_convert(ET) <= now < row['market_close'].tz_convert(ET)
+    # shift the official open by your buffer
+    open_dt     = row['market_open'].tz_convert(ET) + POST_OPEN_BUFFER
+    close_dt    = row['market_close'].tz_convert(ET)
+    return open_dt <= now < close_dt
 
 
 def seconds_until_open() -> float:
-    now = datetime.now(ET)
-    sched = nyse.schedule(start_date=now.date(), end_date=now.date() + timedelta(days=7))
+    now   = datetime.now(ET)
+    sched = nyse.schedule(
+        start_date=now.date(),
+        end_date=now.date() + timedelta(days=7),
+    )
     for _, row in sched.iterrows():
-        open_dt = row['market_open'].tz_convert(ET)
+        # buffer your next-open by 30m as well
+        open_dt = row['market_open'].tz_convert(ET) + POST_OPEN_BUFFER
         if open_dt > now:
             return (open_dt - now).total_seconds()
+    # if we fall out of the loop, next open is >7 days away—just wait a day
     return 24 * 3600
 
-# ─── Position check ──────────────────────────────────────
+    # ─── Position check ──────────────────────────────────────
+    setup_simulation_db()
+    raw = get_holdings()
+    cash           = round(get_cash(), 2)
+    # use the live total_gain we just calculated, not the DB
+    unrealized_pnl = round(sum(h["total_gain"] for h in holdings), 2)
 def check_if_position_open(symbol: str) -> bool:
     return get_position_qty(symbol) > 0
+def refresh_holdings_prices():
+    """Fetch live prices for each symbol in holdings and write them to the DB."""
+    from services.etrade_service import fetch_etrade_quote
+    conn = _connect()
+    cur  = conn.cursor()
+    cur.execute("SELECT symbol FROM holdings;")
+    for (symbol,) in cur.fetchall():
+        try:
+            px = fetch_etrade_quote(symbol)
+            if px > 0:
+                cur.execute(
+                   "UPDATE holdings SET last_price = ? WHERE symbol = ?;",
+                   (px, symbol)
+                )
+        except Exception:
+            pass
+    conn.commit()
+    conn.close()

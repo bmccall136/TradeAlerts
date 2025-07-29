@@ -1,0 +1,76 @@
+[2025-07-25 09:30:00,430] sim INFO: 🔁 Starting scan loop iteration
+[2025-07-25 09:30:01,579] sim ERROR: MMM: failed to fetch E*TRADE quote (401 Client Error: 401 for url: https://api.etrade.com/v1/market/quote/MMM.json), using history close
+[2025-07-25 09:30:02,320] sim ERROR: AOS: failed to fetch E*TRADE quote (401 Client Error: 401 for url: https://api.etrade.com/v1/market/quote/AOS.json), using history close
+[2025-07-25 09:30:03,080] sim ERROR: ABT: failed to fetch E*TRADE quote (401 Client Error: 401 for url: https://api.etrade.com/v1/market/quote/ABT.json), using history close
+[2025-07-25 09:30:03,790] sim ERROR: ABBV: failed to fetch E*TRADE quote (401 Client Error: 401 for url: https://api.etrade.com/v1/market/quote/ABBV.json), using history close
+[2025-07-25 09:30:04,531] sim ERROR: ACN: failed to fetch E*TRADE quote (401 Client Error: 401 for url: https://api.etrade.com/v1/market/quote/ACN.json), using history close
+[2025-07-25 09:30:05,247] sim ERROR: ADBE: failed to fetch E*TRADE quote (401 Client Error: 401 for url: https://api.etrade.com/v1/market/quote/ADBE.json), using history close
+[2025-07-25 09:30:06,098] sim ERROR: AMD: failed to fetch E*TRADE quote (401 Client Error: 401 for url: https://api.etrade.com/v1/market/quote/AMD.json), using history close
+[2025-07-25 09:30:06,116] sim INFO: [SIM] ALERT AMD: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-25 23:36:33,485] sim INFO: [SIM] seed cash: $1000.00
+[2025-07-25 23:36:33,926] sim INFO: [SIM] Market closed — sleeping 208406.3s
+[2025-07-25 23:37:59,995] sim INFO: [SIM] seed cash: $1000.00
+[2025-07-25 23:38:00,437] sim INFO: [SIM] Market closed — sleeping 208319.8s
+[2025-07-25 23:38:34,313] sim INFO: [SIM] seed cash: $1000.00
+[2025-07-25 23:38:34,315] sim INFO: 🔁 Starting scan loop iteration
+[2025-07-25 23:39:40,247] sim INFO: [SIM] ALERT CMG: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-25 23:39:40,471] sim INFO: ✅ BUY CMG x4 @ $46.76 (cash → $812.96)
+[2025-07-25 23:39:40,474] sim INFO: [SIM] Current holdings:
+[2025-07-25 23:39:40,475] sim INFO:     • CMG: 4 shares @ $46.76 (last price: $46.76)
+[2025-07-25 23:39:45,510] sim INFO: [SIM] ALERT CFG: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-25 23:39:45,797] sim INFO: ✅ BUY CFG x4 @ $49.49 (cash → $614.98)
+[2025-07-25 23:39:45,798] sim INFO: [SIM] Current holdings:
+[2025-07-25 23:39:45,799] sim INFO:     • CMG: 4 shares @ $46.76 (last price: $46.76)
+[2025-07-25 23:39:45,799] sim INFO:     • CFG: 4 shares @ $49.49 (last price: $49.49)
+[2025-07-25 23:40:23,362] sim INFO: [SIM] ALERT EMR: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-25 23:40:23,692] sim INFO: ✅ BUY EMR x1 @ $149.64 (cash → $465.34)
+[2025-07-25 23:40:23,696] sim INFO: [SIM] Current holdings:
+[2025-07-25 23:40:23,697] sim INFO:     • CMG: 4 shares @ $46.76 (last price: $46.76)
+[2025-07-25 23:40:23,697] sim INFO:     • CFG: 4 shares @ $49.49 (last price: $49.49)
+[2025-07-25 23:40:23,698] sim INFO:     • EMR: 1 shares @ $149.64 (last price: $149.64)
+[2025-07-25 23:40:31,438] sim INFO: [SIM] ALERT EL: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-25 23:40:31,712] sim INFO: ✅ BUY EL x2 @ $90.43 (cash → $284.48)
+[2025-07-25 23:40:31,717] sim INFO: [SIM] Current holdings:
+[2025-07-25 23:40:31,718] sim INFO:     • CMG: 4 shares @ $46.76 (last price: $46.76)
+[2025-07-25 23:40:31,718] sim INFO:     • CFG: 4 shares @ $49.49 (last price: $49.49)
+[2025-07-25 23:40:31,719] sim INFO:     • EMR: 1 shares @ $149.64 (last price: $149.64)
+[2025-07-25 23:40:31,719] sim INFO:     • EL: 2 shares @ $90.43 (last price: $90.43)
+[2025-07-25 23:40:44,986] sim INFO: [SIM] ALERT FI: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-25 23:40:45,253] sim INFO: ✅ BUY FI x1 @ $142.05 (cash → $142.43)
+[2025-07-25 23:40:45,256] sim INFO: [SIM] Current holdings:
+[2025-07-25 23:40:45,256] sim INFO:     • CMG: 4 shares @ $46.76 (last price: $46.76)
+[2025-07-25 23:40:45,257] sim INFO:     • CFG: 4 shares @ $49.49 (last price: $49.49)
+[2025-07-25 23:40:45,257] sim INFO:     • EMR: 1 shares @ $149.64 (last price: $149.64)
+[2025-07-25 23:40:45,257] sim INFO:     • EL: 2 shares @ $90.43 (last price: $90.43)
+[2025-07-25 23:40:45,257] sim INFO:     • FI: 1 shares @ $142.05 (last price: $142.05)
+[2025-07-25 23:41:05,051] sim INFO: [SIM] ALERT HPE: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-25 23:41:05,290] sim INFO: ✅ BUY HPE x6 @ $20.71 (cash → $18.14)
+[2025-07-25 23:41:05,294] sim INFO: [SIM] Current holdings:
+[2025-07-25 23:41:05,294] sim INFO:     • CMG: 4 shares @ $46.76 (last price: $46.76)
+[2025-07-25 23:41:05,294] sim INFO:     • CFG: 4 shares @ $49.49 (last price: $49.49)
+[2025-07-25 23:41:05,295] sim INFO:     • EMR: 1 shares @ $149.64 (last price: $149.64)
+[2025-07-25 23:41:05,295] sim INFO:     • EL: 2 shares @ $90.43 (last price: $90.43)
+[2025-07-25 23:41:05,296] sim INFO:     • FI: 1 shares @ $142.05 (last price: $142.05)
+[2025-07-25 23:41:05,296] sim INFO:     • HPE: 6 shares @ $20.71 (last price: $20.71)
+[2025-07-25 23:41:10,388] sim INFO: [SIM] ALERT HPQ: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-25 23:41:10,607] sim INFO: [SIM] insufficient cash for HPQ: need $0.00, have $18.14
+[2025-07-25 23:41:21,743] sim INFO: [SIM] ALERT ISRG: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-25 23:41:22,008] sim INFO: [SIM] insufficient cash for ISRG: need $0.00, have $18.14
+[2025-07-25 23:41:40,193] sim INFO: [SIM] ALERT LVS: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-25 23:41:40,378] sim INFO: [SIM] insufficient cash for LVS: need $0.00, have $18.14
+[2025-07-25 23:41:42,083] sim INFO: [SIM] ALERT LEN: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-25 23:41:42,331] sim INFO: [SIM] insufficient cash for LEN: need $0.00, have $18.14
+[2025-07-25 23:42:27,248] sim INFO: [SIM] ALERT NDSN: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-25 23:42:27,477] sim INFO: [SIM] insufficient cash for NDSN: need $0.00, have $18.14
+[2025-07-25 23:42:30,676] sim INFO: [SIM] ALERT NCLH: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-25 23:42:30,936] sim INFO: [SIM] insufficient cash for NCLH: need $0.00, have $18.14
+[2025-07-25 23:42:35,120] sim INFO: [SIM] ALERT NXPI: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-25 23:42:35,328] sim INFO: [SIM] insufficient cash for NXPI: need $0.00, have $18.14
+[2025-07-25 23:42:38,146] sim INFO: [SIM] ALERT ODFL: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-25 23:42:38,404] sim INFO: [SIM] insufficient cash for ODFL: need $0.00, have $18.14
+[2025-07-25 23:42:48,488] sim INFO: [SIM] ALERT PAYX: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-25 23:42:48,712] sim INFO: [SIM] insufficient cash for PAYX: need $0.00, have $18.14
+[2025-07-25 23:43:40,235] sim INFO: [SIM] ALERT SYK: 4/4 → ['BB breakout', 'MACD 🚀', 'RSI 📈', 'Price > SMA50']
+[2025-07-25 23:43:40,537] sim INFO: [SIM] insufficient cash for SYK: need $0.00, have $18.14
+[2025-07-25 23:44:23,217] sim INFO: [SIM] seed cash: $18.14
+[2025-07-25 23:44:23,219] sim INFO: 🔁 Starting scan loop iteration

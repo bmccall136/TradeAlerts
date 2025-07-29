@@ -22,50 +22,64 @@ def _connect():
 print(f"▶︎ TradingHelpers loaded; simulation DB path is {DB_PATH.resolve()}")
 
 # ─── Initialization ────────────────────────────────────────
-from pathlib import Path
-import sqlite3
-import json
-
-# … at top of services/trading_helpers.py …
-DB_PATH = Path(__file__).resolve().parent.parent / "simulation.db"
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "simulation_config.json"
-
 def setup_simulation_db():
-    # detect “first run” by seeing if the file existed before we connect
+    """
+    Create and seed the simulation database with:
+      - state: singleton row for cash & realized P/L
+      - holdings: current positions
+      - simulation_trades: audit trail
+    Seeds starting cash from simulation_config.json on first DB creation.
+    """
+    from pathlib import Path
+    import json
+
+    # detect initial run by absence of file
     first_run = not DB_PATH.exists()
 
-    conn = sqlite3.connect(DB_PATH, detect_types=sqlite3.PARSE_DECLTYPES)
+    conn = _connect()
     cur = conn.cursor()
 
-    # create your tables
-    cur.execute("""CREATE TABLE IF NOT EXISTS state (
-                       id INTEGER PRIMARY KEY CHECK(id = 1),
-                       cash REAL NOT NULL,
-                       realized_pl REAL NOT NULL DEFAULT 0.0
-                   );""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS holdings (
-                       symbol TEXT PRIMARY KEY,
-                       qty INTEGER NOT NULL,
-                       avg_cost REAL NOT NULL,
-                       last_price REAL NOT NULL
-                   );""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS simulation_trades (
-                       id INTEGER PRIMARY KEY AUTOINCREMENT,
-                       symbol TEXT NOT NULL,
-                       action TEXT NOT NULL CHECK(action IN ('BUY','SELL')),
-                       price REAL NOT NULL,
-                       qty INTEGER NOT NULL,
-                       trade_time TEXT NOT NULL,
-                       pnl REAL
-                   );""")
+    # state table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS state (
+            id           INTEGER PRIMARY KEY CHECK(id = 1),
+            cash         REAL    NOT NULL,
+            realized_pl  REAL    NOT NULL DEFAULT 0.0
+        );
+    """)
+    # holdings table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS holdings (
+            symbol     TEXT    PRIMARY KEY,
+            qty        INTEGER NOT NULL,
+            avg_cost   REAL    NOT NULL,
+            last_price REAL    NOT NULL
+        );
+    """)
+    # simulation_trades table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS simulation_trades (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol     TEXT    NOT NULL,
+            action     TEXT    NOT NULL CHECK(action IN ('BUY','SELL')),
+            price      REAL    NOT NULL,
+            qty        INTEGER NOT NULL,
+            trade_time TEXT    NOT NULL,
+            pnl        REAL
+        );
+    """)
 
-    # only seed cash if the DB was just created
+    # seed starting cash from JSON on first creation
     if first_run:
-        # load starting_cash from your config JSON
-        cfg = json.loads(CONFIG_PATH.read_text())
-        starting = cfg.get("starting_cash", 0.0)
-        cur.execute("INSERT OR IGNORE INTO state(id, cash, realized_pl) VALUES (1, ?, 0.0);", (starting,))
-        print(f"▶︎ Seeded simulation.db with starting cash = ${starting:.2f}")
+        cfg_path = Path(__file__).resolve().parent.parent / "simulation_config.json"
+        if cfg_path.exists():
+            cfg = json.loads(cfg_path.read_text())
+            starting = cfg.get("starting_cash", 0.0)
+            cur.execute(
+                "INSERT OR IGNORE INTO state(id, cash, realized_pl) VALUES (1, ?, 0.0);",
+                (starting,)
+            )
+            print(f"▶︎ Seeded new simulation.db with starting cash = ${starting:.2f}")
 
     conn.commit()
     conn.close()
@@ -260,20 +274,21 @@ def get_position_qty(symbol: str) -> int:
     return row[0] if row else 0
 
 
+def get_unrealized_pl() -> float:
+    """Sum of (current_price – avg_cost)×qty for all open positions."""
+    total = 0.0
+    for symbol, qty, avg_cost, last_price in get_holdings():
+        total += (last_price - avg_cost) * qty
+    return total
+
 def get_realized_pl() -> float:
+    """Sum of all closed‐trade P/L stored in state.realized_pl."""
     conn = _connect()
-    cur = conn.cursor()
+    cur  = conn.cursor()
     cur.execute("SELECT realized_pl FROM state WHERE id=1;")
     row = cur.fetchone()
     conn.close()
     return float(row[0]) if row else 0.0
-
-
-def get_unrealized_pl() -> float:
-    total = 0.0
-    for sym, qty, avg_cost, last_price in get_holdings():
-        total += (last_price - avg_cost) * qty
-    return total
 
 # ─── Exit logic ──────────────────────────────────────────
 def check_exit_orders(settings) -> None:
@@ -303,25 +318,60 @@ def check_exit_orders(settings) -> None:
             if datetime.utcnow() - entry >= timedelta(days=settings.sell_after_days):
                 broker_sell(symbol, qty, current)
 
-# ─── Market calendar ─────────────────────────────────────
+from datetime import timedelta
+
+POST_OPEN_BUFFER = timedelta(minutes=15)
+
 def market_is_open() -> bool:
     now = datetime.now(ET)
     sched = nyse.schedule(start_date=now.date(), end_date=now.date())
     if sched.empty:
         return False
+
     row = sched.iloc[0]
-    return row['market_open'].tz_convert(ET) <= now < row['market_close'].tz_convert(ET)
+    # shift the official open by your buffer
+    open_dt     = row['market_open'].tz_convert(ET) + POST_OPEN_BUFFER
+    close_dt    = row['market_close'].tz_convert(ET)
+    return open_dt <= now < close_dt
 
 
 def seconds_until_open() -> float:
-    now = datetime.now(ET)
-    sched = nyse.schedule(start_date=now.date(), end_date=now.date() + timedelta(days=7))
+    now   = datetime.now(ET)
+    sched = nyse.schedule(
+        start_date=now.date(),
+        end_date=now.date() + timedelta(days=7),
+    )
     for _, row in sched.iterrows():
-        open_dt = row['market_open'].tz_convert(ET)
+        # buffer your next-open by 30m as well
+        open_dt = row['market_open'].tz_convert(ET) + POST_OPEN_BUFFER
         if open_dt > now:
             return (open_dt - now).total_seconds()
+    # if we fall out of the loop, next open is >7 days away—just wait a day
     return 24 * 3600
 
-# ─── Position check ──────────────────────────────────────
+    # ─── Position check ──────────────────────────────────────
+    setup_simulation_db()
+    raw = get_holdings()
+    cash           = round(get_cash(), 2)
+    # use the live total_gain we just calculated, not the DB
+    unrealized_pnl = round(sum(h["total_gain"] for h in holdings), 2)
 def check_if_position_open(symbol: str) -> bool:
     return get_position_qty(symbol) > 0
+def refresh_holdings_prices():
+    """Fetch live prices for each symbol in holdings and write them to the DB."""
+    from services.etrade_service import fetch_etrade_quote
+    conn = _connect()
+    cur  = conn.cursor()
+    cur.execute("SELECT symbol FROM holdings;")
+    for (symbol,) in cur.fetchall():
+        try:
+            px = fetch_etrade_quote(symbol)
+            if px > 0:
+                cur.execute(
+                   "UPDATE holdings SET last_price = ? WHERE symbol = ?;",
+                   (px, symbol)
+                )
+        except Exception:
+            pass
+    conn.commit()
+    conn.close()

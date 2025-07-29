@@ -192,29 +192,32 @@ def run_simulation_loop(settings: SimulationSettings):
                 continue
             logger.info(f"[SIM] ALERT {sym}: {len(triggered)}/{settings.min_signals} → {triggered}")
 
-            # b) fetch live quote & timestamp
-            now_dt = datetime.utcnow()
-            live_px = fetch_etrade_quote(sym)
-            logger.debug(f"[MARKET] {sym}: E*TRADE price = {live_px}")
-            if not live_px or live_px <= 0:
-                continue
+        # b) fetch live quote & timestamp
+        now_dt = datetime.utcnow()
+        live_px = fetch_etrade_quote(sym)
+        logger.debug(f"[MARKET] {sym}: E*TRADE price = {live_px}")
+        if not live_px or live_px <= 0:
+            continue
 
-            # — keep holdings’ last_price up‑to‑date only for positions we already own —
-            from services.trading_helpers import insert_or_update_holding, get_position_qty, get_avg_cost
-            if get_position_qty(sym) > 0:
-                insert_or_update_holding(
-                    symbol=sym,
-                    qty=0,                      # no change in share count
-                    avg_cost=get_avg_cost(sym), # leave avg cost untouched
-                    last_price=live_px          # overwrite only the price
-                )
+        # ←─ insert liquidity check here ────────────────────────────────
+        from services.trading_helpers import fetch_average_daily_volume, fetch_bid_ask
+        def passes_liquidity_filters(sym, price):
+            avg_vol = fetch_average_daily_volume(sym)
+            bid, ask = fetch_bid_ask(sym)
+            spread_pct = (ask - bid) / bid if bid and ask else 1
+            return avg_vol > 500_000 and spread_pct < 0.002
 
-            # c) compute size & cost
-            qty  = compute_qty(settings, live_px)
-            cost = qty * live_px
-            if qty < 1 or cost > get_cash():
-                logger.info(f"[SIM] insufficient cash for {sym}: need ${cost:.2f}, have ${get_cash():.2f}")
-                continue
+        if not passes_liquidity_filters(sym, live_px):
+            logger.info(f"[MARKET] skipping {sym}: low volume or wide spread")
+            continue
+        # ────────────────────────────────────────────────────────────────
+
+        # c) compute size & cost
+        qty  = compute_qty(settings, live_px)
+        cost = qty * live_px
+        if qty < 1 or cost > get_cash():
+            logger.info(f"[SIM] insufficient cash for {sym}: need ${cost:.2f}, have ${get_cash():.2f}")
+            continue
 
             # d) execute buy
             try:
