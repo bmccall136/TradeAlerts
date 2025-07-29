@@ -1156,68 +1156,73 @@ from services.trading_helpers import (
 )
 
 from flask import render_template
-from services.settings_schema import SimulationSettings, extract_simulation_settings
+from services.etrade_service   import fetch_etrade_quote
 from services.simulation_service import run_simulation_loop, stop_simulation
-from services.trading_helpers    import get_cash, get_holdings, get_trades, get_unrealized_pl, get_realized_pl
+from services.trading_helpers import (
+    get_cash,
+    get_holdings,
+    get_trades,
+    get_realized_pl,
+)
 
 @app.route("/simulation")
 def simulation_view():
-    cash         = get_cash()
-    unrealized   = get_unrealized_pl()
-    realized     = get_realized_pl()
+    # 1) pull cash & realized P/L
+    cash     = get_cash()
+    realized = get_realized_pl()
 
-    # 1) get your DB rows
-    raw = get_holdings()   # each row is (symbol, qty, price_paid, last_price_placeholder)
-    holdings = [
-      dict(
-        symbol=s,
-        qty=q,
-        price_paid=ac,
-        last_price=(lp if lp is not None else 0.0),
-        day_gain=((lp or 0) - ac)*q,
-        total_gain=((lp or 0) - ac)*q,
-        change_pct=(((lp or 0) - ac)/(ac or 1))*100,
-        value=(lp or 0)*q,
-      )
-      for s,q,ac,lp in get_holdings()
-    ]
+    # 2) pull raw holdings
+    raw = get_holdings()  # (symbol, qty, avg_cost, old_last_price)
+    holdings = [{
+        "symbol":     s,
+        "qty":        q,
+        "price_paid": ac,
+        # placeholders to be overwritten
+        "last_price": lp,
+        "day_gain":   None,
+        "total_gain": None,
+        "change_pct": None,
+        "value":      None,
+    } for s, q, ac, lp in raw]
 
-    # 2) punch in live prices & recalc
+    # 3) punch in live prices & recalc each row
     for h in holdings:
         try:
-            live = fetch_etrade_quote(h['symbol'])
-            app.logger.debug(f"[PRICE] {h['symbol']}: E*TRADE price = {live}")
-            h['last_price'] = round(live, 2)
+            live = fetch_etrade_quote(h["symbol"]) or 0.0
+            change = live - h["price_paid"]
+            h["last_price"] = round(live, 2)
+            h["total_gain"] = round(change * h["qty"], 2)
+            h["day_gain"]   = h["total_gain"]
+            h["change_pct"] = round((change / h["price_paid"] * 100) if h["price_paid"] else 0, 1)
+            h["value"]      = round(live * h["qty"], 2)
+        except Exception:
+            # leave the placeholders if the quote fails
+            pass
 
-            change = h['last_price'] - h['price_paid']
-            h['change']     = round(change, 2)
-            h['change_pct'] = round((change / h['price_paid']*100) if h['price_paid'] else 0, 1)
-            h['total_gain'] = round(change * h['qty'], 2)
-            h['day_gain']   = h['total_gain']
-            h['value']      = round(h['last_price'] * h['qty'], 2)
-        except Exception as e:
-            app.logger.warning(f"[PRICE] {h['symbol']} fetch failed: {e}")
+    # 4) compute header Unrealized P&L from the fresh total_gain values
+    unrealized_pnl = round(sum(h["total_gain"] for h in holdings), 2)
 
-    # rebuild your history exactly as before…
+    # 5) rebuild trade history so `history` exists
     history = []
-    for t, s, a, q, p, pl in get_trades():
+    for t, symbol, action, qty, price, pl in get_trades():
         try:
             pl_val = float(pl)
         except (TypeError, ValueError):
             pl_val = 0.0
         history.append({
-            'time':   t,
-            'symbol': s,
-            'action': a,
-            'qty':    q,
-            'price':  p,
-            'pl':     pl_val,
+            "time":   t,
+            "symbol": symbol,
+            "action": action,
+            "qty":    qty,
+            "price":  price,
+            "pl":     pl_val,
         })
 
+    # 6) finally render
     return render_template(
         "simulation.html",
         cash=cash,
-        unrealized_pnl=unrealized,
+        unrealized_pnl=unrealized_pnl,
         realized_pnl=realized,
         holdings=holdings,
         history=history
@@ -1388,49 +1393,64 @@ def export_backtest():
 
 from flask import redirect, url_for
 
+from flask import render_template
+import json
+
+from services.trading_helpers import (
+    setup_simulation_db,
+    get_cash,
+    get_realized_pl,
+    get_holdings,
+)
+from services.etrade_service import fetch_etrade_quote
+
+
 @app.route("/", methods=["GET"])
 def index():
-    # 1) Ensure DB and tables exist (and seed cash if first run)
+    # 1) Ensure DB + tables + seed cash
     setup_simulation_db()
 
-    # 2) Load raw holdings from SQLite
+    # 2) Pull raw holdings: (symbol, qty, avg_cost, last_price)
     raw = get_holdings()
 
-    # 3) Build your holdings list…
+    # 3) Build your holdings list with cost‐basis P/L
     holdings = []
     for symbol, qty, avg_cost, last_price in raw:
-        # …compute day_gain, change_pct, total_gain, value…
+        # fetch the up‑to‑date price
+        try:
+            live_px = fetch_etrade_quote(symbol) or 0.0
+        except Exception:
+            live_px = 0.0
+
+        total_gain = round((live_px - avg_cost) * qty, 2)
+        value      = round(live_px * qty, 2)
         holdings.append({
-            "symbol":     symbol,
-            "last_price": last_price,
-            "day_gain":   day_gain,
-            "change_pct": change_pct,
-            "qty":        qty,
-            "price_paid": avg_cost,
-            "total_gain": total_gain,
-            "value":      value,
+            "symbol":      symbol,
+            "qty":         qty,
+            "price_paid":  round(avg_cost, 2),
+            "last_price":  round(live_px, 2),
+            "total_gain":  total_gain,
+            "value":       value,
         })
 
-    # 4) Load JSON config
+    # 4) Load any JSON‑based config you need
     with open(CONFIG_PATH) as f:
         config = json.load(f)
 
-    # 5) Get cash and P/L metrics (must be indented inside index)
-    cash            = get_cash()
-    unrealized_pnl  = get_unrealized_pl()   # note the “_pnl” suffix
-    realized_pnl    = get_realized_pl()
+    # 5) Fetch cash + P/L metrics from our in‑memory rows
+    cash           = round(get_cash(), 2)
+    unrealized_pnl = round(sum(h["total_gain"] for h in holdings), 2)
+    realized_pnl   = round(get_realized_pl(), 2)
 
-
-    # 6) Render the template, passing EVERYTHING your template uses
+    # 6) Render your template
     return render_template(
         "simulation.html",
         holdings=holdings,
         config=config,
         cash=cash,
         unrealized_pnl=unrealized_pnl,
-        realized_pnl=realized_pnl
+        realized_pnl=realized_pnl,
     )
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
