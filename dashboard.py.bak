@@ -1156,51 +1156,69 @@ from services.trading_helpers import (
 )
 
 from flask import render_template
-from services.settings_schema import SimulationSettings, extract_simulation_settings
+from services.etrade_service   import fetch_etrade_quote
 from services.simulation_service import run_simulation_loop, stop_simulation
-from services.trading_helpers    import get_cash, get_holdings, get_trades, get_unrealized_pl, get_realized_pl
+from services.trading_helpers import (
+    get_cash,
+    get_holdings,
+    get_trades,
+    get_realized_pl,
+)
 
 @app.route("/simulation")
 def simulation_view():
-    # 1) pull raw P/L
-    cash       = get_cash()
-    # we’ll overwrite this below from our in‑memory list
-    realized   = get_realized_pl()
+    # 1) pull cash & realized P/L
+    cash     = get_cash()
+    realized = get_realized_pl()
 
-    # 2) get your DB rows
-    raw = get_holdings()
-    holdings = [
-        dict(
-            symbol=s,
-            qty=q,
-            price_paid=ac,
-            # we’ll recalc last_price, day_gain, total_gain and value below
-            last_price=lp,
-            day_gain=None,
-            total_gain=None,
-            change_pct=None,
-            value=None,
-        )
-        for s, q, ac, lp in raw
-    ]
+    # 2) pull raw holdings
+    raw = get_holdings()  # (symbol, qty, avg_cost, old_last_price)
+    holdings = [{
+        "symbol":     s,
+        "qty":        q,
+        "price_paid": ac,
+        # placeholders to be overwritten
+        "last_price": lp,
+        "day_gain":   None,
+        "total_gain": None,
+        "change_pct": None,
+        "value":      None,
+    } for s, q, ac, lp in raw]
 
-    # 3) punch in live prices & recalc
+    # 3) punch in live prices & recalc each row
     for h in holdings:
         try:
-            live = fetch_etrade_quote(h['symbol'])
-            h['last_price'] = round(live, 2)
-            change = h['last_price'] - h['price_paid']
-            h['total_gain']  = round(change * h['qty'], 2)
-            h['day_gain']    = h['total_gain']
-            h['change_pct']  = round((change / h['price_paid'] * 100) if h['price_paid'] else 0, 1)
-            h['value']       = round(h['last_price'] * h['qty'], 2)
+            live = fetch_etrade_quote(h["symbol"]) or 0.0
+            change = live - h["price_paid"]
+            h["last_price"] = round(live, 2)
+            h["total_gain"] = round(change * h["qty"], 2)
+            h["day_gain"]   = h["total_gain"]
+            h["change_pct"] = round((change / h["price_paid"] * 100) if h["price_paid"] else 0, 1)
+            h["value"]      = round(live * h["qty"], 2)
         except Exception:
+            # leave the placeholders if the quote fails
             pass
 
+    # 4) compute header Unrealized P&L from the fresh total_gain values
+    unrealized_pnl = round(sum(h["total_gain"] for h in holdings), 2)
 
-    # 4) compute header from our freshly calculated rows
-    unrealized_pnl = round(sum(h['total_gain'] for h in holdings), 2)
+    # 5) rebuild trade history so `history` exists
+    history = []
+    for t, symbol, action, qty, price, pl in get_trades():
+        try:
+            pl_val = float(pl)
+        except (TypeError, ValueError):
+            pl_val = 0.0
+        history.append({
+            "time":   t,
+            "symbol": symbol,
+            "action": action,
+            "qty":    qty,
+            "price":  price,
+            "pl":     pl_val,
+        })
 
+    # 6) finally render
     return render_template(
         "simulation.html",
         cash=cash,
@@ -1398,21 +1416,18 @@ def index():
     # 3) Build your holdings list with cost‐basis P/L
     holdings = []
     for symbol, qty, avg_cost, last_price in raw:
-        # fetch the up‑to‑date price
-        try:
-            live_px = fetch_etrade_quote(symbol) or 0.0
-        except Exception:
-            live_px = 0.0
+        gain_per_share = last_price - avg_cost
+        total_gain     = round(gain_per_share * qty, 2)
+        day_gain       = round(gain_per_share, 2)
 
-        total_gain = round((live_px - avg_cost) * qty, 2)
-        value      = round(live_px * qty, 2)
         holdings.append({
-            "symbol":      symbol,
-            "qty":         qty,
-            "price_paid":  round(avg_cost, 2),
-            "last_price":  round(live_px, 2),
-            "total_gain":  total_gain,
-            "value":       value,
+            "symbol":     symbol,
+            "qty":        qty,
+            "price_paid": avg_cost,
+            "last_price": last_price,
+            "day_gain":   day_gain,      # new!
+            "total_gain": total_gain,
+            "value":      round(last_price * qty, 2),
         })
 
     # 4) Load any JSON‑based config you need

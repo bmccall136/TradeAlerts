@@ -1416,21 +1416,21 @@ def index():
     # 3) Build your holdings list with cost‐basis P/L
     holdings = []
     for symbol, qty, avg_cost, last_price in raw:
-        # fetch the up‑to‑date price
-        try:
-            live_px = fetch_etrade_quote(symbol) or 0.0
-        except Exception:
-            live_px = 0.0
+        gain_per_share = last_price - avg_cost
+        total_gain     = round(gain_per_share * qty, 2)
+        day_gain       = round(gain_per_share, 2)
+        # NEW: compute pct change
+        change_pct     = round((gain_per_share / avg_cost * 100), 1) if avg_cost else 0.0
 
-        total_gain = round((live_px - avg_cost) * qty, 2)
-        value      = round(live_px * qty, 2)
         holdings.append({
-            "symbol":      symbol,
-            "qty":         qty,
-            "price_paid":  round(avg_cost, 2),
-            "last_price":  round(live_px, 2),
-            "total_gain":  total_gain,
-            "value":       value,
+            "symbol":     symbol,
+            "qty":        qty,
+            "price_paid": avg_cost,
+            "last_price": last_price,
+            "day_gain":   day_gain,       # per‑share gain
+            "change_pct": change_pct,     # percent gain
+            "total_gain": total_gain,     # total position P/L
+            "value":      round(last_price * qty, 2),
         })
 
     # 4) Load any JSON‑based config you need

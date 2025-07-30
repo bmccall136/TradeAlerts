@@ -18,40 +18,6 @@ from services.settings_schema import SimulationSettings
 
 logger = logging.getLogger(__name__)
 
-
-def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
-    def _fetch():
-        try:
-            return yf.download(
-                sym,
-                period=period,
-                interval=interval,
-                auto_adjust=False,
-                progress=False,
-                threads=False
-            )
-        except Exception as e:
-            logger.error(f"[ERROR] Yahoo download {sym} failed: {e}")
-            return None
-
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(_fetch)
-        try:
-            return future.result(timeout=timeout)
-        except FuturesTimeout:
-            logger.error(f"[ERROR] Yahoo download {sym} timed out after {timeout}s")
-            return None
-
-
-def _has_headlines(src):
-    if hasattr(src, "empty"):
-        return not src.empty
-    try:
-        return len(src) > 0
-    except Exception:
-        return False
-
-
 def _match_tags(conds):
     return [tag for cond, tag in conds if cond]
 
@@ -272,3 +238,15 @@ def get_symbols(simulation=False, clean_path='sp500_symbols_clean.txt'):
     except Exception:
         fallback = os.path.join(os.path.dirname(__file__), 'symbols.txt')
         return [l.strip().upper() for l in open(fallback) if l.strip()]
+
+
+def fetch_etrade_quote(symbol: str) -> float:
+    resp = client.get_quote(symbol)   # however you call E*TRADE
+    all_data = resp['quoteResponse']['All'][0]
+    # Try extended hours first
+    ext = all_data.get('ExtendedHourQuoteDetail') or {}
+    ext_price = ext.get('lastTrade')
+    if ext_price and ext_price > 0:
+        return ext_price
+    # Fallback to regular hours
+    return all_data.get('lastTrade') or 0.0

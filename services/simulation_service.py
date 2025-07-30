@@ -6,11 +6,12 @@ import logging
 from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from services.data_fetch import fetch_data_with_timeout, fetch_intraday_vwap
 
 import pandas as pd
 import pandas_market_calendars as mcal
-
-from services.market_service    import fetch_data_with_timeout, get_symbols
+from services.market_service     import get_symbols
+from services.data_fetch    import fetch_data_with_timeout
 from services.etrade_service     import fetch_etrade_quote
 from services.settings_schema   import SimulationSettings
 from services.trading_helpers import (
@@ -36,6 +37,7 @@ LOGFILE.parent.mkdir(parents=True, exist_ok=True)
 
 
 def analyze_symbol(symbol: str, settings: SimulationSettings):
+    # 0) Determine how many days of history we need
     lookback = max(
         settings.atr_len,
         settings.bb_length,
@@ -50,46 +52,61 @@ def analyze_symbol(symbol: str, settings: SimulationSettings):
             logger.warning(f"No data for {symbol}; skipping")
             return None, [], False
 
-        # 1) Flatten to drop symbol level if MultiIndex
+        # Flatten & lowercase columns
         if isinstance(history.columns, pd.MultiIndex):
             history.columns = history.columns.get_level_values(0)
-
-        # 2) Lowercase all column names
         history.columns = [c.lower() for c in history.columns]
 
-        # 3) Require 'close' and 'volume'
         if 'close' not in history.columns or 'volume' not in history.columns:
-            logger.error(f"{symbol}: missing expected columns; got {history.columns.tolist()}")
+            logger.error(f"{symbol}: missing expected columns {history.columns.tolist()}")
             return None, [], False
 
     except Exception as e:
         logger.exception(f"{symbol}: error fetching/parsing history - {e}")
         return None, [], False
-     
-    # 2) Always pull live price from E*TRADE (fallback to history close)
-    try:
-        logger.debug(f"{symbol}: calling fetch_etrade_quote()")
-        quote = fetch_etrade_quote(symbol)
-        logger.debug(f"{symbol}: fetch_etrade_quote returned → {quote!r}")
 
+    # 2) Calculate intraday VWAP
+    try:
+        vwap = fetch_intraday_vwap(symbol)
+    except Exception as e:
+        logger.error(f"{symbol}: failed to fetch VWAP ({e}); skipping VWAP filter")
+        vwap = None
+
+     # 3) Fetch live price (fallback to history close)
+    try:
+        quote = fetch_etrade_quote(symbol)
         if isinstance(quote, dict):
             price = float(quote.get("last_trade_price", quote.get("lastTradePrice", 0)))
         else:
             price = float(quote)
-    except Exception as e:
-        logger.error(f"{symbol}: failed to fetch E*TRADE quote ({e}), using history close")
+    except Exception:
         price = float(history["close"].iat[-1])
+
+    # ─── initialize our signal list (must come before any .append) ──
+    triggered = []
+
+    # now that price is guaranteed to exist and triggered is a list:
+    logger.debug(f"{symbol}: final price = {price}")
 
     logger.debug(f"{symbol}: final price = {price}")
 
-    # 4) Run your indicator tests
+    # ─── initialize the list of signals ───────────────────────────
     triggered = []
 
+    # 4) VWAP filter
+    if settings.vwap_on and vwap is not None:
+        if price < vwap:
+            # below VWAP → immediate fail
+            logger.debug(f"{symbol}: price {price:.2f} < VWAP {vwap:.2f}; skipping")
+            return price, triggered, False
+        triggered.append("Price > VWAP")
+    # 5) Bollinger Bands
     if settings.bb_on:
         ub, _, _ = compute_bollinger_bands(history["close"], settings.bb_length, settings.bb_std)
         if price > ub.iat[-1]:
             triggered.append("BB breakout")
 
+    # 6) MACD
     if settings.macd_on:
         macd_line, signal = compute_macd(
             history, settings.macd_fast, settings.macd_slow, settings.macd_signal
@@ -97,47 +114,53 @@ def analyze_symbol(symbol: str, settings: SimulationSettings):
         if macd_line.iat[-1] > signal.iat[-1]:
             triggered.append("MACD 🚀")
 
+    # 7) RSI
     if settings.rsi_on:
         rsi = compute_rsi(history, settings.rsi_len)
         if rsi.iat[-1] > settings.rsi_overbought:
             triggered.append("RSI 📈")
 
+    # 8) Volume spike
     if settings.vol_on:
         vol_mul = compute_volume_multiplier(history, settings.vol_multiplier)
-        # pick the most recent volume multiplier
-        current_vol = vol_mul.iloc[-1]
-        if current_vol >= settings.vol_multiplier:
-            triggered.append('volume Spike')
+        if vol_mul.iat[-1] >= settings.vol_multiplier:
+            triggered.append("Volume spike")
 
-    if settings.atr_on:
+    # 9) ATR absolute & percentage
+    if settings.atr_on or settings.atr_pct_on:
         atr = compute_atr(history, settings.atr_len)
-        if atr >= settings.atr_threshold:
+        if settings.atr_on and atr >= settings.atr_threshold:
             triggered.append(f"ATR{settings.atr_len} ≥ {settings.atr_threshold}")
-
-    if settings.atr_pct_on:
-        atr = compute_atr(history, settings.atr_len)
-        if (atr / price * 100) >= settings.atr_pct:
+        if settings.atr_pct_on and (atr / price * 100) >= settings.atr_pct:
             triggered.append(f"ATR % ≥ {settings.atr_pct}%")
 
-    if settings.range_on:
-        rng = daily_range_pct(history)
-        if rng >= settings.range_pct:
-            triggered.append(f"Range % ≥ {settings.range_pct}")
-
-    if settings.gap_on:
-        gap = gap_up_pct(history)
-        if gap >= settings.gap_pct:
-            triggered.append(f"Gap % ≥ {settings.gap_pct}")
-
+    # 10) Range, Gap, SMA, etc.
+    if settings.range_on and daily_range_pct(history) >= settings.range_pct:
+        triggered.append(f"Range % ≥ {settings.range_pct}")
+    if settings.gap_on and gap_up_pct(history) >= settings.gap_pct:
+        triggered.append(f"Gap % ≥ {settings.gap_pct}")
     if settings.price_sma_on:
         sma = compute_sma(history["close"], settings.sma_length)
         if price > sma:
             triggered.append(f"Price > SMA{settings.sma_length}")
 
-    # 5) Ensure all enabled toggles fired
-    # pass if we hit at least min_signals triggers
-    passed_all = len(triggered) >= settings.min_signals
-    return price, triggered, passed_all
+    # 11) Final pass/fail
+    # after you compute VWAP, BB, SMA, etc. — format ub/sma safely
+    try:
+        ub_val  = ub.iat[-1]  if hasattr(ub, "iat")  else float(ub)
+    except Exception:
+        ub_val = None
+    try:
+        sma_val = sma.iat[-1] if hasattr(sma, "iat") else float(sma)
+    except Exception:
+        sma_val = None
+    logger.debug(
+        f"{symbol}: price={price:.2f}, VWAP={vwap}, "
+        f"UB={ub_val}, SMA{settings.sma_length}={sma_val}, triggered={triggered}"
+    )
+    passed = len(triggered) >= settings.min_signals
+    return price, triggered, passed
+
 
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -169,13 +192,39 @@ def _is_market_open():
     )
 
     return open_dt <= now_et <= close_dt
+from datetime import datetime
+import time
+import logging
+from services.trading_helpers import (
+    get_cash, get_position_qty, compute_qty,
+    buy_stock, seconds_until_open, check_exit_orders, get_holdings
+)
+from services.market_service import get_symbols
+from services.simulation_service import analyze_symbol, _is_market_open
+
+from datetime import datetime
+import time
+import logging
+from services.trading_helpers import (
+    get_cash,
+    get_position_qty,
+    compute_qty,
+    buy_stock,
+    seconds_until_open,
+    check_exit_orders,
+    get_holdings
+)
+from services.market_service import get_symbols
+from services.simulation_service import analyze_symbol, _is_market_open
+
+logger = logging.getLogger("sim")
+
 def run_simulation_loop(settings: SimulationSettings):
     logger.info(f"[SIM] seed cash: ${get_cash():.2f}")
-
     symbols = get_symbols(simulation=True)
 
     while True:
-        # 1) pause if closed
+        # 1) pause if market closed
         if settings.pause_when_market_closed and not _is_market_open():
             wait = seconds_until_open()
             logger.info(f"[SIM] Market closed — sleeping {wait:.1f}s")
@@ -184,59 +233,62 @@ def run_simulation_loop(settings: SimulationSettings):
 
         logger.info("🔁 Starting scan loop iteration")
 
-        # 2) iterate universe
+        # 2) reset candidate list
+        candidates: list[tuple[str, float, list[str]]] = []
+
+        # 3) scan symbols & collect passed ones
         for sym in symbols:
-            # a) indicator pass/fail
-            hist_price, triggered, passed = analyze_symbol(sym, settings)
-            if not (passed and len(triggered) >= settings.min_signals):
+            # skip if in position and single-entry-only
+            if settings.single_entry_only and get_position_qty(sym) > 0:
                 continue
+
+            price, triggered, passed = analyze_symbol(sym, settings)
+            if not passed:
+                continue
+
             logger.info(f"[SIM] ALERT {sym}: {len(triggered)}/{settings.min_signals} → {triggered}")
+            candidates.append((sym, price, triggered))
 
-        # b) fetch live quote & timestamp
-        now_dt = datetime.utcnow()
-        live_px = fetch_etrade_quote(sym)
-        logger.debug(f"[MARKET] {sym}: E*TRADE price = {live_px}")
-        if not live_px or live_px <= 0:
-            continue
+        # 4) sort and attempt buy
+        if candidates:
+            candidates.sort(key=lambda x: len(x[2]), reverse=True)
+            purchased = False
 
-        # ←─ insert liquidity check here ────────────────────────────────
-        from services.trading_helpers import fetch_average_daily_volume, fetch_bid_ask
-        def passes_liquidity_filters(sym, price):
-            avg_vol = fetch_average_daily_volume(sym)
-            bid, ask = fetch_bid_ask(sym)
-            spread_pct = (ask - bid) / bid if bid and ask else 1
-            return avg_vol > 500_000 and spread_pct < 0.002
+            for sym, price, triggered in candidates:
+                qty = compute_qty(settings, price)
+                cost = qty * price
+                cash = get_cash()
 
-        if not passes_liquidity_filters(sym, live_px):
-            logger.info(f"[MARKET] skipping {sym}: low volume or wide spread")
-            continue
-        # ────────────────────────────────────────────────────────────────
+                if qty < 1 or cost > cash:
+                    logger.info(f"[SIM] Candidate {sym} skipped (qty={qty}, cost=${cost:.2f}, cash=${cash:.2f})")
+                    continue
 
-        # c) compute size & cost
-        qty  = compute_qty(settings, live_px)
-        cost = qty * live_px
-        if qty < 1 or cost > get_cash():
-            logger.info(f"[SIM] insufficient cash for {sym}: need ${cost:.2f}, have ${get_cash():.2f}")
-            continue
+                # buy top affordable
+                logger.info(f"[SIM] TOP PICK {sym}: {len(triggered)} signals → {triggered}")
+                buy_stock(sym, qty, price, datetime.utcnow())
+                logger.info(f"✅ BUY {sym} x{qty} @ ${price:.2f} (cash → ${get_cash():.2f})")
+                purchased = True
+                break
 
-            # d) execute buy
-            try:
-                buy_stock(sym, qty, live_px, now_dt)
-                logger.info(f"✅ BUY {sym} x{qty} @ ${live_px:.2f} (cash → ${get_cash():.2f})")
-            except Exception as e:
-                logger.error(f"❌ Failed to BUY {sym}: {e}")
+            if not purchased:
+                logger.info("[SIM] No affordable candidates this round")
+        else:
+            logger.info("[SIM] no candidates this round")
 
-            # e) handle exits immediately after
-            check_exit_orders(settings)
+        # 5) handle exits
+        check_exit_orders(settings)
 
-            # f) log holdings
-            holdings = get_holdings()
-            if holdings:
-                logger.info("[SIM] Current holdings:")
-                for s, q, avg_cost, last_price in holdings:
-                    logger.info(f"    • {s}: {q} shares @ ${avg_cost:.2f} (last price: ${last_price:.2f})")
-            else:
-                logger.info("[SIM] No holdings")
+        # 6) log holdings
+        holdings = get_holdings()
+        if holdings:
+            logger.info("[SIM] Current holdings:")
+            for s, q, avg, lp in holdings:
+                logger.info(f"    • {s}: {q} shares @ ${avg:.2f} (last price: ${lp:.2f})")
+        else:
+            logger.info("[SIM] No holdings")
 
+        # 7) sleep
+        logger.info(f"[SIM] Sleeping {settings.poll_interval:.1f}s before next scan")
+        time.sleep(settings.poll_interval)
 def stop_simulation():
     raise NotImplementedError("Foreground loop; use CTRL‑C to stop")
