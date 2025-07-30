@@ -3,6 +3,12 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import pandas_market_calendars as mcal
+from services.data_fetch import fetch_data_with_timeout, fetch_intraday_vwap
+from datetime import datetime
+from pytz import timezone
+
+# define “ET” once, at module scope
+ET = timezone("US/Eastern")
 
 # Database path (project root)
 DB_PATH = Path(__file__).resolve().parent.parent / "simulation.db"
@@ -10,6 +16,20 @@ DB_PATH = Path(__file__).resolve().parent.parent / "simulation.db"
 # Timezone and market calendar
 ET = ZoneInfo("America/New_York")
 nyse = mcal.get_calendar("NYSE")
+
+from datetime import datetime, time
+import pandas as pd
+from pytz import timezone
+
+ET = timezone("US/Eastern")
+
+def _has_headlines(src):
+    if hasattr(src, "empty"):
+        return not src.empty
+    try:
+        return len(src) > 0
+    except Exception:
+        return False
 
 # ─── Internal connect ─────────────────────────────────────
 def _connect():
@@ -320,7 +340,7 @@ def check_exit_orders(settings) -> None:
 
 from datetime import timedelta
 
-POST_OPEN_BUFFER = timedelta(minutes=15)
+POST_OPEN_BUFFER = timedelta(minutes=0)
 
 def market_is_open() -> bool:
     now = datetime.now(ET)

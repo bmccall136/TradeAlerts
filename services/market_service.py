@@ -12,45 +12,11 @@ from services.indicators import (
     compute_volume_multiplier, compute_vwap, compute_atr,
     daily_range_pct, gap_up_pct
 )
-
+from services.data_fetch import fetch_data_with_timeout
 from services.news_service import fetch_latest_headlines
 from services.settings_schema import SimulationSettings
 
 logger = logging.getLogger(__name__)
-
-
-def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
-    def _fetch():
-        try:
-            return yf.download(
-                sym,
-                period=period,
-                interval=interval,
-                auto_adjust=False,
-                progress=False,
-                threads=False
-            )
-        except Exception as e:
-            logger.error(f"[ERROR] Yahoo download {sym} failed: {e}")
-            return None
-
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(_fetch)
-        try:
-            return future.result(timeout=timeout)
-        except FuturesTimeout:
-            logger.error(f"[ERROR] Yahoo download {sym} timed out after {timeout}s")
-            return None
-
-
-def _has_headlines(src):
-    if hasattr(src, "empty"):
-        return not src.empty
-    try:
-        return len(src) > 0
-    except Exception:
-        return False
-
 
 def _match_tags(conds):
     return [tag for cond, tag in conds if cond]

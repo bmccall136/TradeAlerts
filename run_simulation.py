@@ -8,6 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os, ctypes
 from services.trading_helpers import setup_simulation_db
+from services.trading_helpers import fetch_intraday_vwap
 
 # before any get_cash()/buy()/sell() calls:
 setup_simulation_db()
@@ -79,9 +80,10 @@ def main():
     # start the simulation loop
     try:
         run_simulation_loop(settings)
+        logger.info(f"[SIM] using min_signals = {settings.min_signals}")
+
     except KeyboardInterrupt:
-        logger.info("Simulation interrupted, stopping...")
-        stop_simulation()
+        print("Simulation interrupted by user.")
 
 if __name__ == "__main__":
     main()
