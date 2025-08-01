@@ -45,7 +45,7 @@
   "gap_on": true,
   "gap_pct": 1.5,
 
-  "single_entry_only": false,
+  "single_entry_only": true,
   "use_trailing_stop": true,
   "trailing_stop_pct": 0.12,
 
@@ -54,7 +54,7 @@
 
   "starting_cash": 1000,
   "max_per_trade": 150,
-  "pause_when_market_closed": true,
+  "pause_when_market_closed": false,
   "nuke_db": false,
   "poll_interval": 5.0,
 
