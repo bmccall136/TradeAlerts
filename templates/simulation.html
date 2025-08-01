@@ -10,14 +10,6 @@
     </a>
     <!-- Centered title -->
     <h2 class="text-warning mb-0 mx-auto">Simulation Dashboard</h2>
-    <!-- Reset button at right -->
-    <form method="POST"
-          action="{{ url_for('reset_simulation') }}"
-          class="position-absolute end-0">
-      <button type="submit" class="btn btn-outline-danger">
-        <i class="bi bi-x-circle"></i> Reset Simulation DB
-      </button>
-    </form>
   </div>
 </div>
 
@@ -30,9 +22,6 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h3 class="text-white mb-0">Holdings</h3>
-  <span id="sim-status" class="badge bg-secondary">
-    Status: <span id="sim-status-text">Stopped</span>
-  </span>
 </div>
 
 <div class="table-responsive">

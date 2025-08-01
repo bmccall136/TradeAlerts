@@ -1024,40 +1024,81 @@ def export_simulation():
     cw.writerow(['Cash', cash])
     cw.writerow([])
     cw.writerow(['-- HOLDINGS --'])
-    cw.writerow(['symbol','qty','last_price','value','day_gain','total_gain'])
+    cw.writerow(['symbol','last_price','change','change_pct','qty','price_paid','day_gain','total_gain','value'])
     for h in holdings:
+        # Extract info, handle both dicts and tuples
+        if isinstance(h, dict):
+            symbol      = h.get('symbol')
+            qty         = h.get('qty')
+            price_paid  = h.get('price_paid')
+            last_price  = h.get('last_price')
+        else:
+            symbol, qty, price_paid, last_price = h[:4]  # adjust if your tuple structure is different
+
         try:
-            live = fetch_etrade_quote(h['symbol'])
-            app.logger.info(f"[PRICE] {h['symbol']}: E*TRADE price = {live}")
-            h['last_price'] = round(live, 2)
-            # recalc all the P/L
-            change     = h['last_price'] - h['price_paid']
-            h['change']     = round(change, 2)
-            h['change_pct'] = round((change / h['price_paid']*100) if h['price_paid'] else 0, 1)
-            h['total_gain'] = round(change * h['qty'], 2)
-            h['day_gain']   = h['total_gain']  # or however you define “day”
-            h['value']      = round(h['last_price'] * h['qty'], 2)
+            live = fetch_etrade_quote(symbol)
+            last_price = float(live)
         except Exception as e:
-            app.logger.warning(f"[PRICE] {h['symbol']} fetch failed: {e}")
+            app.logger.warning(f"[PRICE] {symbol} fetch failed: {e}")
+            try:
+                last_price = float(last_price)
+            except Exception:
+                last_price = 0.0
+
+        try:
+            price_paid = float(price_paid)
+            qty = int(qty)
+        except Exception:
+            price_paid = 0.0
+            qty = 0
+
+        change     = last_price - price_paid
+        change_pct = (change / price_paid * 100) if price_paid else 0
+        total_gain = change * qty
+        day_gain   = total_gain  # or recalc if you have daily P&L
+        value      = last_price * qty
+
+        cw.writerow([
+            symbol,
+            f"${last_price:.2f}",
+            f"${change:.2f}",
+            f"{change_pct:.1f}%",
+            qty,
+            f"${price_paid:.2f}",
+            f"${day_gain:.2f}",
+            f"${total_gain:.2f}",
+            f"${value:.2f}",
+        ])
 
     cw.writerow([])
     cw.writerow(['-- TRADES --'])
     cw.writerow(['timestamp','symbol','action','qty','price','pl'])
     for t in trades:
+        if isinstance(t, dict):
+            timestamp = t.get('timestamp') or t.get('time')
+            symbol    = t.get('symbol')
+            action    = t.get('action')
+            qty       = t.get('qty')
+            price     = t.get('price')
+            pl        = t.get('pl') or t.get('pnl') or 0
+        elif isinstance(t, (tuple, list)):
+            timestamp, symbol, action, qty, price, pl = t[:6]
+        else:
+            continue
+        pl = pl if isinstance(pl, (int, float)) and pl is not None else 0
         cw.writerow([
-            t['timestamp'],
-            t['symbol'],
-            t['action'],
-            t['qty'],
-            t['price'],
-            abs(t['pl'])
+            timestamp,
+            symbol,
+            action,
+            qty,
+            price,
+            abs(pl)
         ])
 
     resp = make_response(si.getvalue())
     resp.headers["Content-Disposition"] = "attachment; filename=simulation.csv"
     resp.headers["Content-type"] = "text/csv"
     return resp
-# ── Main Simulation Page ──
 
 @app.route('/start_scanner', methods=['POST'])
 def start_scanner():
@@ -1098,6 +1139,9 @@ from services.trading_helpers import get_trades
 
 # at the top of Dashboard.py, make sure cost_basis is defined as we did earlier
 def cost_basis(symbol):
+    """
+    Returns the average price paid per share for all BUY trades of a given symbol.
+    """
     trades = get_trades()
     total_qty  = 0
     total_cost = 0.0
@@ -1108,9 +1152,15 @@ def cost_basis(symbol):
             qty    = t.get('qty', 0)
             price  = t.get('price', 0.0)
         elif isinstance(t, (tuple, list)):
-            # adjust unpack order if your tuple is different
+            # (timestamp, symbol, action, qty, price, pl)
             _, sym, action, qty, price, *_ = t
         else:
+            continue
+
+        try:
+            qty = int(qty)
+            price = float(price)
+        except Exception:
             continue
 
         if sym == symbol and action.upper() == 'BUY':
@@ -1206,32 +1256,48 @@ def simulation_view():
 
     # 4) compute header Unrealized P&L from the fresh total_gain values
     unrealized_pnl = round(sum(h["total_gain"] for h in holdings), 2)
-    cost_basis = sum(h["qty"] * h["price_paid"] for h in holdings)
-    unrealized_pnl_pct = round((unrealized_pnl / cost_basis * 100), 2) if cost_basis else 0.0
+    total_cost_basis = sum(h["qty"] * h["price_paid"] for h in holdings)
+    unrealized_pnl_pct = round((unrealized_pnl / total_cost_basis * 100), 2) if total_cost_basis else 0.0
 
     # 5) rebuild trade history so `history` exists
     history = []
-    for t, symbol, action, qty, price, pl in get_trades():
-        try:
-            pl_val = float(pl)
-        except (TypeError, ValueError):
-            pl_val = 0.0
-        history.append({
-            "time":   t,
-            "symbol": symbol,
-            "action": action,
-            "qty":    qty,
-            "price":  price,
-            "pl":     pl_val,
-        })
+    for t in get_trades():
+        # handle tuple or dict
+        if isinstance(t, dict):
+            pl_val = float(t.get("pl") or t.get("pnl") or 0)
+            history.append({
+                "time":   t.get("timestamp") or t.get("time"),
+                "symbol": t.get("symbol"),
+                "action": t.get("action"),
+                "qty":    t.get("qty"),
+                "price":  t.get("price"),
+                "pl":     pl_val,
+            })
+        else:  # tuple or list
+            trade_time, symbol, action, qty, price, pl = t[:6]
+            try:
+                pl_val = float(pl)
+            except (TypeError, ValueError):
+                pl_val = 0.0
+            history.append({
+                "time":   trade_time,
+                "symbol": symbol,
+                "action": action,
+                "qty":    qty,
+                "price":  price,
+                "pl":     pl_val,
+            })
 
-    # 6) finally render
+    # 6) now sum realized P&L safely (history now exists)
+    realized_pnl = sum(t["pl"] for t in history if t.get("action") == "SELL")
+
+    # 7) finally render
     return render_template(
         "simulation.html",
         cash=cash,
         unrealized_pnl=unrealized_pnl,
         unrealized_pnl_pct=unrealized_pnl_pct,
-        realized_pnl=realized,
+        realized_pnl=realized_pnl,
         holdings=holdings,
         history=history
     )
@@ -1412,19 +1478,16 @@ CONFIG_PATH = Path(__file__).parent / "simulation_config.json"
 
 @app.route("/")
 def index():
-    # ensure DB + seed
     setup_simulation_db()
 
-    # ─── holdings ───────────────────────────────────────────────────────
+    # holdings
     raw = get_holdings()
     holdings = []
     for symbol, qty, avg_cost, _ in raw:
-        # fetch live price (fall back to stored last_price)
         try:
             last_price = fetch_etrade_quote(symbol)
         except Exception:
             last_price = _
-
         gain_per_share = last_price - avg_cost
         holdings.append({
             "symbol":     symbol,
@@ -1437,12 +1500,13 @@ def index():
             "value":      round(last_price * qty, 2),
         })
 
-    cash           = round(get_cash(), 2)
+    cash = round(get_cash(), 2)
     unrealized_pnl = round(sum(h["total_gain"] for h in holdings), 2)
-    realized_pnl   = round(get_realized_pl(), 2)
-    config         = json.load(open(CONFIG_PATH))
+    total_cost_basis = sum(h["qty"] * h["price_paid"] for h in holdings)
+    unrealized_pnl_pct = round((unrealized_pnl / total_cost_basis * 100), 2) if total_cost_basis else 0.0
+    config = json.load(open(CONFIG_PATH))
 
-    # ─── load recent trades ─────────────────────────────────────────────
+    # build trade history FIRST!
     conn = sqlite3.connect(SIM_DB_PATH)
     cur  = conn.cursor()
     cur.execute("""
@@ -1459,7 +1523,6 @@ def index():
     """)
     rows = cur.fetchall()
     conn.close()
-
     history = [
         {
             "time":   row[0],
@@ -1471,6 +1534,9 @@ def index():
         }
         for row in rows
     ]
+
+    # Now it's safe to sum realized P&L
+    realized_pnl = sum(t["pl"] for t in history if t.get("action") == "SELL")
 
     return render_template(
         "simulation.html",
