@@ -2,32 +2,30 @@ import sqlite3
 import os
 import json
 from datetime import datetime
-from settings import SIMULATION_DB
 
-# Path to your simulation database file; adjust as needed
+# Path to your simulation database file
 SIM_DB = os.path.join(os.getcwd(), 'simulation.db')
 
 def init_simulation_db():
     print("🔧 initializing simulation.db schema…")
 
-    # Load starting_cash from config
+    # load starting_cash from config or default
     try:
         with open("simulation_config.json") as f:
             cfg = json.load(f)
             starting_cash = float(cfg.get("starting_cash", 10000))
-    except Exception as e:
-        print(f"⚠️ Failed to load starting_cash from config: {e}")
+    except Exception:
         starting_cash = 10000
 
-    conn = sqlite3.connect(SIMULATION_DB, detect_types=sqlite3.PARSE_DECLTYPES)
+    conn = sqlite3.connect(SIM_DB, detect_types=sqlite3.PARSE_DECLTYPES)
     cur = conn.cursor()
 
-    # drop tables if they exist
+    # drop old tables
     cur.execute("DROP TABLE IF EXISTS state;")
-    cur.execute("DROP TABLE IF EXISTS holdings;")
+    cur.execute("DROP TABLE IF EXISTS positions;")
     cur.execute("DROP TABLE IF EXISTS simulation_trades;")
 
-    # recreate state with cash & realized_pl
+    # recreate state
     cur.execute("""
       CREATE TABLE state (
         id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -36,7 +34,6 @@ def init_simulation_db():
       );
     """)
 
-    # recreate holdings
     # recreate positions
     cur.execute("""
         CREATE TABLE IF NOT EXISTS positions (
@@ -48,3 +45,24 @@ def init_simulation_db():
             target_px REAL
         );
     """)
+
+      CREATE TABLE IF NOT EXISTS simulation_trades (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        symbol      TEXT    NOT NULL,
+        action      TEXT    NOT NULL,
+        price       REAL    NOT NULL,
+        qty         INTEGER NOT NULL,
+        trade_time  TEXT    NOT NULL,
+        pnl         REAL
+    );
+   """)
+    # seed starting cash
+    cur.execute(
+      "INSERT INTO state(id, cash, realized_pl) VALUES (1, ?, 0.0)",
+      (starting_cash,)
+    )
+
+    conn.commit()
+    conn.close()
+
+    print(f"▶︎ Initialized simulation.db with starting cash = ${starting_cash:.2f}")
