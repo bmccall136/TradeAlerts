@@ -16,8 +16,8 @@
   "macd_signal": 4,
   "bb_length": 10,
   "bb_std": 1.5,
-  "vol_multiplier": 1.2,
-  "vwap_threshold": 0.8,
+  "vol_multiplier": 2.5,
+  "vwap_threshold": 1.0,
 
   "rsi_slope_on": true,
   "macd_hist_on": true,
@@ -26,12 +26,18 @@
   "price_sma_on": true,
   "price_sma_len": 20,
 
-  "min_signals": 1,
+  "min_signals": 3,
 
   "atr_on": true,
   "atr_threshold": 2.0,
   "atr_pct_on": true,
   "atr_pct": 0.5,
+  
+  "super_on": true,
+  "super_fast": 7,
+  "super_slow": 21,
+  "super_signal": 5,
+
 
   "range_on": true,
   "range_pct": 2.0,
@@ -48,7 +54,14 @@
 
   "starting_cash": 1000,
   "max_per_trade": 150,
-  "pause_when_market_closed": false,
+  "pause_when_market_closed": true,
   "nuke_db": false,
-  "poll_interval": 5.0
+  "poll_interval": 5.0,
+
+  "required_filters": ["adx","macd","super"],
+
+
+  "adx_on": true,
+  "adx_len": 14,
+  "adx_threshold": 20
 }

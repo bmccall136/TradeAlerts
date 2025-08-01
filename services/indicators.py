@@ -1,7 +1,63 @@
 # services/indicators.py
 
-import pandas as pd
 import math
+import pandas as pd
+import numpy as np
+import pandas as pd
+
+def compute_supertracker(history: pd.DataFrame,
+                         fast_len: int,
+                         slow_len: int,
+                         signal_len: int) -> tuple[pd.Series, pd.Series]:
+    # True Range
+    high, low, close = history["high"], history["low"], history["close"]
+    prev_close = close.shift(1)
+    tr = pd.concat([
+        high - low,
+        (high - prev_close).abs(),
+        (low  - prev_close).abs()
+    ], axis=1).max(axis=1)
+
+    # ATR series
+    atr_fast = tr.rolling(fast_len, min_periods=1).mean()
+    atr_slow = tr.rolling(slow_len, min_periods=1).mean().replace(0, pd.NA)
+
+    # Oscillator
+    ratio = atr_fast / atr_slow
+    osc = 100 * (ratio - 1)
+
+    # Signal line
+    sig = osc.ewm(span=signal_len, adjust=False).mean()
+
+    return osc, sig
+
+def compute_adx(history, length=14):
+    """Compute the Average Directional Index (ADX) from OHLCV history DataFrame.
+    Returns a pd.Series, same length as history['close'].
+    Expects columns: 'high', 'low', 'close'.
+    """
+    high = history["high"]
+    low = history["low"]
+    close = history["close"]
+
+    plus_dm = high.diff()
+    minus_dm = low.diff().abs()
+    plus_dm[plus_dm < 0] = 0
+    minus_dm[minus_dm < 0] = 0
+    minus_dm[low.diff() > 0] = 0
+    plus_dm[high.diff() < 0] = 0
+
+    tr1 = (high - low)
+    tr2 = (high - close.shift()).abs()
+    tr3 = (low - close.shift()).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+    atr = tr.rolling(length, min_periods=1).mean()
+    plus_di = 100 * (plus_dm.rolling(length, min_periods=1).sum() / atr)
+    minus_di = 100 * (minus_dm.rolling(length, min_periods=1).sum() / atr)
+    dx = (abs(plus_di - minus_di) / (plus_di + minus_di)) * 100
+    adx = dx.rolling(length, min_periods=1).mean()
+    return adx.fillna(0)
 
 def price_above_sma(price_series: pd.Series, length: int = 20) -> bool:
     """

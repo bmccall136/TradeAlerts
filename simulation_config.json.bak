@@ -1,55 +1,67 @@
 {
   "sma_on": true,
-  "rsi_on": false,
-  "macd_on": false,
-  "bb_on": false,
-  "vol_on": false,
+  "rsi_on": true,
+  "macd_on": true,
+  "bb_on": true,
+  "vol_on": true,
   "vwap_on": true,
   "news_on": false,
 
-  "sma_length": 50,
-  "rsi_len": 14,
-  "rsi_overbought": 70,
-  "rsi_oversold": 30,
-  "macd_fast": 12,
-  "macd_slow": 26,
-  "macd_signal": 9,
-  "bb_length": 20,
-  "bb_std": 2.0,
-  "vol_multiplier": 1.5,
-  "vwap_threshold": 0.5,
+  "sma_length": 8,
+  "rsi_len": 7,
+  "rsi_overbought": 65,
+  "rsi_oversold": 35,
+  "macd_fast": 6,
+  "macd_slow": 19,
+  "macd_signal": 4,
+  "bb_length": 10,
+  "bb_std": 1.5,
+  "vol_multiplier": 2.5,
+  "vwap_threshold": 1.0,
 
-  "rsi_slope_on": false,
-  "macd_hist_on": false,
+  "rsi_slope_on": true,
+  "macd_hist_on": true,
   "bb_breakout_on": true,
 
-  "price_sma_on": false,
-  "price_sma_len": 5,
+  "price_sma_on": true,
+  "price_sma_len": 20,
 
-  "min_signals": 2,
+  "min_signals": 3,
 
-  "atr_on": false,
+  "atr_on": true,
   "atr_threshold": 2.0,
-  "atr_pct_on": false,
-  "atr_pct": 0.7,
+  "atr_pct_on": true,
+  "atr_pct": 0.5,
+  
+  "super_on": true,
+  "super_fast": 7,
+  "super_slow": 21,
+  "super_signal": 5,
 
-  "range_on": false,
-  "range_pct": 1.5,
 
-  "gap_on": false,
-  "gap_pct": 1.0,
+  "range_on": true,
+  "range_pct": 2.0,
 
-  "single_entry_only": true,
+  "gap_on": true,
+  "gap_pct": 1.5,
+
+  "single_entry_only": false,
   "use_trailing_stop": true,
-  "trailing_stop_pct": 0.05,
-  "sell_after_days": 1,
+  "trailing_stop_pct": 0.12,
 
-  "stop_loss_pct": 0.03,
-  "take_profit_pct": 0.07,
+  "stop_loss_pct": 0.05,
+  "take_profit_pct": 0.12,
 
   "starting_cash": 1000,
-  "max_per_trade": 200,
+  "max_per_trade": 150,
   "pause_when_market_closed": false,
   "nuke_db": false,
-  "poll_interval": 60.0
+  "poll_interval": 5.0,
+
+  "required_filters": ["adx","macd"],
+
+
+  "adx_on": true,
+  "adx_len": 14,
+  "adx_threshold": 20
 }

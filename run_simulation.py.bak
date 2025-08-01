@@ -80,6 +80,8 @@ def main():
     # start the simulation loop
     try:
         run_simulation_loop(settings)
+        logger.info(f"[SIM] using min_signals = {settings.min_signals}")
+
     except KeyboardInterrupt:
         print("Simulation interrupted by user.")
 
