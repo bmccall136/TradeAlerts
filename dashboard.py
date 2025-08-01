@@ -1018,44 +1018,96 @@ def export_simulation():
     holdings = get_holdings()
     trades   = get_trades()
 
+    # ---- Prepare holdings as dicts for calculations ----
+    holding_dicts = []
+    for h in holdings:
+        if isinstance(h, dict):
+            holding_dicts.append(h)
+        else:
+            # Assuming tuple: (symbol, qty, price_paid, last_price)
+            s, q, ac, lp = h[:4]
+            holding_dicts.append({
+                "symbol":     s,
+                "qty":        q,
+                "price_paid": ac,
+                "last_price": lp,
+            })
+
+    # ---- Update holdings with live prices & gain calculations ----
+    for h in holding_dicts:
+        try:
+            live = fetch_etrade_quote(h["symbol"]) or 0.0
+            change = live - h["price_paid"]
+            h["last_price"] = round(live, 2)
+            h["total_gain"] = round(change * h["qty"], 2)
+        except Exception:
+            h["total_gain"] = 0.0
+
+    unrealized_pnl = round(sum(h.get("total_gain", 0) for h in holding_dicts), 2)
+    total_cost_basis = sum(h["qty"] * h["price_paid"] for h in holding_dicts)
+    unrealized_pnl_pct = round((unrealized_pnl / total_cost_basis * 100), 2) if total_cost_basis else 0.0
+
+    # ---- Build trade history for realized P&L ----
+    history = []
+    for t in trades:
+        if isinstance(t, dict):
+            pl_val = float(t.get("pl") or t.get("pnl") or 0)
+            history.append({
+                "time":   t.get("timestamp") or t.get("time"),
+                "symbol": t.get("symbol"),
+                "action": t.get("action"),
+                "qty":    t.get("qty"),
+                "price":  t.get("price"),
+                "pl":     pl_val,
+            })
+        else:
+            trade_time, symbol, action, qty, price, pl = t[:6]
+            try:
+                pl_val = float(pl)
+            except (TypeError, ValueError):
+                pl_val = 0.0
+            history.append({
+                "time":   trade_time,
+                "symbol": symbol,
+                "action": action,
+                "qty":    qty,
+                "price":  price,
+                "pl":     pl_val,
+            })
+    realized_pnl = sum(t["pl"] for t in history if t.get("action") == "SELL")
+
+    # ---- Write summary and export ----
+    import io
     si = io.StringIO()
     cw = csv.writer(si)
 
-    cw.writerow(['Cash', cash])
-    cw.writerow([])
+    cw.writerow(['Cash', f"${cash:.2f}"])
+    cw.writerow(['Unrealized P&L', f"${unrealized_pnl:.2f}"])
+    cw.writerow(['Unrealized P&L %', f"{unrealized_pnl_pct:.2f}%"])
+    cw.writerow(['Realized P&L', f"${realized_pnl:.2f}"])
+    cw.writerow([])  # Blank row for spacing
+
     cw.writerow(['-- HOLDINGS --'])
     cw.writerow(['symbol','last_price','change','change_pct','qty','price_paid','day_gain','total_gain','value'])
-    for h in holdings:
-        # Extract info, handle both dicts and tuples
-        if isinstance(h, dict):
-            symbol      = h.get('symbol')
-            qty         = h.get('qty')
-            price_paid  = h.get('price_paid')
-            last_price  = h.get('last_price')
-        else:
-            symbol, qty, price_paid, last_price = h[:4]  # adjust if your tuple structure is different
-
-        try:
-            live = fetch_etrade_quote(symbol)
-            last_price = float(live)
-        except Exception as e:
-            app.logger.warning(f"[PRICE] {symbol} fetch failed: {e}")
-            try:
-                last_price = float(last_price)
-            except Exception:
-                last_price = 0.0
+    for h in holding_dicts:
+        symbol      = h.get('symbol')
+        qty         = h.get('qty')
+        price_paid  = h.get('price_paid')
+        last_price  = h.get('last_price')
 
         try:
             price_paid = float(price_paid)
             qty = int(qty)
+            last_price = float(last_price)
         except Exception:
             price_paid = 0.0
             qty = 0
+            last_price = 0.0
 
         change     = last_price - price_paid
         change_pct = (change / price_paid * 100) if price_paid else 0
         total_gain = change * qty
-        day_gain   = total_gain  # or recalc if you have daily P&L
+        day_gain   = total_gain  # Or recalc daily if you have that
         value      = last_price * qty
 
         cw.writerow([
@@ -1073,26 +1125,14 @@ def export_simulation():
     cw.writerow([])
     cw.writerow(['-- TRADES --'])
     cw.writerow(['timestamp','symbol','action','qty','price','pl'])
-    for t in trades:
-        if isinstance(t, dict):
-            timestamp = t.get('timestamp') or t.get('time')
-            symbol    = t.get('symbol')
-            action    = t.get('action')
-            qty       = t.get('qty')
-            price     = t.get('price')
-            pl        = t.get('pl') or t.get('pnl') or 0
-        elif isinstance(t, (tuple, list)):
-            timestamp, symbol, action, qty, price, pl = t[:6]
-        else:
-            continue
-        pl = pl if isinstance(pl, (int, float)) and pl is not None else 0
+    for t in history:
         cw.writerow([
-            timestamp,
-            symbol,
-            action,
-            qty,
-            price,
-            abs(pl)
+            t["time"],
+            t["symbol"],
+            t["action"],
+            t["qty"],
+            t["price"],
+            abs(t["pl"] or 0)
         ])
 
     resp = make_response(si.getvalue())
