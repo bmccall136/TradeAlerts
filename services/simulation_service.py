@@ -25,8 +25,25 @@ from services.trading_helpers import (
     seconds_until_open, check_exit_orders, get_holdings
 )
 
-LOGFILE = Path("logs/triggers.csv")
+import csv    # <— make sure csv is imported before use
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+today = datetime.utcnow().date().isoformat()             # e.g. "2025-07-31"
+LOGFILE = Path(f"logs/triggers_{today}.csv")
 LOGFILE.parent.mkdir(parents=True, exist_ok=True)
+ 
+# on first run each day, write header
+CSV_HEADER = [
+    "timestamp", "symbol", "price",
+    "ADX", "ATR_val", "ATR_pct",
+    "SuperTracker_osc", "SuperTracker_sig",
+    "signals"
+]
+if not LOGFILE.exists():
+    with open(LOGFILE, "w", newline="") as f:
+        csv.writer(f).writerow(CSV_HEADER)
+
 
 logger = logging.getLogger("sim")
 ET = ZoneInfo("America/New_York")
@@ -105,7 +122,16 @@ def analyze_symbol(symbol: str, settings: SimulationSettings):
             vwap = fetch_intraday_vwap(symbol)
             logger.debug(f"{symbol}: fetched VWAP={vwap:.2f}")
         except Exception as e:
-            logger.debug(f"{symbol}: VWAP fetch failed: {e}")
+            msg = str(e)
+            # only log truly unexpected errors
+            if "Missing high in intraday data" not in msg:
+                logger.debug(f"{symbol}: VWAP fetch failed: {e}")
+            # fallback to historical VWAP
+            try:
+                vwap = compute_vwap(history)
+                logger.debug(f"{symbol}: fallback VWAP={vwap:.2f}")
+            except Exception:
+                vwap = None
     if vwap is not None and price < vwap:
         logger.debug(f"{symbol}: price {price:.2f} < VWAP {vwap:.2f}")
         return price, triggered, False
@@ -160,8 +186,32 @@ def analyze_symbol(symbol: str, settings: SimulationSettings):
         if price > sma_val:
             triggered.append(f"Price > SMA{settings.price_sma_len}")
 
-    # ─── FINAL PASS/FAIL ───────────────────────────────────────────────
+    # ─── FINAL PASS/FAIL ─────────────────────────────
     passed = len(triggered) >= settings.min_signals
+
+    # ─── LOG TO CSV ON PASS ──────────────────────────
+    if passed:
+        # compute ATR values for logging
+        atr_val = compute_atr(history, settings.atr_len) if (settings.atr_on or settings.atr_pct_on) else None
+        atr_pct = (atr_val / price * 100) if atr_val else None
+        # SuperTracker values (if enabled)
+        osc_last = osc.iat[-1] if ("osc" in locals() and osc is not None) else None
+        sig_last = sig.iat[-1] if ("sig" in locals() and sig is not None) else None
+
+        with open(LOGFILE, "a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                datetime.utcnow().isoformat(),
+                symbol,
+                f"{price:.2f}",
+                f"{adx.iat[-1]:.2f}" if adx is not None else "",
+                f"{atr_val:.2f}"     if atr_val    is not None else "",
+                f"{atr_pct:.2f}"     if atr_pct    is not None else "",
+                f"{osc_last:.2f}"    if osc_last   is not None else "",
+                f"{sig_last:.2f}"    if sig_last   is not None else "",
+                ";".join(triggered),
+            ])
+    # ─── ALWAYS RETURN at the end ──────────────────────────
     return price, triggered, passed
 
 from datetime import datetime
@@ -222,40 +272,38 @@ from services.simulation_service import analyze_symbol, _is_market_open
 logger = logging.getLogger("sim")
 
 def run_simulation_loop(settings: SimulationSettings):
-    # ── Initialize the DB ─────────────────────────────────────────────────────
-    setup_simulation_db()
-
-    # ── Seed cash only if you nuked it, or if the DB really was just created ──
+    # ── seed logic ──
     try:
         current = get_cash()
-    except Exception:
-        # no cash table/record found → brand‐new DB
+    except:
+        current = 0.0
+
+    if settings.nuke_db or current == 0.0:
+        setup_simulation_db()
         set_cash(settings.starting_cash)
-        logger.info(f"[SIM] NEW DB: seeded starting cash = ${settings.starting_cash:.2f}")
+        logger.info(f"[SIM] seed cash: ${get_cash():.2f}")
     else:
-        if settings.nuke_db:
-            set_cash(settings.starting_cash)
-            logger.info(f"[SIM] NUKE flag: reseeded starting cash = ${settings.starting_cash:.2f}")
-        else:
-            logger.info(f"[SIM] continuing with cash = ${current:.2f}")
+        logger.info(f"[SIM] continuing with cash = ${get_cash():.2f}")
 
+    # grab our symbol universe once
+    symbols = get_symbols(simulation=True)
 
+    # ── main scanning loop ──
     while True:
-        # 1) pause if market closed
+        logger.info("🔁 Starting scan loop iteration")
+
+        # a) wait if market closed
         if settings.pause_when_market_closed and not _is_market_open():
             wait = seconds_until_open()
             logger.info(f"[SIM] Market closed — sleeping {wait:.1f}s")
             time.sleep(wait)
             continue
 
-        logger.info("🔁 Starting scan loop iteration")
-
-        # 2) reset candidate list
+        # b) reset candidate list each pass
         candidates: list[tuple[str, float, list[str]]] = []
-
-        # 3) scan symbols & collect passed ones
+        # c) scan symbols & collect the ones that pass
         for sym in symbols:
-            # skip if in position and single-entry-only
+            # skip if already in a position (single‐entry logic)
             if settings.single_entry_only and get_position_qty(sym) > 0:
                 continue
 
