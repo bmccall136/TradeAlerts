@@ -1395,54 +1395,78 @@ def export_backtest():
         headers={"Content-Disposition":"attachment;filename=backtest.csv"},
     )
 
-from flask import redirect, url_for
-
+import sqlite3
 import json
 from flask import render_template
+from services.settings_schema import SIM_DB_PATH
 from services.trading_helpers import (
-    setup_simulation_db,
-    get_holdings,
-    get_cash,
-    get_realized_pl
+    setup_simulation_db, get_holdings, get_cash, get_realized_pl
 )
+from services.etrade_service import fetch_etrade_quote
 
 CONFIG_PATH = Path(__file__).parent / "simulation_config.json"
 
 @app.route("/")
 def index():
+    # ensure DB + seed
     setup_simulation_db()
-    raw = get_holdings()
 
+    # ─── holdings ───────────────────────────────────────────────────────
+    raw = get_holdings()
     holdings = []
     for symbol, qty, avg_cost, _ in raw:
-        # ▷ fetch a fresh last_price from E*TRADE
+        # fetch live price (fall back to stored last_price)
         try:
             last_price = fetch_etrade_quote(symbol)
-            app.logger.info(f"[DASH] fetched live price for {symbol} → {last_price}")
-        except Exception as e:
-            app.logger.warning(f"[DASH] failed live quote for {symbol}: {e}")
-            last_price = _   # fall back to whatever was in the DB
+        except Exception:
+            last_price = _
 
         gain_per_share = last_price - avg_cost
-        total_gain     = round(gain_per_share * qty, 2)
-        day_gain       = round(gain_per_share, 2)
-        change_pct     = round((gain_per_share / avg_cost * 100), 1) if avg_cost else 0.0
-
         holdings.append({
             "symbol":     symbol,
             "qty":        qty,
             "price_paid": avg_cost,
             "last_price": last_price,
-            "day_gain":   day_gain,
-            "change_pct": change_pct,
-            "total_gain": total_gain,
+            "day_gain":   round(gain_per_share, 2),
+            "change_pct": round((gain_per_share / avg_cost * 100), 1) if avg_cost else 0.0,
+            "total_gain": round(gain_per_share * qty, 2),
             "value":      round(last_price * qty, 2),
         })
 
-    cash         = round(get_cash(), 2)
+    cash           = round(get_cash(), 2)
     unrealized_pnl = round(sum(h["total_gain"] for h in holdings), 2)
     realized_pnl   = round(get_realized_pl(), 2)
-    config = json.load(open(CONFIG_PATH))
+    config         = json.load(open(CONFIG_PATH))
+
+    # ─── load recent trades ─────────────────────────────────────────────
+    conn = sqlite3.connect(SIM_DB_PATH)
+    cur  = conn.cursor()
+    cur.execute("""
+      SELECT
+        trade_time AS time,
+        symbol,
+        action,
+        qty,
+        price,
+        pnl        AS pl
+      FROM simulation_trades
+      ORDER BY trade_time DESC
+      LIMIT 50;
+    """)
+    rows = cur.fetchall()
+    conn.close()
+
+    history = [
+        {
+            "time":   row[0],
+            "symbol": row[1],
+            "action": row[2],
+            "qty":    row[3],
+            "price":  row[4],
+            "pl":     row[5],
+        }
+        for row in rows
+    ]
 
     return render_template(
         "simulation.html",
@@ -1450,9 +1474,9 @@ def index():
         cash=cash,
         unrealized_pnl=unrealized_pnl,
         realized_pnl=realized_pnl,
+        history=history,
         config=config,
     )
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

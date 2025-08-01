@@ -122,7 +122,16 @@ def analyze_symbol(symbol: str, settings: SimulationSettings):
             vwap = fetch_intraday_vwap(symbol)
             logger.debug(f"{symbol}: fetched VWAP={vwap:.2f}")
         except Exception as e:
-            logger.debug(f"{symbol}: VWAP fetch failed: {e}")
+            msg = str(e)
+            # only log truly unexpected errors
+            if "Missing high in intraday data" not in msg:
+                logger.debug(f"{symbol}: VWAP fetch failed: {e}")
+            # fallback to historical VWAP
+            try:
+                vwap = compute_vwap(history)
+                logger.debug(f"{symbol}: fallback VWAP={vwap:.2f}")
+            except Exception:
+                vwap = None
     if vwap is not None and price < vwap:
         logger.debug(f"{symbol}: price {price:.2f} < VWAP {vwap:.2f}")
         return price, triggered, False

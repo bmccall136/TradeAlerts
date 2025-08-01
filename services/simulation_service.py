@@ -273,6 +273,7 @@ logger = logging.getLogger("sim")
 
 def run_simulation_loop(settings: SimulationSettings):
     # ── seed logic ──
+    setup_simulation_db()
     try:
         current = get_cash()
     except:
