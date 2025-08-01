@@ -9838,3 +9838,478 @@
 [2025-08-01 13:46:39,986] sim INFO: [SIM] ALERT INCY: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
 [2025-08-01 13:46:45,392] sim INFO: [SIM] ALERT IP: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
 [2025-08-01 13:46:57,345] sim INFO: [SIM] ALERT JNPR: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR % ≥ 0.5%']
+[2025-08-01 13:47:01,530] sim INFO: [SIM] ALERT KMB: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:47:05,149] sim INFO: [SIM] ALERT KLAC: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0']
+[2025-08-01 13:47:11,077] sim INFO: [SIM] ALERT LEN: 5/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:47:12,586] sim INFO: [SIM] ALERT LLY: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:47:23,964] sim INFO: [SIM] ALERT MLM: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:47:24,839] sim INFO: [SIM] ALERT MAS: 5/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:47:31,629] sim INFO: [SIM] ALERT MTD: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0', 'Price > SMA20']
+[2025-08-01 13:47:36,612] sim INFO: [SIM] ALERT MHK: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:47:37,280] sim INFO: [SIM] ALERT MOH: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:47:39,115] sim INFO: [SIM] ALERT MPWR: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'ATR14 ≥ 2.0']
+[2025-08-01 13:47:39,973] sim INFO: [SIM] ALERT MNST: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:47:45,812] sim INFO: [SIM] ALERT NFLX: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0']
+[2025-08-01 13:47:48,821] sim INFO: [SIM] ALERT NKE: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:48:15,481] sim INFO: [SIM] ALERT PNC: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:48:28,620] sim INFO: [SIM] ALERT RTX: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:48:30,995] sim INFO: [SIM] ALERT RF: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:48:34,521] sim INFO: [SIM] ALERT ROL: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:48:41,753] sim INFO: [SIM] ALERT NOW: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0']
+[2025-08-01 13:49:12,355] sim INFO: [SIM] ALERT TYL: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:49:29,471] sim INFO: [SIM] ALERT VMC: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:49:36,439] sim INFO: [SIM] ALERT WAT: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:49:42,574] sim INFO: [SIM] ALERT WMB: 5/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:49:46,087] sim INFO: [SIM] ALERT XYL: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:49:47,001] sim INFO: [SIM] ALERT YUM: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:49:48,584] sim INFO: [SIM] ALERT ZBH: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:49:49,308] sim INFO: [SIM] Candidate GOOGL skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,312] sim INFO: [SIM] Candidate GOOG skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,320] sim INFO: [SIM] Candidate BLDR skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,326] sim INFO: [SIM] Candidate HSIC skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,331] sim INFO: [SIM] Candidate ITW skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,336] sim INFO: [SIM] Candidate LEN skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,340] sim INFO: [SIM] Candidate MAS skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,343] sim INFO: [SIM] Candidate WMB skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,345] sim INFO: [SIM] Candidate ALL skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,348] sim INFO: [SIM] Candidate BF-B skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,354] sim INFO: [SIM] Candidate CB skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,361] sim INFO: [SIM] Candidate CPRT skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,366] sim INFO: [SIM] Candidate DG skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,373] sim INFO: [SIM] Candidate EA skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,378] sim INFO: [SIM] Candidate HBAN skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,384] sim INFO: [SIM] Candidate KMB skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,391] sim INFO: [SIM] Candidate MTD skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,395] sim INFO: [SIM] Candidate MHK skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,400] sim INFO: [SIM] Candidate MOH skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,405] sim INFO: [SIM] Candidate MPWR skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,408] sim INFO: [SIM] Candidate RTX skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,413] sim INFO: [SIM] Candidate WAT skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,418] sim INFO: [SIM] Candidate XYL skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,422] sim INFO: [SIM] Candidate YUM skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,426] sim INFO: [SIM] Candidate ALLE skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,429] sim INFO: [SIM] Candidate APTV skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,433] sim INFO: [SIM] Candidate BALL skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,435] sim INFO: [SIM] Candidate BAC skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,438] sim INFO: [SIM] Candidate BX skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,441] sim INFO: [SIM] Candidate BKNG skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,445] sim INFO: [SIM] Candidate CSCO skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,448] sim INFO: [SIM] Candidate CLX skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,450] sim INFO: [SIM] Candidate COIN skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,453] sim INFO: [SIM] Candidate DRI skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,456] sim INFO: [SIM] Candidate DECK skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,460] sim INFO: [SIM] Candidate XOM skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,463] sim INFO: [SIM] Candidate FICO skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,466] sim INFO: [SIM] Candidate F skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,469] sim INFO: [SIM] Candidate GEV skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,472] sim INFO: [SIM] Candidate GM skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,475] sim INFO: [SIM] Candidate GPC skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,477] sim INFO: [SIM] Candidate HD skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,481] sim INFO: [SIM] Candidate HUM skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,484] sim INFO: [SIM] Candidate INCY skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,486] sim INFO: [SIM] Candidate IP skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,487] sim INFO: [SIM] Candidate JNPR skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,491] sim INFO: [SIM] Candidate KLAC skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,495] sim INFO: [SIM] Candidate LLY skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,498] sim INFO: [SIM] Candidate MLM skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,504] sim INFO: [SIM] Candidate MNST skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,510] sim INFO: [SIM] Candidate NFLX skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,515] sim INFO: [SIM] Candidate NKE skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,517] sim INFO: [SIM] Candidate PNC skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,521] sim INFO: [SIM] Candidate RF skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,525] sim INFO: [SIM] Candidate ROL skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,527] sim INFO: [SIM] Candidate NOW skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,530] sim INFO: [SIM] Candidate TYL skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,533] sim INFO: [SIM] Candidate VMC skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,537] sim INFO: [SIM] Candidate ZBH skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:49:49,537] sim INFO: [SIM] No affordable candidates this round
+[2025-08-01 13:49:49,539] sim INFO: [SIM] Current holdings:
+[2025-08-01 13:49:49,539] sim INFO:     • ALGN: 1 shares @ $132.02 (last price: $132.02)
+[2025-08-01 13:49:49,539] sim INFO:     • AWK: 1 shares @ $143.13 (last price: $143.13)
+[2025-08-01 13:49:49,539] sim INFO:     • KDP: 4 shares @ $33.17 (last price: $33.17)
+[2025-08-01 13:49:49,540] sim INFO:     • ALB: 2 shares @ $66.51 (last price: $66.51)
+[2025-08-01 13:49:49,540] sim INFO:     • TECH: 2 shares @ $53.80 (last price: $53.80)
+[2025-08-01 13:49:49,540] sim INFO:     • BAX: 6 shares @ $22.04 (last price: $22.04)
+[2025-08-01 13:49:49,540] sim INFO:     • EXR: 1 shares @ $136.80 (last price: $136.80)
+[2025-08-01 13:49:49,540] sim INFO:     • ARE: 1 shares @ $75.60 (last price: $75.60)
+[2025-08-01 13:49:49,540] sim INFO: [SIM] Sleeping 5.0s before next scan
+[2025-08-01 13:49:54,541] sim INFO: 🔁 Starting scan loop iteration
+[2025-08-01 13:49:56,370] sim INFO: [SIM] ALERT AOS: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:49:57,802] sim INFO: [SIM] ALERT ABBV: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:50:03,134] sim INFO: [SIM] ALERT A: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:50:06,147] sim INFO: [SIM] ALERT AKAM: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:50:07,421] sim INFO: [SIM] ALERT ALLE: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:50:09,270] sim INFO: [SIM] ALERT ALL: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:50:10,245] sim INFO: [SIM] ALERT GOOGL: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:50:11,049] sim INFO: [SIM] ALERT GOOG: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:50:19,194] sim INFO: [SIM] ALERT AME: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:50:20,133] sim INFO: [SIM] ALERT AMGN: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:50:20,921] sim INFO: [SIM] ALERT APH: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:50:21,829] sim INFO: [SIM] ALERT ADI: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:50:26,352] sim INFO: [SIM] ALERT AAPL: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:50:28,150] sim INFO: [SIM] ALERT APTV: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:50:31,813] sim INFO: [SIM] ALERT AJG: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:50:38,752] sim INFO: [SIM] ALERT AVY: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:50:42,492] sim INFO: [SIM] ALERT BAC: 5/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:50:44,150] sim INFO: [SIM] ALERT BRK-B: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR % ≥ 0.5%']
+[2025-08-01 13:50:49,805] sim INFO: [SIM] ALERT BA: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:50:50,650] sim INFO: [SIM] ALERT BKNG: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0']
+[2025-08-01 13:50:55,507] sim INFO: [SIM] ALERT BF-B: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'ATR % ≥ 0.5%']
+[2025-08-01 13:50:56,455] sim INFO: [SIM] ALERT BLDR: 5/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:50:58,477] sim INFO: [SIM] ALERT BXP: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:51:11,889] sim INFO: [SIM] ALERT COR: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:51:20,749] sim INFO: [SIM] ALERT CB: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:51:26,786] sim INFO: [SIM] ALERT CTAS: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:51:27,599] sim INFO: [SIM] ALERT CSCO: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:51:30,071] sim INFO: [SIM] ALERT CFG: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:51:33,138] sim INFO: [SIM] ALERT CMS: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:51:36,180] sim INFO: [SIM] ALERT COIN: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR % ≥ 0.5%']
+[2025-08-01 13:51:38,263] sim INFO: [SIM] ALERT CAG: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:51:43,349] sim INFO: [SIM] ALERT CPRT: 5/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:51:47,351] sim INFO: [SIM] ALERT CSGP: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:51:52,331] sim INFO: [SIM] ALERT CSX: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:51:57,527] sim INFO: [SIM] ALERT DECK: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:52:00,407] sim INFO: [SIM] ALERT DAL: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:52:01,309] sim INFO: [SIM] ALERT DVN: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:52:05,428] sim INFO: [SIM] ALERT DG: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:52:06,805] sim INFO: [SIM] ALERT D: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:52:07,579] sim INFO: [SIM] ALERT DPZ: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:52:17,118] sim INFO: [SIM] ALERT EBAY: 5/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:52:20,283] sim INFO: [SIM] ALERT EA: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:52:29,491] sim INFO: [SIM] ALERT EQIX: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:52:31,690] sim INFO: [SIM] ALERT ESS: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:52:33,827] sim INFO: [SIM] ALERT EVRG: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:52:35,989] sim INFO: [SIM] ALERT ES: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:52:40,475] sim INFO: [SIM] ALERT XOM: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:52:43,069] sim INFO: [SIM] ALERT FICO: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0']
+[2025-08-01 13:52:49,877] sim INFO: [SIM] ALERT FI: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:52:50,973] sim INFO: [SIM] ALERT F: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:52:52,629] sim INFO: [SIM] ALERT FTV: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:52:53,614] sim INFO: [SIM] ALERT FOXA: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:52:54,491] sim INFO: [SIM] ALERT FOX: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:52:57,383] sim INFO: [SIM] ALERT GRMN: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:53:00,684] sim INFO: [SIM] ALERT GEV: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0']
+[2025-08-01 13:53:04,403] sim INFO: [SIM] ALERT GIS: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:53:05,100] sim INFO: [SIM] ALERT GM: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:53:09,643] sim INFO: [SIM] ALERT GL: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:53:11,442] sim INFO: [SIM] ALERT GS: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:53:15,278] sim INFO: [SIM] ALERT DOC: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:53:16,246] sim INFO: [SIM] ALERT HSIC: 5/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:53:21,492] sim INFO: [SIM] ALERT HD: 5/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:53:26,295] sim INFO: [SIM] ALERT HUBB: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:53:27,163] sim INFO: [SIM] ALERT HUM: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:53:28,131] sim INFO: [SIM] ALERT HBAN: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:53:29,937] sim INFO: [SIM] ALERT IBM: 5/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:53:31,222] sim INFO: [SIM] ALERT IEX: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:53:32,950] sim INFO: [SIM] ALERT ITW: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:53:34,017] sim INFO: [SIM] ALERT INCY: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:53:37,806] sim INFO: [SIM] ALERT ICE: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:53:39,969] sim INFO: [SIM] ALERT IP: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:53:50,191] sim INFO: [SIM] ALERT JKHY: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:53:51,925] sim INFO: [SIM] ALERT JNJ: 5/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:53:54,642] sim INFO: [SIM] ALERT JNPR: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR % ≥ 0.5%']
+[2025-08-01 13:53:58,612] sim INFO: [SIM] ALERT KMB: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:54:01,494] sim INFO: [SIM] ALERT KMI: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:54:02,350] sim INFO: [SIM] ALERT KKR: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:54:03,292] sim INFO: [SIM] ALERT KLAC: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0']
+[2025-08-01 13:54:09,232] sim INFO: [SIM] ALERT LDOS: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:54:10,396] sim INFO: [SIM] ALERT LEN: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:54:12,139] sim INFO: [SIM] ALERT LLY: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:54:17,094] sim INFO: [SIM] ALERT L: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:54:23,454] sim INFO: [SIM] ALERT MMC: 5/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:54:24,294] sim INFO: [SIM] ALERT MLM: 5/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:54:25,561] sim INFO: [SIM] ALERT MAS: 5/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:54:26,331] sim INFO: [SIM] ALERT MA: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:54:31,475] sim INFO: [SIM] ALERT MRK: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:54:34,287] sim INFO: [SIM] ALERT MTD: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0', 'Price > SMA20']
+[2025-08-01 13:54:37,536] sim INFO: [SIM] ALERT MSFT: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:54:39,780] sim INFO: [SIM] ALERT MHK: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:54:40,438] sim INFO: [SIM] ALERT MOH: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:54:43,091] sim INFO: [SIM] ALERT MPWR: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0']
+[2025-08-01 13:54:43,742] sim INFO: [SIM] ALERT MNST: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:54:47,011] sim INFO: [SIM] ALERT MSI: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:54:50,187] sim INFO: [SIM] ALERT NFLX: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0']
+[2025-08-01 13:54:53,882] sim INFO: [SIM] ALERT NKE: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:54:55,938] sim INFO: [SIM] ALERT NSC: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:55:06,824] sim INFO: [SIM] ALERT OKE: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:55:12,432] sim INFO: [SIM] ALERT PH: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:55:21,260] sim INFO: [SIM] ALERT PNC: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:55:32,738] sim INFO: [SIM] ALERT DGX: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:55:34,957] sim INFO: [SIM] ALERT RTX: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:55:56,034] sim INFO: [SIM] ALERT SNA: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:56:12,061] sim INFO: [SIM] ALERT TDY: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:56:20,929] sim INFO: [SIM] ALERT TDG: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0']
+[2025-08-01 13:56:31,745] sim INFO: [SIM] ALERT UHS: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:56:39,942] sim INFO: [SIM] ALERT VMC: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:56:41,265] sim INFO: [SIM] ALERT GWW: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0']
+[2025-08-01 13:56:46,049] sim INFO: [SIM] ALERT WAT: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:56:51,180] sim INFO: [SIM] ALERT WMB: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:56:53,939] sim INFO: [SIM] ALERT XYL: 5/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:56:54,672] sim INFO: [SIM] ALERT YUM: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:56:56,384] sim INFO: [SIM] ALERT ZBH: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:56:56,917] sim INFO: [SIM] Candidate BAC skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,921] sim INFO: [SIM] Candidate BLDR skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,924] sim INFO: [SIM] Candidate CPRT skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,927] sim INFO: [SIM] Candidate EBAY skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,930] sim INFO: [SIM] Candidate HSIC skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,933] sim INFO: [SIM] Candidate HD skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,935] sim INFO: [SIM] Candidate IBM skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,938] sim INFO: [SIM] Candidate JNJ skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,943] sim INFO: [SIM] Candidate MMC skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,946] sim INFO: [SIM] Candidate MLM skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,948] sim INFO: [SIM] Candidate MAS skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,951] sim INFO: [SIM] Candidate XYL skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,954] sim INFO: [SIM] Candidate ABBV skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,956] sim INFO: [SIM] Candidate ALLE skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,958] sim INFO: [SIM] Candidate AME skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,961] sim INFO: [SIM] Candidate AMGN skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,963] sim INFO: [SIM] Candidate AJG skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,965] sim INFO: [SIM] Candidate BF-B skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,968] sim INFO: [SIM] Candidate CB skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,973] sim INFO: [SIM] Candidate DECK skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,979] sim INFO: [SIM] Candidate EA skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,984] sim INFO: [SIM] Candidate EVRG skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,988] sim INFO: [SIM] Candidate ES skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,993] sim INFO: [SIM] Candidate XOM skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:56,997] sim INFO: [SIM] Candidate DOC skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,003] sim INFO: [SIM] Candidate IEX skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,009] sim INFO: [SIM] Candidate INCY skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,014] sim INFO: [SIM] Candidate JKHY skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,018] sim INFO: [SIM] Candidate KMB skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,022] sim INFO: [SIM] Candidate L skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,024] sim INFO: [SIM] Candidate MRK skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,027] sim INFO: [SIM] Candidate MTD skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,030] sim INFO: [SIM] Candidate MHK skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,033] sim INFO: [SIM] Candidate MOH skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,035] sim INFO: [SIM] Candidate MNST skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,038] sim INFO: [SIM] Candidate MSI skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,040] sim INFO: [SIM] Candidate NKE skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,042] sim INFO: [SIM] Candidate OKE skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,045] sim INFO: [SIM] Candidate PH skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,053] sim INFO: [SIM] Candidate RTX skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,056] sim INFO: [SIM] Candidate TDY skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,059] sim INFO: [SIM] Candidate WAT skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,062] sim INFO: [SIM] Candidate WMB skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,064] sim INFO: [SIM] Candidate AOS skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,067] sim INFO: [SIM] Candidate A skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,069] sim INFO: [SIM] Candidate AKAM skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,072] sim INFO: [SIM] Candidate ALL skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,074] sim INFO: [SIM] Candidate GOOGL skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,078] sim INFO: [SIM] Candidate GOOG skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,081] sim INFO: [SIM] Candidate APH skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,083] sim INFO: [SIM] Candidate ADI skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,087] sim INFO: [SIM] Candidate AAPL skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,089] sim INFO: [SIM] Candidate APTV skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,093] sim INFO: [SIM] Candidate AVY skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,095] sim INFO: [SIM] Candidate BRK-B skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,104] sim INFO: [SIM] Candidate BA skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,106] sim INFO: [SIM] Candidate BKNG skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,110] sim INFO: [SIM] Candidate BXP skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,112] sim INFO: [SIM] Candidate COR skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,115] sim INFO: [SIM] Candidate CTAS skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,120] sim INFO: [SIM] Candidate CSCO skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,122] sim INFO: [SIM] Candidate CFG skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,125] sim INFO: [SIM] Candidate CMS skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,128] sim INFO: [SIM] Candidate COIN skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,131] sim INFO: [SIM] Candidate CAG skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,133] sim INFO: [SIM] Candidate CSGP skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,136] sim INFO: [SIM] Candidate CSX skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,139] sim INFO: [SIM] Candidate DAL skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,141] sim INFO: [SIM] Candidate DVN skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,143] sim INFO: [SIM] Candidate DG skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,145] sim INFO: [SIM] Candidate D skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,149] sim INFO: [SIM] Candidate DPZ skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,152] sim INFO: [SIM] Candidate EQIX skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,155] sim INFO: [SIM] Candidate ESS skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,157] sim INFO: [SIM] Candidate FICO skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,160] sim INFO: [SIM] Candidate FI skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,162] sim INFO: [SIM] Candidate F skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,165] sim INFO: [SIM] Candidate FTV skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,167] sim INFO: [SIM] Candidate FOXA skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,175] sim INFO: [SIM] Candidate FOX skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,181] sim INFO: [SIM] Candidate GRMN skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,192] sim INFO: [SIM] Candidate GEV skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,202] sim INFO: [SIM] Candidate GIS skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,216] sim INFO: [SIM] Candidate GM skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,224] sim INFO: [SIM] Candidate GL skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,247] sim INFO: [SIM] Candidate GS skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,256] sim INFO: [SIM] Candidate HUBB skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,277] sim INFO: [SIM] Candidate HUM skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,299] sim INFO: [SIM] Candidate HBAN skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,309] sim INFO: [SIM] Candidate ITW skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,321] sim INFO: [SIM] Candidate ICE skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,333] sim INFO: [SIM] Candidate IP skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,339] sim INFO: [SIM] Candidate JNPR skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,354] sim INFO: [SIM] Candidate KMI skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,360] sim INFO: [SIM] Candidate KKR skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,369] sim INFO: [SIM] Candidate KLAC skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,387] sim INFO: [SIM] Candidate LDOS skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,394] sim INFO: [SIM] Candidate LEN skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,398] sim INFO: [SIM] Candidate LLY skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,403] sim INFO: [SIM] Candidate MA skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,407] sim INFO: [SIM] Candidate MSFT skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,409] sim INFO: [SIM] Candidate MPWR skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,412] sim INFO: [SIM] Candidate NFLX skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,415] sim INFO: [SIM] Candidate NSC skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,418] sim INFO: [SIM] Candidate PNC skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,421] sim INFO: [SIM] Candidate DGX skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,424] sim INFO: [SIM] Candidate SNA skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,427] sim INFO: [SIM] Candidate TDG skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,429] sim INFO: [SIM] Candidate UHS skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,433] sim INFO: [SIM] Candidate VMC skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,435] sim INFO: [SIM] Candidate GWW skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,438] sim INFO: [SIM] Candidate YUM skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,441] sim INFO: [SIM] Candidate ZBH skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 13:56:57,441] sim INFO: [SIM] No affordable candidates this round
+[2025-08-01 13:56:57,442] sim INFO: [SIM] Current holdings:
+[2025-08-01 13:56:57,442] sim INFO:     • ALGN: 1 shares @ $132.02 (last price: $132.02)
+[2025-08-01 13:56:57,443] sim INFO:     • AWK: 1 shares @ $143.13 (last price: $143.13)
+[2025-08-01 13:56:57,443] sim INFO:     • KDP: 4 shares @ $33.17 (last price: $33.17)
+[2025-08-01 13:56:57,443] sim INFO:     • ALB: 2 shares @ $66.51 (last price: $66.51)
+[2025-08-01 13:56:57,443] sim INFO:     • TECH: 2 shares @ $53.80 (last price: $53.80)
+[2025-08-01 13:56:57,443] sim INFO:     • BAX: 6 shares @ $22.04 (last price: $22.04)
+[2025-08-01 13:56:57,443] sim INFO:     • EXR: 1 shares @ $136.80 (last price: $136.80)
+[2025-08-01 13:56:57,444] sim INFO:     • ARE: 1 shares @ $75.60 (last price: $75.60)
+[2025-08-01 13:56:57,444] sim INFO: [SIM] Sleeping 5.0s before next scan
+[2025-08-01 13:57:02,444] sim INFO: 🔁 Starting scan loop iteration
+[2025-08-01 13:57:16,142] sim INFO: [SIM] ALERT GOOGL: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:57:16,995] sim INFO: [SIM] ALERT GOOG: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:57:20,481] sim INFO: [SIM] ALERT AEP: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:57:22,158] sim INFO: [SIM] ALERT AIG: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:57:25,416] sim INFO: [SIM] ALERT APH: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:57:31,192] sim INFO: [SIM] ALERT APTV: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:57:42,929] sim INFO: [SIM] ALERT BAC: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:57:44,298] sim INFO: [SIM] ALERT BRK-B: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR % ≥ 0.5%']
+[2025-08-01 13:57:48,730] sim INFO: [SIM] ALERT BA: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:57:49,574] sim INFO: [SIM] ALERT BKNG: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0']
+[2025-08-01 13:57:54,237] sim INFO: [SIM] ALERT BLDR: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:58:18,189] sim INFO: [SIM] ALERT CMS: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:58:20,192] sim INFO: [SIM] ALERT COIN: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR % ≥ 0.5%']
+[2025-08-01 13:58:26,058] sim INFO: [SIM] ALERT CPRT: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:58:44,000] sim INFO: [SIM] ALERT DG: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:58:45,254] sim INFO: [SIM] ALERT D: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:58:46,198] sim INFO: [SIM] ALERT DPZ: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:58:56,825] sim INFO: [SIM] ALERT EA: 5/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:59:12,859] sim INFO: [SIM] ALERT XOM: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:59:15,320] sim INFO: [SIM] ALERT FICO: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0']
+[2025-08-01 13:59:28,351] sim INFO: [SIM] ALERT GRMN: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 13:59:31,646] sim INFO: [SIM] ALERT GEV: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0']
+[2025-08-01 13:59:51,199] sim INFO: [SIM] ALERT HWM: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 13:59:52,880] sim INFO: [SIM] ALERT HUBB: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 13:59:54,132] sim INFO: [SIM] ALERT HUM: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:59:55,015] sim INFO: [SIM] ALERT HBAN: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:59:56,762] sim INFO: [SIM] ALERT IBM: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 13:59:58,974] sim INFO: [SIM] ALERT ITW: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:00:04,441] sim INFO: [SIM] ALERT IP: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:00:16,889] sim INFO: [SIM] ALERT JNPR: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR % ≥ 0.5%']
+[2025-08-01 14:00:20,388] sim INFO: [SIM] ALERT KMB: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:00:23,787] sim INFO: [SIM] ALERT KLAC: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0']
+[2025-08-01 14:00:41,414] sim INFO: [SIM] ALERT MMC: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 14:00:42,132] sim INFO: [SIM] ALERT MLM: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:00:42,787] sim INFO: [SIM] ALERT MAS: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 14:00:47,105] sim INFO: [SIM] ALERT MRK: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 14:00:49,615] sim INFO: [SIM] ALERT MTD: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0', 'Price > SMA20']
+[2025-08-01 14:00:52,452] sim INFO: [SIM] ALERT MSFT: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:00:54,286] sim INFO: [SIM] ALERT MHK: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:00:56,995] sim INFO: [SIM] ALERT MPWR: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0', 'Price > SMA20']
+[2025-08-01 14:00:57,687] sim INFO: [SIM] ALERT MNST: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 14:01:10,533] sim INFO: [SIM] ALERT NOC: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 14:01:18,524] sim INFO: [SIM] ALERT ON: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:01:24,620] sim INFO: [SIM] ALERT PH: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:01:26,381] sim INFO: [SIM] ALERT PYPL: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 14:01:31,603] sim INFO: [SIM] ALERT PNC: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:01:44,122] sim INFO: [SIM] ALERT RTX: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:02:02,742] sim INFO: [SIM] ALERT SNA: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout']
+[2025-08-01 14:02:20,930] sim INFO: [SIM] ALERT TDY: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:02:23,471] sim INFO: [SIM] ALERT TXN: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:02:29,295] sim INFO: [SIM] ALERT TDG: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0']
+[2025-08-01 14:02:40,301] sim INFO: [SIM] ALERT UHS: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:02:47,550] sim INFO: [SIM] ALERT VMC: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:02:48,933] sim INFO: [SIM] ALERT GWW: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0']
+[2025-08-01 14:03:00,507] sim INFO: [SIM] ALERT XYL: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:03:02,387] sim INFO: [SIM] ALERT ZBH: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:03:03,097] sim INFO: [SIM] Candidate EA skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,100] sim INFO: [SIM] Candidate BA skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,105] sim INFO: [SIM] Candidate BLDR skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,108] sim INFO: [SIM] Candidate D skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,110] sim INFO: [SIM] Candidate XOM skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,113] sim INFO: [SIM] Candidate GRMN skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,115] sim INFO: [SIM] Candidate HWM skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,123] sim INFO: [SIM] Candidate MMC skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,130] sim INFO: [SIM] Candidate MAS skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,133] sim INFO: [SIM] Candidate MRK skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,140] sim INFO: [SIM] Candidate MTD skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,148] sim INFO: [SIM] Candidate MPWR skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,155] sim INFO: [SIM] Candidate MNST skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,158] sim INFO: [SIM] Candidate NOC skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,161] sim INFO: [SIM] Candidate GOOGL skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,165] sim INFO: [SIM] Candidate GOOG skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,172] sim INFO: [SIM] Candidate AEP skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,178] sim INFO: [SIM] Candidate AIG skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,181] sim INFO: [SIM] Candidate APH skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,185] sim INFO: [SIM] Candidate APTV skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,189] sim INFO: [SIM] Candidate BAC skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,192] sim INFO: [SIM] Candidate BRK-B skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,198] sim INFO: [SIM] Candidate BKNG skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,203] sim INFO: [SIM] Candidate CMS skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,207] sim INFO: [SIM] Candidate COIN skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,212] sim INFO: [SIM] Candidate CPRT skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,216] sim INFO: [SIM] Candidate DG skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,220] sim INFO: [SIM] Candidate DPZ skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,223] sim INFO: [SIM] Candidate FICO skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,226] sim INFO: [SIM] Candidate GEV skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,230] sim INFO: [SIM] Candidate HUBB skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,233] sim INFO: [SIM] Candidate HUM skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,236] sim INFO: [SIM] Candidate HBAN skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,239] sim INFO: [SIM] Candidate IBM skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,242] sim INFO: [SIM] Candidate ITW skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,245] sim INFO: [SIM] Candidate IP skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,246] sim INFO: [SIM] Candidate JNPR skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,249] sim INFO: [SIM] Candidate KMB skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,251] sim INFO: [SIM] Candidate KLAC skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,254] sim INFO: [SIM] Candidate MLM skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,256] sim INFO: [SIM] Candidate MSFT skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,259] sim INFO: [SIM] Candidate MHK skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,261] sim INFO: [SIM] Candidate ON skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,264] sim INFO: [SIM] Candidate PH skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,266] sim INFO: [SIM] Candidate PYPL skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,269] sim INFO: [SIM] Candidate PNC skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,271] sim INFO: [SIM] Candidate RTX skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,274] sim INFO: [SIM] Candidate SNA skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,276] sim INFO: [SIM] Candidate TDY skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,279] sim INFO: [SIM] Candidate TXN skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,281] sim INFO: [SIM] Candidate TDG skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,284] sim INFO: [SIM] Candidate UHS skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,286] sim INFO: [SIM] Candidate VMC skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,289] sim INFO: [SIM] Candidate GWW skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,292] sim INFO: [SIM] Candidate XYL skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,294] sim INFO: [SIM] Candidate ZBH skipped (qty=0, cost=$0.00, cash=$6.89)
+[2025-08-01 14:03:03,294] sim INFO: [SIM] No affordable candidates this round
+[2025-08-01 14:03:03,295] sim INFO: [SIM] Current holdings:
+[2025-08-01 14:03:03,296] sim INFO:     • ALGN: 1 shares @ $132.02 (last price: $132.02)
+[2025-08-01 14:03:03,296] sim INFO:     • AWK: 1 shares @ $143.13 (last price: $143.13)
+[2025-08-01 14:03:03,296] sim INFO:     • KDP: 4 shares @ $33.17 (last price: $33.17)
+[2025-08-01 14:03:03,296] sim INFO:     • ALB: 2 shares @ $66.51 (last price: $66.51)
+[2025-08-01 14:03:03,297] sim INFO:     • TECH: 2 shares @ $53.80 (last price: $53.80)
+[2025-08-01 14:03:03,297] sim INFO:     • BAX: 6 shares @ $22.04 (last price: $22.04)
+[2025-08-01 14:03:03,297] sim INFO:     • EXR: 1 shares @ $136.80 (last price: $136.80)
+[2025-08-01 14:03:03,297] sim INFO:     • ARE: 1 shares @ $75.60 (last price: $75.60)
+[2025-08-01 14:03:03,297] sim INFO: [SIM] Sleeping 5.0s before next scan
+[2025-08-01 14:03:08,299] sim INFO: 🔁 Starting scan loop iteration
+[2025-08-01 14:03:20,451] sim INFO: [SIM] ALERT GOOGL: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:03:21,290] sim INFO: [SIM] ALERT GOOG: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:03:23,039] sim INFO: [SIM] ALERT AMCR: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:03:27,396] sim INFO: [SIM] ALERT AME: 5/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 14:03:31,974] sim INFO: [SIM] ALERT AAPL: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:03:43,436] sim INFO: [SIM] ALERT BAC: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:03:50,482] sim INFO: [SIM] ALERT BKNG: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'ATR14 ≥ 2.0']
+[2025-08-01 14:03:55,634] sim INFO: [SIM] ALERT BLDR: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 14:03:56,531] sim INFO: [SIM] ALERT BG: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 14:04:20,448] sim INFO: [SIM] ALERT CI: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'RSI 📈', 'Price > SMA20']
+[2025-08-01 14:04:31,536] sim INFO: [SIM] ALERT COP: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:04:43,869] sim INFO: [SIM] ALERT CVS: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:04:45,951] sim INFO: [SIM] ALERT DVA: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:04:50,334] sim INFO: [SIM] ALERT DVN: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:04:55,043] sim INFO: [SIM] ALERT DPZ: 3/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'Price > SMA20']
+[2025-08-01 14:05:00,203] sim INFO: [SIM] ALERT EMN: 4/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'Price > SMA20']
+[2025-08-01 14:05:03,731] sim INFO: [SIM] ALERT EA: 5/3 → ['ADX ≥ 20.0', 'MACD 🚀', 'BB breakout', 'RSI 📈', 'Price > SMA20']

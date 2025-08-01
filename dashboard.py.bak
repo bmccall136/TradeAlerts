@@ -1021,8 +1021,16 @@ def export_simulation():
     si = io.StringIO()
     cw = csv.writer(si)
 
-    cw.writerow(['Cash', cash])
-    cw.writerow([])
+    # Assume you already computed these values in the route:
+    # cash, unrealized_pnl, unrealized_pnl_pct, realized_pnl
+
+    cw.writerow(['Cash', f"${cash:.2f}"])
+    cw.writerow(['Unrealized P&L', f"${unrealized_pnl:.2f}"])
+    cw.writerow(['Unrealized P&L %', f"{unrealized_pnl_pct:.2f}%"])
+    cw.writerow(['Realized P&L', f"${realized_pnl:.2f}"])
+    cw.writerow([])  # Blank row for spacing
+
+    # Then continue as before...
     cw.writerow(['-- HOLDINGS --'])
     cw.writerow(['symbol','last_price','change','change_pct','qty','price_paid','day_gain','total_gain','value'])
     for h in holdings:
@@ -1258,25 +1266,37 @@ def simulation_view():
     unrealized_pnl = round(sum(h["total_gain"] for h in holdings), 2)
     total_cost_basis = sum(h["qty"] * h["price_paid"] for h in holdings)
     unrealized_pnl_pct = round((unrealized_pnl / total_cost_basis * 100), 2) if total_cost_basis else 0.0
-    realized_pnl = sum(t["profit"] for t in history if t.get("action") == "SELL")
-    
+
     # 5) rebuild trade history so `history` exists
     history = []
-    for t, symbol, action, qty, price, pl in get_trades():
-        try:
-            pl_val = float(pl)
-        except (TypeError, ValueError):
-            pl_val = 0.0
-        history.append({
-            "time":   t,
-            "symbol": symbol,
-            "action": action,
-            "qty":    qty,
-            "price":  price,
-            "pl":     pl_val,
-        })
+    for t in get_trades():
+        # handle tuple or dict
+        if isinstance(t, dict):
+            pl_val = float(t.get("pl") or t.get("pnl") or 0)
+            history.append({
+                "time":   t.get("timestamp") or t.get("time"),
+                "symbol": t.get("symbol"),
+                "action": t.get("action"),
+                "qty":    t.get("qty"),
+                "price":  t.get("price"),
+                "pl":     pl_val,
+            })
+        else:  # tuple or list
+            trade_time, symbol, action, qty, price, pl = t[:6]
+            try:
+                pl_val = float(pl)
+            except (TypeError, ValueError):
+                pl_val = 0.0
+            history.append({
+                "time":   trade_time,
+                "symbol": symbol,
+                "action": action,
+                "qty":    qty,
+                "price":  price,
+                "pl":     pl_val,
+            })
 
-    # 6) compute realized pnl after history is built!
+    # 6) now sum realized P&L safely (history now exists)
     realized_pnl = sum(t["pl"] for t in history if t.get("action") == "SELL")
 
     # 7) finally render
@@ -1285,7 +1305,7 @@ def simulation_view():
         cash=cash,
         unrealized_pnl=unrealized_pnl,
         unrealized_pnl_pct=unrealized_pnl_pct,
-        realized_pnl=realized_pnl,    # use this, not the undefined one!
+        realized_pnl=realized_pnl,
         holdings=holdings,
         history=history
     )
