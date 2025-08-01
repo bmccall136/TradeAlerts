@@ -1,32 +1,32 @@
 # services/indicators.py
 
 import math
-import pandas as pd
 import numpy as np
 import pandas as pd
 
-def compute_supertracker(history: pd.DataFrame,
-                         fast_len: int,
-                         slow_len: int,
-                         signal_len: int) -> tuple[pd.Series, pd.Series]:
-    # True Range
-    high, low, close = history["high"], history["low"], history["close"]
-    prev_close = close.shift(1)
-    tr = pd.concat([
-        high - low,
-        (high - prev_close).abs(),
-        (low  - prev_close).abs()
-    ], axis=1).max(axis=1)
+def compute_supertracker(history, fast_len, slow_len, signal_len):
+    # 1) compute your two ATRs
+    atr_fast = compute_atr(history, fast_len)
+    atr_slow = compute_atr(history, slow_len)
 
-    # ATR series
-    atr_fast = tr.rolling(fast_len, min_periods=1).mean()
-    atr_slow = tr.rolling(slow_len, min_periods=1).mean().replace(0, pd.NA)
+    # 2) wrap floats into single‐element Series
+    last_idx = history.index[-1]
+    if not isinstance(atr_fast, pd.Series):
+        atr_fast = pd.Series([atr_fast], index=[last_idx])
+    if not isinstance(atr_slow, pd.Series):
+        atr_slow = pd.Series([atr_slow], index=[last_idx])
 
-    # Oscillator
-    ratio = atr_fast / atr_slow
+    # 3) guard against zero‐division, coerce to float Series
+    atr_slow = atr_slow.replace(0, np.nan).astype(float)
+    ratio    = atr_fast.astype(float).divide(atr_slow)
+
+    # 4) oscillator
     osc = 100 * (ratio - 1)
 
-    # Signal line
+    # 5) future‐proofed back‐fill (no more .fillna(method="bfill") warnings)
+    osc = osc.ffill().bfill()
+
+    # 6) signal line via EWMA
     sig = osc.ewm(span=signal_len, adjust=False).mean()
 
     return osc, sig

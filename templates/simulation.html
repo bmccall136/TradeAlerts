@@ -24,6 +24,7 @@
 <div class="simulation-summary text-center mb-4">
   <p><strong>Cash:</strong> ${{ '%.2f'|format(cash) }}</p>
   <p><strong>Unrealized P&L:</strong> ${{ '%.2f'|format(unrealized_pnl) }}</p>
+  <p><strong>Unrealized P&L %:</strong> {{ '%.2f'|format(unrealized_pnl_pct) }}%</p>
   <p><strong>Realized P&L:</strong> ${{ '%.2f'|format(realized_pnl) }}</p>
 </div>
 

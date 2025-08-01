@@ -1,28 +1,27 @@
 # services/indicators.py
 
 import math
-import pandas as pd
 import numpy as np
 import pandas as pd
 
 def compute_supertracker(history, fast_len, slow_len, signal_len):
-    # … your existing lookback/fetching code …
-
-    # compute ATRs
+    # compute ATRs (should return pd.Series)
     atr_fast = compute_atr(history, fast_len)
     atr_slow = compute_atr(history, slow_len)
 
-    # safe divide, even if atr_slow is a scalar
-    if np.isscalar(atr_slow):
-        denom = atr_slow if atr_slow != 0 else np.nan
-        ratio = atr_fast / denom
-    else:
-        ratio = atr_fast / atr_slow.replace(0, pd.NA)
+    # if either comes back as a float, wrap into a one-element Series
+    if not isinstance(atr_fast, pd.Series):
+        atr_fast = pd.Series([atr_fast], index=[history.index[-1]])
+    if not isinstance(atr_slow, pd.Series):
+        atr_slow = pd.Series([atr_slow], index=[history.index[-1]])
 
-    # now compute your oscillator
+    # avoid division by zero; cast dtype
+    atr_slow = atr_slow.replace(0, np.nan).astype(float)
+    ratio    = atr_fast.astype(float).divide(atr_slow)
+
     osc = 100 * (ratio - 1)
-
-    # smooth it
+    # fill initial NaNs before EWMA
+    osc = osc.fillna(method="bfill")
     sig = osc.ewm(span=signal_len, adjust=False).mean()
 
     return osc, sig
