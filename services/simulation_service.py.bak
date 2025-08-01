@@ -268,11 +268,13 @@ from services.trading_helpers import (
 )
 from services.market_service import get_symbols
 from services.simulation_service import analyze_symbol, _is_market_open
+from services.risk_management import enforce_wash_sale, enforce_settlement
 
 logger = logging.getLogger("sim")
 
 def run_simulation_loop(settings: SimulationSettings):
     # ── seed logic ──
+    setup_simulation_db()
     try:
         current = get_cash()
     except:
@@ -319,6 +321,9 @@ def run_simulation_loop(settings: SimulationSettings):
             candidates.sort(key=lambda x: len(x[2]), reverse=True)
             purchased = False
 
+from services.risk_management import enforce_wash_sale, enforce_settlement
+from datetime import datetime
+
             for sym, price, triggered in candidates:
                 qty = compute_qty(settings, price)
                 cost = qty * price
@@ -326,6 +331,16 @@ def run_simulation_loop(settings: SimulationSettings):
 
                 if qty < 1 or cost > cash:
                     logger.info(f"[SIM] Candidate {sym} skipped (qty={qty}, cost=${cost:.2f}, cash=${cash:.2f})")
+                    continue
+
+                # ENFORCE WASH SALE & SETTLEMENT
+                can_buy_wash = enforce_wash_sale(sym, datetime.utcnow())  # add DB conn/settings if needed
+                can_buy_settle = enforce_settlement(sym, qty, datetime.utcnow())
+                if not can_buy_wash:
+                    logger.info(f"[SIM] Candidate {sym} blocked by wash sale rule.")
+                    continue
+                if not can_buy_settle:
+                    logger.info(f"[SIM] Candidate {sym} blocked by unsettled funds rule.")
                     continue
 
                 # buy top affordable
