@@ -1,43 +1,39 @@
-# services/simulation_service.py
+# ── services/simulation_service.py ── at very top of file ──
 
-import csv
-import time
 import logging
+import time
 from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from services.data_fetch import fetch_data_with_timeout, fetch_intraday_vwap
 
 import pandas as pd
 import pandas_market_calendars as mcal
-from services.market_service     import get_symbols
-from services.data_fetch    import fetch_data_with_timeout
-from services.etrade_service     import fetch_etrade_quote
-from services.settings_schema   import SimulationSettings
-from services.trading_helpers import (
-    buy_stock, get_position_qty, setup_simulation_db,
-    set_cash, get_cash, insert_or_update_holding,
-    compute_qty, seconds_until_open, check_exit_orders,
-    get_avg_cost, get_holdings, check_if_position_open
-)
-from services.indicators        import (
+
+from services.data_fetch import fetch_data_with_timeout, fetch_intraday_vwap
+from services.indicators import (
     compute_sma, compute_rsi, compute_macd,
     compute_bollinger_bands, compute_volume_multiplier,
-    compute_vwap, compute_atr,
+    compute_atr, compute_adx, compute_supertracker,
     daily_range_pct, gap_up_pct
 )
-from .settings_schema import SIM_DB_PATH, SimulationSettings
-
-logger = logging.getLogger("sim")
-ET   = ZoneInfo("America/New_York")
-nyse = mcal.get_calendar("NYSE")
+from services.etrade_service import fetch_etrade_quote
+from services.market_service import get_symbols
+from services.settings_schema import SimulationSettings, SIM_DB_PATH
+from services.trading_helpers import (
+    setup_simulation_db, set_cash, get_cash,
+    buy_stock, get_position_qty, compute_qty,
+    seconds_until_open, check_exit_orders, get_holdings
+)
 
 LOGFILE = Path("logs/triggers.csv")
 LOGFILE.parent.mkdir(parents=True, exist_ok=True)
 
+logger = logging.getLogger("sim")
+ET = ZoneInfo("America/New_York")
+nyse = mcal.get_calendar("NYSE")
 
 def analyze_symbol(symbol: str, settings: SimulationSettings):
-    # 0) Determine how many days of history we need
+    # 0) Determine lookback
     lookback = max(
         settings.atr_len,
         settings.bb_length,
@@ -45,122 +41,128 @@ def analyze_symbol(symbol: str, settings: SimulationSettings):
         settings.rsi_len,
     )
 
-    # 1) Fetch history (for indicators)…
+    # 1) Fetch history
     try:
         history = fetch_data_with_timeout(symbol, f"{lookback}d")
         if history is None or history.empty:
             logger.warning(f"No data for {symbol}; skipping")
             return None, [], False
-
-        # Flatten & lowercase columns
-        if isinstance(history.columns, pd.MultiIndex):
+        if hasattr(history.columns, 'get_level_values'):
             history.columns = history.columns.get_level_values(0)
         history.columns = [c.lower() for c in history.columns]
-
         if 'close' not in history.columns or 'volume' not in history.columns:
-            logger.error(f"{symbol}: missing expected columns {history.columns.tolist()}")
+            logger.error(f"{symbol}: missing expected columns {history.columns}")
             return None, [], False
-
     except Exception as e:
-        logger.exception(f"{symbol}: error fetching/parsing history - {e}")
+        logger.exception(f"{symbol}: error fetching history - {e}")
         return None, [], False
 
-    # 2) Calculate intraday VWAP
-    try:
-        vwap = fetch_intraday_vwap(symbol)
-    except Exception as e:
-        logger.error(f"{symbol}: failed to fetch VWAP ({e}); skipping VWAP filter")
-        vwap = None
-
-     # 3) Fetch live price (fallback to history close)
+    # 2) Fetch live price (fallback to last close)
     try:
         quote = fetch_etrade_quote(symbol)
-        if isinstance(quote, dict):
-            price = float(quote.get("last_trade_price", quote.get("lastTradePrice", 0)))
-        else:
-            price = float(quote)
+        price = float(quote.get('last_trade_price', quote.get('lastTradePrice', 0))) if isinstance(quote, dict) else float(quote)
     except Exception:
-        price = float(history["close"].iat[-1])
+        price = float(history['close'].iat[-1])
 
-    # ─── initialize our signal list (must come before any .append) ──
-    triggered = []
+    triggered: list[str] = []
 
-    # now that price is guaranteed to exist and triggered is a list:
-    logger.debug(f"{symbol}: final price = {price}")
-
-    logger.debug(f"{symbol}: final price = {price}")
-
-    # ─── initialize the list of signals ───────────────────────────
-    triggered = []
-
-    # 4) VWAP filter
-    if settings.vwap_on and vwap is not None:
-        if price < vwap:
-            # below VWAP → immediate fail
-            logger.debug(f"{symbol}: price {price:.2f} < VWAP {vwap:.2f}; skipping")
+    # ─── HARD-GATES + REQUIRED FILTERS ──────────────────────────
+    adx = None
+    if 'adx' in settings.required_filters:
+        adx = compute_adx(history, settings.adx_len)
+        if adx.iat[-1] < settings.adx_threshold:
+            logger.debug(f"{symbol}: ADX {adx.iat[-1]:.2f} < required {settings.adx_threshold}")
             return price, triggered, False
+        triggered.append(f"ADX ≥ {settings.adx_threshold}")
+    elif settings.adx_on:
+        adx = compute_adx(history, settings.adx_len)
+
+    macd_line = macd_sig = None
+    if 'macd' in settings.required_filters or settings.macd_on:
+        macd_line, macd_sig = compute_macd(
+            history, settings.macd_fast, settings.macd_slow, settings.macd_signal
+        )
+    if 'macd' in settings.required_filters:
+        if macd_line.iat[-1] <= macd_sig.iat[-1]:
+            logger.debug(f"{symbol}: MACD {macd_line.iat[-1]:.2f} ≤ {macd_sig.iat[-1]:.2f} required")
+            return price, triggered, False
+        triggered.append("MACD 🚀")
+
+    osc = sig = None
+    if 'super' in settings.required_filters or settings.super_on:
+        osc, sig = compute_supertracker(
+            history, settings.super_fast, settings.super_slow, settings.super_signal
+        )
+    if 'super' in settings.required_filters:
+        if not (osc.iat[-1] > sig.iat[-1] and osc.iat[-1] > 0):
+            logger.debug(f"{symbol}: SuperTracker {osc.iat[-1]:.2f}/{sig.iat[-1]:.2f} required")
+            return price, triggered, False
+        triggered.append("SuperTracker ↑")
+
+    vwap = None
+    if settings.vwap_on:
+        try:
+            vwap = fetch_intraday_vwap(symbol)
+            logger.debug(f"{symbol}: fetched VWAP={vwap:.2f}")
+        except Exception as e:
+            logger.debug(f"{symbol}: VWAP fetch failed: {e}")
+    if vwap is not None and price < vwap:
+        logger.debug(f"{symbol}: price {price:.2f} < VWAP {vwap:.2f}")
+        return price, triggered, False
+
+    # ─── OPTIONAL SIGNALS ─────────────────────────────────────────────
+    if settings.adx_on and adx is not None and f"ADX ≥ {settings.adx_threshold}" not in triggered:
+        triggered.append(f"ADX ≥ {settings.adx_threshold}")
+
+    if settings.macd_on and 'macd' not in settings.required_filters:
+        macd_line, macd_sig = compute_macd(
+            history, settings.macd_fast, settings.macd_slow, settings.macd_signal
+        )
+        if macd_line.iat[-1] > macd_sig.iat[-1]:
+            triggered.append("MACD 🚀")
+
+    if settings.vwap_on and vwap is not None:
         triggered.append("Price > VWAP")
-    # 5) Bollinger Bands
+
     if settings.bb_on:
-        ub, _, _ = compute_bollinger_bands(history["close"], settings.bb_length, settings.bb_std)
+        ub, _, _ = compute_bollinger_bands(history['close'], settings.bb_length, settings.bb_std)
         if price > ub.iat[-1]:
             triggered.append("BB breakout")
 
-    # 6) MACD
-    if settings.macd_on:
-        macd_line, signal = compute_macd(
-            history, settings.macd_fast, settings.macd_slow, settings.macd_signal
-        )
-        if macd_line.iat[-1] > signal.iat[-1]:
-            triggered.append("MACD 🚀")
-
-    # 7) RSI
     if settings.rsi_on:
         rsi = compute_rsi(history, settings.rsi_len)
         if rsi.iat[-1] > settings.rsi_overbought:
             triggered.append("RSI 📈")
 
-    # 8) Volume spike
     if settings.vol_on:
         vol_mul = compute_volume_multiplier(history, settings.vol_multiplier)
         if vol_mul.iat[-1] >= settings.vol_multiplier:
             triggered.append("Volume spike")
 
-    # 9) ATR absolute & percentage
-    if settings.atr_on or settings.atr_pct_on:
-        atr = compute_atr(history, settings.atr_len)
-        if settings.atr_on and atr >= settings.atr_threshold:
+    if settings.atr_on:
+        atr_val = compute_atr(history, settings.atr_len)
+        if atr_val >= settings.atr_threshold:
             triggered.append(f"ATR{settings.atr_len} ≥ {settings.atr_threshold}")
-        if settings.atr_pct_on and (atr / price * 100) >= settings.atr_pct:
+
+    if settings.atr_pct_on:
+        atr_val = compute_atr(history, settings.atr_len)
+        if (atr_val / price * 100) >= settings.atr_pct:
             triggered.append(f"ATR % ≥ {settings.atr_pct}%")
 
-    # 10) Range, Gap, SMA, etc.
     if settings.range_on and daily_range_pct(history) >= settings.range_pct:
         triggered.append(f"Range % ≥ {settings.range_pct}")
+
     if settings.gap_on and gap_up_pct(history) >= settings.gap_pct:
         triggered.append(f"Gap % ≥ {settings.gap_pct}")
-    if settings.price_sma_on:
-        sma = compute_sma(history["close"], settings.sma_length)
-        if price > sma:
-            triggered.append(f"Price > SMA{settings.sma_length}")
 
-    # 11) Final pass/fail
-    # after you compute VWAP, BB, SMA, etc. — format ub/sma safely
-    try:
-        ub_val  = ub.iat[-1]  if hasattr(ub, "iat")  else float(ub)
-    except Exception:
-        ub_val = None
-    try:
-        sma_val = sma.iat[-1] if hasattr(sma, "iat") else float(sma)
-    except Exception:
-        sma_val = None
-    logger.debug(
-        f"{symbol}: price={price:.2f}, VWAP={vwap}, "
-        f"UB={ub_val}, SMA{settings.sma_length}={sma_val}, triggered={triggered}"
-    )
+    if settings.price_sma_on:
+        sma_val = compute_sma(history['close'], settings.price_sma_len)
+        if price > sma_val:
+            triggered.append(f"Price > SMA{settings.price_sma_len}")
+
+    # ─── FINAL PASS/FAIL ───────────────────────────────────────────────
     passed = len(triggered) >= settings.min_signals
     return price, triggered, passed
-
 
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -220,8 +222,23 @@ from services.simulation_service import analyze_symbol, _is_market_open
 logger = logging.getLogger("sim")
 
 def run_simulation_loop(settings: SimulationSettings):
-    logger.info(f"[SIM] seed cash: ${get_cash():.2f}")
-    symbols = get_symbols(simulation=True)
+    # ── Initialize the DB ─────────────────────────────────────────────────────
+    setup_simulation_db()
+
+    # ── Seed cash only if you nuked it, or if the DB really was just created ──
+    try:
+        current = get_cash()
+    except Exception:
+        # no cash table/record found → brand‐new DB
+        set_cash(settings.starting_cash)
+        logger.info(f"[SIM] NEW DB: seeded starting cash = ${settings.starting_cash:.2f}")
+    else:
+        if settings.nuke_db:
+            set_cash(settings.starting_cash)
+            logger.info(f"[SIM] NUKE flag: reseeded starting cash = ${settings.starting_cash:.2f}")
+        else:
+            logger.info(f"[SIM] continuing with cash = ${current:.2f}")
+
 
     while True:
         # 1) pause if market closed

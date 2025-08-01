@@ -1,12 +1,11 @@
 # services/settings_schema.py
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, List
 from datetime import date, timedelta
 import os
 
-# path to your simulation DB (alerts.db sitting in the project root)
+# Path to your simulation DB (alerts.db sitting in the project root)
 SIM_DB_PATH = os.path.join(os.path.dirname(__file__), os.pardir, "simulation.db")
-
 
 @dataclass
 class SimulationSettings:
@@ -26,8 +25,8 @@ class SimulationSettings:
     # ─── Core parameters ─────────────────────────────────────────────────────
     sma_length:       int
     rsi_len:          int
-    rsi_overbought:   int
-    rsi_oversold:     int
+    rsi_overbought:   float
+    rsi_oversold:     float
     macd_fast:        int
     macd_slow:        int
     macd_signal:      int
@@ -51,6 +50,15 @@ class SimulationSettings:
     gap_on:           bool    = False
     gap_pct:          float   = 1.0
 
+    adx_on: bool = False
+    adx_len: int  = 14
+    adx_threshold: float = 20.0
+    
+    super_on:           bool = False
+    super_fast:         int  = 7
+    super_slow:         int  = 21
+    super_signal:       int  = 5
+
     # ─── Risk & exit rules ───────────────────────────────────────────────────
     trailing_stop_pct: float = 0.05
     stop_loss_pct:     float = 0.03
@@ -70,71 +78,89 @@ class SimulationSettings:
     starting_cash:    float         = 10000.0
     timeframe:        Optional[str] = None
 
+    # ─── Required filters (custom logic) ────────────────────────────────────
+    required_filters: List[str] = field(default_factory=list)
 
-def extract_simulation_settings(args) -> SimulationSettings:
+def extract_simulation_settings(args: dict) -> SimulationSettings:
     """
-    Build a SimulationSettings from form/query args or JSON keys.
+    Extracts SimulationSettings from a dict (e.g., loaded JSON config).
+    Properly interprets booleans as actual True/False values,
+    not just key presence.
     """
+    # Handle required_filters: support list or comma-separated string
+    rf = args.get("required_filters", [])
+    if isinstance(rf, str):
+        rf = [x.strip() for x in rf.split(",") if x.strip()]
+
     return SimulationSettings(
         # Core toggles
-        sma_on                  = "sma_on"           in args,
-        rsi_on                  = "rsi_on"           in args,
-        macd_on                 = "macd_on"          in args,
-        bb_on                   = "bb_on"            in args,
-        vol_on                  = "vol_on"           in args,
-        vwap_on                 = "vwap_on"          in args,
-        news_on                 = "news_on"          in args,
-        rsi_slope_on            = "rsi_slope_on"     in args,
-        macd_hist_on            = "macd_hist_on"     in args,
-        bb_breakout_on          = "bb_breakout_on"   in args,
-        price_sma_on            = "price_sma_on"     in args,
+        sma_on           = bool(args.get("sma_on", False)),
+        rsi_on           = bool(args.get("rsi_on", False)),
+        macd_on          = bool(args.get("macd_on", False)),
+        bb_on            = bool(args.get("bb_on", False)),
+        vol_on           = bool(args.get("vol_on", False)),
+        vwap_on          = bool(args.get("vwap_on", False)),
+        news_on          = bool(args.get("news_on", False)),
+        rsi_slope_on     = bool(args.get("rsi_slope_on", False)),
+        macd_hist_on     = bool(args.get("macd_hist_on", False)),
+        bb_breakout_on   = bool(args.get("bb_breakout_on", False)),
+        price_sma_on     = bool(args.get("price_sma_on", False)),
 
         # Core parameters
-        sma_length              = int(args.get("sma_length",       50)),
-        rsi_len                 = int(args.get("rsi_len",          14)),
-        rsi_overbought          = int(args.get("rsi_overbought",   70)),
-        rsi_oversold            = int(args.get("rsi_oversold",     30)),
-        macd_fast               = int(args.get("macd_fast",        12)),
-        macd_slow               = int(args.get("macd_slow",        26)),
-        macd_signal             = int(args.get("macd_signal",      9)),
-        bb_length               = int(args.get("bb_length",        20)),
-        bb_std                  = float(args.get("bb_std",         2.0)),
-        vol_multiplier          = float(args.get("vol_multiplier", 2.0)),
-        vwap_threshold          = float(args.get("vwap_threshold", 0.0)),
-        price_sma_len           = int(args.get("price_sma_len",   50)),
+        sma_length       = int(args.get("sma_length", 8)),
+        rsi_len          = int(args.get("rsi_len", 7)),
+        rsi_overbought   = float(args.get("rsi_overbought", 65)),
+        rsi_oversold     = float(args.get("rsi_oversold", 35)),
+        macd_fast        = int(args.get("macd_fast", 6)),
+        macd_slow        = int(args.get("macd_slow", 19)),
+        macd_signal      = int(args.get("macd_signal", 4)),
+        bb_length        = int(args.get("bb_length", 10)),
+        bb_std           = float(args.get("bb_std", 1.5)),
+        vol_multiplier   = float(args.get("vol_multiplier", 1.2)),
+        vwap_threshold   = float(args.get("vwap_threshold", 0.8)),
+        price_sma_len    = int(args.get("price_sma_len", 20)),
 
         # Filters
-        atr_on                  = "atr_on"           in args,
-        atr_len                 = int(args.get("atr_len",         14)),
-        atr_threshold           = float(args.get("atr_threshold",   1.4)),
-        atr_pct_on              = "atr_pct_on"       in args,
-        atr_pct                 = float(args.get("atr_pct",         0.7)),
-        range_on                = "range_on"         in args,
-        range_pct               = float(args.get("range_pct",       1.2)),
-        gap_on                  = "gap_on"           in args,
-        gap_pct                 = float(args.get("gap_pct",         1.0)),
+        super_on     = bool(args.get("super_on", False)),
+        super_signal = int(args.get("super_signal", 5)),
+        super_fast   = int(args.get("super_fast",   7)),
+        super_slow   = int(args.get("super_slow",  21)),
+        atr_on           = bool(args.get("atr_on", False)),
+        atr_len          = int(args.get("atr_len", 14)),
+        atr_threshold    = float(args.get("atr_threshold", 2.0)),
+        atr_pct_on       = bool(args.get("atr_pct_on", False)),
+        atr_pct          = float(args.get("atr_pct", 0.5)),
+        range_on         = bool(args.get("range_on", False)),
+        range_pct        = float(args.get("range_pct", 2.0)),
+        gap_on           = bool(args.get("gap_on", False)),
+        gap_pct          = float(args.get("gap_pct", 1.5)),
+
+        adx_on           = bool(args.get("adx_on", False)),
+        adx_len          = int(args.get("adx_len", 14)),
+        adx_threshold    = float(args.get("adx_threshold", 20.0)),
 
         # Risk & exit
-        trailing_stop_pct       = float(args.get("trailing_stop_pct", 0.05)),
-        stop_loss_pct           = float(args.get("stop_loss_pct",     0.03)),
-        take_profit_pct         = float(args.get("take_profit_pct",   0.07)),
-        sell_after_days         = int(args.get("sell_after_days")) if args.get("sell_after_days") else None,
-        single_entry_only       = "single_entry_only" in args,
-        use_trailing_stop       = "use_trailing_stop" in args,
+        trailing_stop_pct   = float(args.get("trailing_stop_pct", 0.12)),
+        stop_loss_pct       = float(args.get("stop_loss_pct", 0.05)),
+        take_profit_pct     = float(args.get("take_profit_pct", 0.12)),
+        sell_after_days     = int(args.get("sell_after_days")) if args.get("sell_after_days") not in (None, "") else None,
+        single_entry_only   = bool(args.get("single_entry_only", False)),
+        use_trailing_stop   = bool(args.get("use_trailing_stop", False)),
 
         # Run‑control & sizing
         nuke_db                  = bool(args.get("nuke_db", False)),
-        pause_when_market_closed = bool(args.get("pause_when_market_closed", True)),
-        max_per_trade            = float(args.get("max_per_trade", 1000.0)),
-        poll_interval            = float(args.get("poll_interval", 60.0)),
-        min_signals              = int(args.get("min_signals", 1)),      # ← add this!
+        pause_when_market_closed = bool(args.get("pause_when_market_closed", False)),
+        max_per_trade            = float(args.get("max_per_trade", 150.0)),
+        poll_interval            = float(args.get("poll_interval", 5.0)),
+        min_signals              = int(args.get("min_signals", 1)),
 
-        # ─── Starting capital & optional timeframe ──────────────────────────────
-        starting_cash   = float(args.get("starting_cash", 10000.0)),
-        timeframe       = args.get("timeframe"),  # if not provided, stays None
+        # Starting capital & optional timeframe
+        starting_cash            = float(args.get("starting_cash", 1000.0)),
+        timeframe                = args.get("timeframe", None),
+
+        # Required filters
+        required_filters         = rf,
     )
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Backtest settings (for your Flask / backtest UI)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -171,37 +197,36 @@ class BacktestSettings:
     single_entry_only: bool   = True
     use_trailing_stop: bool   = True
 
-
 def extract_backtest_settings(args) -> BacktestSettings:
     return BacktestSettings(
-        start_date       = args.get("start_date"),
-        end_date         = args.get("end_date"),
-        starting_cash    = float(args.get("starting_cash", 10000)),
-        max_per_trade    = float(args.get("max_per_trade", 1000)),
-        timeframe        = args.get("timeframe", "1d"),
-        sma_on           = "sma_on" in args,
-        rsi_on           = "rsi_on" in args,
-        macd_on          = "macd_on" in args,
-        bb_on            = "bb_on" in args,
-        vol_on           = "vol_on" in args,
-        vwap_on          = "vwap_on" in args,
-        news_on          = "news_on" in args,
-        rsi_slope_on     = "rsi_slope_on" in args,
-        macd_hist_on     = "macd_hist_on" in args,
-        bb_breakout_on   = "bb_breakout_on" in args,
-        sma_length       = int(args.get("sma_length", 50)),
-        rsi_len          = int(args.get("rsi_len", 14)),
-        rsi_overbought   = int(args.get("rsi_overbought", 70)),
-        rsi_oversold     = int(args.get("rsi_oversold", 30)),
-        macd_fast        = int(args.get("macd_fast", 12)),
-        macd_slow        = int(args.get("macd_slow", 26)),
-        macd_signal      = int(args.get("macd_signal", 9)),
-        bb_length        = int(args.get("bb_length", 20)),
-        bb_std           = float(args.get("bb_std", 2.0)),
-        vol_multiplier   = float(args.get("vol_multiplier", 2.0)),
-        vwap_threshold   = float(args.get("vwap_threshold", 0.0)),
-        trailing_stop_pct= float(args.get("trailing_stop_pct", 0.05)),
-        sell_after_days  = int(args.get("sell_after_days")) if args.get("sell_after_days") else None,
-        single_entry_only= "single_entry_only" in args,
-        use_trailing_stop= "use_trailing_stop" in args,
+        start_date        = args.get("start_date"),
+        end_date          = args.get("end_date"),
+        starting_cash     = float(args.get("starting_cash", 10000)),
+        max_per_trade     = float(args.get("max_per_trade", 1000)),
+        timeframe         = args.get("timeframe", "1d"),
+        sma_on            = bool(args.get("sma_on", False)),
+        rsi_on            = bool(args.get("rsi_on", False)),
+        macd_on           = bool(args.get("macd_on", False)),
+        bb_on             = bool(args.get("bb_on", False)),
+        vol_on            = bool(args.get("vol_on", False)),
+        vwap_on           = bool(args.get("vwap_on", False)),
+        news_on           = bool(args.get("news_on", False)),
+        rsi_slope_on      = bool(args.get("rsi_slope_on", False)),
+        macd_hist_on      = bool(args.get("macd_hist_on", False)),
+        bb_breakout_on    = bool(args.get("bb_breakout_on", False)),
+        sma_length        = int(args.get("sma_length", 50)),
+        rsi_len           = int(args.get("rsi_len", 14)),
+        rsi_overbought    = int(args.get("rsi_overbought", 70)),
+        rsi_oversold      = int(args.get("rsi_oversold", 30)),
+        macd_fast         = int(args.get("macd_fast", 12)),
+        macd_slow         = int(args.get("macd_slow", 26)),
+        macd_signal       = int(args.get("macd_signal", 9)),
+        bb_length         = int(args.get("bb_length", 20)),
+        bb_std            = float(args.get("bb_std", 2.0)),
+        vol_multiplier    = float(args.get("vol_multiplier", 2.0)),
+        vwap_threshold    = float(args.get("vwap_threshold", 0.0)),
+        trailing_stop_pct = float(args.get("trailing_stop_pct", 0.05)),
+        sell_after_days   = int(args.get("sell_after_days")) if args.get("sell_after_days") else None,
+        single_entry_only = bool(args.get("single_entry_only", False)),
+        use_trailing_stop = bool(args.get("use_trailing_stop", False)),
     )

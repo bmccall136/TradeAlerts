@@ -134,6 +134,10 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from services.trading_helpers import setup_simulation_db
+from pathlib import Path
+
+# assuming simulation_config.json lives next to dashboard.py
+CONFIG_PATH = Path(__file__).parent / "simulation_config.json"
 
 # before any get_cash()/buy()/sell() calls:
 setup_simulation_db()
@@ -1393,33 +1397,35 @@ def export_backtest():
 
 from flask import redirect, url_for
 
-from flask import render_template
 import json
-
+from flask import render_template
 from services.trading_helpers import (
     setup_simulation_db,
-    get_cash,
-    get_realized_pl,
     get_holdings,
+    get_cash,
+    get_realized_pl
 )
-from services.etrade_service import fetch_etrade_quote
 
+CONFIG_PATH = Path(__file__).parent / "simulation_config.json"
 
-@app.route("/", methods=["GET"])
+@app.route("/")
 def index():
-    # 1) Ensure DB + tables + seed cash
     setup_simulation_db()
-
-    # 2) Pull raw holdings: (symbol, qty, avg_cost, last_price)
     raw = get_holdings()
 
-    # 3) Build your holdings list with cost‐basis P/L
     holdings = []
-    for symbol, qty, avg_cost, last_price in raw:
+    for symbol, qty, avg_cost, _ in raw:
+        # ▷ fetch a fresh last_price from E*TRADE
+        try:
+            last_price = fetch_etrade_quote(symbol)
+            app.logger.info(f"[DASH] fetched live price for {symbol} → {last_price}")
+        except Exception as e:
+            app.logger.warning(f"[DASH] failed live quote for {symbol}: {e}")
+            last_price = _   # fall back to whatever was in the DB
+
         gain_per_share = last_price - avg_cost
         total_gain     = round(gain_per_share * qty, 2)
         day_gain       = round(gain_per_share, 2)
-        # NEW: compute pct change
         change_pct     = round((gain_per_share / avg_cost * 100), 1) if avg_cost else 0.0
 
         holdings.append({
@@ -1427,30 +1433,26 @@ def index():
             "qty":        qty,
             "price_paid": avg_cost,
             "last_price": last_price,
-            "day_gain":   day_gain,       # per‑share gain
-            "change_pct": change_pct,     # percent gain
-            "total_gain": total_gain,     # total position P/L
+            "day_gain":   day_gain,
+            "change_pct": change_pct,
+            "total_gain": total_gain,
             "value":      round(last_price * qty, 2),
         })
 
-    # 4) Load any JSON‑based config you need
-    with open(CONFIG_PATH) as f:
-        config = json.load(f)
-
-    # 5) Fetch cash + P/L metrics from our in‑memory rows
-    cash           = round(get_cash(), 2)
+    cash         = round(get_cash(), 2)
     unrealized_pnl = round(sum(h["total_gain"] for h in holdings), 2)
     realized_pnl   = round(get_realized_pl(), 2)
+    config = json.load(open(CONFIG_PATH))
 
-    # 6) Render your template
     return render_template(
         "simulation.html",
         holdings=holdings,
-        config=config,
         cash=cash,
         unrealized_pnl=unrealized_pnl,
         realized_pnl=realized_pnl,
+        config=config,
     )
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
