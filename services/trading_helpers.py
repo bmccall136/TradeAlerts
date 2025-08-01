@@ -373,8 +373,13 @@ def seconds_until_open() -> float:
     setup_simulation_db()
     raw = get_holdings()
     cash           = round(get_cash(), 2)
-    # use the live total_gain we just calculated, not the DB
+    # Use the live total_gain we just calculated, not the DB
     unrealized_pnl = round(sum(h["total_gain"] for h in holdings), 2)
+
+    # Calculate total cost basis for all current holdings
+    cost_basis = sum(h["qty"] * h["price_paid"] for h in holdings)
+    unrealized_pnl_pct = round((unrealized_pnl / cost_basis * 100), 2) if cost_basis else 0.0
+
 def check_if_position_open(symbol: str) -> bool:
     return get_position_qty(symbol) > 0
 def refresh_holdings_prices():

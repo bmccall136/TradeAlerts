@@ -1005,6 +1005,7 @@ def simulation():
         'simulation.html',
         cash=cash,
         unrealized_pnl=unrealized_pnl,
+        unrealized_pnl_pct=unrealized_pnl_pct,
         realized_pnl=realized_pnl,
         holdings=formatted_holdings,
         history=formatted_trades
@@ -1205,6 +1206,8 @@ def simulation_view():
 
     # 4) compute header Unrealized P&L from the fresh total_gain values
     unrealized_pnl = round(sum(h["total_gain"] for h in holdings), 2)
+    cost_basis = sum(h["qty"] * h["price_paid"] for h in holdings)
+    unrealized_pnl_pct = round((unrealized_pnl / cost_basis * 100), 2) if cost_basis else 0.0
 
     # 5) rebuild trade history so `history` exists
     history = []
@@ -1227,6 +1230,7 @@ def simulation_view():
         "simulation.html",
         cash=cash,
         unrealized_pnl=unrealized_pnl,
+        unrealized_pnl_pct=unrealized_pnl_pct,
         realized_pnl=realized,
         holdings=holdings,
         history=history
@@ -1474,6 +1478,7 @@ def index():
         cash=cash,
         unrealized_pnl=unrealized_pnl,
         realized_pnl=realized_pnl,
+        unrealized_pnl_pct=unrealized_pnl_pct,
         history=history,
         config=config,
     )

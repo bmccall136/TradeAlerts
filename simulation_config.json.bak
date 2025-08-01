@@ -45,7 +45,7 @@
   "gap_on": true,
   "gap_pct": 1.5,
 
-  "single_entry_only": false,
+  "single_entry_only": true,
   "use_trailing_stop": true,
   "trailing_stop_pct": 0.12,
 
@@ -58,7 +58,7 @@
   "nuke_db": false,
   "poll_interval": 5.0,
 
-  "required_filters": ["adx","macd"],
+  "required_filters": ["adx","macd","super"],
 
 
   "adx_on": true,

@@ -155,6 +155,9 @@ except Exception as e:
     print(f"[WARN] Unicode font load failed ({e}), falling back to Helvetica")
     unicode_font_name = 'Helvetica'
 # ─────────────────────────────────────────────────────────────────────
+unrealized_pnl = round(sum(h["total_gain"] for h in holdings), 2)
+cost_basis = sum(h["qty"] * h["price_paid"] for h in holdings)
+unrealized_pnl_pct = round((unrealized_pnl / cost_basis * 100), 2) if cost_basis else 0.0
 
 # Pick a Unicode font path based on platform
 if os.name == 'nt':  # Windows
@@ -1005,6 +1008,7 @@ def simulation():
         'simulation.html',
         cash=cash,
         unrealized_pnl=unrealized_pnl,
+        unrealized_pnl_pct=unrealized_pnl_pct,
         realized_pnl=realized_pnl,
         holdings=formatted_holdings,
         history=formatted_trades
@@ -1205,6 +1209,8 @@ def simulation_view():
 
     # 4) compute header Unrealized P&L from the fresh total_gain values
     unrealized_pnl = round(sum(h["total_gain"] for h in holdings), 2)
+    cost_basis = sum(h["qty"] * h["price_paid"] for h in holdings)
+    unrealized_pnl_pct = round((unrealized_pnl / cost_basis * 100), 2) if cost_basis else 0.0
 
     # 5) rebuild trade history so `history` exists
     history = []
@@ -1227,6 +1233,7 @@ def simulation_view():
         "simulation.html",
         cash=cash,
         unrealized_pnl=unrealized_pnl,
+        unrealized_pnl_pct=unrealized_pnl_pct,
         realized_pnl=realized,
         holdings=holdings,
         history=history
@@ -1395,47 +1402,60 @@ def export_backtest():
         headers={"Content-Disposition":"attachment;filename=backtest.csv"},
     )
 
-from flask import redirect, url_for
-
+import sqlite3
 import json
 from flask import render_template
+from services.settings_schema import SIM_DB_PATH
 from services.trading_helpers import (
-    setup_simulation_db,
-    get_holdings,
-    get_cash,
-    get_realized_pl
+    setup_simulation_db, get_holdings, get_cash, get_realized_pl
 )
+from services.etrade_service import fetch_etrade_quote
 
 CONFIG_PATH = Path(__file__).parent / "simulation_config.json"
-
 
 @app.route("/")
 def index():
     # ensure DB + seed
     setup_simulation_db()
 
-    # --- your holdings logic (already here) ---
+    # ─── holdings ───────────────────────────────────────────────────────
     raw = get_holdings()
     holdings = []
     for symbol, qty, avg_cost, _ in raw:
-        # fetch live price… (omitted for brevity)
+        # fetch live price (fall back to stored last_price)
+        try:
+            last_price = fetch_etrade_quote(symbol)
+        except Exception:
+            last_price = _
+
+        gain_per_share = last_price - avg_cost
+        holdings.append({
+            "symbol":     symbol,
+            "qty":        qty,
+            "price_paid": avg_cost,
+            "last_price": last_price,
+            "day_gain":   round(gain_per_share, 2),
+            "change_pct": round((gain_per_share / avg_cost * 100), 1) if avg_cost else 0.0,
+            "total_gain": round(gain_per_share * qty, 2),
+            "value":      round(last_price * qty, 2),
+        })
 
     cash           = round(get_cash(), 2)
     unrealized_pnl = round(sum(h["total_gain"] for h in holdings), 2)
-    realized_pnl   = round(get_realized_pl(),   2)
+    realized_pnl   = round(get_realized_pl(), 2)
     config         = json.load(open(CONFIG_PATH))
 
-    # --- new: load last 50 trades from simulation_trades ---
+    # ─── load recent trades ─────────────────────────────────────────────
     conn = sqlite3.connect(SIM_DB_PATH)
     cur  = conn.cursor()
     cur.execute("""
       SELECT
-        trade_time   AS time,
+        trade_time AS time,
         symbol,
         action,
         qty,
         price,
-        pnl          AS pl
+        pnl        AS pl
       FROM simulation_trades
       ORDER BY trade_time DESC
       LIMIT 50;
@@ -1444,15 +1464,15 @@ def index():
     conn.close()
 
     history = [
-      {
-        "time":   t[0],
-        "symbol": t[1],
-        "action": t[2],
-        "qty":    t[3],
-        "price":  t[4],
-        "pl":     t[5],
-      }
-      for t in rows
+        {
+            "time":   row[0],
+            "symbol": row[1],
+            "action": row[2],
+            "qty":    row[3],
+            "price":  row[4],
+            "pl":     row[5],
+        }
+        for row in rows
     ]
 
     return render_template(
@@ -1461,10 +1481,10 @@ def index():
         cash=cash,
         unrealized_pnl=unrealized_pnl,
         realized_pnl=realized_pnl,
+        unrealized_pnl_pct=unrealized_pnl_pct,
         history=history,
         config=config,
     )
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

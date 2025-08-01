@@ -58,7 +58,7 @@
   "nuke_db": false,
   "poll_interval": 5.0,
 
-  "required_filters": ["adx","macd","super"],
+  "required_filters": ["adx","macd"],
 
 
   "adx_on": true,
