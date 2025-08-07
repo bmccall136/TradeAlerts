@@ -1329,121 +1329,125 @@ def simulation_view():
     
     # 2) pull raw holdings (as tuples)
     raw = get_holdings()  # (symbol, qty, avg_cost, old_last_price)
-    # 3) convert to dicts, one dict per holding
+    
+    # 3) convert to dicts
     holdings = [{
         "symbol":     s,
         "qty":        q,
         "price_paid": ac,
         "last_price": lp,
-        "day_gain":   None,
-        "total_gain": None,
-        "change_pct": None,
-        "value":      None,
+        "day_gain":   0.0,
+        "total_gain": 0.0,
+        "change_pct": 0.0,
+        "value":      0.0,
     } for s, q, ac, lp in raw]
 
     from services.trading_helpers import extract_total_gain, extract_cost_basis
 
     # --- Now update each holding with live prices ---
     for h in holdings:
-        # Always start with safe defaults!
         change = 0.0
-        prev_close = 0.0
+        last_close = None
+        prev_close = None
 
         try:
-            symbol = h["symbol"]
-            qty = h["qty"]
-            price_paid = h["price_paid"]
+            symbol     = h["symbol"]
+            qty        = h["qty"]
+            price_paid = float(h["price_paid"])
 
-            live = fetch_etrade_quote(symbol) or price_paid
+            # 1) Try live
+            live = fetch_etrade_quote(symbol)
 
+            # 2) Pull recent closes
             hist = fetch_data_with_timeout(symbol, "2d")
-
-            # --- SAFETY: Normalize columns for pandas MultiIndex or non-string ---
             if hist is not None:
                 if isinstance(hist.columns, pd.MultiIndex):
                     hist.columns = hist.columns.get_level_values(-1)
                 hist.columns = [str(c) for c in hist.columns]
-
-            prev_close = price_paid  # Default fallback
-
-            if hist is not None and len(hist) > 1:
-                # Find "close" column, case-insensitive
-                col_close = next((c for c in hist.columns if str(c).lower() == "close"), None)
+                col_close = next((c for c in hist.columns if c.lower() == "close"), None)
                 if col_close:
-                    prev_close = float(hist[col_close].iloc[-2])
+                    if len(hist) >= 1:
+                        last_close = float(hist[col_close].iloc[-1])
+                    if len(hist) >= 2:
+                        prev_close = float(hist[col_close].iloc[-2])
 
-            change = live - price_paid
+            # 3) Choose display price
+            display_price = (
+                (live if live not in (None, 0) else None)
+                or last_close
+                or prev_close
+                or price_paid
+            )
 
-            h["last_price"] = round(live, 2)
-            h["total_gain"] = round(change * qty, 2)
-            h["day_gain"]   = round((live - prev_close) * qty, 2)
-            h["change_pct"] = round((change / price_paid * 100) if price_paid else 0, 1)
-            h["value"]      = round(live * qty, 2)
+            # 4) Compute daily change
+            if (live not in (None, 0)) and (last_close is not None):
+                day_delta = display_price - last_close
+                day_base  = last_close
+            else:
+                day_base  = last_close if last_close is not None else price_paid
+                ref_prev  = prev_close if prev_close is not None else day_base
+                day_delta = day_base - ref_prev
+
+            change_day     = float(day_delta)
+            change_day_pct = (change_day / day_base * 100.0) if day_base else 0.0
+            day_gain       = change_day * qty
+
+            # 5) Total (unrealized) P&L
+            total_gain = (display_price - price_paid) * qty
+
+            # 6) Fill the row
+            h["last_price"] = round(float(display_price), 2)
+            h["change"]     = round(change_day, 2)
+            h["change_pct"] = round(change_day_pct, 1)
+            h["day_gain"]   = round(float(day_gain), 2)
+            h["total_gain"] = round(float(total_gain), 2)
+            h["value"]      = round(float(display_price) * qty, 2)
 
         except Exception as e:
-            print(f"[SIM] Error updating holding {h}: {e}")
-            # Set all fields to safe values
-            if isinstance(h, dict):
-                h["last_price"] = h.get("last_price", 0)
-                h["total_gain"] = 0.0
-                h["day_gain"]   = 0.0
-                h["change_pct"] = 0.0
-                h["value"]      = 0.0
-            # If you need 'change' outside, set it:
-            change = 0.0
+            print(f"[SIM] Error updating holding {h.get('symbol', '?')}: {e}")
+            h.setdefault("last_price", float(h.get("last_price") or h.get("price_paid") or 0.0))
+            h.setdefault("total_gain", 0.0)
+            h.setdefault("day_gain",   0.0)
+            h.setdefault("change",     0.0)
+            h.setdefault("change_pct", 0.0)
+            h.setdefault("value",      h["last_price"] * float(h.get("qty", 0) or 0))
+        # --- SUMMARY NUMBERS (after the for h in holdings loop) ---
+        total_cost_basis = sum(h["qty"] * float(h["price_paid"]) for h in holdings)
+        unrealized_pnl   = round(sum(float(h.get("total_gain") or 0.0) for h in holdings), 2)
+        unrealized_pnl_pct = round(unrealized_pnl / total_cost_basis * 100, 2) if total_cost_basis else 0.0
 
-    # If you use/change 'change' after the loop, it's always defined now!
+        # --- TRADE HISTORY (so realized P&L exists) ---
+        history = []
+        for t in get_trades():
+            if isinstance(t, dict):
+                pl_val = float(t.get("pl") or t.get("pnl") or 0.0)
+                trade_time = t.get("trade_time") or t.get("timestamp") or t.get("time")
+                history.append({
+                    "time": format_trade_time(trade_time),
+                    "symbol": t.get("symbol"),
+                    "action": t.get("action"),
+                    "qty":    t.get("qty"),
+                    "price":  t.get("price"),
+                    "pl":     pl_val,
+                })
+            else:
+                trade_time, symbol, action, qty, price, pl = t[:6]
+                try:
+                    pl_val = float(pl)
+                except (TypeError, ValueError):
+                    pl_val = 0.0
+                history.append({
+                    "time": format_trade_time(trade_time),
+                    "symbol": symbol, "action": action, "qty": qty, "price": price, "pl": pl_val
+                })
 
-    # 4) Now safely compute summary/header numbers
-    unrealized_pnl = round(sum((h.get("total_gain") or 0) for h in holdings), 2)
-    total_cost_basis = sum(h["qty"] * h["price_paid"] for h in holdings)
-    unrealized_pnl_pct = round((unrealized_pnl / total_cost_basis * 100), 2) if total_cost_basis else 0.0
+        realized_pnl = sum(t["pl"] for t in history if t.get("action") == "SELL")
 
-    # 5) rebuild trade history so `history` exists
-    history = []
-    for t in get_trades():
-        # handle tuple or dict
-        if isinstance(t, dict):
-            pl_val = float(t.get("pl") or t.get("pnl") or 0)
-            trade_time = t.get("trade_time") or t.get("timestamp") or t.get("time")
-            history.append({
-                "time": format_trade_time(trade_time),  # <-- CORRECT
-                "symbol": t.get("symbol"),
-                "action": t.get("action"),
-                "qty":    t.get("qty"),
-                "price":  t.get("price"),
-                "pl":     pl_val,
-            })
+        from services.simulation_service import load_simulation_settings
+        settings = load_simulation_settings()
 
-        else:  # tuple or list
-            trade_time, symbol, action, qty, price, pl = t[:6]
-            try:
-                pl_val = float(pl)
-            except (TypeError, ValueError):
-                pl_val = 0.0
-            history.append({
-                "time": format_trade_time(trade_time),
-                "symbol": symbol,
-                "action": action,
-                "qty":    qty,
-                "price":  price,
-                "pl":     pl_val,
-            })
-
-    # 6) now sum realized P&L safely (history now exists)
-    realized_pnl = sum(t["pl"] for t in history if t.get("action") == "SELL")
-    from services.simulation_service import load_simulation_settings
-    settings = load_simulation_settings()
-    print("DEBUG: Simulation route called, settings:", settings)
-    # Calculate total buy cost
-    total_buy_cost = sum(
-        t["qty"] * t["price"] 
-        for t in history if t["action"] == "BUY"
-    )
-
-    realized_pnl_pct = (
-        (realized_pnl / total_buy_cost * 100) if total_buy_cost else 0.0
-    )
+        total_buy_cost = sum((t["qty"] or 0) * (t["price"] or 0.0) for t in history if t["action"] == "BUY")
+        realized_pnl_pct = round(realized_pnl / total_buy_cost * 100, 2) if total_buy_cost else 0.0
 
     # 7) finally render
     return render_template(
@@ -1454,10 +1458,9 @@ def simulation_view():
         realized_pnl=realized_pnl,
         holdings=holdings,
         history=history,
-        settings=settings,  # ← must be here!
+        settings=settings,
         realized_pnl_pct=realized_pnl_pct,
     )
-    
 @app.route("/simulation/buy", methods=["POST"])
 def simulation_buy():
     try:
