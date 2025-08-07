@@ -14,6 +14,8 @@ from dateutil.relativedelta import relativedelta
 from collections import namedtuple
 from types import SimpleNamespace
 from services.etrade_service import fetch_etrade_quote
+from services.simulation_service import analyze_symbol, _is_market_open
+from services.simulation_service import load_simulation_settings
 
 # Path to your JSON config (adjust filename if different)
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "simulation_config.json")
@@ -34,6 +36,7 @@ from collections import namedtuple
 from types import SimpleNamespace
 from flask import request, redirect, url_for, render_template
 from flask import Flask, render_template, request, redirect, url_for
+import pandas as pd
 
 # import all label dicts from centralized config
 from services.label_config import (
@@ -231,6 +234,8 @@ KEY_OAUTH_TOKEN_SECRET  = 'OAUTH_TOKEN_SECRET'
 
 # ─── OAuth routes ────────────────────────────────────────────
 from requests_oauthlib import OAuth1Session
+print("LOADING settings_service.py from", __file__)
+
 @app.route('/oauth_callback')
 def oauth_callback():
     # TODO: implement OAuth callback handling
@@ -1010,6 +1015,9 @@ def simulation():
         holdings=formatted_holdings,
         history=formatted_trades
     )
+@app.route('/simulation/status')
+def simulation_status():
+    return jsonify({"status": "ok", "market_open": True}), 200
 
 
 @app.route('/export/simulation')
@@ -1018,20 +1026,68 @@ def export_simulation():
     holdings = get_holdings()
     trades   = get_trades()
 
+    # --- Helper for formatting trade times ---
+    def format_trade_time(ts):
+        from datetime import datetime
+        if isinstance(ts, datetime):
+            return ts.strftime('%Y-%m-%d %H:%M:%S')
+        try:
+            dt = datetime.fromisoformat(str(ts))
+            return dt.strftime('%Y-%m-%d %H:%M:%S')
+        except Exception:
+            return str(ts).split('.')[0]
+
     # ---- Prepare holdings as dicts for calculations ----
     holding_dicts = []
     for h in holdings:
+        # Accept both dict and tuple formats
         if isinstance(h, dict):
-            holding_dicts.append(h)
+            symbol = h['symbol']
+            qty = h['qty']
+            price_paid = h['price_paid']
         else:
-            # Assuming tuple: (symbol, qty, price_paid, last_price)
-            s, q, ac, lp = h[:4]
-            holding_dicts.append({
-                "symbol":     s,
-                "qty":        q,
-                "price_paid": ac,
-                "last_price": lp,
-            })
+            symbol, qty, price_paid, _ = h[:4]
+
+        try:
+            # Get live price
+            last_price = fetch_etrade_quote(symbol) or 0.0
+
+            # Get previous close (for day gain)
+            hist = fetch_data_with_timeout(symbol, "2d")
+            if hist is not None:
+                print(f"{symbol}: hist['close'] = {hist['close'].to_list()}")
+                print(f"{symbol}: prev_close = {hist['close'].iloc[-2] if len(hist) > 1 else 'N/A'}")
+                print(f"{symbol}: price_paid = {price_paid}")
+            logger.debug(f"{symbol} close history for 2d: {hist['close'].to_list() if hist is not None else 'None'}")
+            # Use correct column name (case-sensitive!)
+            col_close = next((c for c in hist.columns if c.lower() == "close"), "Close")
+            if hist is not None and len(hist) > 1 and col_close in hist.columns:
+                prev_close = float(hist[col_close].iloc[-2])
+            else:
+                prev_close = h["price_paid"]
+
+
+            change = last_price - price_paid
+            day_gain = (last_price - prev_close) * qty
+            total_gain = (last_price - price_paid) * qty
+            change_pct = (change / price_paid * 100) if price_paid else 0
+            value = last_price * qty
+
+        except Exception:
+            last_price = price_paid
+            day_gain = total_gain = change_pct = value = 0.0
+
+        holding_dicts.append({
+            "symbol": symbol,
+            "qty": qty,
+            "price_paid": price_paid,
+            "last_price": last_price,
+            "change": change,
+            "change_pct": change_pct,
+            "day_gain": day_gain,
+            "total_gain": total_gain,
+            "value": value,
+        })
 
     # ---- Update holdings with live prices & gain calculations ----
     for h in holding_dicts:
@@ -1052,8 +1108,9 @@ def export_simulation():
     for t in trades:
         if isinstance(t, dict):
             pl_val = float(t.get("pl") or t.get("pnl") or 0)
+            trade_time = t.get("trade_time") or t.get("timestamp") or t.get("time")
             history.append({
-                "time":   t.get("timestamp") or t.get("time"),
+                "time": format_trade_time(trade_time),  # <-- CORRECT
                 "symbol": t.get("symbol"),
                 "action": t.get("action"),
                 "qty":    t.get("qty"),
@@ -1067,7 +1124,7 @@ def export_simulation():
             except (TypeError, ValueError):
                 pl_val = 0.0
             history.append({
-                "time":   trade_time,
+                "time":   format_trade_time(trade_time),
                 "symbol": symbol,
                 "action": action,
                 "qty":    qty,
@@ -1139,7 +1196,6 @@ def export_simulation():
     resp.headers["Content-Disposition"] = "attachment; filename=simulation.csv"
     resp.headers["Content-type"] = "text/csv"
     return resp
-
 @app.route('/start_scanner', methods=['POST'])
 def start_scanner():
     global _is_scanner_running
@@ -1260,19 +1316,32 @@ from services.trading_helpers import (
     get_realized_pl,
 )
 
+from services.data_fetch import fetch_data_with_timeout  # Move this to the top of your file
+
 @app.route("/simulation")
 def simulation_view():
+    # --- Helper for formatting trade times ---
+    def format_trade_time(ts):
+        from datetime import datetime
+        if isinstance(ts, datetime):
+            return ts.strftime('%Y-%m-%d %H:%M:%S')
+        try:
+            dt = datetime.fromisoformat(str(ts))
+            return dt.strftime('%Y-%m-%d %H:%M:%S')
+        except Exception:
+            return str(ts).split('.')[0]
+
     # 1) pull cash & realized P/L
     cash     = get_cash()
     realized = get_realized_pl()
-
-    # 2) pull raw holdings
+    
+    # 2) pull raw holdings (as tuples)
     raw = get_holdings()  # (symbol, qty, avg_cost, old_last_price)
+    # 3) convert to dicts, one dict per holding
     holdings = [{
         "symbol":     s,
         "qty":        q,
         "price_paid": ac,
-        # placeholders to be overwritten
         "last_price": lp,
         "day_gain":   None,
         "total_gain": None,
@@ -1280,22 +1349,52 @@ def simulation_view():
         "value":      None,
     } for s, q, ac, lp in raw]
 
-    # 3) punch in live prices & recalc each row
+    from services.trading_helpers import extract_total_gain, extract_cost_basis
+
+    # --- Now update each holding with live prices ---
     for h in holdings:
         try:
-            live = fetch_etrade_quote(h["symbol"]) or 0.0
-            change = live - h["price_paid"]
-            h["last_price"] = round(live, 2)
-            h["total_gain"] = round(change * h["qty"], 2)
-            h["day_gain"]   = h["total_gain"]
-            h["change_pct"] = round((change / h["price_paid"] * 100) if h["price_paid"] else 0, 1)
-            h["value"]      = round(live * h["qty"], 2)
-        except Exception:
-            # leave the placeholders if the quote fails
-            pass
+            symbol = h["symbol"]
+            qty = h["qty"]
+            price_paid = h["price_paid"]
 
-    # 4) compute header Unrealized P&L from the fresh total_gain values
-    unrealized_pnl = round(sum(h["total_gain"] for h in holdings), 2)
+            live = fetch_etrade_quote(symbol) or price_paid
+
+            hist = fetch_data_with_timeout(symbol, "2d")
+
+            # --- SAFETY: Normalize columns for pandas MultiIndex or non-string ---
+            if hist is not None:
+                if isinstance(hist.columns, pd.MultiIndex):
+                    hist.columns = hist.columns.get_level_values(-1)
+                hist.columns = [str(c) for c in hist.columns]
+
+            prev_close = price_paid  # Default fallback
+
+            if hist is not None and len(hist) > 1:
+                # Find "close" column, case-insensitive
+                col_close = next((c for c in hist.columns if str(c).lower() == "close"), None)
+                if col_close:
+                    prev_close = float(hist[col_close].iloc[-2])
+
+            change = live - price_paid
+
+            h["last_price"] = round(live, 2)
+            h["total_gain"] = round(change * qty, 2)
+            h["day_gain"]   = round((live - prev_close) * qty, 2)
+            h["change_pct"] = round((change / price_paid * 100) if price_paid else 0, 1)
+            h["value"]      = round(live * qty, 2)
+
+        except Exception as e:
+            print(f"[SIM] Error updating holding {h}: {e}")
+            if isinstance(h, dict):
+                h["last_price"] = h.get("last_price", 0)
+                h["total_gain"] = 0
+                h["day_gain"] = 0
+                h["change_pct"] = 0
+                h["value"] = 0
+
+    # 4) Now safely compute summary/header numbers
+    unrealized_pnl = round(sum((h.get("total_gain") or 0) for h in holdings), 2)
     total_cost_basis = sum(h["qty"] * h["price_paid"] for h in holdings)
     unrealized_pnl_pct = round((unrealized_pnl / total_cost_basis * 100), 2) if total_cost_basis else 0.0
 
@@ -1305,14 +1404,16 @@ def simulation_view():
         # handle tuple or dict
         if isinstance(t, dict):
             pl_val = float(t.get("pl") or t.get("pnl") or 0)
+            trade_time = t.get("trade_time") or t.get("timestamp") or t.get("time")
             history.append({
-                "time":   t.get("timestamp") or t.get("time"),
+                "time": format_trade_time(trade_time),  # <-- CORRECT
                 "symbol": t.get("symbol"),
                 "action": t.get("action"),
                 "qty":    t.get("qty"),
                 "price":  t.get("price"),
                 "pl":     pl_val,
             })
+
         else:  # tuple or list
             trade_time, symbol, action, qty, price, pl = t[:6]
             try:
@@ -1320,7 +1421,7 @@ def simulation_view():
             except (TypeError, ValueError):
                 pl_val = 0.0
             history.append({
-                "time":   trade_time,
+                "time": format_trade_time(trade_time),
                 "symbol": symbol,
                 "action": action,
                 "qty":    qty,
@@ -1330,7 +1431,8 @@ def simulation_view():
 
     # 6) now sum realized P&L safely (history now exists)
     realized_pnl = sum(t["pl"] for t in history if t.get("action") == "SELL")
-
+    from services.simulation_service import load_simulation_settings
+    settings = load_simulation_settings()
     # 7) finally render
     return render_template(
         "simulation.html",
@@ -1339,9 +1441,10 @@ def simulation_view():
         unrealized_pnl_pct=unrealized_pnl_pct,
         realized_pnl=realized_pnl,
         holdings=holdings,
-        history=history
+        history=history,
+        settings=settings
     )
-
+    
 @app.route("/simulation/buy", methods=["POST"])
 def simulation_buy():
     try:
@@ -1519,6 +1622,16 @@ CONFIG_PATH = Path(__file__).parent / "simulation_config.json"
 @app.route("/")
 def index():
     setup_simulation_db()
+            # --- Helper for formatting trade times ---
+    def format_trade_time(ts):
+        from datetime import datetime
+        if isinstance(ts, datetime):
+            return ts.strftime('%Y-%m-%d %H:%M:%S')
+        try:
+            dt = datetime.fromisoformat(str(ts))
+            return dt.strftime('%Y-%m-%d %H:%M:%S')
+        except Exception:
+            return str(ts).split('.')[0]
 
     # holdings
     raw = get_holdings()
@@ -1541,7 +1654,7 @@ def index():
         })
 
     cash = round(get_cash(), 2)
-    unrealized_pnl = round(sum(h["total_gain"] for h in holdings), 2)
+    unrealized_pnl = round(sum((h.get("total_gain") or 0) if isinstance(h, dict) else 0 for h in holdings), 2)
     total_cost_basis = sum(h["qty"] * h["price_paid"] for h in holdings)
     unrealized_pnl_pct = round((unrealized_pnl / total_cost_basis * 100), 2) if total_cost_basis else 0.0
     config = json.load(open(CONFIG_PATH))
@@ -1563,9 +1676,19 @@ def index():
     """)
     rows = cur.fetchall()
     conn.close()
+    def format_trade_time(ts):
+        from datetime import datetime
+        if isinstance(ts, datetime):
+            return ts.strftime('%Y-%m-%d %H:%M:%S')
+        try:
+            dt = datetime.fromisoformat(str(ts))
+            return dt.strftime('%Y-%m-%d %H:%M:%S')
+        except Exception:
+            return str(ts).split('.')[0]
+
     history = [
         {
-            "time":   row[0],
+            "time":   format_trade_time(row[0]),   # <--- fix!
             "symbol": row[1],
             "action": row[2],
             "qty":    row[3],

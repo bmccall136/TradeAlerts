@@ -7,6 +7,9 @@ import os
 # Path to your simulation DB (alerts.db sitting in the project root)
 SIM_DB_PATH = os.path.join(os.path.dirname(__file__), os.pardir, "simulation.db")
 
+from dataclasses import dataclass, field
+from typing import List, Optional
+
 @dataclass
 class SimulationSettings:
     # ─── Core toggles ────────────────────────────────────────────────────────
@@ -50,36 +53,42 @@ class SimulationSettings:
     gap_on:           bool    = False
     gap_pct:          float   = 1.0
 
-    adx_on: bool = False
-    adx_len: int  = 14
-    adx_threshold: float = 20.0
-    
-    super_on:           bool = False
-    super_fast:         int  = 7
-    super_slow:         int  = 21
-    super_signal:       int  = 5
+    adx_on:           bool    = False
+    adx_len:          int     = 14
+    adx_threshold:    float   = 20.0
+
+    super_on:         bool    = False
+    super_fast:       int     = 7
+    super_slow:       int     = 21
+    super_signal:     int     = 5
 
     # ─── Risk & exit rules ───────────────────────────────────────────────────
-    trailing_stop_pct: float = 0.05
-    stop_loss_pct:     float = 0.03
-    take_profit_pct:   float = 0.07
-    sell_after_days:   Optional[int] = None
-    single_entry_only: bool          = True
-    use_trailing_stop: bool          = True
+    trailing_stop_pct: float          = 12      # now matches your JSON (was 0.05)
+    stop_loss_pct:     float          = 5
+    take_profit_pct:   float          = 12
+    sell_after_days:   Optional[int]  = 1
+    single_entry_only: bool           = False
+    use_trailing_stop: bool           = True
+    max_pyramids:      int            = 3
+    account_type:      str            = "cash"
 
     # ─── Run‑control flags & sizing ─────────────────────────────────────────
-    nuke_db:                  bool  = False
-    pause_when_market_closed: bool  = True
-    max_per_trade:            float = 1000.0
-    poll_interval:            float = 60.0
-    min_signals:              int   = 1    # minimum triggers before action
+    nuke_db:                  bool    = False
+    pause_when_market_closed:  bool    = True
+    max_per_trade:            float   = 150
+    poll_interval:            float   = 5.0
+    min_signals:              int     = 3    # minimum triggers before action
 
     # ─── Starting capital & optional timeframe ──────────────────────────────
-    starting_cash:    float         = 10000.0
+    starting_cash:    float         = 1000
     timeframe:        Optional[str] = None
 
     # ─── Required filters (custom logic) ────────────────────────────────────
     required_filters: List[str] = field(default_factory=list)
+    
+    # ─── Strict Buy Logic ───────────────────────────────────────────────────
+    strict_buy_signals: int = 4
+    require_sma20: bool = True
 
 def extract_simulation_settings(args: dict) -> SimulationSettings:
     """

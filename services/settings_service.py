@@ -1,12 +1,14 @@
-import os
 import json
-from peewee import Model, SqliteDatabase, TextField, IntegerField
+import os
+from peewee import SqliteDatabase, Model, IntegerField, TextField, BooleanField, FloatField
 
-DB = SqliteDatabase(os.path.join(os.getcwd(), 'settings.db'))
+# ... rest as before
+DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'settings.db'))
+DB = SqliteDatabase(DB_PATH)
 
 class BaseModel(Model):
     class Meta:
-       database = DB
+        database = DB
 
 class Settings(BaseModel):
     id   = IntegerField(primary_key=True, default=1)

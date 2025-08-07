@@ -1,27 +1,33 @@
-import sqlite3
-from pathlib import Path
 from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
-import pandas_market_calendars as mcal
-from services.data_fetch import fetch_data_with_timeout, fetch_intraday_vwap
-from datetime import datetime
-from pytz import timezone
 
-# define “ET” once, at module scope
-ET = timezone("US/Eastern")
+# Cross-version safe Eastern Time zone (ET)
+try:
+    from zoneinfo import ZoneInfo
+    ET = ZoneInfo("America/New_York")
+except ImportError:
+    try:
+        import pytz
+        ET = pytz.timezone("US/Eastern")
+    except ImportError:
+        ET = timezone.utc  # fallback, UTC
+
+import pandas_market_calendars as mcal
+import pandas as pd
+import sqlite3
+import logging
+from pathlib import Path
+from services.data_fetch import fetch_data_with_timeout, fetch_intraday_vwap
+from services.etrade_service import fetch_etrade_quote
+from settings import SIMULATION_DB
+
+logger = logging.getLogger("sim")
 
 # Database path (project root)
 DB_PATH = Path(__file__).resolve().parent.parent / "simulation.db"
 
-# Timezone and market calendar
-ET = ZoneInfo("America/New_York")
+# Market calendar (NYSE)
 nyse = mcal.get_calendar("NYSE")
 
-from datetime import datetime, time
-import pandas as pd
-from pytz import timezone
-
-ET = timezone("US/Eastern")
 
 def _has_headlines(src):
     if hasattr(src, "empty"):
@@ -150,10 +156,23 @@ def insert_trade(symbol: str, action: str, price: float, qty: int,
     conn.commit()
     conn.close()
 
+def get_trades(limit: int = 100):
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT trade_time, symbol, action, qty, price, pnl FROM simulation_trades ORDER BY trade_time DESC LIMIT ?;",
+        (limit,)
+    )
+    rows = cur.fetchall()
+    conn.close()
+    # Make rows into dicts for easy lookup
+    keys = ["trade_time", "symbol", "action", "qty", "price", "pnl"]
+    return [dict(zip(keys, row)) for row in rows]
+
 # ─── Holdings management ─────────────────────────────────
 def insert_or_update_holding(symbol: str, qty: int, avg_cost: float, last_price: float):
     """
-    Upsert into holdings: adjust qty and recompute avg_cost for buys.
+    Upsert into holdings: adjust qty and recompute avg_cost for buys. Delete if qty is zero or less.
     """
     conn = _connect()
     cur = conn.cursor()
@@ -172,10 +191,12 @@ def insert_or_update_holding(symbol: str, qty: int, avg_cost: float, last_price:
         else:
             cur.execute("DELETE FROM holdings WHERE symbol=?;", (symbol,))
     else:
-        cur.execute(
-            "INSERT INTO holdings(symbol, qty, avg_cost, last_price) VALUES (?,?,?,?);",
-            (symbol, qty, avg_cost, last_price)
-        )
+        if qty > 0:
+            cur.execute(
+                "INSERT INTO holdings(symbol, qty, avg_cost, last_price) VALUES (?,?,?,?);",
+                (symbol, qty, avg_cost, last_price)
+            )
+        # If qty <= 0 and not in DB, do nothing.
     conn.commit()
     conn.close()
 
@@ -201,14 +222,26 @@ def buy_stock(symbol: str, qty: int, price: float, trade_time: str = None):
     insert_or_update_holding(symbol, qty, avg_cost=price, last_price=price)
 
 
-def sell_stock(symbol: str, qty: int, price: float, trade_time: str = None):
+def sell_stock(symbol: str, qty: int = None, price: float = None, trade_time: str = None):
+    """
+    Sells 'qty' shares of 'symbol' at 'price'. If qty or price not provided, sells all at last price.
+    """
+    holding = get_position(symbol)  # Should return a dict like {'qty': ..., 'last_price': ...}
+    if not holding or holding.get("qty", 0) <= 0:
+        raise RuntimeError(f"No holdings to sell for {symbol}!")
+
+    if qty is None or qty <= 0:
+        qty = holding["qty"]
+    if price is None:
+        price = holding.get("last_price") or get_etrade_price(symbol) or 0.0
+
     proceeds = qty * price
     set_cash(get_cash() + proceeds)
     avg = get_avg_cost(symbol)
     pnl = (price - avg) * qty
+
     insert_trade(symbol, 'SELL', price, qty, pnl, trade_time)
     insert_or_update_holding(symbol, qty=-qty, avg_cost=avg, last_price=price)
-
 # ─── Backtest helpers ─────────────────────────────────────
 def init_backtest_db():
     """
@@ -251,6 +284,9 @@ def get_holdings():
 
 
 def get_trades(limit: int = 100):
+    """
+    Fetches trades as a list of dicts for easier use.
+    """
     conn = _connect()
     cur = conn.cursor()
     cur.execute(
@@ -261,19 +297,24 @@ def get_trades(limit: int = 100):
     )
     rows = cur.fetchall()
     conn.close()
-    return rows
+    columns = ["trade_time", "symbol", "action", "qty", "price", "pnl"]
+    # Return list of dicts:
+    return [dict(zip(columns, row)) for row in rows]
 
 
-def get_positions():
-    conn = _connect()
+def get_position(symbol):
+    """
+    Return holding info for 'symbol' from SIM DB as {'qty': ..., 'last_price': ...}
+    """
+    import sqlite3
+    conn = sqlite3.connect(SIMULATION_DB)
     cur = conn.cursor()
-    cur.execute(
-        "SELECT symbol, SUM(CASE WHEN action='BUY' THEN qty ELSE -qty END)"
-        " FROM simulation_trades GROUP BY symbol;"
-    )
-    data = {sym: net for sym, net in cur.fetchall()}
+    cur.execute("SELECT qty, last_price FROM holdings WHERE symbol = ?", (symbol,))
+    row = cur.fetchone()
     conn.close()
-    return data
+    if row:
+        return {"qty": row[0], "last_price": row[1]}
+    return None
 
 
 def get_avg_cost(symbol: str) -> float:
@@ -313,31 +354,50 @@ def get_realized_pl() -> float:
 # ─── Exit logic ──────────────────────────────────────────
 def check_exit_orders(settings) -> None:
     from services.broker_api import sell_stock as broker_sell
+    logger.info(">>> Entered check_exit_orders() <<<")
     for symbol, qty, avg_cost, _ in get_holdings():
         try:
             current = fetch_etrade_quote(symbol)
         except Exception:
+            logger.warning(f"[CHECK-EXITS] Could not fetch quote for {symbol}")
             continue
         pnl_pct = ((current - avg_cost) / avg_cost * 100) if avg_cost else 0.0
+
+        # STOP LOSS logic
         if settings.stop_loss_pct and pnl_pct <= -settings.stop_loss_pct:
+            logger.info(f"[SIM-SELL] {symbol} STOP LOSS: qty={qty}, px=${current:.2f}, P/L={pnl_pct:.2f}%")
             broker_sell(symbol, qty, current)
             continue
+
+        # TAKE PROFIT logic
         if settings.take_profit_pct and pnl_pct >= settings.take_profit_pct:
+            logger.info(f"[SIM-SELL] {symbol} TAKE PROFIT: qty={qty}, px=${current:.2f}, P/L={pnl_pct:.2f}%")
             broker_sell(symbol, qty, current)
             continue
+
+        # SELL AFTER DAYS logic
         if settings.sell_after_days:
+            logger.info(f"[SELL-AFTER-DAYS] settings.sell_after_days={settings.sell_after_days} (type: {type(settings.sell_after_days)})")
             conn = _connect()
             cur = conn.cursor()
             cur.execute(
                 "SELECT trade_time FROM simulation_trades WHERE symbol=? AND action='BUY' ORDER BY trade_time ASC LIMIT 1;",
                 (symbol,)
             )
-            first_time = cur.fetchone()[0]
+            row = cur.fetchone()
+            logger.debug(f"[SELL-DAYS] {symbol}: row={row}")
             conn.close()
-            entry = datetime.fromisoformat(first_time)
-            if datetime.utcnow() - entry >= timedelta(days=settings.sell_after_days):
-                broker_sell(symbol, qty, current)
-
+            if row:
+                entry = datetime.fromisoformat(row[0])
+                now = datetime.utcnow()
+                logger.debug(f"[SELL-DAYS] {symbol}: entry={entry}, now={now}, delta={(now-entry).total_seconds()/3600:.2f}h")
+                if now - entry >= timedelta(days=settings.sell_after_days):
+                    logger.info(f"[SIM-SELL] {symbol} MAX HOLD DAYS: qty={qty}, px=${current:.2f}, held={settings.sell_after_days}d")
+                    broker_sell(symbol, qty, current)
+            else:
+                logger.info(f"[SELL-DAYS] {symbol}: No buy entry found")
+        else:
+            logger.info(f"NOT checking sell-after-days for: {symbol} (setting false or skipped)")
 from datetime import timedelta
 
 POST_OPEN_BUFFER = timedelta(minutes=0)
@@ -371,10 +431,27 @@ def seconds_until_open() -> float:
 
     # ─── Position check ──────────────────────────────────────
     setup_simulation_db()
-    raw = get_holdings()
-    cash           = round(get_cash(), 2)
-    # use the live total_gain we just calculated, not the DB
-    unrealized_pnl = round(sum(h["total_gain"] for h in holdings), 2)
+    holdings = get_holdings()
+    cash = round(get_cash(), 2)
+
+# Safely sum total_gain (for dicts) or dollar gain (for tuples)
+def extract_total_gain(h):
+    if isinstance(h, dict):
+        return h.get("total_gain") or 0
+    if isinstance(h, (tuple, list)) and len(h) >= 4:
+        qty = h[1]
+        price_paid = h[2]
+        last_price = h[3]
+        return (last_price - price_paid) * qty
+    return 0
+
+def extract_cost_basis(h):
+    if isinstance(h, dict):
+        return (h.get("qty") or 0) * (h.get("price_paid") or 0)
+    if isinstance(h, (tuple, list)) and len(h) >= 3:
+        return h[1] * h[2]
+    return 0
+
 def check_if_position_open(symbol: str) -> bool:
     return get_position_qty(symbol) > 0
 def refresh_holdings_prices():

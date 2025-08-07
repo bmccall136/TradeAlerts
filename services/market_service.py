@@ -240,13 +240,29 @@ def get_symbols(simulation=False, clean_path='sp500_symbols_clean.txt'):
         return [l.strip().upper() for l in open(fallback) if l.strip()]
 
 
-def fetch_etrade_quote(symbol: str) -> float:
-    resp = client.get_quote(symbol)   # however you call E*TRADE
-    all_data = resp['quoteResponse']['All'][0]
-    # Try extended hours first
-    ext = all_data.get('ExtendedHourQuoteDetail') or {}
-    ext_price = ext.get('lastTrade')
-    if ext_price and ext_price > 0:
-        return ext_price
-    # Fallback to regular hours
-    return all_data.get('lastTrade') or 0.0
+def fetch_etrade_quote(symbol):
+    """
+    Fetch the latest trade price for a symbol from the E*TRADE API.
+    Falls back to 0.0 if the API call fails or credentials are missing.
+    """
+    if not all([CONSUMER_KEY, CONSUMER_SECRET, OAUTH_TOKEN, OAUTH_TOKEN_SECRET]):
+        raise RuntimeError("E*TRADE credentials not set in environment")
+    session = OAuth1Session(
+        CONSUMER_KEY,
+        client_secret=CONSUMER_SECRET,
+        resource_owner_key=OAUTH_TOKEN,
+        resource_owner_secret=OAUTH_TOKEN_SECRET
+    )
+    url = f"https://api.etrade.com/v1/market/quote/{symbol}.json"
+    resp = session.get(url)
+    resp.raise_for_status()
+    data = resp.json()
+    # USE PROPER CASE for keys!
+    quote_data = data.get("QuoteResponse", {}).get("QuoteData", [])
+    if quote_data and "All" in quote_data[0]:
+        # Grab lastTrade from the All block (this is what your sample response has!)
+        return float(quote_data[0]["All"].get("lastTrade", 0.0))
+    elif quote_data:
+        # fallback if All block missing
+        return float(quote_data[0].get("lastTrade", 0.0))
+    return 0.0

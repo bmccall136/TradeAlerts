@@ -48,6 +48,19 @@ if not LOGFILE.exists():
 logger = logging.getLogger("sim")
 ET = ZoneInfo("America/New_York")
 nyse = mcal.get_calendar("NYSE")
+import json
+from pathlib import Path
+from services.settings_schema import SimulationSettings, SIM_DB_PATH
+
+def load_simulation_settings() -> SimulationSettings:
+    """
+    Loads simulation settings from simulation_config.json and returns a SimulationSettings object.
+    """
+    config_path = Path(__file__).parent.parent / "simulation_config.json"
+    with open(config_path, "r") as f:
+        data = json.load(f)
+    # If your schema expects keys as arguments
+    return SimulationSettings(**data)
 
 def analyze_symbol(symbol: str, settings: SimulationSettings):
     # 0) Determine lookback
@@ -273,11 +286,18 @@ from services.risk_management import enforce_wash_sale, enforce_settlement
 logger = logging.getLogger("sim")
 
 def run_simulation_loop(settings: SimulationSettings):
-    # ── seed logic ──
+    from services.risk_management import (
+        wash_sale_prohibited,
+        funds_not_settled,
+        daily_loss_cap_breached,
+        count_day_trades
+    )
+    from datetime import datetime
+
     setup_simulation_db()
     try:
         current = get_cash()
-    except:
+    except Exception:
         current = 0.0
 
     if settings.nuke_db or current == 0.0:
@@ -287,63 +307,100 @@ def run_simulation_loop(settings: SimulationSettings):
     else:
         logger.info(f"[SIM] continuing with cash = ${get_cash():.2f}")
 
-    # grab our symbol universe once
     symbols = get_symbols(simulation=True)
 
-    # ── main scanning loop ──
     while True:
-        logger.info("🔁 Starting scan loop iteration")
-
-        # a) wait if market closed
+        # ─── Market hours check ──────────────────────────────
         if settings.pause_when_market_closed and not _is_market_open():
             wait = seconds_until_open()
             logger.info(f"[SIM] Market closed — sleeping {wait:.1f}s")
             time.sleep(wait)
             continue
 
+        logger.info("🔁 Starting scan loop iteration")
+
         # b) reset candidate list each pass
         candidates: list[tuple[str, float, list[str]]] = []
         # c) scan symbols & collect the ones that pass
         for sym in symbols:
-            # skip if already in a position (single‐entry logic)
             if settings.single_entry_only and get_position_qty(sym) > 0:
                 continue
-
             price, triggered, passed = analyze_symbol(sym, settings)
             if not passed:
                 continue
-
             logger.info(f"[SIM] ALERT {sym}: {len(triggered)}/{settings.min_signals} → {triggered}")
             candidates.append((sym, price, triggered))
 
-        # 4) sort and attempt buy
+        strict_signals = getattr(settings, 'strict_buy_signals', 4)
+        require_sma20  = getattr(settings, 'require_sma20', True)
+
         if candidates:
             candidates.sort(key=lambda x: len(x[2]), reverse=True)
             purchased = False
 
-
+            # ---------- RISK-AWARE BUY SECTION ---------------
+            # Pull these ONCE, outside the buy loop
+            trade_log = get_trades(1000)
+            holdings = [{
+                "symbol": s,
+                "qty": q,
+                "price_paid": ac,
+                "last_price": lp,
+            } for s, q, ac, lp in get_holdings()]
             for sym, price, triggered in candidates:
+                signal_count = len(triggered)
+                has_sma20 = any("Price > SMA20" in t for t in triggered)
+                if signal_count < strict_signals or (require_sma20 and not has_sma20):
+                    logger.info(f"[SIM] Skipping {sym}: {signal_count} signals, SMA20 present={has_sma20}")
+                    continue
+
                 qty = compute_qty(settings, price)
                 cost = qty * price
                 cash = get_cash()
-
                 if qty < 1 or cost > cash:
                     logger.info(f"[SIM] Candidate {sym} skipped (qty={qty}, cost=${cost:.2f}, cash=${cash:.2f})")
                     continue
 
-                # ENFORCE WASH SALE & SETTLEMENT
-                can_buy_wash = enforce_wash_sale(sym, datetime.utcnow())  # add DB conn/settings if needed
-                can_buy_settle = enforce_settlement(sym, qty, datetime.utcnow())
-                if not can_buy_wash:
-                    logger.info(f"[SIM] Candidate {sym} blocked by wash sale rule.")
-                    continue
-                if not can_buy_settle:
-                    logger.info(f"[SIM] Candidate {sym} blocked by unsettled funds rule.")
+                # --- Smart pyramiding section (unchanged) ---
+                position_qty = get_position_qty(sym)
+                entry_prices = [t["price"] for t in trade_log if t["symbol"] == sym and t["action"].upper() == "BUY"]
+                MAX_PYRAMIDS = getattr(settings, "max_pyramids", 3)
+                if position_qty > 0:
+                    if len(entry_prices) >= MAX_PYRAMIDS:
+                        logger.info(f"[SIM] Pyramiding cap reached for {sym}")
+                        continue
+                    if price <= max(entry_prices):
+                        logger.info(f"[SIM] {sym}: not a new high, skip pyramid buy")
+                        continue
+                    avg_entry = sum(entry_prices) / len(entry_prices)
+                    if price <= avg_entry:
+                        logger.info(f"[SIM] {sym}: not in profit, skip pyramid buy")
+                        continue
+
+                # ==== RISK CHECKS ====
+                now = datetime.utcnow()
+
+                if daily_loss_cap_breached(trade_log, holdings, max_daily_loss=getattr(settings, "max_daily_loss", -1000)):
+                    logger.warning("Trading halted: Daily loss cap reached")
+                    break
+
+                n_trades, pdt_flag = count_day_trades(trade_log, account_equity=get_cash())
+                if pdt_flag:
+                    logger.warning("Pattern Day Trader rule breached! No more buys today.")
                     continue
 
-                # buy top affordable
-                logger.info(f"[SIM] TOP PICK {sym}: {len(triggered)} signals → {triggered}")
-                buy_stock(sym, qty, price, datetime.utcnow())
+                if wash_sale_prohibited(sym, now, trade_log):
+                    logger.info(f"{sym}: Wash sale rule blocks buying today.")
+                    continue
+
+                if funds_not_settled(sym, now, trade_log):
+                    logger.info(f"{sym}: Funds from last BUY not settled (T+2).")
+                    continue
+
+                # ==== END RISK CHECKS ====
+
+                logger.info(f"[SIM] TOP PICK {sym}: {signal_count} signals → {triggered}")
+                buy_stock(sym, qty, price, now)
                 logger.info(f"✅ BUY {sym} x{qty} @ ${price:.2f} (cash → ${get_cash():.2f})")
                 purchased = True
                 break
@@ -353,19 +410,17 @@ def run_simulation_loop(settings: SimulationSettings):
         else:
             logger.info("[SIM] no candidates this round")
 
-        # 5) handle exits
+        # ---- rest of your loop unchanged ----
+        logger.debug("[CHECK-EXITS] Entered check_exit_orders()")
         check_exit_orders(settings)
-
-        # 6) log holdings
         holdings = get_holdings()
+        logger.debug(f"[CHECK-EXITS] Holdings: {holdings}")
         if holdings:
             logger.info("[SIM] Current holdings:")
             for s, q, avg, lp in holdings:
                 logger.info(f"    • {s}: {q} shares @ ${avg:.2f} (last price: ${lp:.2f})")
         else:
             logger.info("[SIM] No holdings")
-
-        # 7) sleep
         logger.info(f"[SIM] Sleeping {settings.poll_interval:.1f}s before next scan")
         time.sleep(settings.poll_interval)
 def stop_simulation():
