@@ -1,14 +1,19 @@
-# services/broker_api.py
-
+from settings import SIMULATION_DB
+import os
+os.environ["ALERT_DB_PATH"] = SIMULATION_DB
 import sqlite3, time
 from pathlib import Path
 
-SIM_DB = str(Path(__file__).parent.parent / "simulation.db")
-# services/broker_api.py
-
+from services.trading_helpers import (
+    get_cash,
+    set_cash,
+    get_avg_cost,
+    insert_trade,
+    insert_or_update_holding,
+    get_position,        # If used below
+)
 from services.etrade_service import fetch_etrade_quote
 
-# alias for backward compatibility
 def get_price(symbol: str) -> float:
     """
     Fetch the current live price for `symbol`.
@@ -32,14 +37,22 @@ def buy_stock(symbol, qty):
     conn.commit()
     conn.close()
 
-def sell_stock(symbol):
-    # record a SELL
-    conn = sqlite3.connect(SIMULATION_DB)
-    cur = conn.cursor()
-    cur.execute("INSERT INTO trades(symbol, action, qty, price, timestamp) VALUES (?,?,?, ?,datetime('now'))",
-                (symbol, 'SELL', get_qty(symbol), get_price(symbol)))
-    conn.commit()
-    conn.close()
+def sell_stock(symbol: str, qty: int, price: float, trade_time: str = None):
+    """
+    Sells `qty` shares of `symbol` at `price`.
+    """
+    # Deduct qty from holdings (or set to zero if selling all)
+    holding = get_position(symbol)
+    if not holding or holding.get("qty", 0) < qty:
+        raise RuntimeError(f"Not enough shares to sell for {symbol} (have {holding.get('qty', 0)}, tried to sell {qty})")
+
+    proceeds = qty * price
+    set_cash(get_cash() + proceeds)
+    avg = get_avg_cost(symbol)
+    pnl = (price - avg) * qty
+
+    insert_trade(symbol, 'SELL', price, qty, pnl, trade_time)
+    insert_or_update_holding(symbol, qty=-qty, avg_cost=avg, last_price=price)
 
 def fetch_live_data(symbol):
     # fetch price + indicators however you do it

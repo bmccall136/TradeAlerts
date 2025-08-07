@@ -1,6 +1,69 @@
 # services/risk_management.py
 from datetime import date, datetime
 from dateutil import parser
+from datetime import datetime, timedelta
+
+def count_day_trades(trade_log, min_equity=25000, account_equity=0):
+    """
+    Count the number of day trades in the last 5 business days.
+    Returns count and whether PDT rule is triggered (assuming margin acct).
+    """
+    # Only check if below PDT min equity threshold
+    if account_equity >= min_equity:
+        return 0, False
+
+    # Group trades by day and symbol
+    day_trades = {}
+    for t in trade_log:
+        date = t['trade_time'][:10]  # 'YYYY-MM-DD'
+        symbol = t['symbol']
+        action = t['action'].upper()
+        if date not in day_trades:
+            day_trades[date] = {}
+        if symbol not in day_trades[date]:
+            day_trades[date][symbol] = set()
+        day_trades[date][symbol].add(action)
+    
+    # Count days with both BUY and SELL
+    total_day_trades = []
+    today = datetime.utcnow().date()
+    five_days_ago = today - timedelta(days=7)  # pad a weekend just in case
+
+    for date, syms in day_trades.items():
+        dt = datetime.strptime(date, "%Y-%m-%d").date()
+        if five_days_ago <= dt <= today:
+            for acts in syms.values():
+                if "BUY" in acts and "SELL" in acts:
+                    total_day_trades.append(dt)
+    
+    # PDT if >=4 in last 5 business days
+    pdt_flag = len(total_day_trades) >= 4
+    return len(total_day_trades), pdt_flag
+
+def daily_loss_cap_breached(trade_log, holdings, max_daily_loss=-1000):
+    """
+    Returns True if realized + unrealized loss today is <= cap (negative cap).
+    """
+    today = datetime.utcnow().date()
+    realized = sum(
+        float(t["pnl"] or 0)
+        for t in trade_log
+        if t["action"].upper() == "SELL" and
+           datetime.fromisoformat(t["trade_time"]).date() == today
+    )
+    unrealized = sum(
+        (h["last_price"] - h["price_paid"]) * h["qty"]
+        for h in holdings
+    )
+    total = realized + unrealized
+    return total <= max_daily_loss  # e.g., if cap is -$1000, will halt at -$1000
+
+def check_trailing_stop(current_price, highest_price, trailing_stop_pct):
+    """
+    Returns True if current price falls below trailing stop threshold.
+    """
+    stop_price = highest_price * (1 - trailing_stop_pct / 100.0)
+    return current_price <= stop_price
 
 def check_stop_loss(price: float, entry_price: float, stop_loss_pct: float) -> bool:
     """

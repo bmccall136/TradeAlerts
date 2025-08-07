@@ -80,6 +80,10 @@ class SimulationSettings:
 
     # ─── Required filters (custom logic) ────────────────────────────────────
     required_filters: List[str] = field(default_factory=list)
+    
+    # ─── Strict Buy Logic (NEW) ──────────────────────────────────────────────
+    strict_buy_signals: int = 4
+    require_sma20: bool = True
 
 def extract_simulation_settings(args: dict) -> SimulationSettings:
     """
@@ -160,11 +164,6 @@ def extract_simulation_settings(args: dict) -> SimulationSettings:
 
         # Required filters
         required_filters         = rf,
-        # SuperTracker
-        super_on                 = bool(args.get("super_on",    False)),
-        super_fast               = int(args.get("super_fast",  7)),
-        super_slow               = int(args.get("super_slow",  21)),
-        super_signal             = int(args.get("super_signal",5)),
     )
 # ─────────────────────────────────────────────────────────────────────────────
 # Backtest settings (for your Flask / backtest UI)

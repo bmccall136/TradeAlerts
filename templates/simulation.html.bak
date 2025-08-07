@@ -1,18 +1,23 @@
 {% extends "layout.html" %}
 {% block content %}
 
-<div class="container">
-  <div class="d-flex align-items-center position-relative mb-4">
-    <!-- Export CSV at absolute left -->
+<div class="container position-relative">
+  <!-- Account type: ABSOLUTE TOP RIGHT -->
+  <div style="position: absolute; top: 0; right: 0;" class="me-2 mt-2">
+    <strong>Account type:</strong> {{ settings.account_type|capitalize }}
+  </div>
+
+  <!-- Flex row for export (left) and title (centered) -->
+  <div class="d-flex align-items-center mb-4" style="min-height: 54px;">
     <a href="{{ url_for('export_simulation') }}"
-       class="btn btn-outline-light position-absolute start-0">
+       class="btn btn-outline-light me-auto">
       <i class="bi bi-download"></i> Export CSV
     </a>
-    <!-- Centered title -->
     <h2 class="text-warning mb-0 mx-auto">Simulation Dashboard</h2>
+    <!-- Spacer to keep center alignment (not needed with mx-auto, but here for flex symmetry) -->
+    <div style="width: 140px;"></div>
   </div>
 </div>
-
 <div class="simulation-summary text-center mb-4">
   <p><strong>Cash:</strong> ${{ '%.2f'|format(cash) }}</p>
   <p><strong>Unrealized P&L:</strong> ${{ '%.2f'|format(unrealized_pnl) }}</p>
@@ -22,9 +27,6 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h3 class="text-white mb-0">Holdings</h3>
-  <span id="sim-status" class="badge bg-secondary">
-    Status: <span id="sim-status-text">Stopped</span>
-  </span>
 </div>
 
 <div class="table-responsive">
@@ -45,7 +47,7 @@
           <td>{{ '%.1f'|format(h.change_pct) }}%</td>
           <td>{{ h.qty }}</td>
           <td>${{ '%.2f'|format(h.price_paid) }}</td>
-          <td>${{ '%.2f'|format(h.day_gain) }}</td>
+ 	 	  <td>${{ '%.2f'|format(h.total_gain) }}</td>
           <td>
             {% if h.total_gain is not none %}
               ${{ '%.2f'|format(h.total_gain) }}
@@ -94,6 +96,28 @@
   </table>
 </div>
 
-{# ... Sell button JS and status-poller JS as before ... #}
+{% block scripts %}
+<script>
+  // Sell button handler
+  document.querySelectorAll('.sell-btn').forEach(btn => {
+    btn.onclick = function() {
+      // call Flask endpoint to trigger sell
+      fetch(`/sell/${btn.dataset.symbol}`, {method: 'POST'})
+        .then(r => r.json()).then(resp => {
+          if(resp.status === "ok") location.reload();
+        });
+    };
+  });
 
-{% endblock %}
+  // Status poller
+  setInterval(function() {
+    fetch('/simulation/status')
+      .then(r => r.json())
+      .then(status => {
+        // Update status area
+        document.getElementById("sim-status").textContent = status.status_text;
+      });
+  }, 60000);
+</script>
+{% endblock %}  {# closes scripts #}
+{% endblock %}  {# closes content #}

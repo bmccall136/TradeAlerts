@@ -1,25 +1,27 @@
-import os
 import json
-from peewee import Model, SqliteDatabase, TextField, IntegerField
+import os
+from peewee import SqliteDatabase, Model
 
-DB = SqliteDatabase(os.path.join(os.getcwd(), 'settings.db'))
+# Use an absolute path to ensure correct db usage in copies/parallel runs
+DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'settings.db'))
+DB = SqliteDatabase(DB_PATH)
 
- class BaseModel(Model):
-     class Meta:
-         database = DB
+class BaseModel(Model):
+    class Meta:
+        database = DB
 
- class Settings(BaseModel):
-     id   = IntegerField(primary_key=True, default=1)
-     data = TextField()
+class Settings(BaseModel):
+    id   = IntegerField(primary_key=True, default=1)
+    data = TextField()
 
- def init_settings_db():
-     # only connect once
-     if DB.is_closed():
-         DB.connect()
-     DB.create_tables([Settings])
-     # seed
-     if not Settings.select().where(Settings.id == 1).exists():
-         Settings.create(id=1, data=json.dumps({}))
+def init_settings_db():
+    # only connect once
+    if DB.is_closed():
+        DB.connect()
+    DB.create_tables([Settings])
+    # seed
+    if not Settings.select().where(Settings.id == 1).exists():
+        Settings.create(id=1, data=json.dumps({}))
 
 
 def load_settings(defaults):

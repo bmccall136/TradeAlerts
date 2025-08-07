@@ -12,7 +12,7 @@ from services.indicators import (
     compute_volume_multiplier, compute_vwap, compute_atr,
     daily_range_pct, gap_up_pct
 )
-
+from services.data_fetch import fetch_data_with_timeout
 from services.news_service import fetch_latest_headlines
 from services.settings_schema import SimulationSettings
 
@@ -241,12 +241,21 @@ def get_symbols(simulation=False, clean_path='sp500_symbols_clean.txt'):
 
 
 def fetch_etrade_quote(symbol: str) -> float:
-    resp = client.get_quote(symbol)   # however you call E*TRADE
-    all_data = resp['quoteResponse']['All'][0]
-    # Try extended hours first
-    ext = all_data.get('ExtendedHourQuoteDetail') or {}
-    ext_price = ext.get('lastTrade')
-    if ext_price and ext_price > 0:
-        return ext_price
-    # Fallback to regular hours
-    return all_data.get('lastTrade') or 0.0
+from services.etrade_service import fetch_etrade_quote
+        price = fetch_etrade_quote(symbol)
+    try:
+        resp = client.get_quote(symbol)
+        # Adjust this based on your real API response!
+        all_data = resp['quoteResponse']['QuoteData'][0]['All']
+        ext = resp['quoteResponse']['QuoteData'][0].get('ExtendedHourQuoteDetail') or {}
+        ext_price = ext.get('lastTrade')
+        if ext_price and ext_price > 0:
+            return float(ext_price)
+        last_trade = all_data.get('lastTrade')
+        if last_trade:
+            return float(last_trade)
+        else:
+            raise ValueError(f"No lastTrade in E*TRADE quote for {symbol}: {resp}")
+    except Exception as e:
+        print(f"[CHECK-EXITS] Could not fetch quote for {symbol}: {e}")
+        raise
