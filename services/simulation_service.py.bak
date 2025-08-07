@@ -151,6 +151,10 @@ def analyze_symbol(symbol: str, settings: SimulationSettings):
         return price, triggered, False
 
     # ─── OPTIONAL SIGNALS ─────────────────────────────────────────────
+    if ("RSI 📈" not in triggered) and ("BB breakout" not in triggered):
+        continue  # Skip this candidate; not enough confirmation
+
+
     if settings.adx_on and adx is not None and f"ADX ≥ {settings.adx_threshold}" not in triggered:
         triggered.append(f"ADX ≥ {settings.adx_threshold}")
 
@@ -393,6 +397,7 @@ def run_simulation_loop(settings: SimulationSettings):
                 if wash_sale_prohibited(sym, now, trade_log):
                     logger.info(f"{sym}: Wash sale rule blocks buying today.")
                     continue
+                print("Sample trade_log entry:", trade_log[0] if trade_log else 'EMPTY')
 
                 if funds_not_settled(sym, now, trade_log):
                     logger.info(f"{sym}: Funds from last BUY not settled (T+2).")

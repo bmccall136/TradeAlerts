@@ -26,7 +26,7 @@
   "price_sma_on": true,
   "price_sma_len": 20,
 
-  "min_signals": 3,
+  "min_signals": 4,
 
   "atr_on": true,
   "atr_threshold": 2.0,
