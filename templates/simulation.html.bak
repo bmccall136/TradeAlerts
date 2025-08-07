@@ -1,21 +1,23 @@
 {% extends "layout.html" %}
 {% block content %}
 
-<div class="container position-relative">
-  <!-- Account type: ABSOLUTE TOP RIGHT -->
-  <div style="position: absolute; top: 0; right: 0;" class="me-2 mt-2">
-    <strong>Account type:</strong> {{ settings.account_type|capitalize }}
-  </div>
-
-  <!-- Flex row for export (left) and title (centered) -->
-  <div class="d-flex align-items-center mb-4" style="min-height: 54px;">
+<div class="container">
+  <div class="d-flex justify-content-between align-items-center mb-4" style="min-height: 54px;">
+    <!-- Export CSV at far left -->
     <a href="{{ url_for('export_simulation') }}"
-       class="btn btn-outline-light me-auto">
+       class="btn btn-outline-light">
       <i class="bi bi-download"></i> Export CSV
     </a>
-    <h2 class="text-warning mb-0 mx-auto">Simulation Dashboard</h2>
-    <!-- Spacer to keep center alignment (not needed with mx-auto, but here for flex symmetry) -->
-    <div style="width: 140px;"></div>
+
+    <!-- Simulation Dashboard centered -->
+    <h2 class="text-warning mb-0 flex-grow-1 text-center" style="position: absolute; left: 0; right: 0; margin-left: auto; margin-right: auto; width: fit-content;">
+      Simulation Dashboard
+    </h2>
+
+    <!-- Account type far right -->
+    <div class="fw-bold" style="white-space: nowrap;">
+      Account type: <span class="text-light">{{ settings.account_type|capitalize }}</span>
+    </div>
   </div>
 </div>
 <div class="simulation-summary text-center mb-4">

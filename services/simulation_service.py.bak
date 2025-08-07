@@ -48,6 +48,19 @@ if not LOGFILE.exists():
 logger = logging.getLogger("sim")
 ET = ZoneInfo("America/New_York")
 nyse = mcal.get_calendar("NYSE")
+import json
+from pathlib import Path
+from services.settings_schema import SimulationSettings, SIM_DB_PATH
+
+def load_simulation_settings() -> SimulationSettings:
+    """
+    Loads simulation settings from simulation_config.json and returns a SimulationSettings object.
+    """
+    config_path = Path(__file__).parent.parent / "simulation_config.json"
+    with open(config_path, "r") as f:
+        data = json.load(f)
+    # If your schema expects keys as arguments
+    return SimulationSettings(**data)
 
 def analyze_symbol(symbol: str, settings: SimulationSettings):
     # 0) Determine lookback
