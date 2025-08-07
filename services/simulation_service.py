@@ -393,6 +393,7 @@ def run_simulation_loop(settings: SimulationSettings):
                 if wash_sale_prohibited(sym, now, trade_log):
                     logger.info(f"{sym}: Wash sale rule blocks buying today.")
                     continue
+                print("Sample trade_log entry:", trade_log[0] if trade_log else 'EMPTY')
 
                 if funds_not_settled(sym, now, trade_log):
                     logger.info(f"{sym}: Funds from last BUY not settled (T+2).")
