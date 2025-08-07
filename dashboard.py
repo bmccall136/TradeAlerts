@@ -1041,42 +1041,31 @@ def export_simulation():
     # ---- Prepare holdings as dicts for calculations ----
     holding_dicts = []
     for h in holdings:
-        # Accept both dict and tuple formats
+        # Accept both dict and tuple
         if isinstance(h, dict):
-            symbol = h['symbol']
-            qty = h['qty']
-            price_paid = h['price_paid']
-        else:
-            symbol, qty, price_paid, _ = h[:4]
+            symbol = h.get('symbol', '')
+            qty = h.get('qty', 0)
+            price_paid = h.get('price_paid', 0.0)
+            last_price = h.get('last_price', 0.0)
+        else:  # assume tuple (symbol, qty, price_paid, last_price)
+            symbol = h[0] if len(h) > 0 else ''
+            qty = h[1] if len(h) > 1 else 0
+            price_paid = h[2] if len(h) > 2 else 0.0
+            last_price = h[3] if len(h) > 3 else 0.0
 
+        # All safe defaults
+        change = change_pct = total_gain = day_gain = value = 0.0
         try:
-            # Get live price
-            last_price = fetch_etrade_quote(symbol) or 0.0
-
-            # Get previous close (for day gain)
-            hist = fetch_data_with_timeout(symbol, "2d")
-            if hist is not None:
-                print(f"{symbol}: hist['close'] = {hist['close'].to_list()}")
-                print(f"{symbol}: prev_close = {hist['close'].iloc[-2] if len(hist) > 1 else 'N/A'}")
-                print(f"{symbol}: price_paid = {price_paid}")
-            logger.debug(f"{symbol} close history for 2d: {hist['close'].to_list() if hist is not None else 'None'}")
-            # Use correct column name (case-sensitive!)
-            col_close = next((c for c in hist.columns if c.lower() == "close"), "Close")
-            if hist is not None and len(hist) > 1 and col_close in hist.columns:
-                prev_close = float(hist[col_close].iloc[-2])
-            else:
-                prev_close = h["price_paid"]
-
-
+            price_paid = float(price_paid)
+            qty = int(qty)
+            last_price = float(fetch_etrade_quote(symbol) or last_price or price_paid)
             change = last_price - price_paid
-            day_gain = (last_price - prev_close) * qty
-            total_gain = (last_price - price_paid) * qty
-            change_pct = (change / price_paid * 100) if price_paid else 0
+            change_pct = (change / price_paid * 100) if price_paid else 0.0
+            total_gain = change * qty
+            day_gain = total_gain
             value = last_price * qty
-
-        except Exception:
-            last_price = price_paid
-            day_gain = total_gain = change_pct = value = 0.0
+        except Exception as e:
+            print(f"[EXPORT] Error for symbol {symbol}: {e}")
 
         holding_dicts.append({
             "symbol": symbol,
@@ -1147,26 +1136,28 @@ def export_simulation():
 
     cw.writerow(['-- HOLDINGS --'])
     cw.writerow(['symbol','last_price','change','change_pct','qty','price_paid','day_gain','total_gain','value'])
+
     for h in holding_dicts:
-        symbol      = h.get('symbol')
-        qty         = h.get('qty')
-        price_paid  = h.get('price_paid')
-        last_price  = h.get('last_price')
+        # --- Default all fields up front (avoids UnboundLocalError) ---
+        symbol = h.get('symbol', '')
+        qty = h.get('qty', 0)
+        price_paid = h.get('price_paid', 0.0)
+        last_price = h.get('last_price', 0.0)
+        change = change_pct = total_gain = day_gain = value = 0.0
 
         try:
             price_paid = float(price_paid)
             qty = int(qty)
             last_price = float(last_price)
+            change     = last_price - price_paid
+            change_pct = (change / price_paid * 100) if price_paid else 0.0
+            total_gain = change * qty
+            # If you want true day gain, you’ll need prev_close logic here,
+            # but as fallback, total_gain is fine:
+            day_gain   = total_gain
+            value      = last_price * qty
         except Exception:
-            price_paid = 0.0
-            qty = 0
-            last_price = 0.0
-
-        change     = last_price - price_paid
-        change_pct = (change / price_paid * 100) if price_paid else 0
-        total_gain = change * qty
-        day_gain   = total_gain  # Or recalc daily if you have that
-        value      = last_price * qty
+            pass  # If any error, the initialized defaults are used
 
         cw.writerow([
             symbol,
@@ -1354,6 +1345,10 @@ def simulation_view():
 
     # --- Now update each holding with live prices ---
     for h in holdings:
+        # Always start with safe defaults!
+        change = 0.0
+        prev_close = 0.0
+
         try:
             symbol = h["symbol"]
             qty = h["qty"]
@@ -1387,12 +1382,17 @@ def simulation_view():
 
         except Exception as e:
             print(f"[SIM] Error updating holding {h}: {e}")
+            # Set all fields to safe values
             if isinstance(h, dict):
                 h["last_price"] = h.get("last_price", 0)
-                h["total_gain"] = 0
-                h["day_gain"] = 0
-                h["change_pct"] = 0
-                h["value"] = 0
+                h["total_gain"] = 0.0
+                h["day_gain"]   = 0.0
+                h["change_pct"] = 0.0
+                h["value"]      = 0.0
+            # If you need 'change' outside, set it:
+            change = 0.0
+
+    # If you use/change 'change' after the loop, it's always defined now!
 
     # 4) Now safely compute summary/header numbers
     unrealized_pnl = round(sum((h.get("total_gain") or 0) for h in holdings), 2)

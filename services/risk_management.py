@@ -81,9 +81,15 @@ def wash_sale_prohibited(
     """
     Return True if a previous SELL for `symbol` occurred within the last `days`.
     """
+    def get_trade_time(t):
+        return t.get("time") or t.get("trade_time") or t.get("timestamp")
+
     last_sale = next(
-        (t["time"] for t in reversed(trade_log)
-         if t["symbol"] == symbol and t["action"] == "SELL"),
+        (get_trade_time(t) for t in reversed(trade_log)
+         if isinstance(t, dict)
+         and t.get("symbol") == symbol
+         and t.get("action") == "SELL"
+         and get_trade_time(t) is not None),
         None
     )
     if not last_sale:
@@ -93,7 +99,8 @@ def wash_sale_prohibited(
     if isinstance(last_sale, str):
         try:
             last_sale = datetime.fromisoformat(last_sale)
-        except ValueError:
+        except Exception:
+            from dateutil import parser
             last_sale = parser.parse(last_sale)
 
     return (current_date - last_sale).days < days
@@ -109,8 +116,8 @@ def funds_not_settled(
     True if the most recent BUY for `symbol` has not yet settled (T+settlement_days).
     """
     last_buy = next(
-        (t["time"] for t in reversed(trade_log)
-         if t["symbol"] == symbol and t["action"] == "BUY"),
+        (t.get("trade_time") for t in reversed(trade_log)
+         if isinstance(t, dict) and t.get("symbol") == symbol and t.get("action") == "BUY" and t.get("trade_time") is not None),
         None
     )
     if not last_buy:
@@ -121,6 +128,7 @@ def funds_not_settled(
         try:
             dt = datetime.fromisoformat(last_buy)
         except ValueError:
+            from dateutil import parser
             dt = parser.parse(last_buy)
     else:
         dt = last_buy
