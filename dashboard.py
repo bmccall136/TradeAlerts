@@ -1433,6 +1433,17 @@ def simulation_view():
     realized_pnl = sum(t["pl"] for t in history if t.get("action") == "SELL")
     from services.simulation_service import load_simulation_settings
     settings = load_simulation_settings()
+    print("DEBUG: Simulation route called, settings:", settings)
+    # Calculate total buy cost
+    total_buy_cost = sum(
+        t["qty"] * t["price"] 
+        for t in history if t["action"] == "BUY"
+    )
+
+    realized_pnl_pct = (
+        (realized_pnl / total_buy_cost * 100) if total_buy_cost else 0.0
+    )
+
     # 7) finally render
     return render_template(
         "simulation.html",
@@ -1442,7 +1453,8 @@ def simulation_view():
         realized_pnl=realized_pnl,
         holdings=holdings,
         history=history,
-        settings=settings
+        settings=settings,  # ← must be here!
+        realized_pnl_pct=realized_pnl_pct,
     )
     
 @app.route("/simulation/buy", methods=["POST"])
@@ -1622,6 +1634,8 @@ CONFIG_PATH = Path(__file__).parent / "simulation_config.json"
 @app.route("/")
 def index():
     setup_simulation_db()
+    from services.simulation_service import load_simulation_settings
+    settings = load_simulation_settings() 
             # --- Helper for formatting trade times ---
     def format_trade_time(ts):
         from datetime import datetime
@@ -1710,6 +1724,7 @@ def index():
         unrealized_pnl_pct=unrealized_pnl_pct,
         history=history,
         config=config,
+        settings=settings,
     )
 
 if __name__ == "__main__":
