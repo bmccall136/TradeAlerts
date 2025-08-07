@@ -1011,6 +1011,7 @@ def simulation():
         cash=cash,
         unrealized_pnl=unrealized_pnl,
         unrealized_pnl_pct=unrealized_pnl_pct,
+        realized_pnl_pct=realized_pnl_pct,
         realized_pnl=realized_pnl,
         holdings=formatted_holdings,
         history=formatted_trades
@@ -1711,9 +1712,12 @@ def index():
         }
         for row in rows
     ]
-
-    # Now it's safe to sum realized P&L
+    total_buy_cost = sum(
+        t["qty"] * t["price"]
+        for t in history if t["action"] == "BUY"
+    )
     realized_pnl = sum(t["pl"] for t in history if t.get("action") == "SELL")
+    realized_pnl_pct = (realized_pnl / total_buy_cost * 100) if total_buy_cost else 0.0
 
     return render_template(
         "simulation.html",
@@ -1722,6 +1726,7 @@ def index():
         unrealized_pnl=unrealized_pnl,
         realized_pnl=realized_pnl,
         unrealized_pnl_pct=unrealized_pnl_pct,
+        realized_pnl_pct=realized_pnl_pct,
         history=history,
         config=config,
         settings=settings,
