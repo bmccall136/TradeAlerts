@@ -472,8 +472,20 @@ def run_simulation_loop(settings: SimulationSettings):
                     continue
                 print("Sample trade_log entry:", trade_log[0] if trade_log else 'EMPTY')
 
+                from datetime import timedelta
+
                 if funds_not_settled(sym, now, trade_log):
-                    logger.info(f"{sym}: Funds from last BUY not settled (T+2).")
+                    # Find the most recent BUY settle date for messaging (example calc)
+                    last_buy = next((t for t in trade_log if t["symbol"] == sym and t["action"] == "BUY"), None)
+                    if last_buy:
+                        try:
+                            buy_dt = datetime.fromisoformat(str(last_buy["trade_time"]).replace("Z", "+00:00"))
+                            available = (buy_dt + timedelta(days=2)).date().isoformat()
+                            logger.info(f"[T+2] {sym}: Waiting on funds to clear. Will be available {available}.")
+                        except Exception:
+                            logger.info(f"[T+2] {sym}: Waiting on funds to clear.")
+                    else:
+                        logger.info(f"[T+2] {sym}: Waiting on funds to clear.")
                     continue
 
                 # ==== END RISK CHECKS ====

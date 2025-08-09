@@ -193,12 +193,6 @@ def analyze_symbol(symbol: str, settings: SimulationSettings):
         logger.debug(f"{symbol}: price {price:.2f} < VWAP {vwap:.2f}")
         return price, triggered, False
 
-    # ─── OPTIONAL SIGNALS ─────────────────────────────────────────────
-    if ("RSI 📈" not in triggered) and ("BB breakout" not in triggered):
-        return price, triggered, False  # or whatever values your function is expected to return
-
-
-
     if settings.adx_on and adx is not None and f"ADX ≥ {settings.adx_threshold}" not in triggered:
         triggered.append(f"ADX ≥ {settings.adx_threshold}")
 

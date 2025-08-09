@@ -1057,11 +1057,17 @@ def simulation_status():
 
 @app.route('/export/simulation')
 def export_simulation():
-    cash     = get_cash()
+    # --- always-safe locals ---
+    cash = get_cash()
     holdings = get_holdings()
-    trades   = get_trades()
+    trades = get_trades()
 
-    # --- Helper for formatting trade times ---
+    realized_pnl = 0.0
+    unrealized_pnl = 0.0
+    realized_pnl_pct = 0.0  # will be computed later
+    unrealized_pnl_pct = 0.0
+
+    # --- time formatter ---
     def format_trade_time(ts):
         from datetime import datetime
         if isinstance(ts, datetime):
@@ -1075,28 +1081,28 @@ def export_simulation():
     # ---- Prepare holdings as dicts for calculations ----
     holding_dicts = []
     for h in holdings:
-        # Accept both dict and tuple
         if isinstance(h, dict):
-            symbol = h.get('symbol', '')
-            qty = h.get('qty', 0)
+            symbol     = h.get('symbol', '')
+            qty        = h.get('qty', 0)
             price_paid = h.get('price_paid', 0.0)
             last_price = h.get('last_price', 0.0)
-        else:  # assume tuple (symbol, qty, price_paid, last_price)
-            symbol = h[0] if len(h) > 0 else ''
-            qty = h[1] if len(h) > 1 else 0
+        else:  # tuple fallback
+            symbol     = h[0] if len(h) > 0 else ''
+            qty        = h[1] if len(h) > 1 else 0
             price_paid = h[2] if len(h) > 2 else 0.0
             last_price = h[3] if len(h) > 3 else 0.0
 
-        # All safe defaults
         change = change_pct = total_gain = day_gain = value = 0.0
         try:
             price_paid = float(price_paid)
             qty = int(qty)
-            last_price = float(fetch_etrade_quote(symbol) or last_price or price_paid)
+            # always prefer live from E*TRADE
+            live = float(fetch_etrade_quote(symbol) or last_price or price_paid or 0.0)
+            last_price = live
             change = last_price - price_paid
-            change_pct = (change / price_paid * 100) if price_paid else 0.0
+            change_pct = (change / price_paid * 100.0) if price_paid else 0.0
             total_gain = change * qty
-            day_gain = total_gain
+            day_gain = total_gain  # TODO: replace with true day gain if you track prev_close
             value = last_price * qty
         except Exception as e:
             print(f"[EXPORT] Error for symbol {symbol}: {e}")
@@ -1113,28 +1119,19 @@ def export_simulation():
             "value": value,
         })
 
-    # ---- Update holdings with live prices & gain calculations ----
-    for h in holding_dicts:
-        try:
-            live = fetch_etrade_quote(h["symbol"]) or 0.0
-            change = live - h["price_paid"]
-            h["last_price"] = round(live, 2)
-            h["total_gain"] = round(change * h["qty"], 2)
-        except Exception:
-            h["total_gain"] = 0.0
+    # ---- Recompute unrealized P&L from holdings ----
+    unrealized_pnl = round(sum(h.get("total_gain", 0.0) for h in holding_dicts), 2)
+    total_cost_basis = sum((h["qty"] or 0) * (h["price_paid"] or 0.0) for h in holding_dicts)
+    unrealized_pnl_pct = round((unrealized_pnl / total_cost_basis * 100.0), 2) if total_cost_basis else 0.0
 
-    unrealized_pnl = round(sum(h.get("total_gain", 0) for h in holding_dicts), 2)
-    total_cost_basis = sum(h["qty"] * h["price_paid"] for h in holding_dicts)
-    unrealized_pnl_pct = round((unrealized_pnl / total_cost_basis * 100), 2) if total_cost_basis else 0.0
-
-    # ---- Build trade history for realized P&L ----
+    # ---- Build trade history & realized P&L ----
     history = []
     for t in trades:
         if isinstance(t, dict):
-            pl_val = float(t.get("pl") or t.get("pnl") or 0)
+            pl_val = float(t.get("pl") or t.get("pnl") or 0.0)
             trade_time = t.get("trade_time") or t.get("timestamp") or t.get("time")
             history.append({
-                "time": format_trade_time(trade_time),  # <-- CORRECT
+                "time":   format_trade_time(trade_time),
                 "symbol": t.get("symbol"),
                 "action": t.get("action"),
                 "qty":    t.get("qty"),
@@ -1155,10 +1152,21 @@ def export_simulation():
                 "price":  price,
                 "pl":     pl_val,
             })
-    realized_pnl = sum(t["pl"] for t in history if t.get("action") == "SELL")
 
-    # ---- Write summary and export ----
-    import io
+    realized_pnl = sum(t["pl"] for t in history if (t.get("action") or "").upper() == "SELL")
+
+    # ---- Pull starting cash once (canonical source) ----
+    try:
+        from services.settings_schema import load_simulation_settings
+        _starting_cash = float(getattr(load_simulation_settings(), "starting_cash", 0.0) or 0.0)
+    except Exception:
+        _starting_cash = float(cash or 0.0)  # safe fallback
+
+    # ---- Now that _starting_cash is set, compute realized % ----
+    realized_pnl_pct = (realized_pnl / _starting_cash * 100.0) if _starting_cash else 0.0
+
+    # ---- CSV export ----
+    import csv, io
     si = io.StringIO()
     cw = csv.writer(si)
 
@@ -1166,56 +1174,42 @@ def export_simulation():
     cw.writerow(['Unrealized P&L', f"${unrealized_pnl:.2f}"])
     cw.writerow(['Unrealized P&L %', f"{unrealized_pnl_pct:.2f}%"])
     cw.writerow(['Realized P&L', f"${realized_pnl:.2f}"])
-    cw.writerow([])  # Blank row for spacing
+    cw.writerow(['Realized P&L %', f"{realized_pnl_pct:.2f}%"])
+    cw.writerow([])
 
     cw.writerow(['-- HOLDINGS --'])
     cw.writerow(['symbol','last_price','change','change_pct','qty','price_paid','day_gain','total_gain','value'])
-
     for h in holding_dicts:
-        # --- Default all fields up front (avoids UnboundLocalError) ---
-        symbol = h.get('symbol', '')
-        qty = h.get('qty', 0)
-        price_paid = h.get('price_paid', 0.0)
-        last_price = h.get('last_price', 0.0)
-        change = change_pct = total_gain = day_gain = value = 0.0
-
-        try:
-            price_paid = float(price_paid)
-            qty = int(qty)
-            last_price = float(last_price)
-            change     = last_price - price_paid
-            change_pct = (change / price_paid * 100) if price_paid else 0.0
-            total_gain = change * qty
-            # If you want true day gain, you’ll need prev_close logic here,
-            # but as fallback, total_gain is fine:
-            day_gain   = total_gain
-            value      = last_price * qty
-        except Exception:
-            pass  # If any error, the initialized defaults are used
-
         cw.writerow([
-            symbol,
-            f"${last_price:.2f}",
-            f"${change:.2f}",
-            f"{change_pct:.1f}%",
-            qty,
-            f"${price_paid:.2f}",
-            f"${day_gain:.2f}",
-            f"${total_gain:.2f}",
-            f"${value:.2f}",
+            h['symbol'],
+            f"${(h['last_price'] or 0.0):.2f}",
+            f"${(h['change'] or 0.0):.2f}",
+            f"{(h['change_pct'] or 0.0):.1f}%",
+            int(h['qty'] or 0),
+            f"${(h['price_paid'] or 0.0):.2f}",
+            f"${(h['day_gain'] or 0.0):.2f}",
+            f"${(h['total_gain'] or 0.0):.2f}",
+            f"${(h['value'] or 0.0):.2f}",
         ])
 
     cw.writerow([])
     cw.writerow(['-- TRADES --'])
-    cw.writerow(['timestamp','symbol','action','qty','price','pl'])
+    cw.writerow(['timestamp', 'symbol', 'action', 'qty', 'price', 'pl', 'pl_pct'])
     for t in history:
+        try:
+            qty = int(t['qty'] or 0)
+            price_val = float(t['price'] or 0.0)
+            pl_val = float(t['pl'] or 0.0)
+            pl_pct = (pl_val / (price_val * qty) * 100.0) if price_val and qty else 0.0
+        except (TypeError, ValueError):
+            qty = 0
+            price_val = 0.0
+            pl_val = 0.0
+            pl_pct = 0.0
+
         cw.writerow([
-            t["time"],
-            t["symbol"],
-            t["action"],
-            t["qty"],
-            t["price"],
-            abs(t["pl"] or 0)
+            t["time"], t["symbol"], t["action"], qty,
+            f"{price_val:.2f}", f"{pl_val:.2f}", f"{pl_pct:.2f}%"
         ])
 
     resp = make_response(si.getvalue())
