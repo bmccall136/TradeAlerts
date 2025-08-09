@@ -29,20 +29,39 @@ from services.trading_helpers import get_trades, get_cash, get_realized_pl, get_
 import csv    # <— make sure csv is imported before use
 from datetime import datetime
 from zoneinfo import ZoneInfo
-
-today = datetime.utcnow().date().isoformat()             # e.g. "2025-07-31"
+# --- CSV logging setup (Excel-friendly) ---
+today = datetime.utcnow().date().isoformat()
 LOGFILE = Path(f"logs/triggers_{today}.csv")
 LOGFILE.parent.mkdir(parents=True, exist_ok=True)
- 
-# on first run each day, write header
+
+# Canonical trigger keys -> column names
+TRIGGERS = {
+    "ADX_REQ":        "ADX_req",
+    "MACD_UP":        "MACD_up",
+    "SUPER_UP":       "Super_up",
+    "VWAP_PLUS":      "VWAP_plus",
+    "BB_BREAKOUT":    "BB_breakout",
+    "RSI_OVERBOUGHT": "RSI_overbought",
+    "VOL_SPIKE":      "Vol_spike",
+    "ATR_ABS":        "ATR_ge",
+    "ATR_PCT":        "ATRpct_ge",
+    "RANGE_PCT":      "Range_ge",
+    "GAP_PCT":        "Gap_ge",
+    "PRICE_GT_SMA":   "Price_gt_SMA",
+}
+
 CSV_HEADER = [
     "timestamp", "symbol", "price",
     "ADX", "ATR_val", "ATR_pct",
     "SuperTracker_osc", "SuperTracker_sig",
-    "signals"
+    *TRIGGERS.values(),      # one-hot columns
+    "signals"                # ASCII, semicolon-separated
 ]
+
+# Create file with BOM so Excel reads UTF-8 correctly
 if not LOGFILE.exists():
-    with open(LOGFILE, "w", newline="") as f:
+    with open(LOGFILE, "w", newline="", encoding="utf-8-sig") as f:
+        import csv
         csv.writer(f).writerow(CSV_HEADER)
 
 
@@ -52,6 +71,30 @@ nyse = mcal.get_calendar("NYSE")
 import json
 from pathlib import Path
 from services.settings_schema import SimulationSettings, SIM_DB_PATH
+
+def _canonize_triggers(triggered: list[str]) -> set[str]:
+    """
+    Map the human/emoji strings in `triggered` to canonical keys used in TRIGGERS.
+    Keeps this tolerant to minor wording differences.
+    """
+    keys = set()
+    for t in triggered:
+        t = (t or "").lower()
+        if "adx" in t:                         keys.add("ADX_REQ")
+        if "macd" in t:                        keys.add("MACD_UP")
+        if "super" in t:                       keys.add("SUPER_UP")
+        if "vwap" in t:                        keys.add("VWAP_PLUS")
+        if "bb breakout" in t or "bb" in t:    keys.add("BB_BREAKOUT")
+        if "rsi" in t:                         keys.add("RSI_OVERBOUGHT")
+        if "volume" in t:                      keys.add("VOL_SPIKE")
+        if "atr %" in t or "atr % ≥" in t:     keys.add("ATR_PCT")
+        # plain ATR (absolute) — try to avoid double-counting with ATR%
+        if "atr" in t and "atr %" not in t:    keys.add("ATR_ABS")
+        if "range %" in t:                     keys.add("RANGE_PCT")
+        if "gap %" in t:                       keys.add("GAP_PCT")
+        if "price > sma" in t:                 keys.add("PRICE_GT_SMA")
+        if "price > vwap" in t:                keys.add("VWAP_PLUS")
+    return keys
 
 def load_simulation_settings() -> SimulationSettings:
     """
@@ -210,28 +253,48 @@ def analyze_symbol(symbol: str, settings: SimulationSettings):
 
     # ─── LOG TO CSV ON PASS ──────────────────────────
     if passed:
-        # compute ATR values for logging
+        # numeric fields (safe if toggles are off)
         atr_val = compute_atr(history, settings.atr_len) if (settings.atr_on or settings.atr_pct_on) else None
         atr_pct = (atr_val / price * 100) if atr_val else None
-        # SuperTracker values (if enabled)
-        osc_last = osc.iat[-1] if ("osc" in locals() and osc is not None) else None
-        sig_last = sig.iat[-1] if ("sig" in locals() and sig is not None) else None
+        osc_last = osc.iat[-1] if (locals().get("osc") is not None) else None
+        sig_last = sig.iat[-1] if (locals().get("sig") is not None) else None
 
-        with open(LOGFILE, "a", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                datetime.utcnow().isoformat(),
-                symbol,
-                f"{price:.2f}",
-                f"{adx.iat[-1]:.2f}" if adx is not None else "",
-                f"{atr_val:.2f}"     if atr_val    is not None else "",
-                f"{atr_pct:.2f}"     if atr_pct    is not None else "",
-                f"{osc_last:.2f}"    if osc_last   is not None else "",
-                f"{sig_last:.2f}"    if sig_last   is not None else "",
-                ";".join(triggered),
-            ])
-    # ─── ALWAYS RETURN at the end ──────────────────────────
-    return price, triggered, passed
+        # one-hot vector from current `triggered` strings
+        trig_keys = _canonize_triggers(triggered)
+        one_hot = [1 if k in trig_keys else 0 for k in TRIGGERS.keys()]
+
+        # ASCII signals (avoid emojis/≥)
+        ascii_labels = []
+        if "ADX_REQ" in trig_keys:        ascii_labels.append("ADX>=thresh")
+        if "MACD_UP" in trig_keys:        ascii_labels.append("MACD_cross_up")
+        if "SUPER_UP" in trig_keys:       ascii_labels.append("Super_up")
+        if "VWAP_PLUS" in trig_keys:      ascii_labels.append("Price>VWAP")
+        if "BB_BREAKOUT" in trig_keys:    ascii_labels.append("BB_breakout")
+        if "RSI_OVERBOUGHT" in trig_keys: ascii_labels.append("RSI_overbought")
+        if "VOL_SPIKE" in trig_keys:      ascii_labels.append("Vol_spike")
+        if "ATR_ABS" in trig_keys:        ascii_labels.append("ATR>=abs")
+        if "ATR_PCT" in trig_keys:        ascii_labels.append("ATR>=pct")
+        if "RANGE_PCT" in trig_keys:      ascii_labels.append("Range>=pct")
+        if "GAP_PCT" in trig_keys:        ascii_labels.append("Gap>=pct")
+        if "PRICE_GT_SMA" in trig_keys:   ascii_labels.append(f"Price>SMA{getattr(settings, 'price_sma_len', 20)}")
+
+        row = [
+            datetime.utcnow().isoformat(),
+            symbol,
+            f"{price:.2f}",
+            f"{adx.iat[-1]:.2f}" if locals().get("adx") is not None else "",
+            f"{atr_val:.2f}"     if atr_val    is not None else "",
+            f"{atr_pct:.2f}"     if atr_pct    is not None else "",
+            f"{osc_last:.2f}"    if osc_last   is not None else "",
+            f"{sig_last:.2f}"    if sig_last   is not None else "",
+            *one_hot,
+            ";".join(ascii_labels),
+        ]
+
+        # Always append with BOM to keep Excel happy
+        with open(LOGFILE, "a", newline="", encoding="utf-8-sig") as f:
+            import csv
+            csv.writer(f).writerow(row)
 
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -290,6 +353,15 @@ from services.simulation_service import analyze_symbol, _is_market_open
 from services.risk_management import enforce_wash_sale, enforce_settlement
 
 logger = logging.getLogger("sim")
+from types import SimpleNamespace
+
+# Load settings early with a safe fallback
+try:
+    from services.simulation_service import load_simulation_settings
+    settings = load_simulation_settings()
+except Exception as e:
+    print(f"[SIM] settings load failed: {e}")
+    settings = SimpleNamespace(starting_cash=1000.0)
 
 def run_simulation_loop(settings: SimulationSettings):
     from services.risk_management import (
@@ -400,8 +472,20 @@ def run_simulation_loop(settings: SimulationSettings):
                     continue
                 print("Sample trade_log entry:", trade_log[0] if trade_log else 'EMPTY')
 
+                from datetime import timedelta
+
                 if funds_not_settled(sym, now, trade_log):
-                    logger.info(f"{sym}: Funds from last BUY not settled (T+2).")
+                    # Find the most recent BUY settle date for messaging (example calc)
+                    last_buy = next((t for t in trade_log if t["symbol"] == sym and t["action"] == "BUY"), None)
+                    if last_buy:
+                        try:
+                            buy_dt = datetime.fromisoformat(str(last_buy["trade_time"]).replace("Z", "+00:00"))
+                            available = (buy_dt + timedelta(days=2)).date().isoformat()
+                            logger.info(f"[T+2] {sym}: Waiting on funds to clear. Will be available {available}.")
+                        except Exception:
+                            logger.info(f"[T+2] {sym}: Waiting on funds to clear.")
+                    else:
+                        logger.info(f"[T+2] {sym}: Waiting on funds to clear.")
                     continue
 
                 # ==== END RISK CHECKS ====
