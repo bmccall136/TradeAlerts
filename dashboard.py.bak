@@ -95,8 +95,12 @@ from services.trading_helpers import (
     get_unrealized_pl,
     get_cash,
     setup_simulation_db,
-    init_backtest_db
-)
+    init_backtest_db,
+    get_cash_ledger,
+    get_stored_cash,
+    )
+  
+
 from services.simulation_service import run_simulation_loop, stop_simulation
 from services.settings_service import load_settings, save_settings
 from types import SimpleNamespace
@@ -188,6 +192,20 @@ unicode_title = ParagraphStyle(
     fontSize=24,
     alignment=1  # center
 )
+from services.trading_helpers import get_cash, set_cash, get_cash_ledger
+
+# --- cash sync check ---
+try:
+    ledger = get_cash_ledger()
+    stored = get_cash()
+    if abs(ledger - stored) > 0.01:
+        print(f"[CASH] MISMATCH: ledger=${ledger:.2f} stored=${stored:.2f}")
+        # Optionally fix it right here:
+        # set_cash(ledger)
+    else:
+        print(f"[CASH] OK: ${ledger:.2f} matches stored cash")
+except Exception as e:
+    print(f"[CASH] check failed: {e}")
 
 # near the top of dashboard.py
 _is_scanner_running = False
@@ -235,6 +253,22 @@ KEY_OAUTH_TOKEN_SECRET  = 'OAUTH_TOKEN_SECRET'
 # ─── OAuth routes ────────────────────────────────────────────
 from requests_oauthlib import OAuth1Session
 print("LOADING settings_service.py from", __file__)
+stored = get_stored_cash()
+if abs(ledger - stored) > 0.01:
+    logger.warning(f"[CASH] mismatch: ledger ${ledger:.2f} vs stored ${stored:.2f}")
+from services.trading_helpers import get_cash_ledger, get_stored_cash
+
+try:
+    ledger = get_cash_ledger()
+    stored = get_stored_cash()  # <- not get_cash()
+    if abs(ledger - stored) > 0.01:
+        print(f"[CASH] MISMATCH: ledger=${ledger:.2f} stored=${stored:.2f}")
+        # Optionally, resync:
+        # set_cash(ledger)
+    else:
+        print(f"[CASH] OK: ledger matches stored (${ledger:.2f})")
+except Exception as e:
+    print(f"[CASH] check failed: {e}")
 
 @app.route('/oauth_callback')
 def oauth_callback():
@@ -1312,54 +1346,58 @@ from services.data_fetch import fetch_data_with_timeout  # Move this to the top 
 
 @app.route("/simulation")
 def simulation_view():
+    import pandas as pd
+    from services.simulation_service import load_simulation_settings
+
     # --- Helper for formatting trade times ---
     def format_trade_time(ts):
         from datetime import datetime
         if isinstance(ts, datetime):
-            return ts.strftime('%Y-%m-%d %H:%M:%S')
+            return ts.strftime("%Y-%m-%d %H:%M:%S")
         try:
             dt = datetime.fromisoformat(str(ts))
-            return dt.strftime('%Y-%m-%d %H:%M:%S')
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
         except Exception:
-            return str(ts).split('.')[0]
+            return str(ts).split(".")[0]
 
-    # 1) pull cash & realized P/L
-    cash     = get_cash()
-    realized = get_realized_pl()
-    
-    # 2) pull raw holdings (as tuples)
-    raw = get_holdings()  # (symbol, qty, avg_cost, old_last_price)
-    
-    # 3) convert to dicts
+    # Load settings FIRST so it's available everywhere
+    try:
+        settings = load_simulation_settings()
+    except Exception as e:
+        print(f"[SIM] settings load failed: {e}")
+        from types import SimpleNamespace
+        settings = SimpleNamespace(starting_cash=1000.0)
+
+    # 1) pull cash
+    cash = get_cash()
+
+    # 2) pull raw holdings
+    raw = get_holdings()
+
+    # 3) normalize holdings
     holdings = [{
         "symbol":     s,
-        "qty":        q,
-        "price_paid": ac,
-        "last_price": lp,
+        "qty":        int(q or 0),
+        "price_paid": float(ac or 0.0),
+        "last_price": float(lp or 0.0),
         "day_gain":   0.0,
         "total_gain": 0.0,
+        "change":     0.0,
         "change_pct": 0.0,
         "value":      0.0,
-    } for s, q, ac, lp in raw]
+    } for (s, q, ac, lp) in raw]
 
-    from services.trading_helpers import extract_total_gain, extract_cost_basis
-
-    # --- Now update each holding with live prices ---
+    # 4) enrich each holding
     for h in holdings:
-        change = 0.0
-        last_close = None
-        prev_close = None
-
         try:
             symbol     = h["symbol"]
             qty        = h["qty"]
-            price_paid = float(h["price_paid"])
+            price_paid = h["price_paid"]
 
-            # 1) Try live
             live = fetch_etrade_quote(symbol)
 
-            # 2) Pull recent closes
             hist = fetch_data_with_timeout(symbol, "2d")
+            last_close = prev_close = None
             if hist is not None:
                 if isinstance(hist.columns, pd.MultiIndex):
                     hist.columns = hist.columns.get_level_values(-1)
@@ -1371,7 +1409,6 @@ def simulation_view():
                     if len(hist) >= 2:
                         prev_close = float(hist[col_close].iloc[-2])
 
-            # 3) Choose display price
             display_price = (
                 (live if live not in (None, 0) else None)
                 or last_close
@@ -1379,23 +1416,18 @@ def simulation_view():
                 or price_paid
             )
 
-            # 4) Compute daily change
             if (live not in (None, 0)) and (last_close is not None):
-                day_delta = display_price - last_close
-                day_base  = last_close
+                day_base = last_close
+                change_day = float(display_price - last_close)
             else:
-                day_base  = last_close if last_close is not None else price_paid
-                ref_prev  = prev_close if prev_close is not None else day_base
-                day_delta = day_base - ref_prev
+                day_base = last_close if last_close is not None else price_paid
+                ref_prev = prev_close if prev_close is not None else day_base
+                change_day = float(day_base - ref_prev)
 
-            change_day     = float(day_delta)
             change_day_pct = (change_day / day_base * 100.0) if day_base else 0.0
-            day_gain       = change_day * qty
-
-            # 5) Total (unrealized) P&L
+            day_gain = change_day * qty
             total_gain = (display_price - price_paid) * qty
 
-            # 6) Fill the row
             h["last_price"] = round(float(display_price), 2)
             h["change"]     = round(change_day, 2)
             h["change_pct"] = round(change_day_pct, 1)
@@ -1404,26 +1436,21 @@ def simulation_view():
             h["value"]      = round(float(display_price) * qty, 2)
 
         except Exception as e:
-            print(f"[SIM] Error updating holding {h.get('symbol', '?')}: {e}")
-            h.setdefault("last_price", float(h.get("last_price") or h.get("price_paid") or 0.0))
-            h.setdefault("total_gain", 0.0)
-            h.setdefault("day_gain",   0.0)
-            h.setdefault("change",     0.0)
-            h.setdefault("change_pct", 0.0)
-            h.setdefault("value",      h["last_price"] * float(h.get("qty", 0) or 0))
-    # --- SUMMARY NUMBERS (after the for h in holdings loop) ---
-    total_cost_basis = sum(h["qty"] * float(h["price_paid"]) for h in holdings)
-    unrealized_pnl   = round(sum(float(h.get("total_gain") or 0.0) for h in holdings), 2)
-    unrealized_pnl_pct = round(unrealized_pnl / total_cost_basis * 100, 2) if total_cost_basis else 0.0
+            print(f"[SIM] Error updating holding {h.get('symbol','?')}: {e}")
 
-    # --- TRADE HISTORY (so realized P&L exists) ---
+    # 5) SUMMARY NUMBERS
+    total_cost_basis   = sum(h["qty"] * float(h["price_paid"]) for h in holdings)
+    unrealized_pnl     = round(sum(float(h.get("total_gain") or 0.0) for h in holdings), 2)
+    unrealized_pnl_pct = round(unrealized_pnl / total_cost_basis * 100.0, 2) if total_cost_basis else 0.0
+
+    # 6) TRADE HISTORY
     history = []
     for t in get_trades():
         if isinstance(t, dict):
             pl_val = float(t.get("pl") or t.get("pnl") or 0.0)
             trade_time = t.get("trade_time") or t.get("timestamp") or t.get("time")
             history.append({
-                "time": format_trade_time(trade_time),
+                "time":   format_trade_time(trade_time),
                 "symbol": t.get("symbol"),
                 "action": t.get("action"),
                 "qty":    t.get("qty"),
@@ -1437,29 +1464,32 @@ def simulation_view():
             except (TypeError, ValueError):
                 pl_val = 0.0
             history.append({
-                "time": format_trade_time(trade_time),
-                "symbol": symbol, "action": action, "qty": qty, "price": price, "pl": pl_val
+                "time":   format_trade_time(trade_time),
+                "symbol": symbol,
+                "action": action,
+                "qty":    qty,
+                "price":  price,
+                "pl":     pl_val,
             })
 
-    realized_pnl = sum(t["pl"] for t in history if t.get("action") == "SELL")
+    realized_pnl = round(sum(t["pl"] for t in history if t.get("action") == "SELL"), 2)
+    total_buy_cost = sum((t.get("qty") or 0) * (t.get("price") or 0.0)
+                         for t in history if t.get("action") == "BUY")
 
-    from services.simulation_service import load_simulation_settings
-    settings = load_simulation_settings()
+    # Here’s the fixed P&L % calculation
+    realized_pnl_pct = (realized_pnl / settings.starting_cash * 100.0) if settings.starting_cash else 0.0
 
-    total_buy_cost = sum((t["qty"] or 0) * (t["price"] or 0.0) for t in history if t["action"] == "BUY")
-    realized_pnl_pct = round(realized_pnl / total_buy_cost * 100, 2) if total_buy_cost else 0.0
-
-    # 7) finally render
+    # 7) render
     return render_template(
         "simulation.html",
         cash=cash,
         unrealized_pnl=unrealized_pnl,
         unrealized_pnl_pct=unrealized_pnl_pct,
         realized_pnl=realized_pnl,
+        realized_pnl_pct=realized_pnl_pct,
         holdings=holdings,
         history=history,
         settings=settings,
-        realized_pnl_pct=realized_pnl_pct,
     )
 @app.route("/simulation/buy", methods=["POST"])
 def simulation_buy():
@@ -1634,6 +1664,38 @@ from services.trading_helpers import (
 from services.etrade_service import fetch_etrade_quote
 
 CONFIG_PATH = Path(__file__).parent / "simulation_config.json"
+
+# in dashboard.py
+from services.trading_helpers import get_cash, get_cash_ledger
+
+def check_cash_sync():
+    try:
+        ledger = get_cash_ledger()
+        stored = get_cash()
+        if abs(ledger - stored) > 0.01:
+            app.logger.warning(f"[CASH] MISMATCH: ledger=${ledger:.2f} stored=${stored:.2f}")
+            # Optional: set_cash(ledger)
+        else:
+            app.logger.info(f"[CASH] OK: ${ledger:.2f} matches stored cash")
+    except Exception as e:
+        app.logger.error(f"[CASH] check failed: {e}")
+
+# Run once on first real request (Flask 3-safe)
+@app.before_request
+def _run_cash_sync_once():
+    if not getattr(app, "_cash_synced", False):
+        check_cash_sync()
+        app._cash_synced = True
+
+@app.route("/admin/cash/reconcile", methods=["POST", "GET"])
+def reconcile_cash():
+    try:
+        ledger = get_cash_ledger()
+        set_cash(ledger)
+        return f"Stored cash set to ${ledger:.2f}\n", 200
+    except Exception as e:
+        app.logger.exception(e)
+        return f"Reconcile failed: {e}\n", 500
 
 @app.route("/")
 def index():

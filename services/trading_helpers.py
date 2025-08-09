@@ -131,7 +131,8 @@ def set_cash(amount: float):
     conn.close()
 
 
-def get_cash() -> float:
+# --- Keep the old DB snapshot function (rename it) -----------------
+def get_stored_cash() -> float:
     _ensure_state()
     conn = _connect()
     cur = conn.cursor()
@@ -139,6 +140,45 @@ def get_cash() -> float:
     row = cur.fetchone()
     conn.close()
     return float(row[0]) if row else 0.0
+
+# in services/trading_helpers.py
+import sqlite3
+
+# services/trading_helpers.py
+
+def get_cash_ledger() -> float:
+    """
+    Cash = starting_cash - sum(BUY qty*price) + sum(SELL qty*price).
+    Purely derived from trades + settings; never falls back to the stored snapshot.
+    """
+    from services.simulation_service import load_simulation_settings
+
+    starting_cash = float(load_simulation_settings().starting_cash)
+
+    trades = get_trades(limit=10_000)  # big enough ceiling
+    buy_total = sell_total = 0.0
+    for t in trades:
+        if isinstance(t, dict):
+            side  = t.get("action")
+            qty   = float(t.get("qty")   or 0)
+            price = float(t.get("price") or 0)
+        else:
+            # (trade_time, symbol, action, qty, price, pnl, ...)
+            _, _, side, qty, price, *_ = t
+            qty   = float(qty   or 0)
+            price = float(price or 0)
+
+        if side == "BUY":
+            buy_total  += qty * price
+        elif side == "SELL":
+            sell_total += qty * price
+
+    return round(starting_cash - buy_total + sell_total, 2)
+
+# --- New: compute cash from the trade ledger -----------------------
+# --- Make get_cash() use the ledger by default ---------------------
+def get_cash() -> float:
+    return get_cash_ledger()
 
 # ─── Trade recording ──────────────────────────────────────
 def insert_trade(symbol: str, action: str, price: float, qty: int,

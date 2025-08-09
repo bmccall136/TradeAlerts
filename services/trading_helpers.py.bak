@@ -131,7 +131,8 @@ def set_cash(amount: float):
     conn.close()
 
 
-def get_cash() -> float:
+# --- Keep the old DB snapshot function (rename it) -----------------
+def get_stored_cash() -> float:
     _ensure_state()
     conn = _connect()
     cur = conn.cursor()
@@ -139,6 +140,106 @@ def get_cash() -> float:
     row = cur.fetchone()
     conn.close()
     return float(row[0]) if row else 0.0
+
+# in services/trading_helpers.py
+import sqlite3
+
+def get_cash_ledger() -> float:
+    try:
+        _ensure_state()
+        conn = _connect()
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT starting_cash FROM state WHERE id = 1;")
+            row = cur.fetchone()
+            starting_cash = float(row[0]) if row and row[0] is not None else None
+        except sqlite3.OperationalError:
+            # Column doesn't exist → fall back to settings
+            starting_cash = None
+        finally:
+            conn.close()
+
+        if starting_cash is None:
+            from services.simulation_service import load_simulation_settings
+            starting_cash = float(load_simulation_settings().starting_cash)
+
+        trades = get_trades()
+        buy_total = sell_total = 0.0
+        for t in trades:
+            if isinstance(t, dict):
+                side  = t.get("action")
+                qty   = float(t.get("qty") or 0)
+                price = float(t.get("price") or 0)
+            else:
+                _, _, side, qty, price, *_ = t
+                qty   = float(qty or 0)
+                price = float(price or 0)
+
+            if side == "BUY":
+                buy_total  += qty * price
+            elif side == "SELL":
+                sell_total += qty * price
+
+        return round(starting_cash - buy_total + sell_total, 2)
+
+    except Exception as e:
+        print(f"[CASH] ledger calc failed, using stored cash: {e}")
+        return get_stored_cash()
+
+# --- New: compute cash from the trade ledger -----------------------
+def get_cash_ledger() -> float:
+    """
+    Cash = starting_cash - sum(BUY qty*price) + sum(SELL qty*price)
+    Falls back to DB snapshot if anything goes sideways.
+    """
+    try:
+        # 1) starting cash: try state table first, else settings
+        _ensure_state()
+        conn = _connect()
+        cur = conn.cursor()
+        cur.execute("SELECT starting_cash FROM state WHERE id = 1;")
+        row = cur.fetchone()
+        starting_cash = float(row[0]) if row and row[0] is not None else None
+        conn.close()
+
+        if starting_cash is None:
+            try:
+                # if you have a settings loader, use it
+                from services.simulation_service import load_simulation_settings
+                starting_cash = float(load_simulation_settings().starting_cash)
+            except Exception:
+                starting_cash = 1000.0  # last-ditch default
+
+        # 2) walk trades (this module already exposes get_trades())
+        trades = get_trades()
+        buy_total = sell_total = 0.0
+        for t in trades:
+            if isinstance(t, dict):
+                side  = t.get("action")
+                qty   = float(t.get("qty") or 0)
+                price = float(t.get("price") or 0)
+            else:
+                # tuple/list fallback
+                _, _, side, qty, price, *_ = t
+                qty   = float(qty or 0)
+                price = float(price or 0)
+
+            if side == "BUY":
+                buy_total  += qty * price
+            elif side == "SELL":
+                sell_total += qty * price
+
+        return round(starting_cash - buy_total + sell_total, 2)
+
+    except Exception as e:
+        # If anything fails, don’t crash the app—fallback to stored cash
+        print(f"[CASH] ledger calc failed, using stored cash: {e}")
+        return get_stored_cash()
+
+
+# --- Make get_cash() use the ledger by default ---------------------
+def get_cash() -> float:
+    return get_cash_ledger()
 
 # ─── Trade recording ──────────────────────────────────────
 def insert_trade(symbol: str, action: str, price: float, qty: int,
@@ -157,17 +258,22 @@ def insert_trade(symbol: str, action: str, price: float, qty: int,
     conn.close()
 
 def get_trades(limit: int = 100):
+    """
+    Fetches trades as a list of dicts for easier use.
+    """
     conn = _connect()
     cur = conn.cursor()
     cur.execute(
-        "SELECT trade_time, symbol, action, qty, price, pnl FROM simulation_trades ORDER BY trade_time DESC LIMIT ?;",
+        "SELECT trade_time, symbol, action, qty, price, pnl"
+        " FROM simulation_trades"
+        " ORDER BY trade_time DESC LIMIT ?;",
         (limit,)
     )
     rows = cur.fetchall()
     conn.close()
-    # Make rows into dicts for easy lookup
-    keys = ["trade_time", "symbol", "action", "qty", "price", "pnl"]
-    return [dict(zip(keys, row)) for row in rows]
+    columns = ["trade_time", "symbol", "action", "qty", "price", "pnl"]
+    # Return list of dicts:
+    return [dict(zip(columns, row)) for row in rows]
 
 # ─── Holdings management ─────────────────────────────────
 def insert_or_update_holding(symbol: str, qty: int, avg_cost: float, last_price: float):
@@ -281,25 +387,6 @@ def get_holdings():
     rows = cur.fetchall()
     conn.close()
     return rows
-
-
-def get_trades(limit: int = 100):
-    """
-    Fetches trades as a list of dicts for easier use.
-    """
-    conn = _connect()
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT trade_time, symbol, action, qty, price, pnl"
-        " FROM simulation_trades"
-        " ORDER BY trade_time DESC LIMIT ?;",
-        (limit,)
-    )
-    rows = cur.fetchall()
-    conn.close()
-    columns = ["trade_time", "symbol", "action", "qty", "price", "pnl"]
-    # Return list of dicts:
-    return [dict(zip(columns, row)) for row in rows]
 
 
 def get_position(symbol):
