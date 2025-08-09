@@ -1060,7 +1060,10 @@ def export_simulation():
     cash     = get_cash()
     holdings = get_holdings()
     trades   = get_trades()
-
+    realized_pnl = 0.0
+    unrealized_pnl = 0.0
+    realized_pnl_pct = (realized_pnl / _starting_cash * 100.0) if _starting_cash else 0.0
+        
     # --- Helper for formatting trade times ---
     def format_trade_time(ts):
         from datetime import datetime
@@ -1113,6 +1116,14 @@ def export_simulation():
             "value": value,
         })
 
+    # ---- Compute Realized P&L % (mirror dashboard logic) ----
+    try:
+        from services.simulation_service import load_simulation_settings
+        _settings = load_simulation_settings()
+        _starting_cash = float(getattr(_settings, "starting_cash", 0.0))
+    except Exception:
+        _starting_cash = 0.0
+
     # ---- Update holdings with live prices & gain calculations ----
     for h in holding_dicts:
         try:
@@ -1134,7 +1145,7 @@ def export_simulation():
             pl_val = float(t.get("pl") or t.get("pnl") or 0)
             trade_time = t.get("trade_time") or t.get("timestamp") or t.get("time")
             history.append({
-                "time": format_trade_time(trade_time),  # <-- CORRECT
+                "time": format_trade_time(trade_time),
                 "symbol": t.get("symbol"),
                 "action": t.get("action"),
                 "qty":    t.get("qty"),
@@ -1155,8 +1166,19 @@ def export_simulation():
                 "price":  price,
                 "pl":     pl_val,
             })
+
+    # Calculate realized P&L before percentage
     realized_pnl = sum(t["pl"] for t in history if t.get("action") == "SELL")
 
+    # Pull starting cash from settings (or fallback)
+    try:
+        from services.settings_schema import load_simulation_settings
+        _starting_cash = float(load_simulation_settings().starting_cash)
+    except Exception:
+        _starting_cash = cash  # fallback if settings not available
+
+    realized_pnl_pct = (realized_pnl / _starting_cash * 100.0) if _starting_cash else 0.0
+    
     # ---- Write summary and export ----
     import io
     si = io.StringIO()
@@ -1166,6 +1188,7 @@ def export_simulation():
     cw.writerow(['Unrealized P&L', f"${unrealized_pnl:.2f}"])
     cw.writerow(['Unrealized P&L %', f"{unrealized_pnl_pct:.2f}%"])
     cw.writerow(['Realized P&L', f"${realized_pnl:.2f}"])
+    cw.writerow(['Realized P&L %', f"{realized_pnl_pct:.2f}%"])
     cw.writerow([])  # Blank row for spacing
 
     cw.writerow(['-- HOLDINGS --'])
@@ -1207,16 +1230,29 @@ def export_simulation():
 
     cw.writerow([])
     cw.writerow(['-- TRADES --'])
-    cw.writerow(['timestamp','symbol','action','qty','price','pl'])
+    cw.writerow(['timestamp', 'symbol', 'action', 'qty', 'price', 'pl', 'pl_pct'])
+
     for t in history:
+        try:
+            qty = int(t['qty'])
+            price_val = float(t['price'])
+            pl_val = float(t['pl'])
+            pl_pct = (pl_val / (price_val * qty) * 100) if price_val and qty else 0.0
+        except (TypeError, ValueError):
+            price_val = 0.0
+            pl_val = 0.0
+            pl_pct = 0.0
+
         cw.writerow([
             t["time"],
             t["symbol"],
             t["action"],
-            t["qty"],
-            t["price"],
-            abs(t["pl"] or 0)
+            qty,
+            f"{price_val:.2f}",
+            f"{pl_val:.2f}",
+            f"{pl_pct:.2f}%",
         ])
+
 
     resp = make_response(si.getvalue())
     resp.headers["Content-Disposition"] = "attachment; filename=simulation.csv"
@@ -1341,7 +1377,8 @@ from services.trading_helpers import (
     get_trades,
     get_realized_pl,
 )
-
+from datetime import datetime
+import pytz
 from services.data_fetch import fetch_data_with_timeout  # Move this to the top of your file
 
 @app.route("/simulation")
@@ -1350,13 +1387,20 @@ def simulation_view():
     from services.simulation_service import load_simulation_settings
 
     # --- Helper for formatting trade times ---
+
     def format_trade_time(ts):
-        from datetime import datetime
-        if isinstance(ts, datetime):
-            return ts.strftime("%Y-%m-%d %H:%M:%S")
         try:
-            dt = datetime.fromisoformat(str(ts))
-            return dt.strftime("%Y-%m-%d %H:%M:%S")
+            # Parse whatever type we get into a datetime
+            if not isinstance(ts, datetime):
+                ts = datetime.fromisoformat(str(ts).split(".")[0])
+
+            # Convert UTC → Eastern
+            eastern = pytz.timezone("America/New_York")
+            if ts.tzinfo is None:
+                ts = pytz.UTC.localize(ts)  # assume stored in UTC
+            ts = ts.astimezone(eastern)
+
+            return ts.strftime("%Y-%m-%d %H:%M:%S")
         except Exception:
             return str(ts).split(".")[0]
 
