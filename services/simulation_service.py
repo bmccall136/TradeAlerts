@@ -5,6 +5,8 @@ import time
 from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
+import re
+from services.trading_helpers import buy_stock as enter_trade
 
 import pandas as pd
 import pandas_market_calendars as mcal
@@ -96,15 +98,33 @@ def _canonize_triggers(triggered: list[str]) -> set[str]:
         if "price > vwap" in t:                keys.add("VWAP_PLUS")
     return keys
 
+# services/simulation_service.py
+from pathlib import Path
+import json
+from services.settings_schema import SimulationSettings
+from dataclasses import asdict  # optional helper below
+
+# This is the ONLY place we touch the JSON file on disk.
+_SIM_CONFIG_FILE = Path(__file__).parent.parent / "simulation_config.json"
+
 def load_simulation_settings() -> SimulationSettings:
     """
-    Loads simulation settings from simulation_config.json and returns a SimulationSettings object.
+    Load simulation_config.json and return a SimulationSettings object.
+    Missing file or bad JSON → return defaults.
     """
-    config_path = Path(__file__).parent.parent / "simulation_config.json"
-    with open(config_path, "r") as f:
-        data = json.load(f)
-    # If your schema expects keys as arguments
+    try:
+        with open(_SIM_CONFIG_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f) or {}
+    except FileNotFoundError:
+        data = {}
+    except Exception:
+        # malformed JSON, etc.
+        data = {}
     return SimulationSettings(**data)
+
+# (optional) Handy helper if a dict is more convenient in templates
+def settings_as_dict() -> dict:
+    return asdict(load_simulation_settings())
 
 def analyze_symbol(symbol: str, settings: SimulationSettings):
     # 0) Determine lookback
@@ -141,109 +161,147 @@ def analyze_symbol(symbol: str, settings: SimulationSettings):
     triggered: list[str] = []
 
     # ─── HARD-GATES + REQUIRED FILTERS ──────────────────────────
-    adx = None
-    if 'adx' in settings.required_filters:
-        adx = compute_adx(history, settings.adx_len)
-        if adx.iat[-1] < settings.adx_threshold:
-            logger.debug(f"{symbol}: ADX {adx.iat[-1]:.2f} < required {settings.adx_threshold}")
-            return price, triggered, False
-        triggered.append(f"ADX ≥ {settings.adx_threshold}")
-    elif settings.adx_on:
-        adx = compute_adx(history, settings.adx_len)
+    triggered = list(triggered)  # ensure it's a mutable list
 
-    macd_line = macd_sig = None
-    if 'macd' in settings.required_filters or settings.macd_on:
+    # --- ADX ---
+    adx_v = None
+    if ('adx' in settings.required_filters) or settings.adx_on:
+        adx_series = compute_adx(history, settings.adx_len)
+        adx_v = float(adx_series.iat[-1])
+        if adx_v >= settings.adx_threshold:
+            # use threshold label to match your downstream string checks
+            if f"ADX ≥ {settings.adx_threshold}" not in triggered:
+                triggered.append(f"ADX ≥ {settings.adx_threshold}")
+
+    # --- MACD ---
+    macd_line_v = macd_sig_v = None
+    if ('macd' in settings.required_filters) or settings.macd_on:
         macd_line, macd_sig = compute_macd(
             history, settings.macd_fast, settings.macd_slow, settings.macd_signal
         )
-    if 'macd' in settings.required_filters:
-        if macd_line.iat[-1] <= macd_sig.iat[-1]:
-            logger.debug(f"{symbol}: MACD {macd_line.iat[-1]:.2f} ≤ {macd_sig.iat[-1]:.2f} required")
-            return price, triggered, False
-        triggered.append("MACD 🚀")
+        macd_line_v = float(macd_line.iat[-1])
+        macd_sig_v  = float(macd_sig.iat[-1])
+        if macd_line_v > macd_sig_v:
+            # keep your original label for compatibility
+            if "MACD 🚀" not in triggered:
+                triggered.append("MACD 🚀")
 
-    osc = sig = None
-    if 'super' in settings.required_filters or settings.super_on:
+    # --- SuperTracker (if you use it) ---
+    osc_v = sig_v = None
+    if ('super' in settings.required_filters) or getattr(settings, 'super_on', False):
         osc, sig = compute_supertracker(
             history, settings.super_fast, settings.super_slow, settings.super_signal
         )
-    if 'super' in settings.required_filters:
-        if not (osc.iat[-1] > sig.iat[-1] and osc.iat[-1] > 0):
-            logger.debug(f"{symbol}: SuperTracker {osc.iat[-1]:.2f}/{sig.iat[-1]:.2f} required")
-            return price, triggered, False
-        triggered.append("SuperTracker ↑")
+        osc_v = float(osc.iat[-1])
+        sig_v = float(sig.iat[-1])
+        if (osc_v > sig_v) and (osc_v > 0):
+            if "SuperTracker ↑" not in triggered:
+                triggered.append("SuperTracker ↑")
 
+    # --- VWAP (soft signal) ---
     vwap = None
-    if settings.vwap_on:
+    if getattr(settings, 'vwap_on', False):
         try:
             vwap = fetch_intraday_vwap(symbol)
             logger.debug(f"{symbol}: fetched VWAP={vwap:.2f}")
         except Exception as e:
             msg = str(e)
-            # only log truly unexpected errors
             if "Missing high in intraday data" not in msg:
                 logger.debug(f"{symbol}: VWAP fetch failed: {e}")
-            # fallback to historical VWAP
             try:
-                vwap = compute_vwap(history)
+                vwap_series = compute_vwap(history)
+                vwap = float(vwap_series) if not hasattr(vwap_series, 'iat') else float(vwap_series.iat[-1])
                 logger.debug(f"{symbol}: fallback VWAP={vwap:.2f}")
             except Exception:
                 vwap = None
-    if vwap is not None and price < vwap:
-        logger.debug(f"{symbol}: price {price:.2f} < VWAP {vwap:.2f}")
-        return price, triggered, False
+        if (vwap is not None) and (price is not None) and (price >= vwap):
+            if "Price>VWAP" not in triggered:
+                triggered.append("Price>VWAP")
 
-    if settings.adx_on and adx is not None and f"ADX ≥ {settings.adx_threshold}" not in triggered:
-        triggered.append(f"ADX ≥ {settings.adx_threshold}")
-
-    if settings.macd_on and 'macd' not in settings.required_filters:
-        macd_line, macd_sig = compute_macd(
-            history, settings.macd_fast, settings.macd_slow, settings.macd_signal
-        )
-        if macd_line.iat[-1] > macd_sig.iat[-1]:
-            triggered.append("MACD 🚀")
-
-    if settings.vwap_on and vwap is not None:
-        triggered.append("Price > VWAP")
-
-    if settings.bb_on:
+    # --- Bollinger breakout ---
+    if getattr(settings, 'bb_on', False):
         ub, _, _ = compute_bollinger_bands(history['close'], settings.bb_length, settings.bb_std)
-        if price > ub.iat[-1]:
-            triggered.append("BB breakout")
+        if price is not None and price > float(ub.iat[-1]):
+            if "BB breakout" not in triggered:
+                triggered.append("BB breakout")
 
-    if settings.rsi_on:
+    # --- RSI overbought (your original intent) ---
+    if getattr(settings, 'rsi_on', False):
         rsi = compute_rsi(history, settings.rsi_len)
-        if rsi.iat[-1] > settings.rsi_overbought:
-            triggered.append("RSI 📈")
+        if float(rsi.iat[-1]) > settings.rsi_overbought:
+            if "RSI 📈" not in triggered:
+                triggered.append("RSI 📈")
 
-    if settings.vol_on:
-        vol_mul = compute_volume_multiplier(history, settings.vol_multiplier)
-        if vol_mul.iat[-1] >= settings.vol_multiplier:
-            triggered.append("Volume spike")
+    # --- Volume spike ---
+    if getattr(settings, 'vol_on', False):
+        vol_mul_series = compute_volume_multiplier(history, settings.vol_multiplier)
+        if float(vol_mul_series.iat[-1]) >= settings.vol_multiplier:
+            if "Volume spike" not in triggered:
+                triggered.append("Volume spike")
 
-    if settings.atr_on:
-        atr_val = compute_atr(history, settings.atr_len)
-        if atr_val >= settings.atr_threshold:
-            triggered.append(f"ATR{settings.atr_len} ≥ {settings.atr_threshold}")
+    # --- ATR absolute ---
+    if getattr(settings, 'atr_on', False):
+        atr_series = compute_atr(history, settings.atr_len)
+        atr_v = float(atr_series.iat[-1]) if hasattr(atr_series, 'iat') else float(atr_series)
+        if atr_v >= settings.atr_threshold:
+            lab = f"ATR{settings.atr_len} ≥ {settings.atr_threshold}"
+            if lab not in triggered:
+                triggered.append(lab)
 
-    if settings.atr_pct_on:
-        atr_val = compute_atr(history, settings.atr_len)
-        if (atr_val / price * 100) >= settings.atr_pct:
-            triggered.append(f"ATR % ≥ {settings.atr_pct}%")
+    # --- ATR percent ---
+    if getattr(settings, 'atr_pct_on', False):
+        atr_series = compute_atr(history, settings.atr_len)
+        atr_v = float(atr_series.iat[-1]) if hasattr(atr_series, 'iat') else float(atr_series)
+        if price and (atr_v / price * 100.0) >= settings.atr_pct:
+            lab = f"ATR % ≥ {settings.atr_pct}%"
+            if lab not in triggered:
+                triggered.append(lab)
 
-    if settings.range_on and daily_range_pct(history) >= settings.range_pct:
-        triggered.append(f"Range % ≥ {settings.range_pct}")
+    # --- Range / Gap ---
+    if getattr(settings, 'range_on', False) and daily_range_pct(history) >= settings.range_pct:
+        lab = f"Range % ≥ {settings.range_pct}"
+        if lab not in triggered:
+            triggered.append(lab)
+    if getattr(settings, 'gap_on', False) and gap_up_pct(history) >= settings.gap_pct:
+        lab = f"Gap % ≥ {settings.gap_pct}"
+        if lab not in triggered:
+            triggered.append(lab)
 
-    if settings.gap_on and gap_up_pct(history) >= settings.gap_pct:
-        triggered.append(f"Gap % ≥ {settings.gap_pct}")
+    # --- Price > SMA(N) generic ---
+    if getattr(settings, 'price_sma_on', False):
+        smaN = compute_sma(history['close'], settings.price_sma_len)
+        smaN_v = float(smaN.iat[-1]) if hasattr(smaN, 'iat') else float(smaN)
+        if price is not None and price > smaN_v:
+            lab = f"Price > SMA{settings.price_sma_len}"
+            if lab not in triggered:
+                triggered.append(lab)
 
-    if settings.price_sma_on:
-        sma_val = compute_sma(history['close'], settings.price_sma_len)
-        if price > sma_val:
-            triggered.append(f"Price > SMA{settings.price_sma_len}")
+    # --- Price > SMA20 (explicit, for require_sma20 and your tags) ---
+    sma20_v = None
+    if getattr(settings, 'require_sma20', True) or getattr(settings, 'sma_on', False):
+        sma20 = compute_sma(history['close'], 20)
+        sma20_v = float(sma20.iat[-1]) if hasattr(sma20, 'iat') else float(sma20)
+        if price is not None and price > sma20_v:
+            if "Price>SMA20" not in triggered:
+                triggered.append("Price>SMA20")
 
     # ─── FINAL PASS/FAIL ─────────────────────────────
-    passed = len(triggered) >= settings.min_signals
+    req = set(getattr(settings, 'required_filters', []))  # e.g., {'adx','macd','super'}
+    need_adx  = 'adx'  in req
+    need_macd = 'macd' in req
+    need_super= 'super' in req
+
+    meets_reqs = (
+        (not need_adx  or (adx_v is not None and adx_v >= settings.adx_threshold)) and
+        (not need_macd or (macd_line_v is not None and macd_sig_v is not None and macd_line_v > macd_sig_v)) and
+        (not need_super or (osc_v is not None and sig_v is not None and osc_v > sig_v and osc_v > 0))
+    )
+
+    sma20_ok   = (not getattr(settings, 'require_sma20', True) or (sma20_v is not None and price is not None and price > sma20_v))
+    min_signals = int(getattr(settings, 'min_signals', 2))
+
+    passed = (len(triggered) >= min_signals) and meets_reqs and sma20_ok
+    return price, triggered, passed
 
     # ─── LOG TO CSV ON PASS ──────────────────────────
     if passed:
@@ -391,109 +449,223 @@ def run_simulation_loop(settings: SimulationSettings):
 
         logger.info("🔁 Starting scan loop iteration")
 
-        # b) reset candidate list each pass
+        # reset per pass
         candidates: list[tuple[str, float, list[str]]] = []
-        # c) scan symbols & collect the ones that pass
-        for sym in symbols:
-            if settings.single_entry_only and get_position_qty(sym) > 0:
-                continue
-            price, triggered, passed = analyze_symbol(sym, settings)
-            if not passed:
-                continue
-            logger.info(f"[SIM] ALERT {sym}: {len(triggered)}/{settings.min_signals} → {triggered}")
-            candidates.append((sym, price, triggered))
 
+        # gates once per pass (BEFORE the loop)
         strict_signals = getattr(settings, 'strict_buy_signals', 4)
         require_sma20  = getattr(settings, 'require_sma20', True)
+        req            = set(getattr(settings, 'required_filters', []))  # e.g., {'adx','macd'}
 
+        stats = {"analyzed":0, "price_ok":0, "tokenized":0,
+                 "met_sig":0, "met_sma":0, "met_req":0, "candidates":0}
+
+        for sym in symbols:
+            stats["analyzed"] += 1
+
+            if getattr(settings, "single_entry_only", False) and get_position_qty(sym) > 0:
+                continue
+
+            try:
+                res = analyze_symbol(sym, settings)
+            except Exception as e:
+                logger.exception(f"{sym}: analyze_symbol crashed — {e}")
+                continue
+
+            if not res or not isinstance(res, (tuple, list)) or len(res) != 3:
+                logger.debug(f"{sym}: analyze_symbol returned {res!r}; skipping")
+                continue
+
+            price, triggered, _ = res
+            if price is None:
+                logger.debug(f"{sym}: price is None; skipping")
+                continue
+            stats["price_ok"] += 1
+
+            tokens    = [(t or '').replace(' ', '').lower() for t in (triggered or [])]
+            stats["tokenized"] += 1
+            sig_count = len(tokens)
+
+            has_sma20 = any('price>sma20' in t or 'price>sma(20)' in t for t in tokens)
+            has_adx   = any(t.startswith('adx') or 'adx>=' in t for t in tokens)
+            has_macd  = any('macd' in t for t in tokens)
+            meets_reqs = (('adx' not in req or has_adx) and ('macd' not in req or has_macd))
+
+            if sig_count >= strict_signals:
+                stats["met_sig"] += 1
+            if not require_sma20 or has_sma20:
+                stats["met_sma"] += 1
+            if meets_reqs:
+                stats["met_req"] += 1
+
+            if (sig_count >= strict_signals) and (not require_sma20 or has_sma20) and meets_reqs:
+                logger.info(f"[SIM] ALERT {sym}: {sig_count}/{strict_signals} → {triggered}")
+                candidates.append((sym, float(price), list(triggered)))
+                stats["candidates"] += 1
+            else:
+                logger.info(
+                    f"[SIM] Skip {sym}: sc={sig_count} need>={strict_signals} "
+                    f"sma20_req={require_sma20} has_sma20={has_sma20} "
+                    f"need_adx={'adx' in req} has_adx={has_adx} "
+                    f"need_macd={'macd' in req} has_macd={has_macd} "
+                    f"trigs={triggered}"
+                )
+
+        # one-line summary for this pass
+        logger.info(
+            f"[SIM] pass stats: analyzed={stats['analyzed']} price_ok={stats['price_ok']} "
+            f"tokenized={stats['tokenized']} met_sig={stats['met_sig']} "
+            f"met_sma={stats['met_sma']} met_req={stats['met_req']} candidates={stats['candidates']}"
+        )
+        
+        # ---------- RISK-AWARE BUY SECTION ----------
         if candidates:
-            candidates.sort(key=lambda x: len(x[2]), reverse=True)
-            purchased = False
-
-            # ---------- RISK-AWARE BUY SECTION ---------------
-            # Pull these ONCE, outside the buy loop
-            trade_log = get_trades(1000)
-            holdings = [{
-                "symbol": s,
-                "qty": q,
-                "price_paid": ac,
-                "last_price": lp,
-            } for s, q, ac, lp in get_holdings()]
+            # 1) Promote your tuple list into a scoring dict
+            #    candidates: list[ (sym, price, triggered) ]
+            candidates_meta = {}
             for sym, price, triggered in candidates:
-                signal_count = len(triggered)
-                has_sma20 = any("Price > SMA20" in t for t in triggered)
-                if signal_count < strict_signals or (require_sma20 and not has_sma20):
-                    logger.info(f"[SIM] Skipping {sym}: {signal_count} signals, SMA20 present={has_sma20}")
+                tokens = [(t or '').replace(' ', '').lower() for t in (triggered or [])]
+                meta = {
+                    "price": float(price),
+                    "signals_matched": len(tokens),
+                    # optional nudges if you want to enrich later:
+                    # "vol_spike": 0.0, "macd_hist": 0.0, "vwap_diff": 0.0,
+                }
+                candidates_meta[sym] = meta
+
+            # 2) Scoring: heavy weight on signals_matched; slight nudge for higher price
+            def _score_candidate(sym, meta):
+                return meta.get("signals_matched", 0) * 10 + (meta.get("price", 0.0) * 0.01)
+
+            ranked = sorted(
+                [(sym, _score_candidate(sym, meta), meta) for sym, meta in candidates_meta.items()],
+                key=lambda x: x[1],
+                reverse=True,
+            )
+
+            # 3) Pull current cash/holdings/trade history once
+            cash_now  = get_cash()
+            holdingsL = {s: {"qty": q, "avg_cost": ac, "last_price": lp}
+                         for s, q, ac, lp in get_holdings()}
+            trade_log = get_trades(10000)  # plenty to reconstruct last buys
+
+            # pyramiding rules (tweak to taste)
+            pyramid_rules = {
+                "max_adds": 2,              # after initial entry
+                "min_add_interval_s": 300,  # 5 min between adds
+                "min_add_distance_pct": 1.0,# add only if >= +1% from last fill
+                "max_position_qty": 999999, # hard cap
+                "t_plus_settlement_days": 2 # soft T+2 using first buy time
+            }
+
+            # helpers from local data (don’t hit DB repeatedly)
+            from datetime import datetime, timezone, timedelta
+
+            def _get_buy_events(sym):
+                ev = []
+                for t in trade_log or []:
+                    if (t.get("symbol") == sym) and (str(t.get("action","")).upper() == "BUY"):
+                        # 'trade_time' is ISO; make it aware
+                        ts = t.get("trade_time")
+                        try:
+                            dt = datetime.fromisoformat(str(ts).replace('Z', '+00:00'))
+                            if dt.tzinfo is None:
+                                dt = dt.replace(tzinfo=timezone.utc)
+                        except Exception:
+                            dt = datetime.now(timezone.utc)
+                        ev.append({
+                            "time": dt,
+                            "price": float(t.get("price") or 0.0),
+                            "qty":   int(float(t.get("qty") or 0)),
+                        })
+                # oldest first
+                return sorted(ev, key=lambda e: e["time"])
+
+            def _pyramid_ok(sym, price, qty, rules):
+                pos = holdingsL.get(sym, {"qty": 0, "avg_cost": None, "last_price": None})
+                buys = _get_buy_events(sym)
+                reasons = []
+
+                # cash
+                if (cash_now - price * qty) < 1.00:
+                    reasons.append("cash")
+
+                # no prior buys → first entry always OK (skip add-specific checks)
+                if not buys:
+                    # still respect position qty cap
+                    if qty > rules["max_position_qty"]:
+                        reasons.append("max_qty")
+                    return (len(reasons) == 0), reasons
+
+                # derive add stats from buy history
+                adds = max(len(buys) - 1, 0)
+                last_fill_px = buys[-1]["price"]
+                first_buy_dt = buys[0]["time"]
+                last_add_dt  = buys[-1]["time"]
+
+                # max adds
+                if adds >= rules["max_adds"]:
+                    reasons.append("max_adds")
+
+                # cooldown
+                since = (datetime.now(timezone.utc) - last_add_dt).total_seconds()
+                if since < rules["min_add_interval_s"]:
+                    reasons.append("cooldown")
+
+                # min distance from last fill
+                min_px = last_fill_px * (1 + rules["min_add_distance_pct"]/100.0)
+                if price < min_px:
+                    reasons.append("distance")
+
+                # soft T+2 from first entry if you want to simulate cash-settlement behavior
+                if rules.get("t_plus_settlement_days", 0) > 0:
+                    earliest_next = first_buy_dt + timedelta(days=rules["t_plus_settlement_days"])
+                    if datetime.now(timezone.utc) < earliest_next and pos.get("qty", 0) > 0:
+                        reasons.append("t+2")
+
+                # position cap
+                if (pos.get("qty", 0) + qty) > rules["max_position_qty"]:
+                    reasons.append("max_qty")
+
+                return (len(reasons) == 0), reasons
+
+            # 4) Walk the ranked list; buy the first one that passes gates
+            purchased = False
+            for sym, score, meta in ranked:
+                price = float(meta["price"])
+                # sanity: require your strict signals again
+                trigs = next((t for (s, p, t) in candidates if s == sym), [])
+                sig_count = len(trigs)
+                if sig_count < strict_signals:
+                    logger.info(f"[SIM] Skip {sym}: only {sig_count}/{strict_signals} signals after rank")
                     continue
 
                 qty = compute_qty(settings, price)
-                cost = qty * price
-                cash = get_cash()
-                if qty < 1 or cost > cash:
-                    logger.info(f"[SIM] Candidate {sym} skipped (qty={qty}, cost=${cost:.2f}, cash=${cash:.2f})")
+                if qty < 1:
+                    logger.info(f"[SIM] Skip {sym}: qty calc < 1 at price={price:.2f}")
                     continue
 
-                # --- Smart pyramiding section (unchanged) ---
-                position_qty = get_position_qty(sym)
-                entry_prices = [t["price"] for t in trade_log if t["symbol"] == sym and t["action"].upper() == "BUY"]
-                MAX_PYRAMIDS = getattr(settings, "max_pyramids", 3)
-                if position_qty > 0:
-                    if len(entry_prices) >= MAX_PYRAMIDS:
-                        logger.info(f"[SIM] Pyramiding cap reached for {sym}")
-                        continue
-                    if price <= max(entry_prices):
-                        logger.info(f"[SIM] {sym}: not a new high, skip pyramid buy")
-                        continue
-                    avg_entry = sum(entry_prices) / len(entry_prices)
-                    if price <= avg_entry:
-                        logger.info(f"[SIM] {sym}: not in profit, skip pyramid buy")
-                        continue
+                ok, why = _pyramid_ok(sym, price, qty, pyramid_rules)
+                if not ok:
+                    logger.info(f"[SIM] Blocked {sym} by pyramiding: {','.join(why)}")
+                    continue
 
-                # ==== RISK CHECKS ====
-                now = datetime.utcnow()
-
-                if daily_loss_cap_breached(trade_log, holdings, max_daily_loss=getattr(settings, "max_daily_loss", -1000)):
-                    logger.warning("Trading halted: Daily loss cap reached")
+                try:
+                    ok_trd = enter_trade(sym, qty, price)
+                    if ok_trd is False:
+                        logger.warning(f"[SIM] ❌ enter_trade returned False for {sym}")
+                        continue
+                    logger.info(f"[SIM] ✅ BUY {sym} x{qty} @ {price:.2f} (score={score:.2f}, sigs={sig_count})")
+                    purchased = True
                     break
-
-                n_trades, pdt_flag = count_day_trades(trade_log, account_equity=get_cash())
-                if pdt_flag:
-                    logger.warning("Pattern Day Trader rule breached! No more buys today.")
-                    continue
-
-                if wash_sale_prohibited(sym, now, trade_log):
-                    logger.info(f"{sym}: Wash sale rule blocks buying today.")
-                    continue
-                print("Sample trade_log entry:", trade_log[0] if trade_log else 'EMPTY')
-
-                from datetime import timedelta
-
-                if funds_not_settled(sym, now, trade_log):
-                    # Find the most recent BUY settle date for messaging (example calc)
-                    last_buy = next((t for t in trade_log if t["symbol"] == sym and t["action"] == "BUY"), None)
-                    if last_buy:
-                        try:
-                            buy_dt = datetime.fromisoformat(str(last_buy["trade_time"]).replace("Z", "+00:00"))
-                            available = (buy_dt + timedelta(days=2)).date().isoformat()
-                            logger.info(f"[T+2] {sym}: Waiting on funds to clear. Will be available {available}.")
-                        except Exception:
-                            logger.info(f"[T+2] {sym}: Waiting on funds to clear.")
-                    else:
-                        logger.info(f"[T+2] {sym}: Waiting on funds to clear.")
-                    continue
-
-                # ==== END RISK CHECKS ====
-
-                logger.info(f"[SIM] TOP PICK {sym}: {signal_count} signals → {triggered}")
-                buy_stock(sym, qty, price, now)
-                logger.info(f"✅ BUY {sym} x{qty} @ ${price:.2f} (cash → ${get_cash():.2f})")
-                purchased = True
-                break
+                except Exception as e:
+                    logger.exception(f"[SIM] BUY failed for {sym}: {e}")
 
             if not purchased:
-                logger.info("[SIM] No affordable candidates this round")
+                logger.info("[SIM] ranked selection found no purchasable candidates (all gated)")
         else:
             logger.info("[SIM] no candidates this round")
+
 
         # ---- rest of your loop unchanged ----
         logger.debug("[CHECK-EXITS] Entered check_exit_orders()")

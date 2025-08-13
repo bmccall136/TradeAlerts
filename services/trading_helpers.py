@@ -10,6 +10,7 @@ except ImportError:
         ET = pytz.timezone("US/Eastern")
     except ImportError:
         ET = timezone.utc  # fallback, UTC
+from datetime import datetime, timezone
 
 import pandas_market_calendars as mcal
 import pandas as pd
@@ -27,6 +28,73 @@ DB_PATH = Path(__file__).resolve().parent.parent / "simulation.db"
 
 # Market calendar (NYSE)
 nyse = mcal.get_calendar("NYSE")
+from datetime import datetime, timezone
+
+# services/trading_helpers.py
+from pathlib import Path
+import sqlite3
+
+# Reuse your existing constant if you have it:
+# from services.settings_schema import SIM_DB_PATH
+# If not, fall back to the known default path.
+try:
+    from services.settings_schema import SIM_DB_PATH
+except Exception:
+    SIM_DB_PATH = Path(r"C:\TradeAlerts\simulation.db")
+
+# Track per-symbol peak seen since entry (resets when position closes)
+TRAIL_PEAKS: dict[str, float] = {}
+
+def get_realized_pnl_sum(db_path: str | Path | None = None) -> float:
+    """
+    Sum realized P&L from the trades table.
+    Works whether the column is named 'pnl' or 'pl'. Returns 0.0 on any issue.
+    """
+    path = Path(db_path) if db_path else Path(SIM_DB_PATH)
+    try:
+        with sqlite3.connect(str(path)) as con:
+            cur = con.cursor()
+            for col in ("pnl", "pl"):
+                try:
+                    cur.execute(f"SELECT COALESCE(SUM({col}), 0) FROM trades")
+                    val = cur.fetchone()[0]
+                    if val is not None:
+                        return round(float(val or 0.0), 2)
+                except sqlite3.OperationalError:
+                    # column not present; try the next candidate
+                    continue
+    except Exception:
+        # optional: log via your helper logger if present
+        try:
+            logger.exception("get_realized_pnl_sum failed")
+        except Exception:
+            pass
+    return 0.0
+
+def get_realized_pl_sum() -> float:
+    conn = _connect()
+    cur  = conn.cursor()
+    (val,) = cur.execute(
+        "SELECT COALESCE(SUM(pnl),0) FROM simulation_trades WHERE action='SELL';"
+    ).fetchone()
+    conn.close()
+    return float(val or 0.0)
+
+def get_starting_cash_safe() -> float:
+    try:
+        from services.settings_schema import load_simulation_settings
+        return float(getattr(load_simulation_settings(), "starting_cash", 0.0) or 0.0)
+    except Exception:
+        return 0.0
+
+def _as_utc(dt):
+    """Accept str or datetime; return aware UTC datetime."""
+    if isinstance(dt, str):
+        # handles ...Z and +00:00
+        dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def _has_headlines(src):
@@ -393,13 +461,41 @@ def check_exit_orders(settings) -> None:
         if settings.stop_loss_pct and pnl_pct <= -settings.stop_loss_pct:
             logger.info(f"[SIM-SELL] {symbol} STOP LOSS: qty={qty}, px=${current:.2f}, P/L={pnl_pct:.2f}%")
             broker_sell(symbol, qty, current)
+            TRAIL_PEAKS.pop(symbol, None)
             continue
 
         # TAKE PROFIT logic
         if settings.take_profit_pct and pnl_pct >= settings.take_profit_pct:
             logger.info(f"[SIM-SELL] {symbol} TAKE PROFIT: qty={qty}, px=${current:.2f}, P/L={pnl_pct:.2f}%")
             broker_sell(symbol, qty, current)
+            TRAIL_PEAKS.pop(symbol, None)
             continue
+        
+        # --- TRAILING STOP (NEW) ---
+        if getattr(settings, "use_trailing_stop", False) and float(getattr(settings, "trailing_stop_pct", 0) or 0) > 0:
+            pct = float(settings.trailing_stop_pct)
+
+            # Initialize / update peak for this open position
+            peak = TRAIL_PEAKS.get(symbol)
+            if peak is None:
+                peak = float(current)   # start tracking from first observation
+            elif current > peak:
+                peak = float(current)
+            TRAIL_PEAKS[symbol] = peak
+
+            trigger = peak * (1.0 - pct / 100.0)
+
+            # If price falls to/below the trailing trigger, exit the whole position
+            if current <= trigger and current > 0:
+                logger.info(
+                    f"[SIM-SELL] {symbol} TRAILING STOP: "
+                    f"peak=${peak:.2f} trigger=${trigger:.2f} now=${current:.2f} "
+                    f"({pct:.2f}% trail)"
+                )
+                broker_sell(symbol, qty, current)
+                # Clear tracker when position is closed
+                TRAIL_PEAKS.pop(symbol, None)
+                continue
 
         # SELL AFTER DAYS logic
         if settings.sell_after_days:
@@ -414,10 +510,12 @@ def check_exit_orders(settings) -> None:
             logger.debug(f"[SELL-DAYS] {symbol}: row={row}")
             conn.close()
             if row:
-                entry = datetime.fromisoformat(row[0])
-                now = datetime.utcnow()
-                logger.debug(f"[SELL-DAYS] {symbol}: entry={entry}, now={now}, delta={(now-entry).total_seconds()/3600:.2f}h")
-                if now - entry >= timedelta(days=settings.sell_after_days):
+                # AFTER
+                entry = _as_utc(row[0])
+                now = datetime.now(timezone.utc)
+                delta_hours = (now - entry).total_seconds() / 3600.0
+                logger.debug(f"[SELL-DAYS] {symbol}: entry={entry.isoformat()} now={now.isoformat()} delta={delta_hours:.2f}h")
+                if now - entry >= timedelta(days=int(settings.sell_after_days or 0)):
                     logger.info(f"[SIM-SELL] {symbol} MAX HOLD DAYS: qty={qty}, px=${current:.2f}, held={settings.sell_after_days}d")
                     broker_sell(symbol, qty, current)
             else:

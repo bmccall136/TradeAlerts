@@ -2,27 +2,41 @@
 {% block content %}
 
 <div class="container">
-  <div class="d-flex justify-content-between align-items-center mb-4" style="min-height: 54px;">
-    <!-- Export CSV at far left -->
-    <a href="{{ url_for('export_simulation') }}"
-       class="btn btn-outline-light">
+  <div class="d-flex justify-content-between align-items-start mb-4"
+       style="min-height:54px; position:relative;">
+
+    <!-- Left: Export CSV -->
+    <a href="{{ url_for('export_simulation') }}" class="btn btn-outline-light">
       <i class="bi bi-download"></i> Export CSV
     </a>
 
-    <!-- Simulation Dashboard centered -->
-    <h2 class="text-warning mb-0 flex-grow-1 text-center" style="position: absolute; left: 0; right: 0; margin-left: auto; margin-right: auto; width: fit-content;">
+    <!-- Center: title (true centered) -->
+    <h2 class="text-warning mb-0 position-absolute start-50 translate-middle-x"
+        style="width:fit-content;">
       Simulation Dashboard
     </h2>
 
-    <!-- Account type far right -->
-    <div class="fw-bold" style="white-space: nowrap;">
-      Account type: <span class="text-light">{{ settings.account_type|capitalize }}</span>
-	<form method="post" action="{{ url_for('toggle_after_hours') }}" style="display:inline;">
-  <button class="btn btn-xs">
-    {% if settings.after_hours_mode %}After-hours: ON{% else %}After-hours: OFF{% endif %}
-  </button>
-</form>
- </div>
+    <!-- Right: stack Account type ABOVE the status banner -->
+    <div class="d-flex flex-column align-items-end" style="gap:6px; min-width: 220px;">
+      <div class="fw-bold" style="white-space: nowrap;">
+        Account type: <span class="text-light">{{ settings.account_type|capitalize }}</span>
+      </div>
+
+      <!-- If you made the partial earlier -->
+      {# {% include "_status_banner.html" %} #}
+
+      <!-- Or keep your inline banner here -->
+	<div class="status-block" ...>
+	  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+		<div>E*TRADE API</div>
+		<div style="color: {{ '#ff4d4d' if needs_reconnect else '#39d353' }};">●</div>
+	  </div>
+
+	  {% if needs_reconnect %}
+		<a href="{{ url_for('etrade_start_auth') }}" class="btn btn-sm" ...>Reconnect API</a>
+	  {% endif %}
+	</div>
+    </div>
   </div>
 </div>
 <div class="simulation-summary text-center mb-4">

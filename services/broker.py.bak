@@ -1,0 +1,28 @@
+# services/broker.py
+class SimBroker:
+    def buy(self, symbol, qty, price):
+        from services.trading_helpers import buy_stock
+        buy_stock(symbol, qty, float(price)); return {"mode":"SIM"}
+
+    def sell(self, symbol, qty=None, price=None):
+        from services.trading_helpers import sell_stock
+        sell_stock(symbol, qty, price); return {"mode":"SIM"}
+
+class EtradeBroker:
+    def __init__(self):
+        from services.etrade_service import EtradeClient
+        self.api = EtradeClient()  # whatever you already use internally
+
+    def get_account_summary(self):
+        return self.api.get_account_summary()  # buying_power, settled_cash, pdt, etc.
+
+    def buy(self, symbol, qty, price=None, order_type="MARKET"):
+        prev = self.api.preview_buy(symbol, qty, order_type=order_type, price=price)
+        return self.api.place_buy(prev)
+
+    def sell(self, symbol, qty=None, price=None, order_type="MARKET"):
+        prev = self.api.preview_sell(symbol, qty, order_type=order_type, price=price)
+        return self.api.place_sell(prev)
+
+def get_broker(mode: str):
+    return SimBroker() if mode == "SIM" else EtradeBroker()

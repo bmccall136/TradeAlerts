@@ -35,9 +35,12 @@
       {# 1) Left side navigation links #}
       <div class="navbar-nav">
 
-		<a class="nav-link" href="{{ url_for('simulation') }}">Simulation</a>
-
+		<a class="nav-link" href="{{ url_for('simulation_view') }}">Simulation</a>
+		
 		<a class="nav-link" href="{{ url_for('backtest_view') }}">Backtest</a>
+		
+		<a class="nav-link" href="{{ url_for('live_view') }}">Live</a>
+
      </div>
 
       {# 2) Spacer: this pushes the title to the center #}

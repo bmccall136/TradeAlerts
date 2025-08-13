@@ -1,8 +1,8 @@
 import json
 import os
-from peewee import SqliteDatabase, Model
+from peewee import SqliteDatabase, Model, IntegerField, TextField, BooleanField, FloatField
 
-# Use an absolute path to ensure correct db usage in copies/parallel runs
+# ... rest as before
 DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'settings.db'))
 DB = SqliteDatabase(DB_PATH)
 
