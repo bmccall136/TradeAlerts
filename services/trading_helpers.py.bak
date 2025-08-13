@@ -10,6 +10,7 @@ except ImportError:
         ET = pytz.timezone("US/Eastern")
     except ImportError:
         ET = timezone.utc  # fallback, UTC
+from datetime import datetime, timezone
 
 import pandas_market_calendars as mcal
 import pandas as pd
@@ -27,6 +28,73 @@ DB_PATH = Path(__file__).resolve().parent.parent / "simulation.db"
 
 # Market calendar (NYSE)
 nyse = mcal.get_calendar("NYSE")
+from datetime import datetime, timezone
+
+# services/trading_helpers.py
+from pathlib import Path
+import sqlite3
+
+# Reuse your existing constant if you have it:
+# from services.settings_schema import SIM_DB_PATH
+# If not, fall back to the known default path.
+try:
+    from services.settings_schema import SIM_DB_PATH
+except Exception:
+    SIM_DB_PATH = Path(r"C:\TradeAlerts\simulation.db")
+
+# Track per-symbol peak seen since entry (resets when position closes)
+TRAIL_PEAKS: dict[str, float] = {}
+
+def get_realized_pnl_sum(db_path: str | Path | None = None) -> float:
+    """
+    Sum realized P&L from the trades table.
+    Works whether the column is named 'pnl' or 'pl'. Returns 0.0 on any issue.
+    """
+    path = Path(db_path) if db_path else Path(SIM_DB_PATH)
+    try:
+        with sqlite3.connect(str(path)) as con:
+            cur = con.cursor()
+            for col in ("pnl", "pl"):
+                try:
+                    cur.execute(f"SELECT COALESCE(SUM({col}), 0) FROM trades")
+                    val = cur.fetchone()[0]
+                    if val is not None:
+                        return round(float(val or 0.0), 2)
+                except sqlite3.OperationalError:
+                    # column not present; try the next candidate
+                    continue
+    except Exception:
+        # optional: log via your helper logger if present
+        try:
+            logger.exception("get_realized_pnl_sum failed")
+        except Exception:
+            pass
+    return 0.0
+
+def get_realized_pl_sum() -> float:
+    conn = _connect()
+    cur  = conn.cursor()
+    (val,) = cur.execute(
+        "SELECT COALESCE(SUM(pnl),0) FROM simulation_trades WHERE action='SELL';"
+    ).fetchone()
+    conn.close()
+    return float(val or 0.0)
+
+def get_starting_cash_safe() -> float:
+    try:
+        from services.settings_schema import load_simulation_settings
+        return float(getattr(load_simulation_settings(), "starting_cash", 0.0) or 0.0)
+    except Exception:
+        return 0.0
+
+def _as_utc(dt):
+    """Accept str or datetime; return aware UTC datetime."""
+    if isinstance(dt, str):
+        # handles ...Z and +00:00
+        dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def _has_headlines(src):
@@ -144,99 +212,38 @@ def get_stored_cash() -> float:
 # in services/trading_helpers.py
 import sqlite3
 
+# services/trading_helpers.py
+
 def get_cash_ledger() -> float:
-    try:
-        _ensure_state()
-        conn = _connect()
-        cur = conn.cursor()
-        try:
-            cur.execute("SELECT starting_cash FROM state WHERE id = 1;")
-            row = cur.fetchone()
-            starting_cash = float(row[0]) if row and row[0] is not None else None
-        except sqlite3.OperationalError:
-            # Column doesn't exist → fall back to settings
-            starting_cash = None
-        finally:
-            conn.close()
+    """
+    Cash = starting_cash - sum(BUY qty*price) + sum(SELL qty*price).
+    Purely derived from trades + settings; never falls back to the stored snapshot.
+    """
+    from services.simulation_service import load_simulation_settings
 
-        if starting_cash is None:
-            from services.simulation_service import load_simulation_settings
-            starting_cash = float(load_simulation_settings().starting_cash)
+    starting_cash = float(load_simulation_settings().starting_cash)
 
-        trades = get_trades()
-        buy_total = sell_total = 0.0
-        for t in trades:
-            if isinstance(t, dict):
-                side  = t.get("action")
-                qty   = float(t.get("qty") or 0)
-                price = float(t.get("price") or 0)
-            else:
-                _, _, side, qty, price, *_ = t
-                qty   = float(qty or 0)
-                price = float(price or 0)
+    trades = get_trades(limit=10_000)  # big enough ceiling
+    buy_total = sell_total = 0.0
+    for t in trades:
+        if isinstance(t, dict):
+            side  = t.get("action")
+            qty   = float(t.get("qty")   or 0)
+            price = float(t.get("price") or 0)
+        else:
+            # (trade_time, symbol, action, qty, price, pnl, ...)
+            _, _, side, qty, price, *_ = t
+            qty   = float(qty   or 0)
+            price = float(price or 0)
 
-            if side == "BUY":
-                buy_total  += qty * price
-            elif side == "SELL":
-                sell_total += qty * price
+        if side == "BUY":
+            buy_total  += qty * price
+        elif side == "SELL":
+            sell_total += qty * price
 
-        return round(starting_cash - buy_total + sell_total, 2)
-
-    except Exception as e:
-        print(f"[CASH] ledger calc failed, using stored cash: {e}")
-        return get_stored_cash()
+    return round(starting_cash - buy_total + sell_total, 2)
 
 # --- New: compute cash from the trade ledger -----------------------
-def get_cash_ledger() -> float:
-    """
-    Cash = starting_cash - sum(BUY qty*price) + sum(SELL qty*price)
-    Falls back to DB snapshot if anything goes sideways.
-    """
-    try:
-        # 1) starting cash: try state table first, else settings
-        _ensure_state()
-        conn = _connect()
-        cur = conn.cursor()
-        cur.execute("SELECT starting_cash FROM state WHERE id = 1;")
-        row = cur.fetchone()
-        starting_cash = float(row[0]) if row and row[0] is not None else None
-        conn.close()
-
-        if starting_cash is None:
-            try:
-                # if you have a settings loader, use it
-                from services.simulation_service import load_simulation_settings
-                starting_cash = float(load_simulation_settings().starting_cash)
-            except Exception:
-                starting_cash = 1000.0  # last-ditch default
-
-        # 2) walk trades (this module already exposes get_trades())
-        trades = get_trades()
-        buy_total = sell_total = 0.0
-        for t in trades:
-            if isinstance(t, dict):
-                side  = t.get("action")
-                qty   = float(t.get("qty") or 0)
-                price = float(t.get("price") or 0)
-            else:
-                # tuple/list fallback
-                _, _, side, qty, price, *_ = t
-                qty   = float(qty or 0)
-                price = float(price or 0)
-
-            if side == "BUY":
-                buy_total  += qty * price
-            elif side == "SELL":
-                sell_total += qty * price
-
-        return round(starting_cash - buy_total + sell_total, 2)
-
-    except Exception as e:
-        # If anything fails, don’t crash the app—fallback to stored cash
-        print(f"[CASH] ledger calc failed, using stored cash: {e}")
-        return get_stored_cash()
-
-
 # --- Make get_cash() use the ledger by default ---------------------
 def get_cash() -> float:
     return get_cash_ledger()
@@ -461,6 +468,32 @@ def check_exit_orders(settings) -> None:
             logger.info(f"[SIM-SELL] {symbol} TAKE PROFIT: qty={qty}, px=${current:.2f}, P/L={pnl_pct:.2f}%")
             broker_sell(symbol, qty, current)
             continue
+        
+        # --- TRAILING STOP (NEW) ---
+        if getattr(settings, "use_trailing_stop", False) and float(getattr(settings, "trailing_stop_pct", 0) or 0) > 0:
+            pct = float(settings.trailing_stop_pct)
+
+            # Initialize / update peak for this open position
+            peak = TRAIL_PEAKS.get(symbol)
+            if peak is None:
+                peak = float(current)   # start tracking from first observation
+            elif current > peak:
+                peak = float(current)
+            TRAIL_PEAKS[symbol] = peak
+
+            trigger = peak * (1.0 - pct / 100.0)
+
+            # If price falls to/below the trailing trigger, exit the whole position
+            if current <= trigger and current > 0:
+                logger.info(
+                    f"[SIM-SELL] {symbol} TRAILING STOP: "
+                    f"peak=${peak:.2f} trigger=${trigger:.2f} now=${current:.2f} "
+                    f"({pct:.2f}% trail)"
+                )
+                broker_sell(symbol, qty, current)
+                # Clear tracker when position is closed
+                TRAIL_PEAKS.pop(symbol, None)
+                continue
 
         # SELL AFTER DAYS logic
         if settings.sell_after_days:
@@ -475,10 +508,12 @@ def check_exit_orders(settings) -> None:
             logger.debug(f"[SELL-DAYS] {symbol}: row={row}")
             conn.close()
             if row:
-                entry = datetime.fromisoformat(row[0])
-                now = datetime.utcnow()
-                logger.debug(f"[SELL-DAYS] {symbol}: entry={entry}, now={now}, delta={(now-entry).total_seconds()/3600:.2f}h")
-                if now - entry >= timedelta(days=settings.sell_after_days):
+                # AFTER
+                entry = _as_utc(row[0])
+                now = datetime.now(timezone.utc)
+                delta_hours = (now - entry).total_seconds() / 3600.0
+                logger.debug(f"[SELL-DAYS] {symbol}: entry={entry.isoformat()} now={now.isoformat()} delta={delta_hours:.2f}h")
+                if now - entry >= timedelta(days=int(settings.sell_after_days or 0)):
                     logger.info(f"[SIM-SELL] {symbol} MAX HOLD DAYS: qty={qty}, px=${current:.2f}, held={settings.sell_after_days}d")
                     broker_sell(symbol, qty, current)
             else:

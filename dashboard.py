@@ -1,3 +1,6 @@
+
+import os, sys
+sys.path.insert(0, os.path.dirname(__file__))
 import os
 import time
 import json
@@ -16,9 +19,9 @@ from types import SimpleNamespace
 from services.etrade_service import fetch_etrade_quote
 from services.simulation_service import analyze_symbol, _is_market_open
 from services.simulation_service import load_simulation_settings
-
-# Path to your JSON config (adjust filename if different)
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "simulation_config.json")
+from dataclasses import asdict
+from pathlib import Path
+NEED_AUTH_FLAG = Path("need_oauth.flag")
 
 import os
 import json
@@ -99,8 +102,14 @@ from services.trading_helpers import (
     get_cash_ledger,
     get_stored_cash,
     )
-  
+import os, json, inspect, logging
+from types import SimpleNamespace
+from services import settings_service as _ss  # your existing settings module
 
+from services.broker import get_broker
+from services.live_loop import run_live_loop
+import threading
+from types import SimpleNamespace
 from services.simulation_service import run_simulation_loop, stop_simulation
 from services.settings_service import load_settings, save_settings
 from types import SimpleNamespace
@@ -142,9 +151,6 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from services.trading_helpers import setup_simulation_db
 from pathlib import Path
-
-# assuming simulation_config.json lives next to dashboard.py
-CONFIG_PATH = Path(__file__).parent / "simulation_config.json"
 
 # before any get_cash()/buy()/sell() calls:
 setup_simulation_db()
@@ -210,6 +216,15 @@ except Exception as e:
 # near the top of dashboard.py
 _is_scanner_running = False
 _needs_auth          = False
+_is_live_running = False
+_is_live_armed  = False
+_live_thread    = None
+_BROKER_MODE    = (os.getenv("BROKER_MODE") or "SIM").upper()  # SIM or LIVE
+
+# LIVE (production) endpoints only
+REQUEST_TOKEN_URL = "https://api.etrade.com/oauth/request_token"
+ACCESS_TOKEN_URL  = "https://api.etrade.com/oauth/access_token"
+AUTHORIZE_URL     = "https://us.etrade.com/e/t/etws/authorize"
 
 
 # ─── Logging configuration ───────────────────────────────────
@@ -222,6 +237,14 @@ logging.basicConfig(
 # ─── Flask app setup ─────────────────────────────────────────
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET', 'supersecret')
+
+from pathlib import Path
+FLAG = Path("need_oauth.flag")
+
+@app.context_processor
+def inject_status_banner():
+    # templates will have a boolean named `needs_reconnect`
+    return {"needs_reconnect": FLAG.exists()}
 setup_simulation_db()
 # ─── Database file paths ─────────────────────────────────────
 SIM_DB      = os.path.join(os.getcwd(), 'simulation.db')
@@ -238,10 +261,6 @@ DEFAULT_STARTING_CASH = 10000.0
 DEFAULT_MAX_PER_TRADE  = 1000.0
 
 # ─── E*TRADE OAuth configuration (production only) ──────────
-CONSUMER_KEY       = '1e0978925ddea6a6addb5436e6ff2164'
-CONSUMER_SECRET    = '0fdac4a22a68112d7e855281bab9df70af85cfd023206d15d75bcf51f1390bc2'
-OAUTH_TOKEN        = 'mcjsKyZ+GEfimgLRexsERoevbOQ9EVRrN7iJ/I13Dwg='
-OAUTH_TOKEN_SECRET = 'YFDwu7K23oWft+n+0TongPACdDzkQR0oB6xPug3GpOw='
 OAUTH_HOST         = 'https://api.etrade.com'
 REQUEST_TOKEN_URL  = f'{OAUTH_HOST}/oauth/request_token'
 ACCESS_TOKEN_URL   = f'{OAUTH_HOST}/oauth/access_token'
@@ -270,10 +289,139 @@ try:
 except Exception as e:
     print(f"[CASH] check failed: {e}")
 
-@app.route('/oauth_callback')
-def oauth_callback():
-    # TODO: implement OAuth callback handling
-    pass
+# dashboard.py
+from pathlib import Path
+import os, sys, subprocess
+
+import os
+from pathlib import Path
+import json
+from services.settings_schema import SimulationSettings
+import os
+from flask import request, session, redirect, url_for, render_template, flash
+from requests_oauthlib import OAuth1Session
+from services.etrade_auth_helper import save_tokens, clear_need_auth_flag
+
+# LIVE endpoints
+REQUEST_TOKEN_URL = "https://api.etrade.com/oauth/request_token"
+ACCESS_TOKEN_URL  = "https://api.etrade.com/oauth/access_token"
+AUTHORIZE_URL     = "https://us.etrade.com/e/t/etws/authorize"
+
+@app.route("/etrade/auth", methods=["GET", "POST"])
+def etrade_start_auth():
+    ck = os.getenv("ETRADE_CONSUMER_KEY") or os.getenv("ETRADE_API_KEY")
+    cs = os.getenv("ETRADE_CONSUMER_SECRET") or os.getenv("ETRADE_API_SECRET")
+    if not (ck and cs):
+        flash("Missing E*TRADE consumer key/secret in env.", "danger")
+        return redirect(url_for("simulation_view"))
+
+    oauth = OAuth1Session(ck, client_secret=cs, callback_uri="oob")  # PIN flow
+    resp = oauth.fetch_request_token(REQUEST_TOKEN_URL)
+    session["req_token"]  = resp["oauth_token"]
+    session["req_secret"] = resp["oauth_token_secret"]
+
+    auth_url = f"{AUTHORIZE_URL}?key={ck}&token={resp['oauth_token']}"
+    session["auth_url"] = auth_url  # keep for refresh
+    # ⬇️ instead of redirect(auth_url), show your local PIN page:
+    return render_template("etrade_pin.html", auth_url=auth_url)
+
+@app.route("/etrade/pin", methods=["GET"])
+def etrade_pin_form():
+    auth_url = session.get("auth_url")
+    if not auth_url or not session.get("req_token") or not session.get("req_secret"):
+        # kick off a fresh request token silently, then render the form
+        ck = os.getenv("ETRADE_CONSUMER_KEY") or os.getenv("ETRADE_API_KEY")
+        cs = os.getenv("ETRADE_CONSUMER_SECRET") or os.getenv("ETRADE_API_SECRET")
+        oauth = OAuth1Session(ck, client_secret=cs, callback_uri="oob")
+        resp = oauth.fetch_request_token(REQUEST_TOKEN_URL)
+        session["req_token"]  = resp["oauth_token"]
+        session["req_secret"] = resp["oauth_token_secret"]
+        auth_url = f"{AUTHORIZE_URL}?key={ck}&token={resp['oauth_token']}"
+        session["auth_url"] = auth_url
+    return render_template("etrade_pin.html", auth_url=auth_url)
+
+@app.route("/etrade/pin", methods=["POST"])
+def etrade_handle_pin():
+    verifier   = request.form["oauth_verifier"].strip()
+    req_token  = session.pop("req_token", None)
+    req_secret = session.pop("req_secret", None)
+
+    ck = os.getenv("ETRADE_CONSUMER_KEY") or os.getenv("ETRADE_API_KEY")
+    cs = os.getenv("ETRADE_CONSUMER_SECRET") or os.getenv("ETRADE_API_SECRET")
+    if not (ck and cs and req_token and req_secret and verifier):
+        flash("OAuth step missing data. Please start again.", "danger")
+        return redirect(url_for("etrade_start_auth"))
+
+    oauth = OAuth1Session(
+        ck,
+        client_secret=cs,
+        resource_owner_key=req_token,
+        resource_owner_secret=req_secret,
+        verifier=verifier,
+    )
+    tokens = oauth.fetch_access_token(ACCESS_TOKEN_URL)
+
+    save_tokens(tokens["oauth_token"], tokens["oauth_token_secret"])
+    clear_need_auth_flag()
+
+    flash("✅ E*TRADE authenticated!", "success")
+    return redirect(url_for("simulation_view"))
+
+@app.route("/auth/etrade/reconnect", methods=["POST","GET"])
+def auth_etrade_reconnect():
+    script = os.path.abspath("auth_shortcut.py")
+    if not os.path.exists(script):
+        return ("Auth shortcut not found.", 404)
+    try:
+        if os.name == "nt":
+            CREATE_NEW_CONSOLE = 0x00000010; DETACHED_PROCESS = 0x00000008
+            subprocess.Popen([sys.executable, script], creationflags=CREATE_NEW_CONSOLE|DETACHED_PROCESS)
+        else:
+            subprocess.Popen([sys.executable, script])
+        return ("OK", 200)
+    except Exception as e:
+        return (f"Failed to launch OAuth flow: {e}", 500)
+
+
+def _load_starting_cash_safe() -> float:
+    try:
+        from services.settings_schema import load_simulation_settings
+        val = float(getattr(load_simulation_settings(), "starting_cash", 0.0) or 0.0)
+        return max(val, 0.0)
+    except Exception:
+        # As a last resort you *can* fall back to a constant or 0.0.
+        # Avoid falling back to live `cash` because it drifts over time.
+        return 0.0
+
+# ---- Compatibility shims (legacy names still used in dashboard) ----
+def get_starting_cash_safe():
+    """Legacy alias -> use the new loader under the hood."""
+    return _load_starting_cash_safe()
+
+def get_realized_pl_sum():
+    """Legacy alias -> compute realized P&L from the trade ledger."""
+    return compute_realized_pnl(get_trades())
+
+def compute_realized_pnl(trades) -> float:
+    realized = 0.0
+    for t in trades or []:
+        if isinstance(t, dict):
+            action = (t.get("action") or "").upper()
+            if action in {"SELL", "SELL_TO_CLOSE"}:
+                realized += float(t.get("pl") or t.get("pnl") or 0.0)
+        else:
+            # tuple: (trade_time, symbol, action, qty, price, pl, ...)
+            action = (str(t[2]) if len(t) > 2 else "").upper()
+            if action in {"SELL", "SELL_TO_CLOSE"}:
+                try:
+                    realized += float(t[5] if len(t) > 5 else 0.0)
+                except (TypeError, ValueError):
+                    pass
+    return realized
+
+def realized_pct(realized_pnl: float, starting_cash: float) -> float:
+    return (realized_pnl / starting_cash * 100.0) if starting_cash else 0.0
+
 @app.context_processor
 def inject_label_config():
     return {
@@ -293,68 +441,6 @@ def inject_label_config():
         "sell_after_days_labels":   label_config.sell_after_days_labels,
     }
 
-
-@app.route('/etrade/auth')
-def etrade_start_auth():
-    oauth = OAuth1Session(
-        CONSUMER_KEY,
-        client_secret=CONSUMER_SECRET,
-        callback_uri='oob'   # out-of-band
-    )
-    resp = oauth.fetch_request_token(REQUEST_TOKEN_URL)
-    session['req_token']  = resp['oauth_token']
-    session['req_secret'] = resp['oauth_token_secret']
-    auth_url = f"{AUTHORIZE_URL}?key={CONSUMER_KEY}&token={resp['oauth_token']}"
-    return render_template('etrade_pin.html', auth_url=auth_url)
-
-@app.route('/etrade/pin', methods=['POST'])
-def etrade_handle_pin():
-    # Grab the PIN (oauth_verifier) from the form
-    verifier   = request.form['oauth_verifier']
-    req_token  = session.pop('req_token', None)
-    req_secret = session.pop('req_secret', None)
-
-    # Exchange for real access tokens
-    oauth = OAuth1Session(
-        CONSUMER_KEY,
-        client_secret=CONSUMER_SECRET,
-        resource_owner_key=req_token,
-        resource_owner_secret=req_secret,
-        verifier=verifier
-    )
-    tokens = oauth.fetch_access_token(ACCESS_TOKEN_URL)
-
-    # Persist into .env so fetch_etrade_quote() works
-    set_key(ENV_PATH, KEY_OAUTH_TOKEN,        tokens['oauth_token'])
-    set_key(ENV_PATH, KEY_OAUTH_TOKEN_SECRET, tokens['oauth_token_secret'])
-
-    flash('✅ E*TRADE authenticated!', 'success')
-    return redirect(url_for('index'))
-
-@app.route('/etrade/callback')
-def etrade_handle_callback():
-    """Step 2: Exchange verifier for access tokens & persist."""
-    verifier   = request.args.get('oauth_verifier')
-    req_token  = session.pop('req_token', None)
-    req_secret = session.pop('req_secret', None)
-
-    oauth = OAuth1Session(
-        CONSUMER_KEY,
-        client_secret=CONSUMER_SECRET,
-        resource_owner_key=req_token,
-        resource_owner_secret=req_secret,
-        verifier=verifier
-    )
-    tokens = oauth.fetch_access_token(ACCESS_TOKEN_URL)
-
-    # Persist into .env
-    set_key(ENV_PATH, KEY_OAUTH_TOKEN,        tokens['oauth_token'])
-    set_key(ENV_PATH, KEY_OAUTH_TOKEN_SECRET, tokens['oauth_token_secret'])
-
-    flash('✅ E*TRADE authenticated!', 'success')
-    return redirect(url_for('index'))
-
-# ── …then the rest of your routes and logic follow below…
 
 @app.context_processor
 def inject_indicator_labels():
@@ -689,7 +775,7 @@ from services.market_service    import get_symbols
 from services.backtest_engine   import run_full_backtest
 from services.risk_management   import enforce_wash_sale, enforce_settlement
 from settings                    import BACKTEST_DB
-from dashboard                   import load_settings, save_settings, TIMEFRAME_DELTAS
+from services.settings_service import load_settings, save_settings, TIMEFRAME_DELTAS
 
 @app.route('/run_backtest', methods=['POST'])
 def run_backtest_route():
@@ -810,6 +896,9 @@ from reportlab.lib import colors
 from services.backtest_service import run_full_backtest
 from services.market_service    import get_symbols
 from flask import send_file
+import os
+from requests_oauthlib import OAuth1Session
+from services.etrade_auth_helper import save_tokens, clear_need_auth_flag
 
 @app.route('/export_backtest_pdf')
 def export_backtest_pdf():
@@ -1050,9 +1139,20 @@ def simulation():
         holdings=formatted_holdings,
         history=formatted_trades
     )
-@app.route('/simulation/status')
+# dashboard.py
+from services.etrade_service import fetch_etrade_quote
+from services.trading_helpers import get_holdings
+
+@app.route("/simulation/status")
 def simulation_status():
-    return jsonify({"status": "ok", "market_open": True}), 200
+    quotes = []
+    for symbol, qty, avg_cost, last in get_holdings():
+        try:
+            lp = fetch_etrade_quote(symbol)
+        except Exception:
+            lp = last
+        quotes.append({"symbol": symbol, "last_price": float(lp)})
+    return {"ok": True, "quotes": quotes}
 
 
 @app.route('/export/simulation')
@@ -1153,18 +1253,22 @@ def export_simulation():
                 "pl":     pl_val,
             })
 
-    realized_pnl = sum(t["pl"] for t in history if (t.get("action") or "").upper() == "SELL")
+    # Use the same calculation as the dashboard
+    realized_pnl = compute_realized_pnl(trades)
+
+    start_cash = _load_starting_cash_safe()
+    realized_pnl_pct = realized_pct(realized_pnl, start_cash)
+
 
     # ---- Pull starting cash once (canonical source) ----
     try:
         from services.settings_schema import load_simulation_settings
         _starting_cash = float(getattr(load_simulation_settings(), "starting_cash", 0.0) or 0.0)
     except Exception:
-        _starting_cash = float(cash or 0.0)  # safe fallback
-
+        start_cash   = get_starting_cash_safe()
+        
     # ---- Now that _starting_cash is set, compute realized % ----
-    realized_pnl_pct = (realized_pnl / _starting_cash * 100.0) if _starting_cash else 0.0
-
+    realized_pnl_pct = (realized_pnl / start_cash * 100.0) if start_cash else 0.0
     # ---- CSV export ----
     import csv, io
     si = io.StringIO()
@@ -1474,12 +1578,21 @@ def simulation_view():
                 "pl":     pl_val,
             })
 
-    realized_pnl = round(sum(t["pl"] for t in history if t.get("action") == "SELL"), 2)
+    realized_pnl = round(get_realized_pl_sum(), 2)
+    start_cash   = get_starting_cash_safe()
+    realized_pnl_pct = (realized_pnl / start_cash * 100.0) if start_cash else 0.0
     total_buy_cost = sum((t.get("qty") or 0) * (t.get("price") or 0.0)
                          for t in history if t.get("action") == "BUY")
 
-    # Here’s the fixed P&L % calculation
-    realized_pnl_pct = (realized_pnl / settings.starting_cash * 100.0) if settings.starting_cash else 0.0
+    # --- Realized P&L & % (from trade history; % uses starting cash) ---
+    realized_pnl = compute_realized_pnl(get_trades())
+
+    # prefer settings.starting_cash; fall back to loader
+    start_cash = float(getattr(settings, "starting_cash", 0.0) or 0.0)
+    if not start_cash:
+        start_cash = _load_starting_cash_safe()
+
+    realized_pnl_pct = realized_pct(realized_pnl, start_cash)
 
     # 7) render
     return render_template(
@@ -1534,10 +1647,6 @@ def simulation_buy():
     return redirect(
         url_for('backtest_view', **request.form)
     )
-# Alias /simulation → the same view as simulation_buy
-@app.route("/simulation", methods=["GET", "POST"])
-def simulation():
-    return simulation_buy()
 
 @app.route('/simulation/reset', methods=['POST'])
 def reset_simulation():
@@ -1663,9 +1772,8 @@ from services.settings_schema import SIM_DB_PATH
 from services.trading_helpers import (
     setup_simulation_db, get_holdings, get_cash, get_realized_pl
 )
-from services.etrade_service import fetch_etrade_quote
 
-CONFIG_PATH = Path(__file__).parent / "simulation_config.json"
+from services.etrade_service import fetch_etrade_quote
 
 # in dashboard.py
 from services.trading_helpers import get_cash, get_cash_ledger
@@ -1702,9 +1810,12 @@ def reconcile_cash():
 @app.route("/")
 def index():
     setup_simulation_db()
+
+    # load settings
     from services.simulation_service import load_simulation_settings
-    settings = load_simulation_settings() 
-            # --- Helper for formatting trade times ---
+    settings = load_simulation_settings()
+
+    # --- Helper for formatting trade times (single definition) ---
     def format_trade_time(ts):
         from datetime import datetime
         if isinstance(ts, datetime):
@@ -1718,11 +1829,11 @@ def index():
     # holdings
     raw = get_holdings()
     holdings = []
-    for symbol, qty, avg_cost, _ in raw:
+    for symbol, qty, avg_cost, last_known in raw:
         try:
-            last_price = fetch_etrade_quote(symbol)
+            last_price = fetch_etrade_quote(symbol)  # your helper should return a float
         except Exception:
-            last_price = _
+            last_price = last_known
         gain_per_share = last_price - avg_cost
         holdings.append({
             "symbol":     symbol,
@@ -1734,70 +1845,252 @@ def index():
             "total_gain": round(gain_per_share * qty, 2),
             "value":      round(last_price * qty, 2),
         })
-
+    return redirect(url_for("simulation_view"))
+     
     cash = round(get_cash(), 2)
-    unrealized_pnl = round(sum((h.get("total_gain") or 0) if isinstance(h, dict) else 0 for h in holdings), 2)
+    unrealized_pnl = round(sum(h["total_gain"] for h in holdings), 2)
     total_cost_basis = sum(h["qty"] * h["price_paid"] for h in holdings)
     unrealized_pnl_pct = round((unrealized_pnl / total_cost_basis * 100), 2) if total_cost_basis else 0.0
-    config = json.load(open(CONFIG_PATH))
 
-    # build trade history FIRST!
-    conn = sqlite3.connect(SIM_DB_PATH)
-    cur  = conn.cursor()
-    cur.execute("""
-      SELECT
-        trade_time AS time,
-        symbol,
-        action,
-        qty,
-        price,
-        pnl        AS pl
-      FROM simulation_trades
-      ORDER BY trade_time DESC
-      LIMIT 50;
-    """)
-    rows = cur.fetchall()
-    conn.close()
-    def format_trade_time(ts):
-        from datetime import datetime
-        if isinstance(ts, datetime):
-            return ts.strftime('%Y-%m-%d %H:%M:%S')
+@app.route("/live", methods=["GET"])
+def live_view():
+    import logging
+    from types import SimpleNamespace
+    from services.broker import get_broker
+    from services.trading_helpers import get_holdings, get_trades, get_cash
+
+    # Try to import the same history fetcher you use in analyze_symbol()
+    fetch_hist = None
+    for modpath in (
+        "services.data_service",
+        "services.market_service",
+        "services.simulation_service",
+    ):
         try:
-            dt = datetime.fromisoformat(str(ts))
-            return dt.strftime('%Y-%m-%d %H:%M:%S')
+            mod = __import__(modpath, fromlist=["fetch_data_with_timeout"])
+            if hasattr(mod, "fetch_data_with_timeout"):
+                fetch_hist = getattr(mod, "fetch_data_with_timeout")
+                break
         except Exception:
-            return str(ts).split('.')[0]
+            pass
 
-    history = [
-        {
-            "time":   format_trade_time(row[0]),   # <--- fix!
-            "symbol": row[1],
-            "action": row[2],
-            "qty":    row[3],
-            "price":  row[4],
-            "pl":     row[5],
-        }
-        for row in rows
-    ]
-    total_buy_cost = sum(
-        t["qty"] * t["price"]
-        for t in history if t["action"] == "BUY"
-    )
-    realized_pnl = sum(t["pl"] for t in history if t.get("action") == "SELL")
-    realized_pnl_pct = (realized_pnl / total_buy_cost * 100) if total_buy_cost else 0.0
+    def _prev_close_and_last(sym):
+        """Return (prev_close, last_close) if available, else (None, None)."""
+        if not fetch_hist:
+            return (None, None)
+        try:
+            df = fetch_hist(sym, "2d")
+            if df is None or getattr(df, "empty", True):
+                return (None, None)
+            cols = [c.lower() for c in df.columns]
+            if hasattr(df.columns, "get_level_values"):
+                df.columns = df.columns.get_level_values(0)
+                cols = [c.lower() for c in df.columns]
+            close_col = "close" if "close" in cols else df.columns[-1]
+            last = float(df[close_col].iloc[-1])
+            prev = float(df[close_col].iloc[-2]) if len(df[close_col]) > 1 else None
+            return (prev, last)
+        except Exception:
+            return (None, None)
+
+    # Pick broker (SIM when disarmed), fetch account summary
+    mode = "SIM"
+    acct = {}
+    try:
+        desired_mode = "LIVE" if _is_live_armed else "SIM"
+        broker = get_broker(desired_mode)
+        mode = getattr(broker, "name", desired_mode)
+        logging.info(f"[LIVE] Using broker mode in /live: {mode}")
+
+        mode = getattr(broker, "name", "SIM")
+        try:
+            acct = broker.get_account_summary() or {}
+            if not isinstance(acct, dict):
+                acct = {}
+        except Exception as e:
+            logging.warning(f"[LIVE] account summary failed: {e}")
+            acct = {}
+    except Exception as e:
+        logging.warning(f"[LIVE] broker init failed: {e}")
+
+    needs_reconnect = globals().get("needs_reconnect", False)
+    service_status = {
+        "yahoo": "ok",
+        "etrade": "bad" if needs_reconnect else "ok",
+    }
+
+    # Build holdings table to match Simulation (compute change/day gain if possible)
+    holdings_rows = []
+    try:
+        for s, q, avg_cost, last_price in (get_holdings() or []):
+            q = int(q or 0)
+            avg = float(avg_cost or 0.0)
+            last = float(last_price or 0.0)
+
+            prev_close, last_close = _prev_close_and_last(s)
+            # If we could fetch closes, prefer those for "Change" / Day Gain
+            if last_close is not None:
+                last = last_close
+            if prev_close is not None and last is not None:
+                change = last - prev_close
+                change_pct = (change / prev_close * 100.0) if prev_close else 0.0
+                day_gain = change * q
+            else:
+                change = 0.0
+                change_pct = 0.0
+                day_gain = 0.0
+
+            total_gain = (last - avg) * q
+            value = last * q
+
+            holdings_rows.append({
+                "symbol": s,
+                "last_price": last,
+                "change": change,
+                "change_pct": change_pct,
+                "qty": q,
+                "price_paid": avg,
+                "day_gain": day_gain,
+                "total_gain": total_gain,
+                "value": value,
+            })
+    except Exception as e:
+        logging.warning(f"[LIVE] holdings build failed: {e}")
+
+    # Recent trades (same shape as Simulation)
+    trade_rows = []
+    try:
+        for t in (get_trades(50) or []):
+            if isinstance(t, dict):
+                trade_rows.append({
+                    "time": t.get("trade_time"),
+                    "symbol": t.get("symbol"),
+                    "action": t.get("action"),
+                    "qty": int(float(t.get("qty") or 0)),
+                    "price": float(t.get("price") or 0.0),
+                    "pl": float(t.get("pl") or t.get("pnl") or 0.0),
+                })
+    except Exception as e:
+        logging.warning(f("[LIVE] trades build failed: {e}"))
+
+    # Derive a displayable account type to mirror Simulation header
+    account_type = acct.get("account_type") or ("Cash" if mode == "SIM" else "")
 
     return render_template(
-        "simulation.html",
-        holdings=holdings,
-        cash=cash,
-        unrealized_pnl=unrealized_pnl,
-        realized_pnl=realized_pnl,
-        unrealized_pnl_pct=unrealized_pnl_pct,
-        realized_pnl_pct=realized_pnl_pct,
-        history=history,
-        config=config,
-        settings=settings,
+        "live.html",
+        account=acct,
+        account_type=account_type,
+        mode=mode,
+        armed=_is_live_armed,
+        needs_reconnect=needs_reconnect,
+        service_status=service_status,
+        holdings=holdings_rows,
+        trades=trade_rows,
     )
+
+@app.route("/live/stop", methods=["POST"])
+def live_stop():
+    global _is_live_running
+    _is_live_running = False
+    flash("⏹ Live loop stop requested", "danger")
+    return redirect(url_for("live_view"))
+
+# --- LIVE controls ----------------------------------------------------
+import threading
+from flask import redirect, url_for, flash
+
+_is_live_running = globals().get("_is_live_running", False)
+_is_live_armed  = globals().get("_is_live_armed", False)
+_live_thread    = globals().get("_live_thread", None)
+_BROKER_MODE    = (os.getenv("BROKER_MODE") or "SIM").upper()
+
+@app.route("/live/arm", methods=["POST"])
+def live_arm():
+    global _is_live_armed
+    _is_live_armed = not _is_live_armed
+    try:
+        flash(("✅ LIVE armed" if _is_live_armed else "⛔ LIVE disarmed"),
+              "success" if _is_live_armed else "warning")
+    except Exception:
+        pass
+    return redirect(url_for("live_view"))
+
+def _load_live_settings():
+    """
+    Loads settings for the live loop.
+    - If LIVE_SETTINGS_FILE exists, use it (lets you keep live tweaks separate).
+    - Otherwise, call services.settings_service.load_settings with or without
+      a required `defaults` arg, depending on your implementation.
+    Returns either your settings object or a SimpleNamespace built from a dict.
+    """
+    # 1) Optional file override
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        live_cfg = os.getenv("LIVE_SETTINGS_FILE", os.path.join(base_dir, "live_settings.json"))
+        if os.path.exists(live_cfg):
+            with open(live_cfg, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return SimpleNamespace(**data) if isinstance(data, dict) else data
+    except Exception as e:
+        logging.warning(f"[LIVE] live_settings.json load skipped: {e}")
+
+    # 2) Fall back to your normal loader, handling both signatures
+    try:
+        loader = getattr(_ss, "load_settings")
+        sig = inspect.signature(loader)
+        needs_defaults = ("defaults" in sig.parameters and
+                          sig.parameters["defaults"].default is inspect._empty)
+        if needs_defaults:
+            defaults = getattr(_ss, "DEFAULTS", {})
+            raw = loader(defaults)
+        else:
+            raw = loader()
+        return SimpleNamespace(**raw) if isinstance(raw, dict) else raw
+    except Exception as e:
+        logging.exception("[LIVE] load_settings failed")
+        raise
+
+@app.route("/live/start", methods=["POST"])
+def live_start():
+    global _is_live_running, _live_thread
+    if _is_live_running:
+        try: flash("Live loop already running", "info")
+        except Exception: pass
+        return redirect(url_for("live_view"))
+
+    if not _is_live_armed:
+        try: flash("Arm LIVE first.", "warning")
+        except Exception: pass
+        return redirect(url_for("live_view"))
+
+    def _runner():
+        try:
+            settings = _load_live_settings()
+            from services.live_loop import run_live_loop
+            mode = "LIVE" if _is_live_armed else "SIM"
+            run_live_loop(settings, broker_mode=mode, picks=1)
+        finally:
+            global _is_live_running
+            _is_live_running = False
+    logging.info(f"[LIVE] Using broker mode: {mode}")
+    _live_thread = threading.Thread(target=_runner, daemon=True)
+    _live_thread.start()
+    _is_live_running = True
+    try: flash("▶️ Live loop started", "success")
+    except Exception: pass
+    return redirect(url_for("live_view"))
+
+@app.route("/live/panic", methods=["POST"])
+def live_panic():
+    global _is_live_running, _is_live_armed
+    _is_live_running = False
+    _is_live_armed = False
+    try:
+        flash("🛑 Panic: live loop stopped and DISARMED.", "danger")
+    except Exception:
+        pass
+    return redirect(url_for("live_view"))
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

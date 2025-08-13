@@ -1,9 +1,22 @@
 <!doctype html>
-<title>E*TRADE Authorization</title>
-<h1>Authorize with E*TRADE</h1>
-<p><a href="{{ auth_url }}" target="_blank">Click here to log in on E*TRADE</a></p>
-<form action="{{ url_for('etrade_handle_pin') }}" method="post">
-  <label>Enter the PIN E*TRADE gave you:</label><br/>
-  <input name="oauth_verifier" type="text" required />
-  <button type="submit">Submit PIN</button>
-</form>
+<html>
+  <head><meta charset="utf-8"><title>E*TRADE PIN</title></head>
+  <body>
+    <h1>Authorize E*TRADE</h1>
+    <p>
+      1. <a href="{{ auth_url }}" target="_blank">Click here</a> to log in
+      and grant access on E*TRADE’s site.
+    </p>
+    <p>2. Copy the PIN you receive and paste it below:</p>
+    <form action="{{ url_for('etrade_handle_pin') }}" method="post">
+      <input
+        name="oauth_verifier"
+        type="text"
+        placeholder="Enter PIN"
+        required
+        autofocus
+      />
+      <button type="submit">Submit PIN</button>
+    </form>
+  </body>
+</html>

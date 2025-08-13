@@ -1,0 +1,130 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="container">
+  <div class="d-flex justify-content-between align-items-start mb-4"
+       style="min-height:54px; position:relative;">
+
+    <!-- Left: Live controls (like Export CSV spot on Sim) -->
+    <div class="btn-group" role="group" aria-label="Live controls">
+      <form action="{{ url_for('live_arm') }}" method="post" class="d-inline">
+        <button type="submit" class="btn btn-outline-light">
+          {{ 'Disarm' if armed else 'Arm LIVE' }}
+        </button>
+      </form>
+      <form action="{{ url_for('live_start') }}" method="post" class="d-inline">
+        <button type="submit" class="btn btn-outline-light">Start</button>
+      </form>
+      <form action="{{ url_for('live_stop') }}" method="post" class="d-inline">
+        <button type="submit" class="btn btn-outline-light">Stop</button>
+      </form>
+	  <form action="{{ url_for('live_panic') }}" method="post" class="d-inline">
+		<button type="submit" class="btn btn-outline-danger">Panic / Kill</button>
+	  </form>
+
+      <!-- Use the same reconnect endpoint name your Sim page uses -->
+      <form action="{{ url_for('etrade_start_auth') }}" method="post" class="d-inline">
+        <button type="submit" class="btn btn-outline-light">Reconnect API</button>
+      </form>
+    </div>
+
+    <!-- Center: title (true centered) -->
+    <h2 class="text-warning mb-0 position-absolute start-50 translate-middle-x"
+        style="width:fit-content;">
+      Live Dashboard
+      <span class="badge rounded-pill text-bg-dark border border-warning ms-2">
+        {{ 'ARMED' if armed else 'DISARMED' }}
+      </span>
+    </h2>
+
+    <!-- Right: Account type + status block (matches Sim) -->
+    <div class="d-flex flex-column align-items-end" style="gap:6px; min-width: 220px;">
+      <div class="fw-bold" style="white-space: nowrap;">
+        Account type: <span class="text-light">{{ account_type or 'Cash' }}</span>
+      </div>
+
+      <div class="status-block" style="background:#000;color:#ffd600;padding:8px;border-radius:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+          <div>E*TRADE API</div>
+          <div style="color: {{ '#ff4d4d' if needs_reconnect else '#39d353' }};">●</div>
+        </div>
+        {% if needs_reconnect %}
+          <a href="{{ url_for('etrade_start_auth') }}"
+             class="btn btn-sm"
+             style="background:#111;color:#ffd600;border:1px solid #ffd600;padding:6px 10px;border-radius:4px;">
+            Reconnect API
+          </a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Summary (styled like Sim's summary block) -->
+<div class="simulation-summary text-center mb-4">
+  <p><strong>Buying Power:</strong> ${{ '{:.2f}'.format((account or {}).get('buying_power', 0.0)) }}</p>
+  <p><strong>Settled Cash:</strong> ${{ '{:.2f}'.format((account or {}).get('settled_cash', 0.0)) }}</p>
+</div>
+
+<!-- Holdings (same table classes/order as Sim) -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="text-white mb-0">Holdings</h3>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-striped table-bordered alerts-table text-white">
+    <thead class="table-light">
+      <tr>
+        <th>Symbol</th><th>Last Price</th><th>Change</th><th>Change %</th>
+        <th>Qty</th><th>Price Paid</th><th>Day Gain/Loss</th>
+        <th>Total Gain/Loss</th><th>Value</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for h in holdings or [] %}
+      <tr>
+        <td>{{ h.symbol }}</td>
+        <td>${{ '%.2f'|format(h.last_price or 0) }}</td>
+        <td>${{ '%.2f'|format(h.change or 0) }}</td>
+        <td>{{ '%.2f'|format(h.change_pct or 0) }}%</td>
+        <td>{{ h.qty }}</td>
+        <td>${{ '%.2f'|format(h.price_paid or 0) }}</td>
+        <td>${{ '%.2f'|format(h.day_gain or 0) }}</td>
+        <td>${{ '%.2f'|format(h.total_gain or 0) }}</td>
+        <td>${{ '%.2f'|format(h.value or 0) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" class="text-center">No holdings.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Recent Trades (match Sim "Trade History") -->
+<h3 class="text-white mt-5 mb-3">Recent Trades</h3>
+<div class="table-responsive">
+  <table class="table table-striped table-bordered alerts-table text-white">
+    <thead class="table-light">
+      <tr>
+        <th>Time</th><th>Symbol</th><th>Action</th>
+        <th>Qty</th><th>Price</th><th>P/L</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in trades or [] %}
+      <tr>
+        <td>{{ t.time }}</td>
+        <td>{{ t.symbol }}</td>
+        <td>{{ t.action }}</td>
+        <td>{{ t.qty }}</td>
+        <td>${{ '%.2f'|format(t.price or 0) }}</td>
+        <td>${{ '%.2f'|format(t.pl or 0) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="text-center">No trades yet</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

@@ -35,8 +35,8 @@
       {# 1) Left side navigation links #}
       <div class="navbar-nav">
 
-		<a class="nav-link" href="{{ url_for('simulation') }}">Simulation</a>
-
+		<a class="nav-link" href="{{ url_for('simulation_view') }}">Simulation</a>
+		
 		<a class="nav-link" href="{{ url_for('backtest_view') }}">Backtest</a>
      </div>
 
@@ -47,8 +47,6 @@
 		<div class="d-flex">
 			<form action="{{ url_for('run_checkpoint') }}" method="get" class="me-2">
 				<button type="submit" class="btn btn-sm btn-warning btn-fixed">✅ Checkpoint</button>
-			</form>
-					<button type="submit" class="btn btn-sm btn-danger btn-fixed">💣 Nuke DB</button>
 			</form>
 		</div>
 
