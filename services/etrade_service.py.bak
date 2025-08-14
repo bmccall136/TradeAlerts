@@ -9,7 +9,6 @@ from services.etrade_auth_helper import get_etrade_session, get_api_host
 log = logging.getLogger("etrade")
 FLAG = Path("need_oauth.flag")
 
-# ---- flag helpers -----------------------------------------------------------
 def _mark_need_auth() -> None:
     try:
         FLAG.touch()
@@ -85,30 +84,6 @@ def safe_fetch_price(symbol: str, fallback: Optional[float] = 0.0) -> float:
         log.warning("[PRICE] %s fetch error: %s", symbol, e)
         return float(fallback or 0.0)
 
-# --- Broker compatibility shims (do NOT change your existing code above) ---
-
-def get_account_summary() -> dict:
-    """
-    Broker expects this function. Delegate to your existing implementation.
-    """
-    # Try a few common shapes; keep the first one that exists in YOUR file.
-    try:
-        # If you already have a module-level function
-        return account_summary()  # type: ignore[name-defined]
-    except Exception:
-        pass
-    try:
-        # If you use a client class
-        client = EtradeClient()  # type: ignore[name-defined]
-        return client.get_account_summary()
-    except Exception:
-        pass
-    # If none of the above exist, fail loudly (safer than a silent stub)
-    raise RuntimeError(
-        "etrade_service.get_account_summary() not wired: "
-        "add a delegate here to your real account summary function."
-    )
-
 def preview_equity_order(
     side: str, symbol: str, qty: int,
     order_type: str = "MARKET", price: float | None = None
@@ -169,3 +144,216 @@ def place_equity_order(preview: dict) -> dict:
         "etrade_service.place_equity_order() not wired: "
         "delegate to your place_buy/place_sell/place_order."
     )
+
+# ==== LIVE account + positions (uses your auth helper) =======================
+from typing import Any, Dict, List
+
+def _dig(d: Any, *path):
+    cur = d
+    for p in path:
+        if not isinstance(cur, dict):
+            return None
+        kk = next((k for k in cur.keys() if str(k).lower() == str(p).lower()), None)
+        cur = cur.get(kk) if kk else None
+    return cur
+
+def _num(x):
+    try:
+        return float(x)
+    except Exception:
+        return None
+
+def _first_account_key(j: Dict[str, Any]) -> str:
+    """
+    Return the FIRST alphanumeric accountIdKey found in the accounts list response.
+    DO NOT fall back to numeric accountId here (that causes 400s).
+    """
+    found = None
+
+    def walk(x):
+        nonlocal found
+        if found is not None:
+            return
+        if isinstance(x, dict):
+            # prefer accountIdKey ONLY
+            for k, v in x.items():
+                if str(k).lower() == "accountidkey":
+                    found = str(v)
+                    return
+            # keep walking
+            for v in x.values():
+                walk(v)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v)
+
+    walk(j)
+    if not found:
+        raise RuntimeError("No accountIdKey found in accounts list response")
+    return found
+def _normalize_balance_payload(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize E*TRADE balance JSON to {account_type, buying_power, settled_cash, ...}"""
+    def dig(d, *path):
+        cur = d
+        for p in path:
+            if not isinstance(cur, dict):
+                return None
+            kk = next((k for k in cur if str(k).lower() == str(p).lower()), None)
+            cur = cur.get(kk) if kk else None
+        return cur
+
+    def num(x):
+        try: return float(x)
+        except Exception: return None
+
+    root = raw or {}
+    br   = dig(root, "BalanceResponse") or dig(root, "balanceResponse") or root
+    bal  = dig(br, "accountBalance") or br
+    comp = dig(br, "Computed") or dig(root, "Computed") or {}
+    cash = dig(br, "Cash") or dig(root, "Cash") or {}
+    rtv  = dig(comp, "RealTimeValues") or dig(root, "RealTimeValues") or {}
+
+    out = {
+        "account_type": (dig(root,"accountType") or dig(br,"accountType") or dig(bal,"accountType") or "Cash"),
+        "buying_power": 0.0,
+        "settled_cash": 0.0,
+        "raw": raw,
+    }
+
+    # Buying power: prefer Computed fields, then fallbacks
+    bp = (
+        num(dig(comp, "cashAvailableForWithdrawal")) or
+        num(dig(comp, "cashAvailableForInvestment")) or
+        num(dig(comp, "cashBuyingPower")) or
+        num(dig(comp, "marginBuyingPower")) or
+        num(dig(bal,  "buyingPower")) or
+        num(dig(bal,  "availableFundsForTrading")) or
+        num(dig(root, "buyingPower"))
+    )
+    if bp is not None: out["buying_power"] = bp
+
+    # Settled cash: money market balance and related computed fields
+    sc = (
+        num(dig(cash, "moneyMktBalance")) or
+        num(dig(comp, "totalAvailableForWithdrawal")) or
+        num(dig(comp, "cashBalance")) or
+        num(dig(comp, "settledCashForInvestment")) or
+        num(dig(bal,  "settledCash")) or
+        num(dig(bal,  "cashBalance")) or
+        num(dig(root, "settledCash")) or
+        num(dig(root, "cashBalance"))
+    )
+    if sc is not None: out["settled_cash"] = sc
+
+    # Extras (nice to show on the page)
+    eq = (num(dig(rtv, "totalAccountValue")) or
+          num(dig(bal, "accountValue")) or
+          num(dig(bal, "netAccountValue")))
+    if eq is not None: out["equity_value"] = eq
+
+    nl = (num(dig(rtv, "netMv")) or
+          num(dig(bal, "netLiquidation")) or
+          num(dig(bal, "netMarketValue")))
+    if nl is not None: out["net_liq"] = nl
+
+    # Maskable ID if you want to show it
+    acct_id = dig(br, "accountId") or dig(root, "accountId")
+    if acct_id: out["account_id"] = str(acct_id)
+
+    return out
+
+def get_account_summary() -> dict:
+    """
+    Live balances from E*TRADE.
+    - GET /v1/accounts/list.json -> accountIdKey
+    - Try balance endpoint with common query variants (400s if params omitted)
+    """
+    sess = get_etrade_session()
+    base = get_api_host().rstrip("/")
+
+    # 1) Find the REQUIRED accountIdKey (alphanumeric)
+    r1 = sess.get(f"{base}/v1/accounts/list.json", timeout=10)
+    r1 = _handle_etrade_resp(r1)
+    j1 = r1.json()
+    acct_key = _first_account_key(j1)
+    log.info("[ET] Using accountIdKey: %s", acct_key)
+
+    # 2) Try balance endpoint variants
+    urls = [
+        f"{base}/v1/accounts/{acct_key}/balance.json?instType=BROKERAGE&realTimeNAV=true",
+        f"{base}/v1/accounts/{acct_key}/balance.json?instType=BROKERAGE",
+        f"{base}/v1/accounts/{acct_key}/balance.json?realTimeNAV=true",
+        f"{base}/v1/accounts/{acct_key}/balance.json",
+        # some tenants expose plural path:
+        f"{base}/v1/accounts/{acct_key}/balances.json?instType=BROKERAGE&realTimeNAV=true",
+    ]
+
+    last_err = None
+    for url in urls:
+        try:
+            r2 = sess.get(url, timeout=12)
+            # 401/403 handled centrally (sets need_oauth flag)
+            if r2.status_code in (401, 403):
+                _handle_etrade_resp(r2)
+            if r2.status_code == 400:
+                log.warning("[ET] 400 from %s :: %s", url, (r2.text or "")[:200])
+                continue
+            r2.raise_for_status()
+            log.info("[ET] balance OK via %s", url)
+            return _normalize_balance_payload(r2.json())
+        except requests.HTTPError as e:
+            last_err = e
+            log.warning("[ET] balance HTTP error via %s :: %s", url, getattr(e.response, "text", "")[:200])
+            continue
+        except Exception as e:
+            last_err = e
+            log.warning("[ET] balance error via %s :: %s", url, e)
+            continue
+
+    if last_err:
+        raise last_err
+    raise RuntimeError("E*TRADE balance request failed for all variants.")
+def get_positions() -> List[dict]:
+    sess = get_etrade_session()
+    base = get_api_host().rstrip("/")
+
+    r1 = sess.get(f"{base}/v1/accounts/list.json", timeout=10)
+    r1 = _handle_etrade_resp(r1)
+    acct_key = _first_account_key(r1.json())
+
+    r2 = sess.get(f"{base}/v1/accounts/{acct_key}/portfolio.json", params={"count": 200}, timeout=15)
+    r2 = _handle_etrade_resp(r2)
+    j = r2.json()
+
+    pr = _dig(j, "PortfolioResponse") or j
+    acct = _dig(pr, "AccountPortfolio")
+    if isinstance(acct, list):
+        acct = acct[0]
+    positions = []
+    pos_list = (acct or {}).get("Position") or (acct or {}).get("position") if isinstance(acct, dict) else None
+    if not isinstance(pos_list, list):
+        return positions
+
+    for p in pos_list:
+        sym = (p.get("symbol")
+               or _dig(p, "Product", "symbol")
+               or p.get("symbolDescription")
+               or "")
+        qty = _num(p.get("qty")) or _num(p.get("quantity")) or 0.0
+        last = (_num(p.get("lastTrade"))
+                or _num(p.get("lastPrice"))
+                or (_num(p.get("marketValue"))/qty if qty and _num(p.get("marketValue")) else None)
+                or 0.0)
+        # pricePaid is usually total cost basis -> convert to per-share
+        price_paid_total = (_num(p.get("pricePaid")) or _num(p.get("cost")) or 0.0)
+        per_share = (price_paid_total/qty) if qty else 0.0
+        if per_share == 0.0 and _num(p.get("pricePaid")):  # already per-share
+            per_share = float(p["pricePaid"])
+
+        positions.append({
+            "symbol": str(sym).upper(),
+            "qty": int(qty or 0),
+            "price_paid": float(per_share or 0.0),
+            "last_price": float(last or 0.0),
+        })
+    return positions

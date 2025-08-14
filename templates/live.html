@@ -2,59 +2,26 @@
 {% block content %}
 
 <div class="container">
-  <div class="d-flex justify-content-between align-items-start mb-4"
-       style="min-height:54px; position:relative;">
+  <div class="d-flex justify-content-between align-items-start mb-4" style="min-height:54px; position:relative;">
 
-    <!-- Left: Live controls (like Export CSV spot on Sim) -->
-    <div class="btn-group" role="group" aria-label="Live controls">
-      <form action="{{ url_for('live_arm') }}" method="post" class="d-inline">
-        <button type="submit" class="btn btn-outline-light">
-          {{ 'Disarm' if armed else 'Arm LIVE' }}
-        </button>
-      </form>
-      <form action="{{ url_for('live_start') }}" method="post" class="d-inline">
-        <button type="submit" class="btn btn-outline-light">Start</button>
-      </form>
-      <form action="{{ url_for('live_stop') }}" method="post" class="d-inline">
-        <button type="submit" class="btn btn-outline-light">Stop</button>
-      </form>
-	  <form action="{{ url_for('live_panic') }}" method="post" class="d-inline">
-		<button type="submit" class="btn btn-outline-danger">Panic / Kill</button>
-	  </form>
+    <!-- Left: (now empty to match layout spacing; you can remove entirely if desired) -->
+    <div></div>
 
-      <!-- Use the same reconnect endpoint name your Sim page uses -->
-      <form action="{{ url_for('etrade_start_auth') }}" method="post" class="d-inline">
-        <button type="submit" class="btn btn-outline-light">Reconnect API</button>
-      </form>
-    </div>
-
-    <!-- Center: title (true centered) -->
-    <h2 class="text-warning mb-0 position-absolute start-50 translate-middle-x"
-        style="width:fit-content;">
+    <!-- Center: title (no badge) -->
+    <h2 class="text-warning mb-0 position-absolute start-50 translate-middle-x" style="width:fit-content;">
       Live Dashboard
-      <span class="badge rounded-pill text-bg-dark border border-warning ms-2">
-        {{ 'ARMED' if armed else 'DISARMED' }}
-      </span>
     </h2>
 
-    <!-- Right: Account type + status block (matches Sim) -->
+    <!-- Right: Account type + E*TRADE status block (keep as you have it) -->
     <div class="d-flex flex-column align-items-end" style="gap:6px; min-width: 220px;">
       <div class="fw-bold" style="white-space: nowrap;">
         Account type: <span class="text-light">{{ account_type or 'Cash' }}</span>
       </div>
-
       <div class="status-block" style="background:#000;color:#ffd600;padding:8px;border-radius:6px;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
           <div>E*TRADE API</div>
-          <div style="color: {{ '#ff4d4d' if needs_reconnect else '#39d353' }};">●</div>
+          <div style="color:#39d353;">●</div>
         </div>
-        {% if needs_reconnect %}
-          <a href="{{ url_for('etrade_start_auth') }}"
-             class="btn btn-sm"
-             style="background:#111;color:#ffd600;border:1px solid #ffd600;padding:6px 10px;border-radius:4px;">
-            Reconnect API
-          </a>
-        {% endif %}
       </div>
     </div>
   </div>
@@ -64,6 +31,16 @@
 <div class="simulation-summary text-center mb-4">
   <p><strong>Buying Power:</strong> ${{ '{:.2f}'.format((account or {}).get('buying_power', 0.0)) }}</p>
   <p><strong>Settled Cash:</strong> ${{ '{:.2f}'.format((account or {}).get('settled_cash', 0.0)) }}</p>
+	<p><strong>Buying Power:</strong> ${{ '{:,.2f}'.format((account or {}).get('buying_power', 0.0)) }}</p>
+	<p><strong>Settled Cash:</strong> ${{ '{:,.2f}'.format((account or {}).get('settled_cash', 0.0)) }}</p>
+	{% if account.get('equity_value') is not none or account.get('net_liq') is not none %}
+	  <p><strong>Equity Value:</strong>
+		 ${{ '{:,.2f}'.format(account.get('equity_value') or account.get('net_liq') or 0.0) }}</p>
+	{% endif %}
+	{% if account.get('account_id') %}
+	  <p class="text-muted">Acct: ****{{ account['account_id'][-4:] }}</p>
+	{% endif %}
+  
 </div>
 
 <!-- Holdings (same table classes/order as Sim) -->

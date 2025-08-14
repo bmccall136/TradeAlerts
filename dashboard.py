@@ -216,10 +216,6 @@ except Exception as e:
 # near the top of dashboard.py
 _is_scanner_running = False
 _needs_auth          = False
-_is_live_running = False
-_is_live_armed  = False
-_live_thread    = None
-_BROKER_MODE    = (os.getenv("BROKER_MODE") or "SIM").upper()  # SIM or LIVE
 
 # LIVE (production) endpoints only
 REQUEST_TOKEN_URL = "https://api.etrade.com/oauth/request_token"
@@ -1854,244 +1850,46 @@ def index():
 
 @app.route("/live", methods=["GET"])
 def live_view():
-    import logging
-    from types import SimpleNamespace
-    from services.broker import get_broker
-    from services.trading_helpers import get_holdings, get_trades, get_cash
+    from services import etrade_service as et
 
-    # Try to import the same history fetcher you use in analyze_symbol()
-    fetch_hist = None
-    for modpath in (
-        "services.data_service",
-        "services.market_service",
-        "services.simulation_service",
-    ):
-        try:
-            mod = __import__(modpath, fromlist=["fetch_data_with_timeout"])
-            if hasattr(mod, "fetch_data_with_timeout"):
-                fetch_hist = getattr(mod, "fetch_data_with_timeout")
-                break
-        except Exception:
-            pass
+    # balances
+    acct = et.get_account_summary() or {}
+    if not isinstance(acct, dict):
+        acct = {}
 
-    def _prev_close_and_last(sym):
-        """Return (prev_close, last_close) if available, else (None, None)."""
-        if not fetch_hist:
-            return (None, None)
-        try:
-            df = fetch_hist(sym, "2d")
-            if df is None or getattr(df, "empty", True):
-                return (None, None)
-            cols = [c.lower() for c in df.columns]
-            if hasattr(df.columns, "get_level_values"):
-                df.columns = df.columns.get_level_values(0)
-                cols = [c.lower() for c in df.columns]
-            close_col = "close" if "close" in cols else df.columns[-1]
-            last = float(df[close_col].iloc[-1])
-            prev = float(df[close_col].iloc[-2]) if len(df[close_col]) > 1 else None
-            return (prev, last)
-        except Exception:
-            return (None, None)
-
-    # Pick broker (SIM when disarmed), fetch account summary
-    mode = "SIM"
-    acct = {}
-    try:
-        desired_mode = "LIVE" if _is_live_armed else "SIM"
-        broker = get_broker(desired_mode)
-        mode = getattr(broker, "name", desired_mode)
-        logging.info(f"[LIVE] Using broker mode in /live: {mode}")
-
-        mode = getattr(broker, "name", "SIM")
-        try:
-            acct = broker.get_account_summary() or {}
-            if not isinstance(acct, dict):
-                acct = {}
-        except Exception as e:
-            logging.warning(f"[LIVE] account summary failed: {e}")
-            acct = {}
-    except Exception as e:
-        logging.warning(f"[LIVE] broker init failed: {e}")
-
-    needs_reconnect = globals().get("needs_reconnect", False)
-    service_status = {
-        "yahoo": "ok",
-        "etrade": "bad" if needs_reconnect else "ok",
-    }
-
-    # Build holdings table to match Simulation (compute change/day gain if possible)
+    # positions -> holdings rows
     holdings_rows = []
-    try:
-        for s, q, avg_cost, last_price in (get_holdings() or []):
-            q = int(q or 0)
-            avg = float(avg_cost or 0.0)
-            last = float(last_price or 0.0)
+    for pos in (et.get_positions() or []):
+        q   = int(pos.get("qty") or 0)
+        lp  = float(pos.get("last_price") or 0.0)
+        avg = float(pos.get("price_paid") or 0.0)
+        value = q * lp
+        # no “change”/“day gain” since we aren’t pulling prev close here
+        holdings_rows.append({
+            "symbol": pos.get("symbol"),
+            "last_price": lp,
+            "change": 0.0,
+            "change_pct": 0.0,
+            "qty": q,
+            "price_paid": avg,
+            "day_gain": 0.0,
+            "total_gain": (lp - avg) * q if avg and q else 0.0,
+            "value": value,
+        })
 
-            prev_close, last_close = _prev_close_and_last(s)
-            # If we could fetch closes, prefer those for "Change" / Day Gain
-            if last_close is not None:
-                last = last_close
-            if prev_close is not None and last is not None:
-                change = last - prev_close
-                change_pct = (change / prev_close * 100.0) if prev_close else 0.0
-                day_gain = change * q
-            else:
-                change = 0.0
-                change_pct = 0.0
-                day_gain = 0.0
-
-            total_gain = (last - avg) * q
-            value = last * q
-
-            holdings_rows.append({
-                "symbol": s,
-                "last_price": last,
-                "change": change,
-                "change_pct": change_pct,
-                "qty": q,
-                "price_paid": avg,
-                "day_gain": day_gain,
-                "total_gain": total_gain,
-                "value": value,
-            })
-    except Exception as e:
-        logging.warning(f"[LIVE] holdings build failed: {e}")
-
-    # Recent trades (same shape as Simulation)
+    # no live trade history yet → empty list
     trade_rows = []
-    try:
-        for t in (get_trades(50) or []):
-            if isinstance(t, dict):
-                trade_rows.append({
-                    "time": t.get("trade_time"),
-                    "symbol": t.get("symbol"),
-                    "action": t.get("action"),
-                    "qty": int(float(t.get("qty") or 0)),
-                    "price": float(t.get("price") or 0.0),
-                    "pl": float(t.get("pl") or t.get("pnl") or 0.0),
-                })
-    except Exception as e:
-        logging.warning(f("[LIVE] trades build failed: {e}"))
 
-    # Derive a displayable account type to mirror Simulation header
-    account_type = acct.get("account_type") or ("Cash" if mode == "SIM" else "")
-
+    account_type = (acct.get("account_type") or "Cash")
     return render_template(
         "live.html",
         account=acct,
         account_type=account_type,
-        mode=mode,
-        armed=_is_live_armed,
-        needs_reconnect=needs_reconnect,
-        service_status=service_status,
+        mode="LIVE",
+        armed=False,
         holdings=holdings_rows,
         trades=trade_rows,
     )
-
-@app.route("/live/stop", methods=["POST"])
-def live_stop():
-    global _is_live_running
-    _is_live_running = False
-    flash("⏹ Live loop stop requested", "danger")
-    return redirect(url_for("live_view"))
-
-# --- LIVE controls ----------------------------------------------------
-import threading
-from flask import redirect, url_for, flash
-
-_is_live_running = globals().get("_is_live_running", False)
-_is_live_armed  = globals().get("_is_live_armed", False)
-_live_thread    = globals().get("_live_thread", None)
-_BROKER_MODE    = (os.getenv("BROKER_MODE") or "SIM").upper()
-
-@app.route("/live/arm", methods=["POST"])
-def live_arm():
-    global _is_live_armed
-    _is_live_armed = not _is_live_armed
-    try:
-        flash(("✅ LIVE armed" if _is_live_armed else "⛔ LIVE disarmed"),
-              "success" if _is_live_armed else "warning")
-    except Exception:
-        pass
-    return redirect(url_for("live_view"))
-
-def _load_live_settings():
-    """
-    Loads settings for the live loop.
-    - If LIVE_SETTINGS_FILE exists, use it (lets you keep live tweaks separate).
-    - Otherwise, call services.settings_service.load_settings with or without
-      a required `defaults` arg, depending on your implementation.
-    Returns either your settings object or a SimpleNamespace built from a dict.
-    """
-    # 1) Optional file override
-    try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        live_cfg = os.getenv("LIVE_SETTINGS_FILE", os.path.join(base_dir, "live_settings.json"))
-        if os.path.exists(live_cfg):
-            with open(live_cfg, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return SimpleNamespace(**data) if isinstance(data, dict) else data
-    except Exception as e:
-        logging.warning(f"[LIVE] live_settings.json load skipped: {e}")
-
-    # 2) Fall back to your normal loader, handling both signatures
-    try:
-        loader = getattr(_ss, "load_settings")
-        sig = inspect.signature(loader)
-        needs_defaults = ("defaults" in sig.parameters and
-                          sig.parameters["defaults"].default is inspect._empty)
-        if needs_defaults:
-            defaults = getattr(_ss, "DEFAULTS", {})
-            raw = loader(defaults)
-        else:
-            raw = loader()
-        return SimpleNamespace(**raw) if isinstance(raw, dict) else raw
-    except Exception as e:
-        logging.exception("[LIVE] load_settings failed")
-        raise
-
-@app.route("/live/start", methods=["POST"])
-def live_start():
-    global _is_live_running, _live_thread
-    if _is_live_running:
-        try: flash("Live loop already running", "info")
-        except Exception: pass
-        return redirect(url_for("live_view"))
-
-    if not _is_live_armed:
-        try: flash("Arm LIVE first.", "warning")
-        except Exception: pass
-        return redirect(url_for("live_view"))
-
-    def _runner():
-        try:
-            settings = _load_live_settings()
-            from services.live_loop import run_live_loop
-            mode = "LIVE" if _is_live_armed else "SIM"
-            run_live_loop(settings, broker_mode=mode, picks=1)
-        finally:
-            global _is_live_running
-            _is_live_running = False
-    logging.info(f"[LIVE] Using broker mode: {mode}")
-    _live_thread = threading.Thread(target=_runner, daemon=True)
-    _live_thread.start()
-    _is_live_running = True
-    try: flash("▶️ Live loop started", "success")
-    except Exception: pass
-    return redirect(url_for("live_view"))
-
-@app.route("/live/panic", methods=["POST"])
-def live_panic():
-    global _is_live_running, _is_live_armed
-    _is_live_running = False
-    _is_live_armed = False
-    try:
-        flash("🛑 Panic: live loop stopped and DISARMED.", "danger")
-    except Exception:
-        pass
-    return redirect(url_for("live_view"))
-
-
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True, use_reloader=True)
