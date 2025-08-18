@@ -1,0 +1,83 @@
+# live_start.py
+import os, sys
+print("▶️  Live launcher starting…")
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # load .env tokens/keys if present
+except Exception:
+    pass
+
+# Optional: show guardrails env
+print("GUARDRAILS_ENABLED =", os.getenv("GUARDRAILS_ENABLED"))
+print("LIVE_SAFE_MODE     =", os.getenv("LIVE_SAFE_MODE"))
+print("LIVE_MAX_QTY       =", os.getenv("LIVE_MAX_QTY"))
+
+# Try to start the next-day auto-seller guardrail (if you added it)
+try:
+    from services import live_guardrails as lg
+    if hasattr(lg, "start_guardrails_auto_seller"):
+        lg.start_guardrails_auto_seller()
+        print("✅ Guardrails auto-seller thread started")
+    else:
+        print("ℹ️  live_guardrails.start_guardrails_auto_seller() not found — skipping")
+except Exception as e:
+    print("⚠️  Guardrails init skipped:", e)
+import os, json
+from types import SimpleNamespace
+from pathlib import Path
+
+LIVE_SETTINGS_PATH = os.getenv("LIVE_SETTINGS_PATH", "live_settings.json")
+
+# --- at top of live_start.py ---
+import os, json
+from types import SimpleNamespace
+from pathlib import Path
+
+LIVE_SETTINGS_PATH = os.getenv("LIVE_SETTINGS_PATH", "live_settings.json")
+
+def load_live_settings():
+    p = Path(LIVE_SETTINGS_PATH)
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        print(f"🔧 Using live settings from {p.resolve()}")
+        return SimpleNamespace(**data)
+    except Exception as e:
+        print(f"⚠️ Could not read {p.resolve()} ({e}); falling back to defaults")
+        return SimpleNamespace(
+            broker_mode=os.getenv("BROKER_MODE", "ETRADE"),
+            scan_interval=60,
+            single_entry_only=True,
+            use_trailing_stop=False,
+            trailing_stop_pct=0.0,
+            sell_after_days=1,
+            stop_loss_pct=0.0,
+            take_profit_pct=0.0,
+            max_per_trade=1000.0,
+        )
+
+# --- later, before starting the loop ---
+from services.live_loop import run_live_loop
+
+cfg = load_live_settings()
+broker_mode = getattr(cfg, "broker_mode", os.getenv("BROKER_MODE", "ETRADE"))
+
+# IMPORTANT: run_live_loop(settings, broker_mode)
+run_live_loop(cfg, broker_mode)
+
+# Live loop
+from services.settings_service import load_settings
+from services.market_service   import get_symbols
+from services.live_loop        import run_live_loop
+
+cfg = load_settings({})
+
+# Allow WATCHLIST override (comma-separated), else use your normal live universe
+wl = (os.getenv("WATCHLIST") or "").strip()
+if wl:
+    symbols = [s.strip().upper() for s in wl.split(",") if s.strip()]
+else:
+    symbols = get_symbols(simulation=False)
+
+print(f"▶️  Live loop starting for {len(symbols)} symbols")
+sys.stdout.flush()
+run_live_loop(cfg, symbols=symbols)   # Ctrl+C to stop

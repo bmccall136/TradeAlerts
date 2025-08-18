@@ -53,16 +53,16 @@ def get_etrade_session():
 # Back-compat alias if other code imports this name
 make_etrade_session = get_etrade_session
 
-def save_tokens(oauth_token: str, oauth_token_secret: str, env_file: str = "etrade.env"):
-    """
-    Persist new access tokens to etrade.env so the app picks them up live.
-    """
-    env_path = Path(env_file)
-    if not env_path.exists():
-        env_path.touch()
-    set_key(str(env_path), "ETRADE_OAUTH_TOKEN", oauth_token)
-    set_key(str(env_path), "ETRADE_OAUTH_TOKEN_SECRET", oauth_token_secret)
-    load_dotenv(str(env_path), override=True)  # make available immediately
+from dotenv import load_dotenv, set_key
+ENV_PATH = os.path.join(os.path.dirname(__file__), "..", ".env")
+
+def save_tokens(token, secret):
+    set_key(ENV_PATH, "OAUTH_TOKEN", token)
+    set_key(ENV_PATH, "OAUTH_TOKEN_SECRET", secret)
+    set_key(ENV_PATH, "ETRADE_OAUTH_TOKEN", token)
+    set_key(ENV_PATH, "ETRADE_OAUTH_TOKEN_SECRET", secret)
+    load_dotenv(dotenv_path=ENV_PATH, override=True)
+
 
 def clear_need_auth_flag(flag_path: str = "need_oauth.flag"):
     try:
