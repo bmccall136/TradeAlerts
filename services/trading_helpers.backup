@@ -1,0 +1,1133 @@
+from datetime import datetime, timedelta, timezone
+
+# Cross-version safe Eastern Time zone (ET)
+try:
+    from zoneinfo import ZoneInfo
+    ET = ZoneInfo("America/New_York")
+except ImportError:
+    try:
+        import pytz
+        ET = pytz.timezone("US/Eastern")
+    except ImportError:
+        ET = timezone.utc  # fallback, UTC
+from datetime import datetime, timezone
+
+import pandas_market_calendars as mcal
+import pandas as pd
+import sqlite3
+import logging
+from pathlib import Path
+from services.data_fetch import fetch_data_with_timeout, fetch_intraday_vwap
+from services.etrade_service import fetch_etrade_quote
+from settings import SIMULATION_DB
+
+logger = logging.getLogger("sim")
+
+# Database path (project root)
+DB_PATH = Path(__file__).resolve().parent.parent / "simulation.db"
+
+# Market calendar (NYSE)
+nyse = mcal.get_calendar("NYSE")
+from datetime import datetime, timezone
+
+# services/trading_helpers.py
+from pathlib import Path
+import sqlite3
+
+# Reuse your existing constant if you have it:
+# from services.settings_schema import SIM_DB_PATH
+# If not, fall back to the known default path.
+try:
+    from services.settings_schema import SIM_DB_PATH
+except Exception:
+    SIM_DB_PATH = Path(r"C:\TradeAlerts\simulation.db")
+# --- SAFE settings loader ---
+def _load_settings_safe():
+    try:
+        from services.simulation_service import load_simulation_settings
+        return load_simulation_settings()
+    except Exception:
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            max_per_trade=0.0,
+            single_entry_only=False,
+            use_trailing_stop=False,
+            trailing_stop_pct=0.0,
+            sell_after_days=None
+        )
+# --- PDT helpers (finish + wire) ------------------------------------
+PDT_MIN_EQUITY = 25_000.0
+
+def enforce_pdt_on_sell(
+    symbol: str,
+    qty: int,
+    now: datetime | None = None,
+    account_type: str = "MARGIN",
+    hard_block_on_cash: bool = False,
+) -> tuple[bool, str | None]:
+    """
+    Returns (ok, reason). Block a SELL that would create a 4th (or more) day trade
+    in a rolling 5 business-day window when equity < $25k on margin.
+    For CASH accounts we allow it unless `hard_block_on_cash=True`.
+    """
+    # CASH accounts aren’t subject to PDT unless you choose to hard-block.
+    if account_type.upper() == "CASH" and not hard_block_on_cash:
+        return True, None
+
+    eq = _compute_equity()
+    if eq >= PDT_MIN_EQUITY:
+        return True, None  # Above $25k, PDT doesn’t apply
+
+    # Count completed day trades in the last ~5 biz days (7 calendar days window)
+    count_last5 = _count_day_trades_last5(now)
+    would_be_dt = _sell_would_be_day_trade(symbol, qty, now)
+
+    # Block only if this SELL would be the 4th+ day trade
+    if would_be_dt and count_last5 >= 3:
+        return False, (f"PDT block: equity ${eq:.2f}, rolling day-trades={count_last5}, "
+                       f"this SELL would create another day trade.")
+    return True, None
+
+def _trail_update_and_hit(symbol: str, current: float, pct: float) -> bool:
+    if not (current and pct and pct > 0):
+        return False
+
+    conn = _connect()
+    cur  = conn.cursor()
+    cur.execute("SELECT peak FROM trail_state WHERE symbol=?;", (symbol,))
+    row = cur.fetchone()
+    if row:
+        peak = max(float(row[0] or 0.0), float(current))
+        cur.execute("UPDATE trail_state SET peak=? WHERE symbol=?;", (peak, symbol))
+    else:
+        peak = float(current)
+        cur.execute(
+            "INSERT OR REPLACE INTO trail_state(symbol, peak, since) VALUES (?,?,?);",
+            (symbol, peak, datetime.now(timezone.utc).isoformat())
+        )
+    conn.commit()
+    conn.close()
+
+    stop_level = peak * (1 - float(pct) / 100.0)
+    return current <= stop_level
+
+# --- PDT helpers -------------------------------------------------------
+from datetime import datetime, timedelta, timezone
+import math
+
+from datetime import datetime, timezone
+
+def _as_dt_utc(ts):
+    if ts is None:
+        return None
+    if isinstance(ts, datetime):
+        return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+    # string → dt
+    try:
+        dt = datetime.fromisoformat(str(ts))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+PDT_MIN_EQUITY = 25_000.0
+
+def _to_et(dt: datetime) -> datetime:
+    # Ensure timezone-aware and convert to ET
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(ET)
+
+def _et_day(dt: datetime):
+    return _to_et(dt).date()
+
+def _window_7_calendar_days(now_et=None):
+    """Approx 5 business days => last 7 calendar days window in ET."""
+    now_et = _to_et(datetime.now(timezone.utc)) if now_et is None else _to_et(now_et)
+    start = now_et - timedelta(days=7)
+    # inclusive window [start, now]
+    return start, now_et
+
+def _fetch_trades_in_window(start_et: datetime, end_et: datetime):
+    """Return raw rows for trades whose ET timestamps fall in [start_et, end_et]."""
+    conn = _connect()
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT trade_time, symbol, action, qty, price
+        FROM simulation_trades
+        ORDER BY trade_time ASC
+    """)
+    rows = cur.fetchall()
+    conn.close()
+
+    kept = []
+    for trade_time, symbol, action, qty, price in rows:
+        try:
+            ts = datetime.fromisoformat(str(trade_time))
+        except Exception:
+            continue
+        ts_et = _to_et(ts)
+        if start_et <= ts_et <= end_et:
+            kept.append((ts_et, symbol, (action or "").upper(), int(qty or 0), float(price or 0.0)))
+    return kept
+
+def _count_day_trades_last5(now: datetime = None) -> int:
+    """
+    Count day trades in the last ~5 business days (7 calendar days).
+    A 'day trade' is any SELL that closes shares opened (BUY) the same ET day.
+    Multiple closing sells in a day count as multiple day trades (common broker behavior).
+    """
+    start_et, end_et = _window_7_calendar_days(now)
+    rows = _fetch_trades_in_window(start_et, end_et)
+
+    # group by (day, symbol), process in time order
+    from collections import defaultdict
+    grouped = defaultdict(list)
+    for ts_et, sym, side, qty, _ in rows:
+        grouped[(_et_day(ts_et), sym)].append((ts_et, side, qty))
+
+    total_day_trades = 0
+
+    for (_, _sym), events in grouped.items():
+        events.sort(key=lambda x: x[0])
+        opened_today = 0  # shares bought today that are not yet closed
+        # We only track long-side day trades here (BUY then SELL same day)
+        for _ts, side, qty in events:
+            if side == "BUY":
+                opened_today += max(0, qty)
+            elif side == "SELL":
+                # How many of this sell are closing shares opened today?
+                matched = min(max(0, qty), max(0, opened_today))
+                if matched > 0:
+                    total_day_trades += 1  # count per closing transaction
+                    opened_today -= matched
+            # (Short day-trading not modeled here; add if you simulate shorts.)
+    return total_day_trades
+
+def _sell_would_be_day_trade(symbol: str, sell_qty: int, now: datetime = None) -> bool:
+    """
+    Determine if this SELL closes any shares that were BOUGHT today (ET),
+    which makes it a day trade.
+    """
+    now_et = _to_et(datetime.now(timezone.utc) if now is None else now)
+    # Pull today's trades for this symbol
+    start_et = datetime.combine(now_et.date(), datetime.min.time(), tzinfo=now_et.tzinfo)
+    end_et   = datetime.combine(now_et.date(), datetime.max.time(), tzinfo=now_et.tzinfo)
+    rows = _fetch_trades_in_window(start_et, end_et)
+    # Filter this symbol
+    events = [(ts, side, qty) for ts, sym, side, qty, _ in rows if sym == symbol]
+    events.sort(key=lambda x: x[0])
+
+    opened_today = 0
+    for _ts, side, qty in events:
+        if side == "BUY":
+            opened_today += max(0, qty)
+        elif side == "SELL":
+            # Close against same-day opens
+            matched = min(max(0, qty), max(0, opened_today))
+            opened_today -= matched
+
+    # This SELL will close up to 'min(sell_qty, opened_today_remaining)'
+    return min(max(0, sell_qty), max(0, opened_today)) > 0
+
+def _compute_equity() -> float:
+    """
+    Equity = cash + sum(last_price * qty). Uses holdings.last_price.
+    """
+    eq = float(get_cash() or 0.0)
+    for sym, qty, _avg, last in get_holdings():
+        try:
+            eq += float(last or 0.0) * int(qty or 0)
+        except Exception:
+            pass
+    return round(eq, 2)
+
+def enforce_pdt_on_sell(symbol: str, qty: int, now: datetime = None, account_type: str = "MARGIN", hard_block_on_cash: bool = False):
+    Returns (ok: bool, reason: str|None). Block if:
+
+# --- OPTIONAL: simple wash-sale window (loss SELL within last 30 days) ---
+def _recent_loss_sell(symbol: str, days: int = 30):
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT trade_time, COALESCE(pnl, 0.0)
+        FROM simulation_trades
+        WHERE symbol = ? AND action = 'SELL'
+        ORDER BY trade_time DESC
+        LIMIT 50;
+    """, (symbol,))
+    rows = cur.fetchall()
+    conn.close()
+
+    now = datetime.now(timezone.utc)
+    for ts, pnl in rows:
+        try:
+            dt = datetime.fromisoformat(str(ts))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            continue
+        if float(pnl or 0.0) < 0.0 and now <= dt + timedelta(days=days):
+            return dt
+    return None
+
+# --- Hard pre-buy risk checks (call inside buy_stock) ---
+def _pre_buy_risk_checks(symbol: str, qty: int, price: float):
+    settings = _load_settings_safe()
+
+    # single-entry-only
+    if getattr(settings, "single_entry_only", False) and get_position_qty(symbol) > 0:
+        raise RuntimeError(f"[RISK] Already holding {symbol} (single_entry_only).")
+
+    # max-per-trade (hard)
+    max_per = float(getattr(settings, "max_per_trade", 0.0) or 0.0)
+    if max_per > 0 and qty * price > max_per:
+        raise RuntimeError(f"[RISK] Order ${qty*price:.2f} exceeds max_per_trade ${max_per:.2f}.")
+
+    # optional wash-sale block (comment out to only warn)
+    ws_dt = _recent_loss_sell(symbol, days=30)
+    if ws_dt:
+        until = (ws_dt + timedelta(days=30)).astimezone(ET)
+        raise RuntimeError(f"[RISK] Wash-sale window active until {until:%Y-%m-%d}.")
+
+# Track per-symbol peak seen since entry (resets when position closes)
+TRAIL_PEAKS: dict[str, float] = {}
+
+# --- N+2 / settlement helpers ---------------------------------
+def _t_plus_n_close(ts, n=2):
+    """
+    Return the market close timestamp (UTC) of T+n trading days after ts.
+    Uses the NYSE calendar already initialized in this module.
+    """
+    ts_et = _as_utc(ts).astimezone(ET)
+
+    # cover enough days to find T+n even across holidays
+    sched = nyse.schedule(
+        start_date=(ts_et.date() - timedelta(days=1)),
+        end_date=(ts_et.date() + timedelta(days=15)),
+    )
+
+    # find the session containing or immediately after ts
+    session_idx = None
+    for i, (_, row) in enumerate(sched.iterrows()):
+        open_et  = row["market_open"].tz_convert(ET)
+        close_et = row["market_close"].tz_convert(ET)
+        if open_et <= ts_et <= close_et:
+            session_idx = i
+            break
+        if ts_et < open_et and session_idx is None:
+            session_idx = i
+            break
+    if session_idx is None:
+        session_idx = 0
+
+    tplus_idx = min(session_idx + int(n), len(sched) - 1)
+    settle_close_et = sched.iloc[tplus_idx]["market_close"].tz_convert(ET)
+    return settle_close_et.astimezone(timezone.utc)
+
+
+def enforce_n_plus_2(symbol: str, now=None):
+    """
+    Block a BUY if the last SELL for this symbol hasn't reached T+2 close.
+    Returns (ok: bool, reason: str).
+    """
+    conn = _connect()
+    cur  = conn.cursor()
+    cur.execute(
+        "SELECT trade_time FROM simulation_trades "
+        "WHERE symbol=? AND action='SELL' "
+        "ORDER BY trade_time DESC LIMIT 1;",
+        (symbol,)
+    )
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
+        return True, "no prior SELL"
+
+    last_sell_ts = _as_utc(row[0])
+    settle_utc   = _t_plus_n_close(last_sell_ts, n=2)
+    now_utc      = _as_utc(now or datetime.now(timezone.utc))
+
+    if now_utc < settle_utc:
+        reason = (f"{symbol} not settled until "
+                  f"{settle_utc.astimezone(ET).strftime('%Y-%m-%d %H:%M ET')}")
+        return False, reason
+    return True, "settled"
+
+def get_realized_pnl_sum(db_path: str | Path | None = None) -> float:
+    """
+    Sum realized P&L from the trades table.
+    Works whether the column is named 'pnl' or 'pl'. Returns 0.0 on any issue.
+    """
+    path = Path(db_path) if db_path else Path(SIM_DB_PATH)
+    try:
+        with sqlite3.connect(str(path)) as con:
+            cur = con.cursor()
+            for col in ("pnl", "pl"):
+                try:
+                    cur.execute(f"SELECT COALESCE(SUM({col}), 0) FROM trades")
+                    val = cur.fetchone()[0]
+                    if val is not None:
+                        return round(float(val or 0.0), 2)
+                except sqlite3.OperationalError:
+                    # column not present; try the next candidate
+                    continue
+    except Exception:
+        # optional: log via your helper logger if present
+        try:
+            logger.exception("get_realized_pnl_sum failed")
+        except Exception:
+            pass
+    return 0.0
+
+def get_realized_pl_sum() -> float:
+    conn = _connect()
+    cur  = conn.cursor()
+    (val,) = cur.execute(
+        "SELECT COALESCE(SUM(pnl),0) FROM simulation_trades WHERE action='SELL';"
+    ).fetchone()
+    conn.close()
+    return float(val or 0.0)
+
+def get_starting_cash_safe() -> float:
+    try:
+        from services.settings_schema import load_simulation_settings
+        return float(getattr(load_simulation_settings(), "starting_cash", 0.0) or 0.0)
+    except Exception:
+        return 0.0
+
+def _as_utc(dt):
+    """Accept str or datetime; return aware UTC datetime."""
+    if isinstance(dt, str):
+        # handles ...Z and +00:00
+        dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _has_headlines(src):
+    if hasattr(src, "empty"):
+        return not src.empty
+    try:
+        return len(src) > 0
+    except Exception:
+        return False
+
+# ─── Internal connect ─────────────────────────────────────
+def _connect():
+    """
+    Return a sqlite3 connection to the simulation database.
+    """
+    return sqlite3.connect(DB_PATH, detect_types=sqlite3.PARSE_DECLTYPES)
+
+# Print DB path on import for verification
+print(f"▶︎ TradingHelpers loaded; simulation DB path is {DB_PATH.resolve()}")
+
+# ─── Initialization ────────────────────────────────────────
+def setup_simulation_db():
+    """
+    Create and seed the simulation database with:
+      - state: singleton row for cash & realized P/L
+      - holdings: current positions
+      - simulation_trades: audit trail
+    Seeds starting cash from simulation_config.json on first DB creation.
+    """
+    from pathlib import Path
+    import json
+
+    # detect initial run by absence of file
+    first_run = not DB_PATH.exists()
+
+    conn = _connect()
+    cur = conn.cursor()
+
+    # state table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS state (
+            id           INTEGER PRIMARY KEY CHECK(id = 1),
+            cash         REAL    NOT NULL,
+            realized_pl  REAL    NOT NULL DEFAULT 0.0
+        );
+    """)
+    # holdings table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS holdings (
+            symbol     TEXT    PRIMARY KEY,
+            qty        INTEGER NOT NULL,
+            avg_cost   REAL    NOT NULL,
+            last_price REAL    NOT NULL
+        );
+    """)
+    # simulation_trades table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS simulation_trades (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol     TEXT    NOT NULL,
+            action     TEXT    NOT NULL CHECK(action IN ('BUY','SELL')),
+            price      REAL    NOT NULL,
+            qty        INTEGER NOT NULL,
+            trade_time TEXT    NOT NULL,
+            pnl        REAL
+        );
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS trail_state (
+        symbol TEXT PRIMARY KEY,
+        peak   REAL    NOT NULL,
+        since  TEXT    NOT NULL
+    );
+""")
+
+    # seed starting cash from JSON on first creation
+    if first_run:
+        cfg_path = Path(__file__).resolve().parent.parent / "simulation_config.json"
+        if cfg_path.exists():
+            cfg = json.loads(cfg_path.read_text())
+            starting = cfg.get("starting_cash", 0.0)
+            cur.execute(
+                "INSERT OR IGNORE INTO state(id, cash, realized_pl) VALUES (1, ?, 0.0);",
+                (starting,)
+            )
+            print(f"▶︎ Seeded new simulation.db with starting cash = ${starting:.2f}")
+
+    conn.commit()
+    conn.close()
+
+# ─── Cash accessors ────────────────────────────────────────
+def _ensure_state():
+    """
+    Ensure the state table has its singleton row.
+    """
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("INSERT OR IGNORE INTO state (id, cash, realized_pl) VALUES (1, 0.0, 0.0);")
+    conn.commit()
+    conn.close()
+
+
+def set_cash(amount: float):
+    _ensure_state()
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("UPDATE state SET cash = ? WHERE id = 1;", (amount,))
+    conn.commit()
+    conn.close()
+
+
+# --- Keep the old DB snapshot function (rename it) -----------------
+def get_stored_cash() -> float:
+    _ensure_state()
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("SELECT cash FROM state WHERE id = 1;")
+    row = cur.fetchone()
+    conn.close()
+    return float(row[0]) if row else 0.0
+
+# in services/trading_helpers.py
+import sqlite3
+
+# services/trading_helpers.py
+
+def get_cash_ledger() -> float:
+    """
+    Cash = starting_cash - sum(BUY qty*price) + sum(SELL qty*price).
+    Purely derived from trades + settings; never falls back to the stored snapshot.
+    """
+    from services.simulation_service import load_simulation_settings
+
+    starting_cash = float(load_simulation_settings().starting_cash)
+
+    trades = get_trades(limit=10_000)  # big enough ceiling
+    buy_total = sell_total = 0.0
+    for t in trades:
+        if isinstance(t, dict):
+            side  = t.get("action")
+            qty   = float(t.get("qty")   or 0)
+            price = float(t.get("price") or 0)
+        else:
+            # (trade_time, symbol, action, qty, price, pnl, ...)
+            _, _, side, qty, price, *_ = t
+            qty   = float(qty   or 0)
+            price = float(price or 0)
+
+        if side == "BUY":
+            buy_total  += qty * price
+        elif side == "SELL":
+            sell_total += qty * price
+
+    return round(starting_cash - buy_total + sell_total, 2)
+
+# --- New: compute cash from the trade ledger -----------------------
+# --- Make get_cash() use the ledger by default ---------------------
+def get_cash() -> float:
+    return get_cash_ledger()
+
+# ─── Trade recording ──────────────────────────────────────
+def insert_trade(symbol: str, action: str, price: float, qty: int,
+                 pnl: float = None, trade_time: str = None):
+    """
+    Record a BUY or SELL event into simulation_trades.
+    """
+    ts = trade_time or datetime.now(timezone.utc).isoformat()
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO simulation_trades (symbol, action, price, qty, trade_time, pnl) VALUES (?,?,?,?,?,?);",
+        (symbol, action.upper(), price, qty, ts, pnl)
+    )
+    conn.commit()
+    conn.close()
+
+def get_trades(limit: int = 100):
+    """
+    Fetches trades as a list of dicts for easier use.
+    """
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT trade_time, symbol, action, qty, price, pnl"
+        " FROM simulation_trades"
+        " ORDER BY trade_time DESC LIMIT ?;",
+        (limit,)
+    )
+    rows = cur.fetchall()
+    conn.close()
+    columns = ["trade_time", "symbol", "action", "qty", "price", "pnl"]
+    # Return list of dicts:
+    return [dict(zip(columns, row)) for row in rows]
+
+# ─── Holdings management ─────────────────────────────────
+def insert_or_update_holding(symbol: str, qty: int, avg_cost: float, last_price: float):
+    """
+    Upsert into holdings: adjust qty and recompute avg_cost for buys. Delete if qty is zero or less.
+    """
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("SELECT qty, avg_cost FROM holdings WHERE symbol = ?;", (symbol,))
+    row = cur.fetchone()
+    if row:
+        old_qty, old_avg = row
+        new_qty = old_qty + qty
+        if new_qty > 0:
+            total_cost = old_avg * old_qty + avg_cost * qty
+            new_avg = total_cost / new_qty
+            cur.execute(
+                "UPDATE holdings SET qty=?, avg_cost=?, last_price=? WHERE symbol=?;",
+                (new_qty, new_avg, last_price, symbol)
+            )
+        else:
+            cur.execute("DELETE FROM holdings WHERE symbol=?;", (symbol,))
+    else:
+        if qty > 0:
+            cur.execute(
+                "INSERT INTO holdings(symbol, qty, avg_cost, last_price) VALUES (?,?,?,?);",
+                (symbol, qty, avg_cost, last_price)
+            )
+        # If qty <= 0 and not in DB, do nothing.
+    conn.commit()
+    conn.close()
+
+# ─── Quantity computation ─────────────────────────────────
+def compute_qty(settings, price: float) -> int:
+    """
+    Determine shares to buy, limited by max_per_trade and available cash.
+    """
+    if price <= 0:
+        return 0
+    max_by_size = int(settings.max_per_trade / price)
+    max_by_cash = int(get_cash() / price)
+    return min(max_by_size, max_by_cash)
+# ───────────────────────── Risk Guards (PDT / Settlement / Wash-sale) ─────────────────────────
+import os
+from datetime import datetime, timezone, timedelta
+
+# If you want T+1, set SETTLEMENT_DAYS=1 in your env. Defaults to your prior T+2 behavior.
+SETTLEMENT_DAYS = int(os.getenv("SETTLEMENT_DAYS", "2"))
+
+def _as_dt_utc(ts):
+    """Coerce ts (None | str | datetime) to an aware UTC datetime, or None."""
+    if ts is None:
+        return None
+    if isinstance(ts, datetime):
+        return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+    try:
+        dt = datetime.fromisoformat(str(ts))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+def _dt_et(dt_utc):
+    """UTC aware -> America/New_York aware (requires ET from top of file)."""
+    if dt_utc is None:
+        return None
+    return dt_utc.astimezone(ET)
+
+def _settle_date(trade_dt_utc, n=SETTLEMENT_DAYS):
+    """Return the exchange (NYSE) settlement date: add N trading days to trade date."""
+    dt_et = _dt_et(trade_dt_utc or datetime.now(timezone.utc))
+    # get 10 days of calendar to be safe; pick the n-th trading day after (including/excluding?)
+    sched = nyse.schedule(start_date=dt_et.date(), end_date=dt_et.date() + timedelta(days=14))
+    # valid days are UTC-normalized timestamps; convert to ET date list
+    trading_days = [row.tz_convert(ET).date() for row in sched['market_open']]
+    # Find index of the trade day; if not a trading day (after-hours etc.), use next trading day as trade day
+    try:
+        start_idx = trading_days.index(dt_et.date())
+    except ValueError:
+        # choose the first trading day >= today
+        start_idx = 0
+        while start_idx < len(trading_days) and trading_days[start_idx] < dt_et.date():
+            start_idx += 1
+    settle_idx = min(len(trading_days) - 1, start_idx + n)
+    return trading_days[settle_idx]
+
+def _load_starting_cash_safe() -> float:
+    try:
+        from services.simulation_service import load_simulation_settings
+        return float(getattr(load_simulation_settings(), "starting_cash", 0.0) or 0.0)
+    except Exception:
+        return 0.0
+
+def _iter_trades(limit=100000):
+    """Yield normalized trades newest→oldest as dicts."""
+    for t in get_trades(limit=limit):
+        if isinstance(t, dict):
+            yield {
+                "time":  _as_dt_utc(t.get("trade_time") or t.get("time") or t.get("timestamp")),
+                "sym":   t.get("symbol"),
+                "side":  (t.get("action") or "").upper(),
+                "qty":   int(t.get("qty") or 0),
+                "price": float(t.get("price") or 0.0),
+                "pnl":   float(t.get("pnl") or t.get("pl") or 0.0),
+            }
+        else:
+            # tuple: (trade_time, symbol, action, qty, price, pnl, ...)
+            tt, sym, side, qty, price, pnl = (t + (None, None, None, None, None, None))[:6]
+            yield {
+                "time":  _as_dt_utc(tt),
+                "sym":   sym,
+                "side":  (side or "").upper(),
+                "qty":   int(qty or 0),
+                "price": float(price or 0.0),
+                "pnl":   float(pnl or 0.0),
+            }
+
+def _available_settled_cash(now_utc: datetime | None) -> float:
+    """
+    Settled cash = starting_cash - all BUY cost + proceeds of SELLs whose settlement date <= today.
+    Ignores stored 'cash' snapshot so we don't reward unsettled proceeds.
+    """
+    now_utc = now_utc or datetime.now(timezone.utc)
+    start_cash = _load_starting_cash_safe()
+    buy_cost = 0.0
+    settled_sells = 0.0
+    for tr in _iter_trades():
+        if tr["side"] == "BUY":
+            buy_cost += tr["qty"] * tr["price"]
+        elif tr["side"] == "SELL":
+            settle_d = _settle_date(tr["time"])
+            if settle_d <= _dt_et(now_utc).date():
+                settled_sells += tr["qty"] * tr["price"]
+    return round(start_cash - buy_cost + settled_sells, 2)
+
+def enforce_settlement_on_buy(cost: float, now: datetime | None) -> tuple[bool,str,float]:
+    """
+    Returns (ok, reason, available_settled).
+    """
+    avail = _available_settled_cash(now)
+    if cost <= avail + 1e-9:
+        return True, "", avail
+    return False, f"Buy uses ${cost - avail:.2f} of *unsettled* funds (T+{SETTLEMENT_DAYS}).", avail
+
+def _sell_would_be_day_trade(symbol: str, now_utc: datetime | None) -> bool:
+    """A day trade if there was a BUY for this symbol earlier *today* (ET)."""
+    now_utc = now_utc or datetime.now(timezone.utc)
+    today_et = _dt_et(now_utc).date()
+    for tr in _iter_trades():
+        if tr["sym"] != symbol or tr["side"] != "BUY":
+            continue
+        if _dt_et(tr["time"]).date() == today_et:
+            return True
+        # trades are newest→oldest; once date is older than today, bail
+        if _dt_et(tr["time"]).date() < today_et:
+            break
+    return False
+
+def _count_day_trades_last5(now_utc: datetime | None) -> int:
+    """Approximate FINRA count: number of calendar days in the last 5 trading days with a round-trip."""
+    now_utc = now_utc or datetime.now(timezone.utc)
+    sched = nyse.schedule(start_date=_dt_et(now_utc).date() - timedelta(days=14),
+                          end_date=_dt_et(now_utc).date())
+    last_days = [row.tz_convert(ET).date() for row in sched['market_open']][-5:]
+    day_flags = {d: False for d in last_days}
+    # For each day+symbol, if both BUY and SELL occurred → mark that day True
+    for d in last_days:
+        buy_seen = set()
+        sell_seen = set()
+        for tr in _iter_trades():
+            d_tr = _dt_et(tr["time"]).date()
+            if d_tr != d:  # only that day
+                continue
+            if tr["side"] == "BUY":
+                buy_seen.add(tr["sym"])
+            elif tr["side"] == "SELL":
+                sell_seen.add(tr["sym"])
+        if buy_seen & sell_seen:
+            day_flags[d] = True
+    return sum(day_flags.values())
+
+def _compute_equity_snapshot() -> float:
+    """Cash + market value of holdings (uses DB last_price)."""
+    eq = float(get_cash() or 0.0)
+    try:
+        for sym, qty, avg, lp in get_holdings():
+            eq += float(lp or 0.0) * int(qty or 0)
+    except Exception:
+        pass
+    return round(eq, 2)
+
+def enforce_pdt_on_sell(symbol: str, qty: int, now: datetime | None = None,
+                        account_type: str = "CASH") -> tuple[bool,str]:
+    """
+    For margin accounts: block if equity < 25k AND this SELL would be the 4th+ day trade in last 5 days.
+    For cash accounts: allow (PDT doesn't apply).
+    """
+    if (account_type or "").upper() != "MARGIN":
+        return True, ""
+    now = now or datetime.now(timezone.utc)
+    would_be_dt = _sell_would_be_day_trade(symbol, now)
+    if not would_be_dt:
+        return True, ""
+    eq = _compute_equity_snapshot()
+    if eq >= 25000.0:
+        return True, ""   # PDT allowed if equity >= 25k
+    prior = _count_day_trades_last5(now)
+    if prior >= 3:
+        return False, f"PDT limit: equity ${eq:,.2f} < $25,000 and this would be day trade #{prior+1} in 5 days."
+    return True, ""
+
+def enforce_wash_sale_on_buy(symbol: str, now: datetime | None = None,
+                             lookback_days: int = 30, hard_block: bool = False) -> tuple[bool,str]:
+    """
+    Warn (or block if hard_block=True) if there was a loss *SELL* for this symbol in the last N days.
+    """
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=lookback_days)
+    for tr in _iter_trades():
+        if tr["sym"] != symbol or tr["side"] != "SELL":
+            continue
+        if tr["time"] and tr["time"] < cutoff:
+            break
+        if tr["pnl"] < 0:  # loss
+            msg = f"Recent loss sale on {symbol} within {lookback_days} days → wash-sale risk."
+            return (False, msg) if hard_block else (True, msg)
+    return True, ""
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+
+# ─── Order execution helpers ───────────────────────────────
+def buy_stock(symbol: str, qty: int, price: float, trade_time: str | None = None):
+    now = _as_dt_utc(trade_time) or datetime.now(timezone.utc)
+
+    # settlement (T+N) guard
+    cost = float(qty) * float(price)
+    ok, reason, avail = enforce_settlement_on_buy(cost, now)
+    if not ok:
+        raise RuntimeError(f"[SETTLEMENT] {reason} (settled available: ${avail:.2f})")
+
+    # optional: wash-sale advisory (doesn't block unless you want to)
+    ok_ws, msg_ws = enforce_wash_sale_on_buy(symbol, now, hard_block=False)
+    if msg_ws:
+        logger.warning(f"[WASH-SALE] {msg_ws}")
+
+    cost = qty * price
+    cash = get_cash()
+    if cost > cash:
+        raise RuntimeError(f"Not enough cash: need {cost:.2f}, have {cash:.2f}")
+    set_cash(cash - cost)
+    insert_trade(symbol, 'BUY', price, qty, None, trade_time)
+    insert_or_update_holding(symbol, qty, avg_cost=price, last_price=price)
+
+
+def sell_stock(symbol: str, qty: int | None = None, price: float | None = None, trade_time: str | None = None):
+    now = _as_dt_utc(trade_time) or datetime.now(timezone.utc)
+
+    # PDT guard (only for margin accounts)
+    from os import getenv
+    acct_type = getenv("ACCOUNT_TYPE", "CASH")  # set to "MARGIN" to enforce PDT
+    ok, reason = enforce_pdt_on_sell(symbol, qty or 0, now=now, account_type=acct_type)
+    if not ok:
+        raise RuntimeError(f"[PDT] {reason}")
+    holding = get_position(symbol)  # {'qty': ..., 'last_price': ...}
+    if not holding or holding.get("qty", 0) <= 0:
+        raise RuntimeError(f"No holdings to sell for {symbol}!")
+
+    if qty is None or qty <= 0:
+        qty = int(holding["qty"])
+    if price is None:
+        price = float(holding.get("last_price") or fetch_etrade_quote(symbol) or 0.0)
+
+    proceeds = qty * price
+    set_cash(get_cash() + proceeds)
+    avg = get_avg_cost(symbol)
+    pnl = (price - avg) * qty
+
+    insert_trade(symbol, 'SELL', price, qty, pnl, trade_time)
+    insert_or_update_holding(symbol, qty=-qty, avg_cost=avg, last_price=price)
+
+    # if flat after the sell, clear trailing-stop state
+    try:
+        if get_position_qty(symbol) <= 0:
+            conn = _connect()
+            conn.execute("DELETE FROM trail_state WHERE symbol=?;", (symbol,))
+            conn.commit()
+            conn.close()
+            TRAIL_PEAKS.pop(symbol, None)
+    except Exception:
+        pass
+
+# ─── Backtest helpers ─────────────────────────────────────
+def init_backtest_db():
+    """
+    Initialize backtest database using BACKTEST_SCHEMA.
+    """
+    from settings import BACKTEST_DB
+    from config import BACKTEST_SCHEMA
+    conn = sqlite3.connect(BACKTEST_DB)
+    conn.executescript(BACKTEST_SCHEMA)
+    conn.commit()
+    conn.close()
+
+
+def enter_trade(symbol: str, price: float, time, trigger: str,
+                alert_type: str, name: str, vwap: float,
+                vwap_diff: float, qty: int, buy: int):
+    """
+    Record a backtest trade into the trades table.
+    """
+    conn = sqlite3.connect(BACKTEST_DB)
+    cur = conn.cursor()
+    ts = time.isoformat() if hasattr(time, 'isoformat') else str(time)
+    cur.execute(
+        "INSERT INTO trades"
+        "  (symbol, name, price, time, trigger, alert_type, vwap, vwap_diff, qty, buy)"
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+        (symbol, name, price, ts, trigger, alert_type, vwap, vwap_diff, qty, buy)
+    )
+    conn.commit()
+    conn.close()
+
+# ─── Queries & metrics ───────────────────────────────────
+def get_holdings():
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("SELECT symbol, qty, avg_cost, last_price FROM holdings;")
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_position(symbol):
+    """
+    Return holding info for 'symbol' from SIM DB as {'qty': ..., 'last_price': ...}
+    """
+    import sqlite3
+    conn = sqlite3.connect(SIMULATION_DB)
+    cur = conn.cursor()
+    cur.execute("SELECT qty, last_price FROM holdings WHERE symbol = ?", (symbol,))
+    row = cur.fetchone()
+    conn.close()
+    if row:
+        return {"qty": row[0], "last_price": row[1]}
+    return None
+
+
+def get_avg_cost(symbol: str) -> float:
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("SELECT avg_cost FROM holdings WHERE symbol=?;", (symbol,))
+    row = cur.fetchone()
+    conn.close()
+    return float(row[0]) if row else 0.0
+
+
+def get_position_qty(symbol: str) -> int:
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("SELECT qty FROM holdings WHERE symbol=?;", (symbol,))
+    row = cur.fetchone()
+    conn.close()
+    return row[0] if row else 0
+
+
+def get_unrealized_pl() -> float:
+    """Sum of (current_price – avg_cost)×qty for all open positions."""
+    total = 0.0
+    for symbol, qty, avg_cost, last_price in get_holdings():
+        total += (last_price - avg_cost) * qty
+    return total
+
+def get_realized_pl() -> float:
+    """Sum of all closed‐trade P/L stored in state.realized_pl."""
+    conn = _connect()
+    cur  = conn.cursor()
+    cur.execute("SELECT realized_pl FROM state WHERE id=1;")
+    row = cur.fetchone()
+    conn.close()
+    return float(row[0]) if row else 0.0
+
+# ─── Exit logic ──────────────────────────────────────────
+def check_exit_orders(settings) -> None:
+    from services.broker_api import sell_stock as broker_sell
+    logger.info(">>> Entered check_exit_orders() <<<")
+    for symbol, qty, avg_cost, _ in get_holdings():
+        try:
+            current = fetch_etrade_quote(symbol)
+        except Exception:
+            logger.warning(f"[CHECK-EXITS] Could not fetch quote for {symbol}")
+            continue
+        pnl_pct = ((current - avg_cost) / avg_cost * 100) if avg_cost else 0.0
+
+        # STOP LOSS logic
+        if settings.stop_loss_pct and pnl_pct <= -settings.stop_loss_pct:
+            logger.info(f"[SIM-SELL] {symbol} STOP LOSS: qty={qty}, px=${current:.2f}, P/L={pnl_pct:.2f}%")
+            broker_sell(symbol, qty, current)
+            TRAIL_PEAKS.pop(symbol, None)
+            continue
+
+        # TAKE PROFIT logic
+        if settings.take_profit_pct and pnl_pct >= settings.take_profit_pct:
+            logger.info(f"[SIM-SELL] {symbol} TAKE PROFIT: qty={qty}, px=${current:.2f}, P/L={pnl_pct:.2f}%")
+            broker_sell(symbol, qty, current)
+            TRAIL_PEAKS.pop(symbol, None)
+            continue
+        
+        # --- TRAILING STOP (persistent) ---
+        if getattr(settings, "use_trailing_stop", False) and float(getattr(settings, "trailing_stop_pct", 0) or 0) > 0:
+            pct = float(settings.trailing_stop_pct)
+
+            # Update peak in DB and check trigger
+            hit = _trail_update_and_hit(symbol, float(current), pct)
+            if hit and current > 0:
+                # Compute current peak and trigger for logging clarity
+                try:
+                    conn = _connect()
+                    cur  = conn.cursor()
+                    cur.execute("SELECT peak FROM trail_state WHERE symbol=?;", (symbol,))
+                    r = cur.fetchone()
+                    peak = float(r[0]) if r and r[0] is not None else float(current)
+                finally:
+                    conn.close()
+
+                trigger = peak * (1.0 - pct / 100.0)
+                logger.info(
+                    f"[SIM-SELL] {symbol} TRAILING STOP: "
+                    f"peak=${peak:.2f} trigger=${trigger:.2f} now=${current:.2f} "
+                    f"({pct:.2f}% trail)"
+                )
+                broker_sell(symbol, qty, current)
+
+                # Clear persistent + in-memory trackers on exit
+                try:
+                    conn = _connect()
+                    conn.execute("DELETE FROM trail_state WHERE symbol=?;", (symbol,))
+                    conn.commit()
+                finally:
+                    conn.close()
+                TRAIL_PEAKS.pop(symbol, None)
+                continue
+
+        # SELL AFTER DAYS logic
+        if settings.sell_after_days:
+            logger.info(f"[SELL-AFTER-DAYS] settings.sell_after_days={settings.sell_after_days} (type: {type(settings.sell_after_days)})")
+            conn = _connect()
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT trade_time FROM simulation_trades WHERE symbol=? AND action='BUY' ORDER BY trade_time ASC LIMIT 1;",
+                (symbol,)
+            )
+            row = cur.fetchone()
+            logger.debug(f"[SELL-DAYS] {symbol}: row={row}")
+            conn.close()
+            if row:
+                # AFTER
+                entry = _as_utc(row[0])
+                now = datetime.now(timezone.utc)
+                delta_hours = (now - entry).total_seconds() / 3600.0
+                logger.debug(f"[SELL-DAYS] {symbol}: entry={entry.isoformat()} now={now.isoformat()} delta={delta_hours:.2f}h")
+                if now - entry >= timedelta(days=int(settings.sell_after_days or 0)):
+                    logger.info(f"[SIM-SELL] {symbol} MAX HOLD DAYS: qty={qty}, px=${current:.2f}, held={settings.sell_after_days}d")
+                    broker_sell(symbol, qty, current)
+            else:
+                logger.info(f"[SELL-DAYS] {symbol}: No buy entry found")
+        else:
+            logger.info(f"NOT checking sell-after-days for: {symbol} (setting false or skipped)")
+from datetime import timedelta
+
+POST_OPEN_BUFFER = timedelta(minutes=0)
+
+def market_is_open() -> bool:
+    now = datetime.now(ET)
+    sched = nyse.schedule(start_date=now.date(), end_date=now.date())
+    if sched.empty:
+        return False
+
+    row = sched.iloc[0]
+    # shift the official open by your buffer
+    open_dt     = row['market_open'].tz_convert(ET) + POST_OPEN_BUFFER
+    close_dt    = row['market_close'].tz_convert(ET)
+    return open_dt <= now < close_dt
+
+
+def seconds_until_open() -> float:
+    now   = datetime.now(ET)
+    sched = nyse.schedule(
+        start_date=now.date(),
+        end_date=now.date() + timedelta(days=7),
+    )
+    for _, row in sched.iterrows():
+        # buffer your next-open by 30m as well
+        open_dt = row['market_open'].tz_convert(ET) + POST_OPEN_BUFFER
+        if open_dt > now:
+            return (open_dt - now).total_seconds()
+    # if we fall out of the loop, next open is >7 days away—just wait a day
+    return 24 * 3600
+
+# Safely sum total_gain (for dicts) or dollar gain (for tuples)
+def extract_total_gain(h):
+    if isinstance(h, dict):
+        return h.get("total_gain") or 0
+    if isinstance(h, (tuple, list)) and len(h) >= 4:
+        qty = h[1]
+        price_paid = h[2]
+        last_price = h[3]
+        return (last_price - price_paid) * qty
+    return 0
+
+def extract_cost_basis(h):
+    if isinstance(h, dict):
+        return (h.get("qty") or 0) * (h.get("price_paid") or 0)
+    if isinstance(h, (tuple, list)) and len(h) >= 3:
+        return h[1] * h[2]
+    return 0
+
+def check_if_position_open(symbol: str) -> bool:
+    return get_position_qty(symbol) > 0
+def refresh_holdings_prices():
+    """Fetch live prices for each symbol in holdings and write them to the DB."""
+    from services.etrade_service import fetch_etrade_quote
+    conn = _connect()
+    cur  = conn.cursor()
+    cur.execute("SELECT symbol FROM holdings;")
+    for (symbol,) in cur.fetchall():
+        try:
+            px = fetch_etrade_quote(symbol)
+            if px > 0:
+                cur.execute(
+                   "UPDATE holdings SET last_price = ? WHERE symbol = ?;",
+                   (px, symbol)
+                )
+        except Exception:
+            pass
+    conn.commit()
+    conn.close()

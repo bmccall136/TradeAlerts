@@ -200,6 +200,8 @@ unicode_title = ParagraphStyle(
 )
 from services.trading_helpers import get_cash, set_cash, get_cash_ledger
 
+IGNORED_TICKERS = {s.upper() for s in (os.getenv("IGNORE_TICKERS","GEVO").split(",") if True else [])}
+
 # --- cash sync check ---
 try:
     ledger = get_cash_ledger()
@@ -362,6 +364,62 @@ def etrade_handle_pin():
 
     flash("✅ E*TRADE authenticated!", "success")
     return redirect(url_for("simulation_view"))
+
+# --- quote helpers for last/prev-close ---------------------------------
+def _qnum(d: dict, *keys):
+    for k in keys:
+        v = d.get(k)
+        if v not in (None, "", "0"):
+            try:
+                return float(v)
+            except Exception:
+                pass
+    return None
+
+def get_last_and_prev(symbol: str, fallback_price: float):
+    last = prev = None
+    q = fetch_etrade_quote(symbol)
+    # A) quote → last / prev (or derive prev from day delta)
+    if isinstance(q, dict):
+        last = _qnum(q, "lastTrade","lastPrice","intradayLast","close","closePrice")
+        prev = _qnum(q, "previousClose","prevClose","priorClose","closePrevDay","closePricePrev")
+
+        # ← derive prev if missing
+        if prev is None and last is not None:
+            day_delta = _qnum(q, "netChange","changeClose","closeNetChange",
+                                 "todaysChangeDollar","change","todaysChange")
+            if day_delta is not None:
+                prev = float(last) - float(day_delta)
+    else:
+        try:
+            last = float(q)
+        except Exception:
+            last = None
+
+    # B) fallback: 2-day history
+    if prev is None or last is None:
+        try:
+            try:
+                from services.market_service import fetch_data_with_timeout
+            except Exception:
+                from services.data_fetch import fetch_data_with_timeout  # alt module name
+            df = fetch_data_with_timeout(symbol, "2d")
+            if df is not None:
+                import pandas as pd
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = df.columns.get_level_values(-1)
+                close_col = next((c for c in df.columns if str(c).lower() == "close"), None)
+                if close_col:
+                    if last is None and len(df) >= 1:
+                        last = float(df[close_col].iloc[-1])
+                    if prev is None and len(df) >= 2:
+                        prev = float(df[close_col].iloc[-2])
+        except Exception:
+            pass
+
+    if last is None:
+        last = float(fallback_price or 0.0)
+    return float(last), (None if prev is None else float(prev))
 
 @app.route("/auth/etrade/reconnect", methods=["POST","GET"])
 def auth_etrade_reconnect():
@@ -1439,13 +1497,26 @@ from datetime import datetime
 import pytz
 from services.data_fetch import fetch_data_with_timeout  # Move this to the top of your file
 
+# --- helpers -------------------------------------------------
+def _quote_prev_close(q):
+    """Try to pull 'previous close' from an E*TRADE quote dict."""
+    if isinstance(q, dict):
+        for k in ("previousClose","prevClose","priorClose",
+                  "closePrevDay","closePricePrev","prevDayClose"):
+            v = q.get(k)
+            if v not in (None, 0, "0", ""):
+                try:
+                    return float(v)
+                except:
+                    pass
+    return None
+
+
+# --- route ---------------------------------------------------
 @app.route("/simulation")
 def simulation_view():
     import pandas as pd
     from services.simulation_service import load_simulation_settings
-
-    # --- Helper for formatting trade times ---
-
     def format_trade_time(ts):
         try:
             # Parse whatever type we get into a datetime
@@ -1493,49 +1564,25 @@ def simulation_view():
     for h in holdings:
         try:
             symbol     = h["symbol"]
-            qty        = h["qty"]
-            price_paid = h["price_paid"]
+            qty        = int(h["qty"] or 0)
+            price_paid = float(h["price_paid"] or 0.0)
 
-            live = fetch_etrade_quote(symbol)
+            last, prev_close = get_last_and_prev(symbol, price_paid)
 
-            hist = fetch_data_with_timeout(symbol, "2d")
-            last_close = prev_close = None
-            if hist is not None:
-                if isinstance(hist.columns, pd.MultiIndex):
-                    hist.columns = hist.columns.get_level_values(-1)
-                hist.columns = [str(c) for c in hist.columns]
-                col_close = next((c for c in hist.columns if c.lower() == "close"), None)
-                if col_close:
-                    if len(hist) >= 1:
-                        last_close = float(hist[col_close].iloc[-1])
-                    if len(hist) >= 2:
-                        prev_close = float(hist[col_close].iloc[-2])
+            # change from cost basis (what your Change / Change % columns show)
+            change_from_cost     = last - price_paid
+            change_from_cost_pct = (change_from_cost / price_paid * 100.0) if price_paid else 0.0
 
-            display_price = (
-                (live if live not in (None, 0) else None)
-                or last_close
-                or prev_close
-                or price_paid
-            )
+            # day change = last - previous close (if we have prev)
+            day_change = (last - prev_close) if prev_close is not None else 0.0
 
-            if (live not in (None, 0)) and (last_close is not None):
-                day_base = last_close
-                change_day = float(display_price - last_close)
-            else:
-                day_base = last_close if last_close is not None else price_paid
-                ref_prev = prev_close if prev_close is not None else day_base
-                change_day = float(day_base - ref_prev)
-
-            change_day_pct = (change_day / day_base * 100.0) if day_base else 0.0
-            day_gain = change_day * qty
-            total_gain = (display_price - price_paid) * qty
-
-            h["last_price"] = round(float(display_price), 2)
-            h["change"]     = round(change_day, 2)
-            h["change_pct"] = round(change_day_pct, 1)
-            h["day_gain"]   = round(float(day_gain), 2)
-            h["total_gain"] = round(float(total_gain), 2)
-            h["value"]      = round(float(display_price) * qty, 2)
+            # write back to row
+            h["last_price"] = round(last, 2)
+            h["change"]     = round(change_from_cost, 2)
+            h["change_pct"] = round(change_from_cost_pct, 1)
+            h["day_gain"]   = round(day_change * qty, 2)
+            h["total_gain"] = round(change_from_cost * qty, 2)
+            h["value"]      = round(last * qty, 2)
 
         except Exception as e:
             print(f"[SIM] Error updating holding {h.get('symbol','?')}: {e}")
@@ -1822,25 +1869,59 @@ def index():
         except Exception:
             return str(ts).split('.')[0]
 
-    # holdings
     raw = get_holdings()
     holdings = []
-    for symbol, qty, avg_cost, last_known in raw:
+    import pandas as pd
+    from services.market_service import fetch_data_with_timeout
+
+    for symbol, qty, avg_cost, lp in raw:
         try:
-            last_price = fetch_etrade_quote(symbol)  # your helper should return a float
+            live = float(fetch_etrade_quote(symbol) or 0.0)
         except Exception:
-            last_price = last_known
-        gain_per_share = last_price - avg_cost
+            live = float(lp or 0.0)
+
+        # Pull 2 days to get prev close
+        last_close = prev_close = None
+        try:
+            hist = fetch_data_with_timeout(symbol, "2d")
+            if hist is not None:
+                if isinstance(hist.columns, pd.MultiIndex):
+                    hist.columns = hist.columns.get_level_values(-1)
+                hist.columns = [str(c) for c in hist.columns]
+                col_close = next((c for c in hist.columns if c.lower() == "close"), None)
+                if col_close:
+                    if len(hist) >= 1:
+                        last_close = float(hist[col_close].iloc[-1])
+                    if len(hist) >= 2:
+                        prev_close = float(hist[col_close].iloc[-2])
+        except Exception:
+            pass
+
+        display_price = live or last_close or prev_close or float(avg_cost or 0.0)
+
+        # Intraday change (today vs yesterday close)
+        if (live and last_close is not None):
+            day_base = last_close
+            change_day = display_price - last_close
+        else:
+            # fallback: flat day change if we can’t get last_close
+            day_base = last_close if last_close is not None else float(avg_cost or 0.0)
+            ref_prev = prev_close if prev_close is not None else day_base
+            change_day = day_base - ref_prev
+
+        gain_per_share = display_price - float(avg_cost or 0.0)
         holdings.append({
             "symbol":     symbol,
-            "qty":        qty,
-            "price_paid": avg_cost,
-            "last_price": last_price,
-            "day_gain":   round(gain_per_share, 2),
-            "change_pct": round((gain_per_share / avg_cost * 100), 1) if avg_cost else 0.0,
-            "total_gain": round(gain_per_share * qty, 2),
-            "value":      round(last_price * qty, 2),
+            "qty":        int(qty or 0),
+            "price_paid": float(avg_cost or 0.0),
+            "last_price": round(display_price, 2),
+            "change":     round(gain_per_share, 2),                         # since entry
+            "change_pct": round((gain_per_share / avg_cost * 100.0), 1) if avg_cost else 0.0,
+            "day_gain":   round(change_day * int(qty or 0), 2),             # intraday P/L
+            "total_gain": round(gain_per_share * int(qty or 0), 2),
+            "value":      round(display_price * int(qty or 0), 2),
         })
+
     return redirect(url_for("simulation_view"))
      
     cash = round(get_cash(), 2)
@@ -1848,31 +1929,209 @@ def index():
     total_cost_basis = sum(h["qty"] * h["price_paid"] for h in holdings)
     unrealized_pnl_pct = round((unrealized_pnl / total_cost_basis * 100), 2) if total_cost_basis else 0.0
 
+IGNORED_TICKERS = {"GEVO"}  # hide on Live
+
+def _afloat(v, d=0.0):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return float(d)
+
+def _get_num(d: dict, paths, default=0.0):
+    for path in paths:
+        cur = d
+        try:
+            for key in path.split("."):
+                if cur is None:
+                    raise KeyError
+                if isinstance(cur, list):
+                    cur = cur[0]
+                else:
+                    cur = cur.get(key)
+            if cur not in (None, "", "-", "NA"):
+                return float(cur)
+        except Exception:
+            continue
+    return float(default)
+
+def _get_str(d: dict, paths, default=""):
+    for path in paths:
+        cur = d
+        try:
+            for key in path.split("."):
+                if cur is None:
+                    raise KeyError
+                if isinstance(cur, list):
+                    cur = cur[0]
+                else:
+                    cur = cur.get(key)
+            if cur is not None:
+                return str(cur)
+        except Exception:
+            continue
+    return default
+
+def _normalize_account(raw: dict) -> dict:
+    raw = raw or {}
+
+    buying_power = _get_num(raw, [
+        "buying_power", "buyingPower", "computed.buyingPower",
+        "Computed.marginBuyingPower", "Computed.cashBuyingPower",
+        "balance.buyingPower"
+    ])
+
+    settled_cash = _get_num(raw, [
+        "settled_cash", "cash", "cashBalance",
+        "Computed.cashAvailableForWithdrawal",
+        "Computed.cashAvailableForInvestment",
+        "balance.cash"
+    ])
+
+    equity_value = _get_num(raw, [
+        "equity_value",
+        "raw.BalanceResponse.Computed.RealTimeValues.totalAccountValue",
+        "netAccountValue", "totalAccountValue"
+    ])
+
+    account_id   = _get_str(raw, ["account_id", "raw.BalanceResponse.accountId", "accountIdKey"])
+    account_type = _get_str(raw, ["account_type", "raw.BalanceResponse.accountType", "accountType"])
+
+    # keep any nice extras if your service already set them
+    pretty_type  = raw.get("account_type_display") or account_type
+
+    return {
+        "buying_power":  buying_power,
+        "settled_cash":  settled_cash,
+        "equity_value":  equity_value,
+        "account_id":    account_id,
+        "account_type":  pretty_type,
+        # passthroughs if present
+        "net_liq":       _afloat(raw.get("net_liq"), 0.0),
+    }
+
 @app.route("/live", methods=["GET"])
 def live_view():
-    from services.broker import get_broker
-    from flask import render_template
+    from services import etrade_service as et
 
-    # Always use the LIVE broker here
-    broker = get_broker("LIVE")
-    acct = broker.get_account_summary() or {}
-    if not isinstance(acct, dict):
-        acct = {}
+    # balances
+    try:
+        summary_raw = et.get_account_summary() or {}
+    except Exception:
+        summary_raw = {}
+    account = _normalize_account(summary_raw)
 
-    # What to display as the account type on the right
-    account_type = (acct.get("account_type")
-                    or acct.get("type")
-                    or "")
+    # positions -> holdings rows (hide GEVO)
+    holdings_rows = []
+    try:
+        for pos in (et.get_positions() or []):
+            sym = (pos.get("symbol") or "").upper()
+            if sym in IGNORED_TICKERS:
+                continue
+            q   = int(pos.get("qty") or 0)
+            lp  = float(pos.get("last_price") or 0.0)
+            avg = float(pos.get("price_paid") or 0.0)
+            holdings_rows.append({
+                "symbol": sym,
+                "last_price": lp,
+                "change": 0.0,
+                "change_pct": 0.0,
+                "qty": q,
+                "price_paid": avg,
+                "day_gain": 0.0,
+                "total_gain": (lp - avg) * q if q and avg else 0.0,
+                "value": q * lp,
+            })
+    except Exception:
+        pass
+
+    # P&L metrics (unrealized from current positions; realized from local ledger if any)
+    unrealized_pnl = round(sum((h["last_price"] - (h["price_paid"] or 0.0)) * (h["qty"] or 0)
+                               for h in holdings_rows), 2)
+    cost_basis_total = sum((h["price_paid"] or 0.0) * (h["qty"] or 0) for h in holdings_rows)
+    unrealized_pnl_pct = round((unrealized_pnl / cost_basis_total * 100.0), 2) if cost_basis_total else 0.0
+
+    try:
+        from services.trading_helpers import get_realized_pl
+        realized_pnl = round(float(get_realized_pl() or 0.0), 2)
+    except Exception:
+        realized_pnl = 0.0
+
+    # Live page: realized % is optional; use cost basis as a neutral denominator if present
+    denom = cost_basis_total or 0.0
+    realized_pnl_pct = round((realized_pnl / denom * 100.0), 2) if denom else 0.0
 
     return render_template(
         "live.html",
-        account=acct,
-        account_type=account_type,
+        account=account,
+        account_type=(account.get("account_type") or "Cash"),
         mode="LIVE",
-        armed=False,          # harmless, template can ignore
-        holdings=[],          # <- empty on purpose
-        trades=[],            # <- empty on purpose
+        armed=False,
+        holdings=holdings_rows,
+        trades=[],
+        unrealized_pnl=unrealized_pnl,
+        unrealized_pnl_pct=unrealized_pnl_pct,
+        realized_pnl=realized_pnl,
+        realized_pnl_pct=realized_pnl_pct,
     )
+@app.route("/live/status")
+def live_status():
+    from services import etrade_service as et
+
+    # normalize account summary
+    try:
+        summary_raw = et.get_account_summary() or {}
+    except Exception:
+        summary_raw = {}
+    account = _normalize_account(summary_raw)   # uses helpers below
+
+    # positions → holdings (ignore GEVO, etc.)
+    IGNORED_TICKERS = {"GEVO"}  # move to module-top if you want
+
+    holdings = []
+    for pos in (et.get_positions() or []):
+        sym = (pos.get("symbol") or pos.get("symbolDescription") or "").upper()
+        if not sym or sym in IGNORED_TICKERS:
+            continue
+
+        qty = int(pos.get("qty") or pos.get("quantity") or 0)
+        avg = _afloat(pos.get("price_paid") or pos.get("avgPrice") or pos.get("averagePrice") or 0)
+        last = _afloat(pos.get("last_price") or pos.get("lastPrice") or pos.get("quoteLast") or 0)
+
+        holdings.append({
+            "symbol": sym,
+            "qty": qty,
+            "price_paid": avg,
+            "last_price": last,
+            "total_gain": (last - avg) * qty if qty and avg else 0.0,
+            "value": last * qty
+        })
+
+    try:
+        from services.trading_helpers import get_realized_pl
+        realized = round(float(get_realized_pl() or 0.0), 2)
+    except Exception:
+        realized = 0.0
+
+    # Choose a denominator for realized % (your call)
+    start_cash = basis
+    try:
+        from services.simulation_service import load_simulation_settings
+        sc = getattr(load_simulation_settings(), "starting_cash", 0.0)
+        start_cash = float(sc or start_cash)
+    except Exception:
+        pass
+    rpct = round((realized / start_cash * 100.0), 2) if start_cash else 0.0
+
+    return jsonify({
+        "account": account,
+        "metrics": {
+            "unrealized_pnl": unrealized,
+            "unrealized_pnl_pct": upct,
+            "realized_pnl": realized,
+            "realized_pnl_pct": rpct,
+        }
+    })
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True, use_reloader=True)

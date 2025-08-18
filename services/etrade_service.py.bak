@@ -266,53 +266,108 @@ def get_account_summary() -> dict:
     """
     Live balances from E*TRADE.
     - GET /v1/accounts/list.json -> accountIdKey
-    - Try balance endpoint with common query variants (400s if params omitted)
+    - GET /v1/accounts/{key}/balance.json (try param variants)
+    - Extract from BalanceResponse.Computed / Cash (what your payload uses)
     """
+    import requests
+
     sess = get_etrade_session()
     base = get_api_host().rstrip("/")
 
-    # 1) Find the REQUIRED accountIdKey (alphanumeric)
+    # 1) Required accountIdKey (alphanumeric)
     r1 = sess.get(f"{base}/v1/accounts/list.json", timeout=10)
     r1 = _handle_etrade_resp(r1)
-    j1 = r1.json()
-    acct_key = _first_account_key(j1)
+    acct_key = _first_account_key(r1.json())
     log.info("[ET] Using accountIdKey: %s", acct_key)
 
-    # 2) Try balance endpoint variants
+    # 2) Hit balance endpoint (variants to avoid 400s)
     urls = [
         f"{base}/v1/accounts/{acct_key}/balance.json?instType=BROKERAGE&realTimeNAV=true",
         f"{base}/v1/accounts/{acct_key}/balance.json?instType=BROKERAGE",
         f"{base}/v1/accounts/{acct_key}/balance.json?realTimeNAV=true",
         f"{base}/v1/accounts/{acct_key}/balance.json",
-        # some tenants expose plural path:
         f"{base}/v1/accounts/{acct_key}/balances.json?instType=BROKERAGE&realTimeNAV=true",
     ]
 
     last_err = None
+    j2 = None
     for url in urls:
         try:
             r2 = sess.get(url, timeout=12)
-            # 401/403 handled centrally (sets need_oauth flag)
             if r2.status_code in (401, 403):
-                _handle_etrade_resp(r2)
+                _handle_etrade_resp(r2)  # marks need_oauth.flag and raises
             if r2.status_code == 400:
                 log.warning("[ET] 400 from %s :: %s", url, (r2.text or "")[:200])
                 continue
             r2.raise_for_status()
+            j2 = r2.json()
             log.info("[ET] balance OK via %s", url)
-            return _normalize_balance_payload(r2.json())
+            break
         except requests.HTTPError as e:
             last_err = e
-            log.warning("[ET] balance HTTP error via %s :: %s", url, getattr(e.response, "text", "")[:200])
-            continue
         except Exception as e:
             last_err = e
-            log.warning("[ET] balance error via %s :: %s", url, e)
-            continue
+    if j2 is None:
+        if last_err:
+            raise last_err
+        raise RuntimeError("E*TRADE balance request failed for all variants.")
 
-    if last_err:
-        raise last_err
-    raise RuntimeError("E*TRADE balance request failed for all variants.")
+    # 3) DIRECT extraction from your payload shape
+    br   = _dig(j2, "BalanceResponse") or j2
+    comp = _dig(br, "Computed") or {}
+    cash = _dig(br, "Cash") or {}
+    rtv  = _dig(comp, "RealTimeValues") or {}
+
+    def pick(*vals):
+        for v in vals:
+            n = _num(v)
+            if n is not None:
+                return n
+        return None
+
+    acct_type = (_dig(br, "accountType") or "Cash")
+
+    buying_power = pick(
+        _dig(comp, "cashAvailableForWithdrawal"),
+        _dig(comp, "cashAvailableForInvestment"),
+        _dig(comp, "cashBuyingPower"),
+        _dig(comp, "marginBuyingPower"),
+        _dig(br,  "buyingPower"),
+    )
+
+    settled_cash = pick(
+        _dig(cash, "moneyMktBalance"),
+        _dig(comp, "totalAvailableForWithdrawal"),
+        _dig(comp, "cashBalance"),
+        _dig(br,  "settledCash"),
+        _dig(br,  "cashBalance"),
+    )
+
+    equity_value = pick(
+        _dig(rtv, "totalAccountValue"),
+        _dig(br,  "accountValue"),
+        _dig(br,  "netAccountValue"),
+    )
+
+    net_liq = pick(
+        _dig(rtv, "netMv"),
+        _dig(br,  "netLiquidation"),
+        _dig(br,  "netMarketValue"),
+    )
+
+    out = {
+        "account_type": str(acct_type),
+        "buying_power": float(buying_power or 0.0),
+        "settled_cash": float(settled_cash or 0.0),
+        "raw": j2,
+    }
+    if equity_value is not None: out["equity_value"] = float(equity_value)
+    if net_liq      is not None: out["net_liq"]      = float(net_liq)
+
+    log.info("[ET] normalized: BP=%.2f SC=%.2f EQ=%s NL=%s",
+             out["buying_power"], out["settled_cash"],
+             out.get("equity_value"), out.get("net_liq"))
+    return out
 def get_positions() -> List[dict]:
     sess = get_etrade_session()
     base = get_api_host().rstrip("/")

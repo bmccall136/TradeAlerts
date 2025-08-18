@@ -33,6 +33,15 @@ select {
     padding: 0 8px;
     box-sizing: border-box;
 }
+.kpis{
+  display:flex; flex-wrap:wrap; gap:.25rem .9rem;
+  align-items:baseline; justify-content:center;
+  margin:6px 0 10px; /* tighter vertical spacing */
+}
+.kpi{ display:flex; gap:.35rem; white-space:nowrap; font-size:.95rem; }
+.kpi .label{ color:#bbb; }
+.kpi.muted{ color:#777; }
+@media (max-width:640px){ .kpis{ gap:.25rem .6rem; } .kpi{ font-size:.9rem; } }
 
 
 /* ===================================================================
@@ -584,11 +593,15 @@ h2 {
     font-weight: bold;
 }
 .btn-fixed {
-    width: 120px;        /* Adjust to precisely match Nuke DB */
-    padding: 4px 6px;    /* Small padding to match btn-sm */
-    font-size: 0.85rem;  /* Match btn-sm font-size exactly */
+    width: 120px;         /* Adjust width to match Nuke DB exactly */
+    padding: 4px 6px;     /* Match small button padding */
+    font-size: 0.85rem;   /* Small font size like btn-sm */
     text-align: center;
     vertical-align: middle;
     font-weight: bold;
     display: inline-block;
+    white-space: nowrap;  /* Prevents wrapping text */
+    overflow: hidden;     /* Keeps overflow hidden neatly */
+    text-overflow: ellipsis; /* Adds ellipsis if too long */
 }
+

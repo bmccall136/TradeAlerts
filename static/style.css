@@ -33,6 +33,54 @@ select {
     padding: 0 8px;
     box-sizing: border-box;
 }
+.kpis{
+  display:flex; flex-wrap:wrap; gap:.25rem .9rem;
+  align-items:baseline; justify-content:center;
+  margin:6px 0 10px; /* tighter vertical spacing */
+}
+.kpi{ display:flex; gap:.35rem; white-space:nowrap; font-size:.95rem; }
+.kpi .label{ color:#bbb; }
+.kpi.muted{ color:#777; }
+@media (max-width:640px){ .kpis{ gap:.25rem .6rem; } .kpi{ font-size:.9rem; } }
+.kpi-grid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(280px, 1fr));
+  gap:14px;
+  margin:6px 0 12px;
+}
+
+.kpi-card{
+  background:rgba(255,255,255,0.03);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:12px;
+  padding:12px 14px;
+}
+
+.kpi-title{
+  color:#f3c04d;           /* your gold */
+  font-weight:600;
+  font-size:1.15rem;       /* bigger title */
+  margin-bottom:6px;
+  letter-spacing:.02em;
+}
+
+.kv{
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+  gap:12px;
+  padding:2px 0;
+  font-size:1.08rem;       /* bump number size */
+}
+
+.kv .label{ color:#bdbdbd; }
+.kv.muted { color:#7a7a7a; }
+.kv span:last-child{ font-variant-numeric: tabular-nums; }
+
+@media (max-width: 720px){
+  .kpi-grid{ grid-template-columns:1fr; }
+  .kv{ font-size:1rem; }
+}
 
 
 /* ===================================================================

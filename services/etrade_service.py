@@ -367,6 +367,19 @@ def get_account_summary() -> dict:
     log.info("[ET] normalized: BP=%.2f SC=%.2f EQ=%s NL=%s",
              out["buying_power"], out["settled_cash"],
              out.get("equity_value"), out.get("net_liq"))
+        # --- friendly account-type label + extras ---
+    acct_id = _dig(br, "accountId") or _dig(j2, "accountId")
+    margin_bal = _num(_dig(comp, "marginBalance")) or 0.0
+
+    out["account_id"] = str(acct_id) if acct_id else None
+    out["margin_balance"] = float(margin_bal)
+    out["account_type_raw"] = out.get("account_type", "Cash")
+    out["account_type_display"] = (
+        "CASH (margin enabled)"
+        if str(out["account_type"]).upper() == "MARGIN" and margin_bal == 0
+        else out["account_type"]
+    )
+
     return out
 def get_positions() -> List[dict]:
     sess = get_etrade_session()

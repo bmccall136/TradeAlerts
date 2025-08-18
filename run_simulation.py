@@ -72,7 +72,6 @@ def main():
     with open(cfg_path) as f:
         cfg = json.load(f)
     print("Loaded config:", cfg)
-    logger.warning(f"[DEBUG] loaded cfg: {cfg}")
 
     # extract settings & initialize DB
     settings = extract_simulation_settings(cfg)
