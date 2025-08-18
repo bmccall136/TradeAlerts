@@ -69,6 +69,60 @@ from services.backtest_service import run_full_backtest
 # ─── Load environment variables ───────────────────────────────
 from dotenv import load_dotenv, set_key
 load_dotenv()
+# --- HOTFIX: unify env + signer and call E*TRADE directly --------------------
+from dotenv import find_dotenv, load_dotenv
+import os, requests
+from requests_oauthlib import OAuth1
+
+# Ensure .env is loaded in THIS process (Flask)
+load_dotenv(find_dotenv(), override=True)
+
+# Mirror env names both ways so old/new code paths see them
+def _alias(a, b):
+    va, vb = os.getenv(a), os.getenv(b)
+    if va and not vb: os.environ[b] = va
+    if vb and not va: os.environ[a] = vb
+
+for A,B in [
+    ("OAUTH_TOKEN", "ETRADE_OAUTH_TOKEN"),
+    ("OAUTH_TOKEN_SECRET", "ETRADE_OAUTH_TOKEN_SECRET"),
+    ("ETRADE_CONSUMER_KEY", "CONSUMER_KEY"),
+    ("ETRADE_CONSUMER_SECRET", "CONSUMER_SECRET"),
+]:
+    _alias(A,B)
+
+os.environ.setdefault("ETRADE_API_HOST", "https://api.etrade.com")
+
+def _oauth1_unified():
+    ck  = os.getenv("ETRADE_CONSUMER_KEY")    or os.getenv("CONSUMER_KEY")    or os.getenv("ETRADE_API_KEY")
+    cs  = os.getenv("ETRADE_CONSUMER_SECRET") or os.getenv("CONSUMER_SECRET") or os.getenv("ETRADE_API_SECRET")
+    tok = os.getenv("OAUTH_TOKEN")            or os.getenv("ETRADE_OAUTH_TOKEN")
+    ts  = os.getenv("OAUTH_TOKEN_SECRET")     or os.getenv("ETRADE_OAUTH_TOKEN_SECRET")
+    if not all([ck, cs, tok, ts]):
+        raise RuntimeError("Missing E*TRADE OAuth env vars; check .env")
+    return OAuth1(ck, cs, tok, ts, signature_type="auth_header")
+
+def _eget(path, params=None):
+    base = os.getenv("ETRADE_API_HOST", "https://api.etrade.com")
+    r = requests.get(base + path, params=params or {}, auth=_oauth1_unified(), headers={"Accept":"application/json"})
+    r.raise_for_status()
+    return r.json()
+
+def _primary_account_id_hotfix():
+    j = _eget("/v1/accounts/list.json")
+    accts = j.get("AccountListResponse",{}).get("Accounts",{}).get("Account",[])
+    if isinstance(accts, dict): accts = [accts]
+    if not accts: raise RuntimeError("No E*TRADE accounts returned")
+    return accts[0].get("accountIdKey") or accts[0].get("accountId")
+
+def get_account_summary_live():
+    aid = _primary_account_id_hotfix()
+    return _eget(f"/v1/accounts/{aid}/balance.json", {"instType":"BROKERAGE"})
+
+def get_positions_live():
+    aid = _primary_account_id_hotfix()
+    return _eget(f"/v1/accounts/{aid}/portfolio.json", {"instType":"BROKERAGE"})
+# -----------------------------------------------------------------------------
 
 # ─── Core Flask imports ───────────────────────────────────────
 from flask import (
@@ -239,10 +293,6 @@ app.secret_key = os.environ.get('FLASK_SECRET', 'supersecret')
 from pathlib import Path
 FLAG = Path("need_oauth.flag")
 
-@app.context_processor
-def inject_status_banner():
-    # templates will have a boolean named `needs_reconnect`
-    return {"needs_reconnect": FLAG.exists()}
 setup_simulation_db()
 # ─── Database file paths ─────────────────────────────────────
 SIM_DB      = os.path.join(os.getcwd(), 'simulation.db')
@@ -305,23 +355,74 @@ REQUEST_TOKEN_URL = "https://api.etrade.com/oauth/request_token"
 ACCESS_TOKEN_URL  = "https://api.etrade.com/oauth/access_token"
 AUTHORIZE_URL     = "https://us.etrade.com/e/t/etws/authorize"
 
-@app.route("/etrade/auth", methods=["GET", "POST"])
-def etrade_start_auth():
-    ck = os.getenv("ETRADE_CONSUMER_KEY") or os.getenv("ETRADE_API_KEY")
-    cs = os.getenv("ETRADE_CONSUMER_SECRET") or os.getenv("ETRADE_API_SECRET")
-    if not (ck and cs):
-        flash("Missing E*TRADE consumer key/secret in env.", "danger")
-        return redirect(url_for("simulation_view"))
+# ---- LIVE HTTP FALLBACK (no flags, no broker import) -----------------
+import requests
+from requests_oauthlib import OAuth1
 
-    oauth = OAuth1Session(ck, client_secret=cs, callback_uri="oob")  # PIN flow
-    resp = oauth.fetch_request_token(REQUEST_TOKEN_URL)
-    session["req_token"]  = resp["oauth_token"]
-    session["req_secret"] = resp["oauth_token_secret"]
+# services/etrade_service.py
+import os, requests
+from requests_oauthlib import OAuth1
 
-    auth_url = f"{AUTHORIZE_URL}?key={ck}&token={resp['oauth_token']}"
-    session["auth_url"] = auth_url  # keep for refresh
-    # ⬇️ instead of redirect(auth_url), show your local PIN page:
-    return render_template("etrade_pin.html", auth_url=auth_url)
+BASE_URL = os.getenv("ETRADE_API_HOST", "https://api.etrade.com")  # ensure PROD
+
+def _oauth1():
+    # accept both legacy and E*TRADE-prefixed names
+    ck  = os.getenv("ETRADE_CONSUMER_KEY")    or os.getenv("CONSUMER_KEY")    or os.getenv("ETRADE_API_KEY")
+    cs  = os.getenv("ETRADE_CONSUMER_SECRET") or os.getenv("CONSUMER_SECRET") or os.getenv("ETRADE_API_SECRET")
+    tok = os.getenv("OAUTH_TOKEN")            or os.getenv("ETRADE_OAUTH_TOKEN")
+    ts  = os.getenv("OAUTH_TOKEN_SECRET")     or os.getenv("ETRADE_OAUTH_TOKEN_SECRET")
+    return OAuth1(ck, cs, tok, ts, signature_type="auth_header")
+
+def _get(path: str, params=None):
+    r = requests.get(BASE_URL + path, params=params or {}, auth=_oauth1(), headers={"Accept":"application/json"})
+    r.raise_for_status()
+    return r
+
+def _http_get(path: str, params: dict | None = None) -> dict:
+    base = "https://api.etrade.com"
+    r = requests.get(base + path, params=params or {}, auth=_oauth1())
+    if r.status_code in (401,403):
+        raise RuntimeError(f"E*TRADE auth error {r.status_code}: {r.text}")
+    r.raise_for_status()
+    return r.json()
+
+def fetch_etrade_quote(symbol: str):
+    j = _get(f"/v1/market/quote/{symbol}.json").json()
+    try:
+        qd  = j["QuoteResponse"]["QuoteData"][0]
+        all = qd.get("All", {})
+        last = (all.get("ExtendedHourQuoteDetail", {}) or {}).get("lastPrice") \
+               or all.get("lastTrade") \
+               or all.get("closePrice")
+        return float(last)
+    except Exception:
+        return j
+
+def _primary_account_id():
+    j = _get("/v1/accounts/list.json").json()
+    accts = j.get("AccountListResponse",{}).get("Accounts",{}).get("Account",[])
+    if isinstance(accts, dict): accts = [accts]
+    if not accts: raise RuntimeError("No E*TRADE accounts returned")
+    return accts[0].get("accountIdKey") or accts[0].get("accountId")
+
+def get_account_summary():
+    aid = _primary_account_id()
+    return _get(f"/v1/accounts/{aid}/balance.json", params={"instType":"BROKERAGE"}).json()
+
+def get_positions():
+    aid = _primary_account_id()
+    return _get(f"/v1/accounts/{aid}/portfolio.json", params={"instType":"BROKERAGE"}).json()
+
+@app.route("/debug/oauth")
+def debug_oauth():
+    import os
+    last4 = lambda v: (v[-4:] if v else None)
+    return {
+      "host": os.getenv("ETRADE_API_HOST") or "https://api.etrade.com",
+      "ck":   last4(os.getenv("ETRADE_CONSUMER_KEY") or os.getenv("CONSUMER_KEY") or os.getenv("ETRADE_API_KEY")),
+      "tok":  last4(os.getenv("OAUTH_TOKEN") or os.getenv("ETRADE_OAUTH_TOKEN")),
+      "sec":  last4(os.getenv("OAUTH_TOKEN_SECRET") or os.getenv("ETRADE_OAUTH_TOKEN_SECRET")),
+    }
 
 @app.route("/etrade/pin", methods=["GET"])
 def etrade_pin_form():
@@ -1931,12 +2032,12 @@ def index():
 
 IGNORED_TICKERS = {"GEVO"}  # hide on Live
 
-def _afloat(v, d=0.0):
+def _afloat(v, d=None):
     try:
+        # keep 0.0 if it is truly present; return None when missing
         return float(v)
     except (TypeError, ValueError):
-        return float(d)
-
+        return d
 def _get_num(d: dict, paths, default=0.0):
     for path in paths:
         cur = d
@@ -1953,6 +2054,19 @@ def _get_num(d: dict, paths, default=0.0):
         except Exception:
             continue
     return float(default)
+
+def _deepget(d: dict, path: str):
+    cur = d
+    for key in path.split("."):
+        if cur is None:
+            return None
+        if isinstance(cur, list):
+            cur = cur[0] if cur else None
+        elif isinstance(cur, dict):
+            cur = cur.get(key)
+        else:
+            return None
+    return cur
 
 def _get_str(d: dict, paths, default=""):
     for path in paths:
@@ -1974,91 +2088,191 @@ def _get_str(d: dict, paths, default=""):
 def _normalize_account(raw: dict) -> dict:
     raw = raw or {}
 
-    buying_power = _get_num(raw, [
-        "buying_power", "buyingPower", "computed.buyingPower",
-        "Computed.marginBuyingPower", "Computed.cashBuyingPower",
-        "balance.buyingPower"
-    ])
+    # The E*TRADE balances shape usually nests under BalanceResponse.*
+    # Add alternates for your own service shapes too.
+    bp = (
+        _afloat(_deepget(raw, "BalanceResponse.Computed.buyingPower")) or
+        _afloat(_deepget(raw, "BalanceResponse.Computed.marginBuyingPower")) or
+        _afloat(_deepget(raw, "accountBalance.computed.buyingPower")) or
+        _afloat(raw.get("buying_power") or raw.get("buyingPower"))
+    )
 
-    settled_cash = _get_num(raw, [
-        "settled_cash", "cash", "cashBalance",
-        "Computed.cashAvailableForWithdrawal",
-        "Computed.cashAvailableForInvestment",
-        "balance.cash"
-    ])
+    settled = (
+        _afloat(_deepget(raw, "BalanceResponse.Cash.settledCash")) or
+        _afloat(_deepget(raw, "accountBalance.cashBalance.settledCash")) or
+        _afloat(raw.get("settled_cash") or raw.get("cash"))
+    )
 
-    equity_value = _get_num(raw, [
-        "equity_value",
-        "raw.BalanceResponse.Computed.RealTimeValues.totalAccountValue",
-        "netAccountValue", "totalAccountValue"
-    ])
+    equity = (
+        _afloat(_deepget(raw, "BalanceResponse.Computed.RealTimeValues.totalAccountValue")) or
+        _afloat(_deepget(raw, "BalanceResponse.Computed.RealTimeValues.netAccountValue")) or
+        _afloat(_deepget(raw, "portfolioTotal.equityValue")) or
+        _afloat(raw.get("equity_value"))
+    )
 
-    account_id   = _get_str(raw, ["account_id", "raw.BalanceResponse.accountId", "accountIdKey"])
-    account_type = _get_str(raw, ["account_type", "raw.BalanceResponse.accountType", "accountType"])
+    acct_id = (
+        _deepget(raw, "BalanceResponse.accountId") or
+        raw.get("accountIdKey") or
+        raw.get("accountId") or
+        raw.get("account_id") or
+        ""
+    )
 
-    # keep any nice extras if your service already set them
-    pretty_type  = raw.get("account_type_display") or account_type
+    acct_type = (
+        _deepget(raw, "BalanceResponse.accountType") or
+        raw.get("account_type") or
+        raw.get("accountType")
+    )
 
     return {
-        "buying_power":  buying_power,
-        "settled_cash":  settled_cash,
-        "equity_value":  equity_value,
-        "account_id":    account_id,
-        "account_type":  pretty_type,
-        # passthroughs if present
-        "net_liq":       _afloat(raw.get("net_liq"), 0.0),
+        "buying_power": bp,            # None when missing (template shows —)
+        "settled_cash": settled,       # None when missing
+        "equity_value": equity,        # None when missing
+        "account_id": str(acct_id) if acct_id else "",
+        "account_type": acct_type or "",
     }
+def _normalize_positions_payload(payload) -> list[dict]:
+    """
+    Accepts either your own list-of-rows or the raw E*TRADE portfolio JSON and
+    returns a list of dicts: {symbol, qty, price_paid, last_price}.
+    """
+    # If caller already gave us a list of position dicts, keep it
+    if isinstance(payload, list):
+        # Make sure they're dict rows with a symbol
+        if payload and isinstance(payload[0], dict) and payload[0].get("symbol") is not None:
+            return payload
 
+    # Try E*TRADE shape
+    try:
+        pr = payload.get("PortfolioResponse", {})
+        ap = pr.get("AccountPortfolio", [])
+        if isinstance(ap, dict):
+            ap = [ap]
+        out = []
+        for acct in ap:
+            pos = acct.get("Position", [])
+            if isinstance(pos, dict):
+                pos = [pos]
+            for p in pos:
+                prod = p.get("Product", {}) or {}
+                sym  = (prod.get("symbol") or prod.get("Symbol") or "").upper()
+                qty  = p.get("quantity") or p.get("qty")
+                avg  = p.get("pricePaid") or p.get("avgPrice") or p.get("averagePrice")
+                last = p.get("lastPrice") or p.get("closePrice") or None
+                try:
+                    qty  = int(round(float(qty or 0)))
+                except Exception:
+                    qty = 0
+                try:
+                    avg = float(avg) if avg is not None else None
+                except Exception:
+                    avg = None
+                try:
+                    last = float(last) if last is not None else None
+                except Exception:
+                    last = None
+                out.append({
+                    "symbol": sym,
+                    "qty": qty,
+                    "price_paid": avg,
+                    "last_price": last,
+                })
+        return out
+    except Exception:
+        # Anything else -> no positions
+        return []
 @app.route("/live", methods=["GET"])
 def live_view():
-    from services import etrade_service as et
-
-    # balances
+    # 1) Balances
     try:
-        summary_raw = et.get_account_summary() or {}
+        from services import etrade_service as et
     except Exception:
-        summary_raw = {}
-    account = _normalize_account(summary_raw)
+        et = None
 
-    # positions -> holdings rows (hide GEVO)
+    # balances (try service, else fallback)
+    try:
+        if et and hasattr(et, "get_account_summary"):
+            summary_raw = et.get_account_summary()
+        else:
+            raise RuntimeError("skip service")
+    except Exception as e:
+        app.logger.warning(f"[LIVE] summary via fallback: {e}")
+        try:
+            summary_raw = get_account_summary_live()
+        except Exception as ee:
+            app.logger.error(f"[LIVE] summary fallback failed: {ee}")
+            summary_raw = {}
+
+    account = _normalize_account(summary_raw if isinstance(summary_raw, dict) else {})
+
+    # 2) Positions (try service, else fallback)
+    try:
+        if et and hasattr(et, "get_positions"):
+            positions_raw = et.get_positions()
+        else:
+            raise RuntimeError("skip service")
+    except Exception as e:
+        app.logger.warning(f"[LIVE] positions via fallback: {e}")
+        try:
+            positions_raw = get_positions_live()
+        except Exception as ee:
+            app.logger.error(f"[LIVE] positions fallback failed: {ee}")
+            positions_raw = []
+
+    # 3) Normalize BEFORE iterating (prevents 'str' object has no attribute get)
+    positions = _normalize_positions_payload(positions_raw)
+
+    # 4) Build holdings rows (hide ignored tickers)
     holdings_rows = []
-    try:
-        for pos in (et.get_positions() or []):
-            sym = (pos.get("symbol") or "").upper()
-            if sym in IGNORED_TICKERS:
-                continue
-            q   = int(pos.get("qty") or 0)
-            lp  = float(pos.get("last_price") or 0.0)
-            avg = float(pos.get("price_paid") or 0.0)
-            holdings_rows.append({
-                "symbol": sym,
-                "last_price": lp,
-                "change": 0.0,
-                "change_pct": 0.0,
-                "qty": q,
-                "price_paid": avg,
-                "day_gain": 0.0,
-                "total_gain": (lp - avg) * q if q and avg else 0.0,
-                "value": q * lp,
-            })
-    except Exception:
-        pass
+    for p in positions:
+        sym = (p.get("symbol") or "").upper()
+        if sym in IGNORED_TICKERS:
+            continue
+        qty  = int(p.get("qty") or 0)
+        paid = p.get("price_paid")
+        last = p.get("last_price")
 
-    # P&L metrics (unrealized from current positions; realized from local ledger if any)
-    unrealized_pnl = round(sum((h["last_price"] - (h["price_paid"] or 0.0)) * (h["qty"] or 0)
-                               for h in holdings_rows), 2)
-    cost_basis_total = sum((h["price_paid"] or 0.0) * (h["qty"] or 0) for h in holdings_rows)
-    unrealized_pnl_pct = round((unrealized_pnl / cost_basis_total * 100.0), 2) if cost_basis_total else 0.0
+        # Fill last via quote if missing
+        if last is None and sym:
+            try:
+                lp = fetch_etrade_quote(sym)
+                last = float(lp) if lp is not None else None
+            except Exception:
+                pass
+
+        row = {
+            "symbol":     sym,
+            "qty":        qty,
+            "price_paid": paid if paid is not None else None,
+            "last_price": last if last is not None else None,
+            "change":     0.0,
+            "change_pct": 0.0,
+            "day_gain":   0.0,
+            "total_gain": 0.0,
+            "value":      0.0,
+        }
+
+        if last is not None and qty:
+            row["value"] = round(last * qty, 2)
+        if paid is not None and last is not None and qty:
+            gain_ps = last - paid
+            row["change"]     = round(gain_ps, 2)
+            row["change_pct"] = round((gain_ps / paid * 100.0), 1) if paid else 0.0
+            row["total_gain"] = round(gain_ps * qty, 2)
+
+        holdings_rows.append(row)
+
+    # 5) Totals
+    unrealized_pnl = round(sum(h.get("total_gain") or 0.0 for h in holdings_rows), 2)
+    cost_basis     = sum((h.get("price_paid") or 0.0) * (h.get("qty") or 0) for h in holdings_rows)
+    unrealized_pct = round((unrealized_pnl / cost_basis * 100.0), 2) if cost_basis else None
 
     try:
         from services.trading_helpers import get_realized_pl
         realized_pnl = round(float(get_realized_pl() or 0.0), 2)
     except Exception:
-        realized_pnl = 0.0
-
-    # Live page: realized % is optional; use cost basis as a neutral denominator if present
-    denom = cost_basis_total or 0.0
-    realized_pnl_pct = round((realized_pnl / denom * 100.0), 2) if denom else 0.0
+        realized_pnl = None
+    realized_pct = round(((realized_pnl or 0.0) / cost_basis * 100.0), 2) if cost_basis and realized_pnl is not None else None
 
     return render_template(
         "live.html",
@@ -2068,11 +2282,12 @@ def live_view():
         armed=False,
         holdings=holdings_rows,
         trades=[],
-        unrealized_pnl=unrealized_pnl,
-        unrealized_pnl_pct=unrealized_pnl_pct,
+        unrealized_pnl=unrealized_pnl if cost_basis else None,
+        unrealized_pnl_pct=unrealized_pct,
         realized_pnl=realized_pnl,
-        realized_pnl_pct=realized_pnl_pct,
+        realized_pnl_pct=realized_pct,
     )
+
 @app.route("/live/status", methods=["GET"])
 def live_status():
     from services import etrade_service as et

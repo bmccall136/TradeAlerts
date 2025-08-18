@@ -1,0 +1,81 @@
+# services/broker_live.py (new)
+from requests_oauthlib import OAuth1Session
+import os
+
+BASE = os.getenv("ETRADE_BASE", "https://api.etrade.com/v1")
+CK   = os.getenv("ETRADE_CONSUMER_KEY") or os.getenv("ETRADE_API_KEY")
+CS   = os.getenv("ETRADE_CONSUMER_SECRET") or os.getenv("ETRADE_API_SECRET")
+AT   = os.getenv("OAUTH_TOKEN")
+AS   = os.getenv("OAUTH_TOKEN_SECRET")
+
+def _sesh():
+    return OAuth1Session(CK, client_secret=CS, resource_owner_key=AT, resource_owner_secret=AS)
+
+def list_accounts():
+    s = _sesh()
+    r = s.get(f"{BASE}/accounts/list.json")
+    r.raise_for_status()
+    return r.json()
+
+def get_balance(accountIdKey):
+    s = _sesh()
+    r = s.get(f"{BASE}/accounts/{accountIdKey}/balance.json",
+              params={"instType":"BROKERAGE", "realTimeNAV":"true"})
+    r.raise_for_status()
+    return r.json()
+
+def get_positions(accountIdKey):
+    s = _sesh()
+    r = s.get(f"{BASE}/accounts/{accountIdKey}/portfolio.json")
+    r.raise_for_status()
+    return r.json()
+
+def get_quote(symbols):
+    s = _sesh()
+    r = s.get(f"{BASE}/market/quote/{symbols}.json", params={"detailFlag":"ALL"})
+    r.raise_for_status()
+    return r.json()
+
+def preview_equity_order(accountIdKey, action, symbol, qty, priceType="MARKET",
+                         limitPrice=None, stopPrice=None, term="GOOD_FOR_DAY"):
+    body = {
+      "PreviewOrderRequest": {
+        "orderType": "EQ",
+        "clientOrderId": "ta-" + symbol,  # optional
+        "Order": [{
+          "orderAction": action,              # BUY / SELL / SELL_SHORT / BUY_TO_COVER
+          "clientOrderId": "ta-leg-1",
+          "Instrument": [{
+            "symbolDescription": symbol,
+            "securityType": "EQ",
+            "symbol": symbol
+          }],
+          "priceType": priceType,             # MARKET / LIMIT / STOP / STOP_LIMIT / ...
+          "quantity": qty,
+          "limitPrice": limitPrice,
+          "stopPrice": stopPrice,
+          "marketSession": "REGULAR",
+          "allOrNone": False,
+          "reserveOrder": False
+        }],
+        "term": term
+      }
+    }
+    s = _sesh()
+    r = s.post(f"{BASE}/accounts/{accountIdKey}/orders/preview.json", json=body)
+    r.raise_for_status()
+    return r.json()
+
+def place_equity_order(accountIdKey, preview_payload):
+    # Typically: echo back Preview response with tokens they return
+    s = _sesh()
+    r = s.post(f"{BASE}/accounts/{accountIdKey}/orders/place.json", json=preview_payload)
+    r.raise_for_status()
+    return r.json()
+
+def cancel_order(accountIdKey, orderId):
+    s = _sesh()
+    r = s.put(f"{BASE}/accounts/{accountIdKey}/orders/cancel.json",
+              json={"CancelOrderRequest":{"orderId": orderId}})
+    r.raise_for_status()
+    return r.json()

@@ -8,6 +8,25 @@ from services.etrade_auth_helper import get_etrade_session, get_api_host
 
 log = logging.getLogger("etrade")
 FLAG = Path("need_oauth.flag")
+# --- unified auth + GET helper -----------------------------------------
+import os, requests
+from requests_oauthlib import OAuth1
+
+BASE_URL = "https://api.etrade.com"  # prod
+
+def _oauth1():
+    # Accept either legacy or E*TRADE-prefixed env names
+    ck  = os.getenv("ETRADE_CONSUMER_KEY")        or os.getenv("CONSUMER_KEY")        or os.getenv("ETRADE_API_KEY")
+    cs  = os.getenv("ETRADE_CONSUMER_SECRET")     or os.getenv("CONSUMER_SECRET")     or os.getenv("ETRADE_API_SECRET")
+    tok = os.getenv("OAUTH_TOKEN")                or os.getenv("ETRADE_OAUTH_TOKEN")
+    ts  = os.getenv("OAUTH_TOKEN_SECRET")         or os.getenv("ETRADE_OAUTH_TOKEN_SECRET")
+    return OAuth1(ck, cs, tok, ts, signature_type="auth_header")
+
+def _get(path: str, params: dict | None = None):
+    r = requests.get(BASE_URL + path, params=params or {}, auth=_oauth1(), headers={"Accept": "application/json"})
+    r.raise_for_status()
+    return r
+# -----------------------------------------------------------------------
 
 def _mark_need_auth() -> None:
     try:
@@ -367,6 +386,19 @@ def get_account_summary() -> dict:
     log.info("[ET] normalized: BP=%.2f SC=%.2f EQ=%s NL=%s",
              out["buying_power"], out["settled_cash"],
              out.get("equity_value"), out.get("net_liq"))
+        # --- friendly account-type label + extras ---
+    acct_id = _dig(br, "accountId") or _dig(j2, "accountId")
+    margin_bal = _num(_dig(comp, "marginBalance")) or 0.0
+
+    out["account_id"] = str(acct_id) if acct_id else None
+    out["margin_balance"] = float(margin_bal)
+    out["account_type_raw"] = out.get("account_type", "Cash")
+    out["account_type_display"] = (
+        "CASH (margin enabled)"
+        if str(out["account_type"]).upper() == "MARGIN" and margin_bal == 0
+        else out["account_type"]
+    )
+
     return out
 def get_positions() -> List[dict]:
     sess = get_etrade_session()

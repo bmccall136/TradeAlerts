@@ -8,6 +8,25 @@ from services.etrade_auth_helper import get_etrade_session, get_api_host
 
 log = logging.getLogger("etrade")
 FLAG = Path("need_oauth.flag")
+# --- unified auth + GET helper -----------------------------------------
+import os, requests
+from requests_oauthlib import OAuth1
+
+BASE_URL = "https://api.etrade.com"  # prod
+
+def _oauth1():
+    # Accept either legacy or E*TRADE-prefixed env names
+    ck  = os.getenv("ETRADE_CONSUMER_KEY")        or os.getenv("CONSUMER_KEY")        or os.getenv("ETRADE_API_KEY")
+    cs  = os.getenv("ETRADE_CONSUMER_SECRET")     or os.getenv("CONSUMER_SECRET")     or os.getenv("ETRADE_API_SECRET")
+    tok = os.getenv("OAUTH_TOKEN")                or os.getenv("ETRADE_OAUTH_TOKEN")
+    ts  = os.getenv("OAUTH_TOKEN_SECRET")         or os.getenv("ETRADE_OAUTH_TOKEN_SECRET")
+    return OAuth1(ck, cs, tok, ts, signature_type="auth_header")
+
+def _get(path: str, params: dict | None = None):
+    r = requests.get(BASE_URL + path, params=params or {}, auth=_oauth1(), headers={"Accept": "application/json"})
+    r.raise_for_status()
+    return r
+# -----------------------------------------------------------------------
 
 def _mark_need_auth() -> None:
     try:
@@ -38,24 +57,19 @@ def _handle_etrade_resp(resp: requests.Response) -> requests.Response:
 # top of file (you already have log = logging.getLogger("etrade"))
 log.setLevel(logging.INFO)  # make sure we emit
 
-def fetch_etrade_quote(symbol: str) -> float:
-    sess = get_etrade_session()
-    url  = f"{get_api_host()}/v1/market/quote/{symbol}.json"
-    log.info("[QUOTE] GET %s %s", url, symbol)           # <— log before call
-    resp = sess.get(url, params={"detailFlag": "ALL"}, timeout=10)
-    resp = _handle_etrade_resp(resp)
-    data = resp.json() or {}
-    qd = (data.get("QuoteResponse", {}).get("QuoteData")) or []
-    price = 0.0
-    if qd:
-        q0 = qd[0]
-        price = q0.get("All", {}).get("lastTrade") or q0.get("lastTrade") or 0.0
+def fetch_etrade_quote(symbol: str):
+    r = _get(f"/v1/market/quote/{symbol}.json")
+    j = r.json()
     try:
-        price = float(price)
-    except (TypeError, ValueError):
-        price = 0.0
-    log.info("[QUOTE] %s last=%s status=%s", symbol, price, resp.status_code)  # <— log result
-    return price
+        qd = j["QuoteResponse"]["QuoteData"][0]
+        # prefer extended/last price
+        all_ = qd.get("All", {})
+        last = (all_.get("ExtendedHourQuoteDetail", {}) or {}).get("lastPrice") \
+               or all_.get("lastTrade") \
+               or qd.get("All", {}).get("closePrice")
+        return float(last)
+    except Exception:
+        return j  # fallback to raw dict if caller expects it
 
 def get_etrade_name(symbol: str) -> str:
     """Best-effort security name; falls back to symbol on error."""

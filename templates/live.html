@@ -28,46 +28,37 @@
 </div>
 
 <!-- Summary (styled like Sim's summary block) -->
-<!-- KPIs -->
-<div class="kpi-grid">
-  <!-- Left = Cash -->
-  <div class="kpi-card">
-    <div class="kpi-title">Cash</div>
-    <div class="kv"><span class="label">Buying Power</span>
-      <span id="bp">${{ '{:,.2f}'.format((account or {}).get('buying_power', 0.0)) }}</span>
-    </div>
-    <div class="kv"><span class="label">Settled Cash</span>
-      <span id="sc">${{ '{:,.2f}'.format((account or {}).get('settled_cash', 0.0)) }}</span>
-    </div>
-    {% if (account or {}).get('equity_value') is not none %}
-      <div class="kv"><span class="label">Equity Value</span>
-        <span id="eq">${{ '{:,.2f}'.format((account or {}).get('equity_value', 0.0)) }}</span>
-      </div>
-    {% endif %}
-    {% if (account or {}).get('account_id') %}
-      <div class="kv muted"><span class="label">Account</span>
-        <span>****{{ (account or {}).get('account_id')[-4:] }}</span>
-      </div>
-    {% endif %}
-  </div>
+<span id="bp">
+  {{ ('${:,.2f}'.format((account or {}).get('buying_power')))
+     if (account or {}).get('buying_power') is not none else '—' }}
+</span>
 
-  <!-- Right = P&L -->
-  <div class="kpi-card">
-    <div class="kpi-title">P&L</div>
-    <div class="kv"><span class="label">Unrealized P&L</span>
-      <span id="upnl">${{ '{:,.2f}'.format(unrealized_pnl or 0.0) }}</span>
-    </div>
-    <div class="kv"><span class="label">Unrealized P&L %</span>
-      <span id="upct">{{ '{:,.2f}%'.format(unrealized_pnl_pct or 0.0) }}</span>
-    </div>
-    <div class="kv"><span class="label">Realized P&L</span>
-      <span id="rpnl">${{ '{:,.2f}'.format(realized_pnl or 0.0) }}</span>
-    </div>
-    <div class="kv"><span class="label">Realized P&L %</span>
-      <span id="rpct">{{ '{:,.2f}%'.format(realized_pnl_pct or 0.0) }}</span>
-    </div>
+<span id="sc">
+  {{ ('${:,.2f}'.format((account or {}).get('settled_cash')))
+     if (account or {}).get('settled_cash') is not none else '—' }}
+</span>
+
+{% if (account or {}).get('equity_value') is not none %}
+  <div class="kv"><span class="label">Equity Value</span>
+    <span id="eq">{{ '${:,.2f}'.format((account or {}).get('equity_value')) }}</span>
   </div>
-</div>
+{% endif %}
+
+<span id="upnl">
+  {{ ('${:,.2f}'.format(unrealized_pnl)) if unrealized_pnl is not none else '—' }}
+</span>
+
+<span id="upct">
+  {{ ('{:,.2f}%'.format(unrealized_pnl_pct)) if unrealized_pnl_pct is not none else '—' }}
+</span>
+
+<span id="rpnl">
+  {{ ('${:,.2f}'.format(realized_pnl)) if realized_pnl is not none else '—' }}
+</span>
+
+<span id="rpct">
+  {{ ('{:,.2f}%'.format(realized_pnl_pct)) if realized_pnl_pct is not none else '—' }}
+</span>
 <!-- Holdings (same table classes/order as Sim) -->
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h3 class="text-white mb-0">Holdings</h3>
