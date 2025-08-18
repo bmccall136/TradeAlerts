@@ -85,7 +85,7 @@ def backtest(
 
     # Loop through each day
     for idx in range(1, len(df)):
-        price = df['Open'].iat[idx] if 'Open' in df.columns else df['Close'].iat[idx]
+        price = df['Open'].iloc[idx] if 'Open' in df.columns else df['Close'].iloc[idx]
         date = str(df.index[idx])
 
         # 1) EXIT: Stop-loss / Take-profit
@@ -123,11 +123,11 @@ def backtest(
         if position == 0:
             # SMA filter
             if sma_on:
-                sma = df['Close'].rolling(sma_length).mean().iat[idx]
+                sma = df['Close'].rolling(sma_length).mean().iloc[idx]
                 if price <= sma:
                     continue
             # VWAP filter
-            if vwap_on and df['VWAP_DIFF'].iat[idx] < vwap_threshold:
+            if vwap_on and df['VWAP_DIFF'].iloc[idx] < vwap_threshold:
                 continue
             # News filter
             if news_on and fetch_latest_headlines(symbol).empty:
@@ -152,7 +152,7 @@ def backtest(
 
     # 3) FINAL SELL if still holding at end
     if position > 0:
-        final_price = df['Close'].iat[-1]
+        final_price = df['Close'].iloc[-1]
         pnl = (final_price - entry_price) * position
         cash += position * final_price
         trades.append({

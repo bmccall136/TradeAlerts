@@ -26,14 +26,18 @@
       {# {% include "_status_banner.html" %} #}
 
       <!-- Or keep your inline banner here -->
-	<div class="status-block" ...>
+	<div class="status-block" style="background:#000;color:#ffd600;padding:8px;border-radius:6px;">
 	  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
 		<div>E*TRADE API</div>
 		<div style="color: {{ '#ff4d4d' if needs_reconnect else '#39d353' }};">●</div>
 	  </div>
 
 	  {% if needs_reconnect %}
-		<a href="{{ url_for('etrade_start_auth') }}" class="btn btn-sm" ...>Reconnect API</a>
+		<a href="{{ url_for('etrade_start_auth') }}"
+		   class="btn btn-sm"
+		   style="background:#111;color:#ffd600;border:1px solid #ffd600;padding:6px 10px;border-radius:4px;">
+		  Reconnect API
+		</a>
 	  {% endif %}
 	</div>
     </div>
@@ -141,5 +145,9 @@
       });
   }, 60000);
 </script>
+<script>
+  setInterval(() => { if (document.visibilityState === 'visible') location.reload(); }, 60000);
+</script>
+
 {% endblock %}  {# closes scripts #}
 {% endblock %}  {# closes content #}
