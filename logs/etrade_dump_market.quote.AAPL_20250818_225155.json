@@ -1,0 +1,82 @@
+{
+  "QuoteResponse": {
+    "QuoteData": [
+      {
+        "dateTime": "19:59:59 EDT 08-18-2025",
+        "dateTimeUTC": 1755561599,
+        "quoteStatus": "CLOSING",
+        "ahFlag": "true",
+        "hasMiniOptions": false,
+        "All": {
+          "adjustedFlag": false,
+          "ask": 230.89,
+          "askSize": 0,
+          "askTime": "19:59:59 EDT 08-18-2025",
+          "bid": 230.88,
+          "bidExchange": "",
+          "bidSize": 0,
+          "bidTime": "19:59:59 EDT 08-18-2025",
+          "changeClose": -0.7,
+          "changeClosePercentage": -0.3,
+          "companyName": "APPLE INC COM",
+          "daysToExpiration": 0,
+          "dirLast": "1",
+          "dividend": 0.26,
+          "eps": 6.59,
+          "estEarnings": 7.374,
+          "exDividendDate": 1754967115,
+          "high": 233.12,
+          "high52": 260.1,
+          "lastTrade": 230.89,
+          "low": 230.11,
+          "low52": 169.2101,
+          "open": 231.7,
+          "openInterest": 0,
+          "optionStyle": "",
+          "optionUnderlier": "",
+          "previousClose": 231.59,
+          "previousDayVolume": 56019892,
+          "primaryExchange": "NSDQ",
+          "symbolDescription": "APPLE INC COM",
+          "totalVolume": 37476188,
+          "upc": 0,
+          "cashDeliverable": 0,
+          "marketCap": 3426497647100.0,
+          "sharesOutstanding": 14840390000,
+          "nextEarningDate": "",
+          "beta": 1.39,
+          "yield": 0.4491,
+          "declaredDividend": 0.26,
+          "dividendPayableDate": 1755226315,
+          "pe": 31.942,
+          "week52LowDate": 1744167115,
+          "week52HiDate": 1735271515,
+          "intrinsicValue": 0.0,
+          "timePremium": 0.0,
+          "optionMultiplier": 0.0,
+          "contractSize": 0.0,
+          "expirationDate": 0,
+          "timeOfLastTrade": 1755547201,
+          "averageVolume": 72713819,
+          "ExtendedHourQuoteDetail": {
+            "lastPrice": 230.9,
+            "change": -0.69,
+            "percentChange": -0.3,
+            "bid": 230.88,
+            "bidSize": 0,
+            "ask": 230.89,
+            "askSize": 0,
+            "volume": 37476188,
+            "timeOfLastTrade": 1755561599,
+            "timeZone": "EST",
+            "quoteStatus": "EH_CLOSED"
+          }
+        },
+        "Product": {
+          "symbol": "AAPL",
+          "securityType": "EQ"
+        }
+      }
+    ]
+  }
+}

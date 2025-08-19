@@ -1,0 +1,21 @@
+{
+  "AccountListResponse": {
+    "Accounts": {
+      "Account": [
+        {
+          "accountId": "153737458",
+          "accountIdKey": "kW8LbkuGisPCK9Ey7C8iWA",
+          "accountMode": "CASH",
+          "accountDesc": "Individual Brokerage",
+          "accountName": " ",
+          "accountType": "INDIVIDUAL",
+          "institutionType": "BROKERAGE",
+          "accountStatus": "ACTIVE",
+          "closedDate": 0,
+          "shareWorksAccount": false,
+          "fcManagedMssbClosedAccount": false
+        }
+      ]
+    }
+  }
+}

@@ -56,9 +56,7 @@ def run_scan_loop(broker: Broker, settings: SimulationSettings, symbols: Sequenc
             for sym, px, trigs in ranked:
                 qty = max(1, int(getattr(settings, "default_qty", 1)))
                 try:
-                    ok = broker.buy(sym, qty, px) if getattr(settings, "armed", False) else True
                     if ok:
-                        log.info(f"[SCAN] BUY {sym} x{qty} @ {px:.2f}  (sigs={len(trigs)} armed={getattr(settings,'armed',False)})")
                         break
                 except Exception as e:
                     log.exception(f"BUY {sym} failed: {e}")
