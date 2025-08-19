@@ -1,5 +1,17 @@
 # live_start.py
 import os, sys
+# live_start.py
+import logging, os
+# ...
+lvl = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, lvl, logging.INFO),
+    format="%(asctime)s %(levelname)5s %(name)s: %(message)s"
+)
+logging.getLogger("live").setLevel(logging.INFO)
+print("🔧 Using live settings from", settings_path)
+run_live_loop(cfg, broker_mode)
+
 print("▶️  Live launcher starting…")
 try:
     from dotenv import load_dotenv

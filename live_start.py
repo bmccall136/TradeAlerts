@@ -1,95 +1,59 @@
 # live_start.py
-import os, sys
-# live_start.py
-import logging, os
-# ...
-lvl = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(
-    level=getattr(logging, lvl, logging.INFO),
-    format="%(asctime)s %(levelname)5s %(name)s: %(message)s"
-)
-logging.getLogger("live").setLevel(logging.INFO)
-print("🔧 Using live settings from", settings_path)
-run_live_loop(cfg, broker_mode)
-
-print("▶️  Live launcher starting…")
-try:
-    from dotenv import load_dotenv
-    load_dotenv()  # load .env tokens/keys if present
-except Exception:
-    pass
-
-# Optional: show guardrails env
-print("GUARDRAILS_ENABLED =", os.getenv("GUARDRAILS_ENABLED"))
-print("LIVE_SAFE_MODE     =", os.getenv("LIVE_SAFE_MODE"))
-print("LIVE_MAX_QTY       =", os.getenv("LIVE_MAX_QTY"))
-
-# Try to start the next-day auto-seller guardrail (if you added it)
-try:
-    from services import live_guardrails as lg
-    if hasattr(lg, "start_guardrails_auto_seller"):
-        lg.start_guardrails_auto_seller()
-        print("✅ Guardrails auto-seller thread started")
-    else:
-        print("ℹ️  live_guardrails.start_guardrails_auto_seller() not found — skipping")
-except Exception as e:
-    print("⚠️  Guardrails init skipped:", e)
-import os, json
-from types import SimpleNamespace
+import os, json, time
 from pathlib import Path
+from datetime import datetime, time as dtime
 
-LIVE_SETTINGS_PATH = os.getenv("LIVE_SETTINGS_PATH", "live_settings.json")
-
-# --- at top of live_start.py ---
-import os, json
-from types import SimpleNamespace
-from pathlib import Path
-
-LIVE_SETTINGS_PATH = os.getenv("LIVE_SETTINGS_PATH", "live_settings.json")
-
-def load_live_settings():
-    p = Path(LIVE_SETTINGS_PATH)
-    try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-        print(f"🔧 Using live settings from {p.resolve()}")
-        return SimpleNamespace(**data)
-    except Exception as e:
-        print(f"⚠️ Could not read {p.resolve()} ({e}); falling back to defaults")
-        return SimpleNamespace(
-            broker_mode=os.getenv("BROKER_MODE", "ETRADE"),
-            scan_interval=60,
-            single_entry_only=True,
-            use_trailing_stop=False,
-            trailing_stop_pct=0.0,
-            sell_after_days=1,
-            stop_loss_pct=0.0,
-            take_profit_pct=0.0,
-            max_per_trade=1000.0,
-        )
-
-# --- later, before starting the loop ---
+# --- imports from your project ---
 from services.live_loop import run_live_loop
+from services.market_service import get_symbols
 
-cfg = load_live_settings()
-broker_mode = getattr(cfg, "broker_mode", os.getenv("BROKER_MODE", "ETRADE"))
+# try to use your existing market-hours helper; fall back if missing
+try:
+    from services.simulation_service import _is_market_open as market_open_now
+except Exception:
+    import pytz
+    def market_open_now():
+        et = pytz.timezone("America/New_York")
+        now = datetime.now(et)
+        if now.weekday() >= 5:  # Sat/Sun
+            return False
+        return dtime(9, 30) <= now.time() <= dtime(16, 0)
 
-# IMPORTANT: run_live_loop(settings, broker_mode)
-run_live_loop(cfg, broker_mode)
+# ---- settings path (env overrideable) ----
+# Use LIVE_SETTINGS_FILE if set; otherwise fall back to simulation_config.json
+SETTINGS_FILE = os.environ.get("LIVE_SETTINGS_FILE", "simulation_config.json")
+settings_path = Path(SETTINGS_FILE)
+print("🔧 Using live settings from", settings_path)
 
-# Live loop
-from services.settings_service import load_settings
-from services.market_service   import get_symbols
-from services.live_loop        import run_live_loop
+# ---- load settings (optional for run_live_loop) ----
+settings = {}
+if settings_path.exists():
+    try:
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"⚠️  Failed to read {settings_path}: {e}")
 
-cfg = load_settings({})
+# ---- load symbols ----
+symbols = get_symbols(simulation=False) or []
+print(f"🧾 Loaded {len(symbols)} symbols. Preview: {symbols[:10]}")
 
-# Allow WATCHLIST override (comma-separated), else use your normal live universe
-wl = (os.getenv("WATCHLIST") or "").strip()
-if wl:
-    symbols = [s.strip().upper() for s in wl.split(",") if s.strip()]
-else:
-    symbols = get_symbols(simulation=False)
+# ---- wait for market hours ----
+if not market_open_now():
+    print("⏸️  Market is closed. Waiting until open (checks every 60s)…")
+    while not market_open_now():
+        time.sleep(60)
 
-print(f"▶️  Live loop starting for {len(symbols)} symbols")
-sys.stdout.flush()
-run_live_loop(cfg, symbols=symbols)   # Ctrl+C to stop
+print("▶️  Market open — starting live loop")
+
+# ---- start live loop ----
+# Support both possible function signatures.
+try:
+    # common signature: (settings, symbols)
+    run_live_loop(settings, symbols)
+except TypeError:
+    try:
+        # alt: keyword args
+        run_live_loop(settings=settings, symbols=symbols)
+    except TypeError:
+        # alt: symbols only
+        run_live_loop(symbols)

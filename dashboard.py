@@ -2059,62 +2059,35 @@ def _dig(d, *paths, default=None):
             continue
     return default
 
+# dashboard.py
 def _normalize_account(raw: dict) -> dict:
-    raw = raw or {}
+    r = raw.get("BalanceResponse", raw) or {}
+    computed  = r.get("Computed") or {}
+    realtime  = computed.get("RealTimeValues") or {}
+    cash_blk  = r.get("Cash") or {}
 
-    buying_power = float(_dig(
-        raw,
-        "BalanceResponse.Computed.cashBuyingPower",
-        "BalanceResponse.Computed.marginBuyingPower",
-        "BalanceResponse.Computed.RealTimeValues.buyingPower",
-        "BalanceResponse.Computed.buyingPower",
-        "balance.buyingPower",
-        default=0.0,
-    ) or 0.0)
-
-    settled_cash = float(_dig(
-        raw,
-        # cash accounts usually expose one/both of these:
-        "BalanceResponse.Computed.cashAvailableForWithdrawal",
-        "BalanceResponse.Computed.cashAvailableForInvestment",
-        "BalanceResponse.cash",
-        "balance.cash",
-        default=0.0,
-    ) or 0.0)
-
-    equity_value = float(_dig(
-        raw,
-        "BalanceResponse.Computed.RealTimeValues.totalAccountValue",
-        "BalanceResponse.Computed.totalAccountValue",
-        "BalanceResponse.Computed.RealTimeValues.netAccountValue",
-        "BalanceResponse.Computed.netAccountValue",
-        "netAccountValue",
-        "totalAccountValue",
-        default=0.0,
-    ) or 0.0)
-
-    account_id = str(_dig(
-        raw,
-        "BalanceResponse.accountId",
-        "AccountListResponse.Accounts.Account.accountIdKey",
-        "accountIdKey",
-        "accountId",
-        default="",
-    ) or "")
-
-    account_type = str(_dig(
-        raw,
-        "BalanceResponse.accountType",
-        "accountType",
-        default="Cash",
-    ) or "Cash")
+    def f(x):
+        try: return float(x)
+        except: return 0.0
 
     return {
-        "buying_power": buying_power,
-        "settled_cash": settled_cash,
-        "equity_value": equity_value,
-        "account_id": account_id,
-        "account_type": account_type,
+        "buying_power": f(
+            computed.get("cashBuyingPower") or
+            computed.get("marginBuyingPower") or
+            r.get("buyingPower")
+        ),
+        "settled_cash": f(
+            cash_blk.get("cashBalance") or
+            r.get("cash") or
+            r.get("cashBalance")
+        ),
+        "equity_value": f(
+            realtime.get("totalAccountValue") or
+            r.get("netAccountValue") or
+            r.get("totalAccountValue")
+        ),
+        "account_id":  str(r.get("accountIdKey") or r.get("accountId") or ""),
+        "account_type": r.get("accountType") or "",
     }
 def _normalize_positions_payload(payload) -> list[dict]:
     """
