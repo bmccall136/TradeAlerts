@@ -85,7 +85,51 @@ def get_account_summary() -> dict:
     j = _eget(f"/v1/accounts/{aid}/balance.json", {"instType": "BROKERAGE"}).json()
     return j
 
-def get_positions() -> list[dict] | dict:
+def get_positions() -> list[dict]:
+    """Return a flat list of positions: symbol/qty/price_paid/last_price."""
     aid = _primary_account_id()
     j = _eget(f"/v1/accounts/{aid}/portfolio.json", {"instType": "BROKERAGE"}).json()
-    return j
+
+    out = []
+    try:
+        pr = j.get("PortfolioResponse", {})
+        aps = pr.get("AccountPortfolio", [])
+        if isinstance(aps, dict):
+            aps = [aps]
+
+        def _pick(d, *paths, default=None):
+            for p in paths:
+                cur = d
+                try:
+                    for k in p.split("."):
+                        cur = (cur[0] if isinstance(cur, list) else cur).get(k)
+                    if cur not in (None, "", "-", "NA"):
+                        return cur
+                except Exception:
+                    pass
+            return default
+
+        for ap in aps or []:
+            pos = ap.get("Position")
+            if not pos:
+                continue
+            pos = [pos] if isinstance(pos, dict) else pos
+            for p in pos:
+                prod = p.get("Product", {}) or {}
+                sym  = (prod.get("symbol") or "").upper()
+                qty  = float(p.get("quantity") or p.get("qty") or 0)
+                paid = float(p.get("pricePaid") or p.get("averagePrice") or 0)
+                last = _pick(p,
+                             "Quick.quote.lastTrade",
+                             "Quick.quote.lastPrice",
+                             "Quick.lastTrade",
+                             default=0.0)
+                last = float(last or 0.0)
+                out.append({
+                    "symbol": sym, "qty": qty,
+                    "price_paid": paid, "last_price": last,
+                })
+    except Exception:
+        pass
+
+    return out

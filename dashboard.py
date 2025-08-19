@@ -1994,12 +1994,6 @@ def index():
 
 IGNORED_TICKERS = {"GEVO"}  # hide on Live
 
-def _afloat(v, d=None):
-    try:
-        # keep 0.0 if it is truly present; return None when missing
-        return float(v)
-    except (TypeError, ValueError):
-        return d
 def _get_num(d: dict, paths, default=0.0):
     for path in paths:
         cur = d
@@ -2047,48 +2041,8 @@ def _get_str(d: dict, paths, default=""):
             continue
     return default
 
-def _dig(d, *paths, default=None):
-    for path in paths:
-        cur = d
-        try:
-            for k in path.split("."):
-                cur = (cur[0] if isinstance(cur, list) else cur).get(k)
-            if cur not in (None, "", "-", "NA"):
-                return cur
-        except Exception:
-            continue
-    return default
-
 # dashboard.py
-def _normalize_account(raw: dict) -> dict:
-    r = raw.get("BalanceResponse", raw) or {}
-    computed  = r.get("Computed") or {}
-    realtime  = computed.get("RealTimeValues") or {}
-    cash_blk  = r.get("Cash") or {}
 
-    def f(x):
-        try: return float(x)
-        except: return 0.0
-
-    return {
-        "buying_power": f(
-            computed.get("cashBuyingPower") or
-            computed.get("marginBuyingPower") or
-            r.get("buyingPower")
-        ),
-        "settled_cash": f(
-            cash_blk.get("cashBalance") or
-            r.get("cash") or
-            r.get("cashBalance")
-        ),
-        "equity_value": f(
-            realtime.get("totalAccountValue") or
-            r.get("netAccountValue") or
-            r.get("totalAccountValue")
-        ),
-        "account_id":  str(r.get("accountIdKey") or r.get("accountId") or ""),
-        "account_type": r.get("accountType") or "",
-    }
 def _normalize_positions_payload(payload) -> list[dict]:
     """
     Accepts either your own list-of-rows or the raw E*TRADE portfolio JSON and
@@ -2140,6 +2094,92 @@ def _normalize_positions_payload(payload) -> list[dict]:
         # Anything else -> no positions
         return []
 from services.etrade_service import get_account_summary, get_positions, fetch_etrade_quote
+
+# --- Account normalizer (works with E*TRADE balance + list payloads) ---
+
+def _afloat(v, default=0.0):
+    try:
+        if v in (None, "", "-", "NA"):
+            return float(default)
+        return float(v)
+    except Exception:
+        return float(default)
+
+def _dig(d, path, default=None):
+    """Walk dot-paths; handles [0] lists implicitly."""
+    cur = d
+    for key in path.split("."):
+        if isinstance(cur, list):
+            cur = cur[0] if cur else {}
+        if not isinstance(cur, dict):
+            return default
+        cur = cur.get(key)
+        if cur is None:
+            return default
+    return cur
+
+def _normalize_account(raw: dict) -> dict:
+    """
+    Returns a flat dict your template expects:
+      buying_power, settled_cash, equity_value, account_id, account_type
+    Handles both {BalanceResponse:{...}} and the inner dict itself.
+    """
+    src = (raw or {}).get("BalanceResponse") or (raw or {})
+    comp = src.get("Computed") or {}
+    cash_blk = src.get("Cash") or {}
+    rtv = comp.get("RealTimeValues") or src.get("RealTimeValues") or {}
+
+    # Buying power: prefer cash BP, then margin BP, then 'available for invest'.
+    buying_power = _afloat(
+        comp.get("cashBuyingPower")
+        or comp.get("marginBuyingPower")
+        or comp.get("cashAvailableForInvestment")
+        or src.get("buyingPower")
+    )
+
+    # Settled cash / withdrawable cash: prefer explicit fields; fall back to netCash / cashBalance / mmkt.
+    settled_cash = _afloat(
+        comp.get("cashAvailableForWithdrawal")
+        or comp.get("settledCashForInvestment")
+        or comp.get("netCash")
+        or comp.get("cashBalance")
+        or cash_blk.get("moneyMktBalance")
+        or src.get("cash")
+        or src.get("cashBalance")
+    )
+
+    # Equity / net liq: use realtime/net if present; otherwise fall back to best cash proxy so UI isn't blank.
+    equity_value = _afloat(
+        rtv.get("totalAccountValue")
+        or src.get("netAccountValue")
+        or src.get("totalAccountValue")
+    )
+    if not equity_value:
+        equity_value = settled_cash or buying_power
+
+    # IDs/types (fallback to accounts.list structure if balance didn’t include them)
+    account_id = str(
+        src.get("accountIdKey")
+        or src.get("accountId")
+        or _dig(raw, "AccountListResponse.Accounts.Account.accountIdKey")
+        or _dig(raw, "AccountListResponse.Accounts.Account.accountId")
+        or ""
+    )
+    account_type = (
+        src.get("accountType")
+        or src.get("accountMode")
+        or _dig(raw, "AccountListResponse.Accounts.Account.accountType")
+        or _dig(raw, "AccountListResponse.Accounts.Account.accountMode")
+        or "Cash"
+    )
+
+    return {
+        "buying_power": round(buying_power, 2),
+        "settled_cash": round(settled_cash, 2),
+        "equity_value": round(equity_value, 2),
+        "account_id": account_id,
+        "account_type": str(account_type),
+    }
 
 @app.route("/live", methods=["GET"])
 def live_view():

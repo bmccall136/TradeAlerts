@@ -6,6 +6,33 @@ from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv(), override=True)
 
 BASE_URL = os.getenv("ETRADE_API_HOST", "https://api.etrade.com")
+def get_equity_value() -> float:
+    """Total account value = cash-ish + sum of market values."""
+    aid = _primary_account_id()
+
+    # Balance: prefer netCash, else money market balance
+    bj = _eget(f"/v1/accounts/{aid}/balance.json", {"instType": "BROKERAGE"}).json()
+    b  = bj.get("BalanceResponse", {}) or {}
+    cashish = (
+        (b.get("Computed", {}) or {}).get("netCash")
+        or (b.get("Cash", {}) or {}).get("moneyMktBalance")
+        or 0.0
+    )
+
+    # Portfolio: sum marketValue
+    pj = _eget(f"/v1/accounts/{aid}/portfolio.json", {"instType": "BROKERAGE"}).json()
+    mv_total = 0.0
+    try:
+        acct = pj["PortfolioResponse"]["AccountPortfolio"][0]
+        pos  = acct.get("Position") or []
+        if isinstance(pos, dict):
+            pos = [pos]
+        for p in pos:
+            mv_total += float(p.get("marketValue") or 0.0)
+    except Exception:
+        pass
+
+    return round(float(cashish) + float(mv_total), 2)
 
 def _read_tokens_json():
     """Fallback to etrade_tokens.json if env is not set."""

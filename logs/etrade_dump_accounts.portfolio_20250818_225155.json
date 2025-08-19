@@ -1,0 +1,58 @@
+{
+  "PortfolioResponse": {
+    "AccountPortfolio": [
+      {
+        "accountId": "153737458",
+        "Position": [
+          {
+            "positionId": 36534482005,
+            "symbolDescription": "GEVO",
+            "dateAcquired": 1473220800000,
+            "pricePaid": 243.4864,
+            "commissions": 17.9899,
+            "otherFees": 0,
+            "quantity": 14,
+            "positionIndicator": "TYPE2",
+            "positionType": "LONG",
+            "daysGain": -1.6799,
+            "daysGainPct": -6.6666,
+            "marketValue": 23.5199,
+            "totalCost": 3426.7999,
+            "totalGain": -3403.2799,
+            "totalGainPct": -99.3136,
+            "pctOfPortfolio": 5.6576,
+            "costPerShare": 244.7714,
+            "todayCommissions": 0,
+            "todayFees": 0,
+            "todayPricePaid": 0,
+            "todayQuantity": 0,
+            "adjPrevClose": 1.8,
+            "lotsDetails": "https://api.etrade.com/v1/accounts/kW8LbkuGisPCK9Ey7C8iWA/portfolio/36534482005.json",
+            "quoteDetails": "https://api.etrade.com/v1/market/quote/GEVO.json",
+            "Product": {
+              "symbol": "GEVO",
+              "securityType": "EQ",
+              "expiryYear": 0,
+              "expiryMonth": 0,
+              "expiryDay": 0,
+              "strikePrice": 0,
+              "productId": {
+                "symbol": "GEVO",
+                "typeCode": "EQUITY"
+              }
+            },
+            "Quick": {
+              "lastTrade": 1.68,
+              "lastTradeTime": 1755547200,
+              "change": -0.12,
+              "changePct": -6.6666,
+              "volume": 6522122,
+              "quoteStatus": "CLOSING"
+            }
+          }
+        ],
+        "totalPages": 1
+      }
+    ]
+  }
+}
