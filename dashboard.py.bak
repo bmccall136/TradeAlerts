@@ -1994,12 +1994,6 @@ def index():
 
 IGNORED_TICKERS = {"GEVO"}  # hide on Live
 
-def _afloat(v, d=None):
-    try:
-        # keep 0.0 if it is truly present; return None when missing
-        return float(v)
-    except (TypeError, ValueError):
-        return d
 def _get_num(d: dict, paths, default=0.0):
     for path in paths:
         cur = d
@@ -2049,91 +2043,6 @@ def _get_str(d: dict, paths, default=""):
 
 # dashboard.py
 
-def _afloat(v, d=0.0):
-    try: return float(v)
-    except (TypeError, ValueError): return float(d)
-
-def _normalize_account(raw: dict) -> dict:
-    # Accept either {"BalanceResponse": {...}} or the inner dict itself
-    br   = (raw or {}).get("BalanceResponse") or (raw or {})
-    comp = br.get("Computed") or {}
-    rtv  = comp.get("RealTimeValues") or br.get("RealTimeValues") or {}
-
-    # Buying power: cash or margin variants
-    buying_power = _afloat(
-        comp.get("cashBuyingPower") or
-        comp.get("cashAvailableForInvestment") or
-        comp.get("marginBuyingPower")
-    )
-
-    # Settled cash = withdrawable cash
-    settled_cash = _afloat(
-        comp.get("cashAvailableForWithdrawal") or
-        comp.get("cash")  # rare fallback
-    )
-
-    # Equity / Net liq
-    equity_value = _afloat(
-        rtv.get("totalAccountValue") or
-        br.get("netAccountValue")
-    )
-
-    # Fallbacks if the API isn’t providing those fields (e.g., no positions)
-    if not equity_value:
-        # if no realtime net liq, use the best cash proxy
-        equity_value = settled_cash or buying_power
-
-    return {
-        "buying_power": buying_power,
-        "settled_cash": settled_cash,
-        "equity_value": equity_value,
-        "account_id":   br.get("accountIdKey") or br.get("accountId"),
-        "account_type": br.get("accountType") or "Cash",
-        "raw": raw,  # keep if you like to debug later
-    }
-
-def _dig(d, *paths, default=None):
-    for path in paths:
-        cur = d
-        try:
-            for k in path.split("."):
-                cur = (cur[0] if isinstance(cur, list) else cur).get(k)
-            if cur not in (None, "", "-", "NA"):
-                return cur
-        except Exception:
-            continue
-    return default
-
-# dashboard.py
-def _normalize_account(raw: dict) -> dict:
-    r = raw.get("BalanceResponse", raw) or {}
-    computed  = r.get("Computed") or {}
-    realtime  = computed.get("RealTimeValues") or {}
-    cash_blk  = r.get("Cash") or {}
-
-    def f(x):
-        try: return float(x)
-        except: return 0.0
-
-    return {
-        "buying_power": f(
-            computed.get("cashBuyingPower") or
-            computed.get("marginBuyingPower") or
-            r.get("buyingPower")
-        ),
-        "settled_cash": f(
-            cash_blk.get("cashBalance") or
-            r.get("cash") or
-            r.get("cashBalance")
-        ),
-        "equity_value": f(
-            realtime.get("totalAccountValue") or
-            r.get("netAccountValue") or
-            r.get("totalAccountValue")
-        ),
-        "account_id":  str(r.get("accountIdKey") or r.get("accountId") or ""),
-        "account_type": r.get("accountType") or "",
-    }
 def _normalize_positions_payload(payload) -> list[dict]:
     """
     Accepts either your own list-of-rows or the raw E*TRADE portfolio JSON and
@@ -2186,109 +2095,295 @@ def _normalize_positions_payload(payload) -> list[dict]:
         return []
 from services.etrade_service import get_account_summary, get_positions, fetch_etrade_quote
 
+# --- Account normalizer (works with E*TRADE balance + list payloads) ---
+
+def _afloat(v, default=0.0):
+    try:
+        if v in (None, "", "-", "NA"):
+            return float(default)
+        return float(v)
+    except Exception:
+        return float(default)
+
+def _dig(d, path, default=None):
+    """Walk dot-paths; handles [0] lists implicitly."""
+    cur = d
+    for key in path.split("."):
+        if isinstance(cur, list):
+            cur = cur[0] if cur else {}
+        if not isinstance(cur, dict):
+            return default
+        cur = cur.get(key)
+        if cur is None:
+            return default
+    return cur
+def _build_holdings_from_positions(positions):
+    """Return (rows, unrealized_pnl, cost_basis, positions_value)."""
+    rows = []
+    for pos in positions or []:
+        sym  = (pos.get("symbol") or "").upper()
+        if sym in IGNORED_TICKERS:
+            continue
+
+        qty  = int(pos.get("qty") or 0)
+        last = float(pos.get("last_price") or 0.0)
+        avg  = float(pos.get("price_paid") or 0.0)
+
+        # day gain: prefer broker-provided, else (last - prev_close) * qty
+        day_gain = 0.0
+        try:
+            day_gain = float(
+                pos.get("todaysGainLoss")
+                or pos.get("todaysGainLossBase")
+                or 0.0
+            )
+        except Exception:
+            pass
+        if not day_gain:
+            pc = pos.get("previous_close") or pos.get("prev_close") or pos.get("close_prev")
+            try:
+                pc = float(pc)
+                if pc:
+                    day_gain = (last - pc) * qty
+            except Exception:
+                pass
+
+        change = (last - avg) if avg else 0.0
+        total_gain = (last - avg) * qty if (qty and avg) else 0.0
+        value = last * qty
+
+        rows.append({
+            "symbol": sym,
+            "qty": qty,
+            "last_price": round(last, 4),
+            "price_paid": round(avg, 4),
+            "change": round(change, 4),
+            "change_pct": (change / avg * 100.0) if avg else 0.0,
+            "day_gain": round(day_gain, 2),
+            "total_gain": round(total_gain, 2),
+            "value": round(value, 2),
+        })
+
+    unrealized = round(sum(r["total_gain"] for r in rows), 2)
+    cost_basis = sum((r["price_paid"] or 0.0) * (r["qty"] or 0) for r in rows)
+    positions_value = round(sum(r["value"] for r in rows), 2)
+    return rows, unrealized, cost_basis, positions_value
+
+def _normalize_account(raw: dict) -> dict:
+    """
+    Returns a flat dict your template expects:
+      buying_power, settled_cash, equity_value, account_id, account_type
+    Handles both {BalanceResponse:{...}} and the inner dict itself.
+    """
+    src = (raw or {}).get("BalanceResponse") or (raw or {})
+    comp = src.get("Computed") or {}
+    cash_blk = src.get("Cash") or {}
+    rtv = comp.get("RealTimeValues") or src.get("RealTimeValues") or {}
+
+    # Buying power: prefer cash BP, then margin BP, then 'available for invest'.
+    buying_power = _afloat(
+        comp.get("cashBuyingPower")
+        or comp.get("marginBuyingPower")
+        or comp.get("cashAvailableForInvestment")
+        or src.get("buyingPower")
+    )
+
+    # Settled cash / withdrawable cash: prefer explicit fields; fall back to netCash / cashBalance / mmkt.
+    settled_cash = _afloat(
+        comp.get("cashAvailableForWithdrawal")
+        or comp.get("settledCashForInvestment")
+        or comp.get("netCash")
+        or comp.get("cashBalance")
+        or cash_blk.get("moneyMktBalance")
+        or src.get("cash")
+        or src.get("cashBalance")
+    )
+
+    # Equity / net liq: use realtime/net if present; otherwise fall back to best cash proxy so UI isn't blank.
+    equity_value = _afloat(
+        rtv.get("totalAccountValue")
+        or src.get("netAccountValue")
+        or src.get("totalAccountValue")
+    )
+    if not equity_value:
+        equity_value = settled_cash or buying_power
+
+    # IDs/types (fallback to accounts.list structure if balance didn’t include them)
+    account_id = str(
+        src.get("accountIdKey")
+        or src.get("accountId")
+        or _dig(raw, "AccountListResponse.Accounts.Account.accountIdKey")
+        or _dig(raw, "AccountListResponse.Accounts.Account.accountId")
+        or ""
+    )
+    account_type = (
+        src.get("accountType")
+        or src.get("accountMode")
+        or _dig(raw, "AccountListResponse.Accounts.Account.accountType")
+        or _dig(raw, "AccountListResponse.Accounts.Account.accountMode")
+        or "Cash"
+    )
+
+    return {
+        "buying_power": round(buying_power, 2),
+        "settled_cash": round(settled_cash, 2),
+        "equity_value": round(equity_value, 2),
+        "account_id": account_id,
+        "account_type": str(account_type),
+    }
+
+# ── LIVE DASHBOARD ─────────────────────────────────────────────────────────────
+
 @app.route("/live", methods=["GET"])
 def live_view():
-    # balances
+    # account
     try:
         raw_summary = get_account_summary()
     except Exception as e:
         app.logger.warning("[LIVE] summary failed: %s", e)
         raw_summary = {}
-
     account = _normalize_account(raw_summary if isinstance(raw_summary, dict) else {})
 
-    # positions
+    # positions → holdings + metrics
     try:
-        positions = get_positions()  # list of dicts from service
+        positions = get_positions()
     except Exception as e:
         app.logger.warning("[LIVE] positions failed: %s", e)
         positions = []
 
-    # build holdings rows (hide IGNORED_TICKERS if you keep that)
-    holdings_rows = []
-    for p in positions:
-        sym  = (p.get("symbol") or "").upper()
-        if sym in IGNORED_TICKERS:
-            continue
-        qty  = int(p.get("qty") or 0)
-        avg  = float(p.get("price_paid") or 0.0)
-        last = float(p.get("last_price") or 0.0)
+    holdings, unrealized, cost, posval = _build_holdings_from_positions(positions)
 
-        change = last - avg if avg else 0.0
-        holdings_rows.append({
-            "symbol": sym,
-            "last_price": last,
-            "change": change,
-            "change_pct": (change / avg * 100.0) if avg else 0.0,
-            "qty": qty,
-            "price_paid": avg,
-            "day_gain": 0.0,  # optional: wire up true day calc later
-            "total_gain": (last - avg) * qty if qty and avg else 0.0,
-            "value": last * qty,
-        })
+    # Coerce defensively
+    def f(x, d=0.0):
+        try:
+            if x in (None, "", "-", "NA"):
+                return float(d)
+            return float(x)
+        except Exception:
+            return float(d)
 
-    # P&L
-    cost_basis = sum((h["price_paid"] or 0.0) * (h["qty"] or 0) for h in holdings_rows)
-    unrealized = round(sum(h["total_gain"] for h in holdings_rows), 2)
-    upct       = round((unrealized / cost_basis * 100.0), 2) if cost_basis else 0.0
-    realized   = 0.0
-    rpct       = round((realized / cost_basis * 100.0), 2) if cost_basis else 0.0
+    unrealized = f(unrealized, 0.0)
+    cost       = f(cost, 0.0)
+    posval     = f(posval, 0.0)
+
+    upct = round((unrealized / cost * 100.0), 2) if cost else 0.0
+
+    # Keep your old display metric (cash/BP + unrealized) under a clear name
+    cashish = f(
+        account.get("buying_power")
+        or account.get("settled_cash")
+        or account.get("equity_value")
+        or 0.0
+    )
+    cash_plus_unrealized = round(cashish + unrealized, 2)
+
+    # The card labeled “Unrealized P&L (Total)” should be the sum of open P&L
+    unrealized_total = round(unrealized, 2)
+
+    # Realized P&L (live)
+    try:
+        from services.trading_helpers import get_realized_pl
+        realized = round(f(get_realized_pl(mode="LIVE"), 0.0), 2)
+    except Exception:
+        realized = 0.0
+    rpct = round((realized / cost * 100.0), 2) if cost else 0.0
+
+    # IMPORTANT: do not paint any trades server-side (prevents SIM bleed)
+    trades = []
 
     return render_template(
         "live.html",
         account=account,
         account_type=(account.get("account_type") or "Cash"),
-        holdings=holdings_rows,
-        trades=[],
+        holdings=holdings,
+        trades=trades,
         unrealized_pnl=unrealized,
         unrealized_pnl_pct=upct,
         realized_pnl=realized,
         realized_pnl_pct=rpct,
+        positions_value=posval,
+        unrealized_total=unrealized_total,          # <- drives #utotal
+        cash_plus_unrealized=cash_plus_unrealized,  # <- available if you want to display
     )
+# --- helpers (keep yours if already present) -------------------------------
+def _safe_float(x, default=0.0):
+    try:
+        return float(x)
+    except Exception:
+        return float(default)
+
+def _fmt_trade_time(ts):
+    try:
+        import datetime as _dt
+        if isinstance(ts, (int, float)):
+            return _dt.datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+        return str(ts or "")
+    except Exception:
+        return str(ts or "")
+
+# --- LIVE STATUS ------------------------------------------------------------
 @app.route("/live/status", methods=["GET"])
 def live_status():
     from services import etrade_service as et
 
-    # account
+    # account summary (no math with P&L here)
     try:
         account = _normalize_account(et.get_account_summary() or {})
     except Exception:
         account = {}
 
-    # positions (hide GEVO)
-    holdings = []
+    # positions -> normalized rows -> holdings table + metrics
     try:
-        for pos in (et.get_positions() or []):
-            sym = (pos.get("symbol") or "").upper()
-            if sym in IGNORED_TICKERS:
-                continue
-            holdings.append({
-                "qty":        int(pos.get("qty") or 0),
-                "last_price": float(pos.get("last_price") or 0.0),
-                "price_paid": float(pos.get("price_paid") or 0.0),
-            })
+        raw_positions = et.get_positions() or []
     except Exception:
-        pass
+        raw_positions = []
 
-    # metrics
-    unrealized = round(sum((h["last_price"] - (h["price_paid"] or 0.0)) * (h["qty"] or 0) for h in holdings), 2)
-    cost = sum((h["price_paid"] or 0.0) * (h["qty"] or 0) for h in holdings)
+    positions = _normalize_positions_payload(raw_positions)
+    holdings, unrealized, cost, positions_value = _build_holdings_from_positions(positions)
     upct = round((unrealized / cost * 100.0), 2) if cost else 0.0
 
+    # realized P&L (live only)
     try:
         from services.trading_helpers import get_realized_pl
-        realized = round(float(get_realized_pl() or 0.0), 2)
+        realized = round(float(get_realized_pl(mode="LIVE") or 0.0), 2)
     except Exception:
         realized = 0.0
     rpct = round((realized / cost * 100.0), 2) if cost else 0.0
 
-    return jsonify({"account": account, "metrics": {
-        "unrealized_pnl": unrealized,
-        "unrealized_pnl_pct": upct,
-        "realized_pnl": realized,
-        "realized_pnl_pct": rpct,
-    }})
+    # recent trades (live only)
+    trades = []
+    try:
+        from services.trading_helpers import get_trades
+        for t in (get_trades(limit=50) or []):
+            mode = (t.get("mode") or t.get("source") or "LIVE").upper()
+            if mode != "LIVE":
+                continue
+            trades.append({
+                "time":   _fmt_trade_time(t.get("time") or t.get("timestamp")),
+                "symbol": t.get("symbol"),
+                "action": t.get("action"),
+                "qty":    t.get("qty"),
+                "price":  _safe_float(t.get("price")),
+                "pl":     _safe_float(t.get("pl") or t.get("pnl")),
+                "mode":   "LIVE",
+            })
+    except Exception:
+        pass
 
+    return jsonify({
+        "account": account,
+        "holdings": holdings,
+        "trades": trades,
+        "metrics": {
+            # what the JS reads:
+            "unrealized_total": positions_value,     # label "Unrealized P&L (Total)" in UI
+            "positions_value": positions_value,      # also exposed as a row
+            "unrealized_pnl": unrealized,
+            "unrealized_pnl_pct": upct,
+            "realized_pnl": realized,
+            "realized_pnl_pct": rpct,
+        }
+    })
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True, use_reloader=True)

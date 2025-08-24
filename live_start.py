@@ -1,59 +1,45 @@
-# live_start.py
-import os, json, time
-from pathlib import Path
-from datetime import datetime, time as dtime
+#!/usr/bin/env python3
+import os, json, logging, sys
 
-# --- imports from your project ---
-from services.live_loop import run_live_loop
-from services.market_service import get_symbols
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("launcher")
 
-# try to use your existing market-hours helper; fall back if missing
-try:
-    from services.simulation_service import _is_market_open as market_open_now
-except Exception:
-    import pytz
-    def market_open_now():
-        et = pytz.timezone("America/New_York")
-        now = datetime.now(et)
-        if now.weekday() >= 5:  # Sat/Sun
-            return False
-        return dtime(9, 30) <= now.time() <= dtime(16, 0)
+ROOT = os.path.abspath(os.path.dirname(__file__))
+SETTINGS_PATH = os.path.join(ROOT, "live_settings.json")
+SYMS_PATH = os.path.join(ROOT, "sp500_symbols.txt")
 
-# ---- settings path (env overrideable) ----
-# Use LIVE_SETTINGS_FILE if set; otherwise fall back to simulation_config.json
-SETTINGS_FILE = os.environ.get("LIVE_SETTINGS_FILE", "simulation_config.json")
-settings_path = Path(SETTINGS_FILE)
-print("🔧 Using live settings from", settings_path)
+def load_json(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-# ---- load settings (optional for run_live_loop) ----
-settings = {}
-if settings_path.exists():
-    try:
-        settings = json.loads(settings_path.read_text(encoding="utf-8"))
-    except Exception as e:
-        print(f"⚠️  Failed to read {settings_path}: {e}")
+def load_symbols(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return [ln.strip().split(",")[0].upper() for ln in f if ln.strip()]
 
-# ---- load symbols ----
-symbols = get_symbols(simulation=False) or []
-print(f"🧾 Loaded {len(symbols)} symbols. Preview: {symbols[:10]}")
+def _norm_mode(v):
+    v = (str(v or "SIM").strip().upper())
+    return "LIVE" if v in ("LIVE","ETRADE","REAL") else "SIM"
 
-# ---- wait for market hours ----
-if not market_open_now():
-    print("⏸️  Market is closed. Waiting until open (checks every 60s)…")
-    while not market_open_now():
-        time.sleep(60)
+def main():
+    log.info("▶️  Live launcher starting…")
 
-print("▶️  Market open — starting live loop")
+    # Guardrails banner (optional env flags)
+    log.info("GUARDRAILS_ENABLED = %s", str(os.getenv("GUARDRAILS_ENABLED","true")).lower())
+    log.info("LIVE_SAFE_MODE     = %s", str(os.getenv("LIVE_SAFE_MODE","true")).lower())
 
-# ---- start live loop ----
-# Support both possible function signatures.
-try:
-    # common signature: (settings, symbols)
-    run_live_loop(settings, symbols)
-except TypeError:
-    try:
-        # alt: keyword args
-        run_live_loop(settings=settings, symbols=symbols)
-    except TypeError:
-        # alt: symbols only
-        run_live_loop(symbols)
+    data = load_json(SETTINGS_PATH)
+    raw_mode = data.get("broker_mode", "LIVE")
+    mode = _norm_mode(os.getenv("BROKER_MODE") or raw_mode)
+
+    from services.market_service import get_symbols
+    symbols = get_symbols(SYMS_PATH)
+
+    from services.live_loop import run_live_loop
+    log.info("🔧 Using live settings from %s", SETTINGS_PATH)
+    log.info("▶️  Live loop starting (mode=%s)", mode)
+
+    # If you also pass settings as dict, run_live_loop will normalize it.
+    run_live_loop(data, symbols, broker_mode=mode)
+
+if __name__ == "__main__":
+    sys.exit(main())
