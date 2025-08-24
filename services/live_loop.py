@@ -1,72 +1,238 @@
+# services/live_loop.py
 from __future__ import annotations
+
+import os
 import time
 import logging
 from datetime import datetime, timezone, timedelta
-from services import live_guardrails as lg
+from types import SimpleNamespace
+from typing import Any, Dict, List, Optional, Tuple
+
+from services.scan_speedups import (
+    batched,
+    fetch_intraday_prices_et,
+    fetch_intraday_prices_with_fallback,
+    preload_history_yahoo,
+    log_candidate,
+)
+
 from services.broker import get_broker
+from services import live_guardrails as lg
 from services.simulation_service import analyze_symbol, _is_market_open, seconds_until_open
-from services.market_service import get_symbols
-from services.trading_helpers import compute_qty, get_trades, get_holdings, get_cash
+from services.trading_helpers import get_trades, get_holdings
 
-lg.start_guardrails_auto_seller()
-logger = logging.getLogger("live")
+log = logging.getLogger("live")
 
-def run_live_loop(settings, broker_mode: str = "SIM", picks: int = 1):
-    broker = get_broker(broker_mode)
-    symbols = get_symbols(simulation=True)
+_DEFAULTS = {
+    "broker_mode": "LIVE",
+    "pause_when_market_closed": True,
+    "scan_sleep_secs": 5,
+    "atr_len": 14,
+    "bb_length": 20,
+    "macd_fast": 12,
+    "macd_slow": 26,
+    "macd_signal": 9,
+    "rsi_len": 14,
+    "poll_interval": 5.0,
+    "strict_buy_signals": 4,
+    "require_sma20": True,
+    "required_filters": [],  # e.g. ['adx','macd']
+    "scan_heartbeat_secs": 10.0,
+    # NEW: how many pretty candidate lines to log each iteration (-1 = unlimited)
+    "candidate_log_limit": -1,
+}
+
+SAFE_ON  = os.getenv("LIVE_SAFE_MODE", "").lower() in ("1", "true", "yes", "on")
+SAFE_MAX = int(os.getenv("LIVE_MAX_QTY", "0") or 0)
+
+import math
+_BP_BUFFER = float(os.getenv("LIVE_BP_BUFFER", "5"))  # dollars cushion
+
+
+# ── helpers ──────────────────────────────────────────────────────────────────
+
+def _env_int(name: str, default: Optional[int] = None) -> Optional[int]:
+    v = os.getenv(name)
+    if v is None or v == "":
+        return default
+    try:
+        return int(v)
+    except Exception:
+        return default
+
+def _extract_buying_power(acct: dict) -> Optional[float]:
+    keys = (
+        "buying_power", "buyingPower", "cashBuyingPower",
+        "availableFundsForTrading", "marginBuyingPower",
+        "computedCashAvailableForInvestment",
+        "settled_cash", "available_cash", "cash", "bp",
+    )
+    for k in keys:
+        v = acct.get(k)
+        try:
+            f = float(v)
+            if f > 0:
+                return f
+        except Exception:
+            pass
+    return None
+
+def _normalize_settings(s):
+    if isinstance(s, dict):
+        merged = {**_DEFAULTS, **s}
+    elif hasattr(s, "__dict__"):
+        merged = {**_DEFAULTS, **s.__dict__}
+    else:
+        merged = dict(_DEFAULTS)
+    return SimpleNamespace(**merged)
+
+def _norm_mode(val: Optional[str]) -> str:
+    v = (str(val or "SIM").strip().upper())
+    aliases = {"ETRADE": "LIVE", "REAL": "LIVE", "PAPER": "SIM", "SIMULATION": "SIM"}
+    v = aliases.get(v, v)
+    return "LIVE" if v == "LIVE" else "SIM"
+
+def sget(ns, key, default=None):
+    return getattr(ns, key, default)
+
+def qty_by_caps(px: float, broker, max_per_trade: float) -> int:
+    bp = None
+    try:
+        bp = broker.get_buying_power()
+    except Exception:
+        bp = None
+
+    cap_dollars = max_per_trade
+    if isinstance(bp, (int, float)) and bp >= 0:
+        cap_dollars = min(cap_dollars, float(bp) - _BP_BUFFER)
+    if cap_dollars <= 0:
+        return 0
+    return max(0, int(math.floor(float(cap_dollars) / float(px))))
+
+
+# ── main loop ────────────────────────────────────────────────────────────────
+
+def run_live_loop(settings, symbols, broker_mode=None):
+    settings = _normalize_settings(settings)
+    mode = _norm_mode(broker_mode or settings.broker_mode)
+    override_gate = os.getenv("LIVE_IGNORE_GUARDRAILS_TODAY", "").lower() in ("1","true","yes","on")
+
+    # let env override candidate_log_limit if desired
+    cand_limit = _env_int("LIVE_CANDIDATE_LOG_LIMIT", sget(settings, "candidate_log_limit", -1))
+
+    # Quiet yfinance noise
+    try:
+        import logging as _pylog
+        _pylog.getLogger("yfinance").setLevel(_pylog.ERROR)
+    except Exception:
+        pass
+
+    lg.start_guardrails_auto_seller()
+
+    broker = get_broker(mode)
+    bname = (getattr(broker, "name", "") or "").upper()
+    log.info("🔌 Broker wired: %s (mode=%s, broker.name=%s)",
+             type(broker).__name__, mode, getattr(broker, "name", None))
+
+    if mode == "LIVE" and bname in ("SIM", "PAPER", ""):
+        raise RuntimeError(
+            f"LIVE requested, but {type(broker).__name__} looks non-live (name={getattr(broker,'name',None)!r})."
+        )
 
     strict_signals = getattr(settings, 'strict_buy_signals', 4)
     require_sma20  = getattr(settings, 'require_sma20', True)
-    req            = set(getattr(settings, 'required_filters', []))  # e.g. {'adx','macd'}
+    req            = set(getattr(settings, 'required_filters', []))
+    total_syms     = len(symbols)
+
+    log.info("[LIVE] config: strict=%d require_sma20=%s req=%s universe=%d",
+             strict_signals, require_sma20, sorted(list(req)) or "[]", total_syms)
+
+    HEARTBEAT_SEC = float(getattr(settings, "scan_heartbeat_secs", 10.0))
+    preload_history_yahoo(symbols, months=6)
 
     while True:
-        # Market hours check
         if settings.pause_when_market_closed and not _is_market_open():
             wait = seconds_until_open()
-            logger.info(f"[LIVE] Market closed — sleeping {wait:.1f}s")
+            log.info("[LIVE] Market closed — sleeping %.1fs", wait)
             time.sleep(wait)
             continue
 
-        logger.info("[LIVE] 🔁 Starting scan loop iteration")
-        candidates = []  # (sym, price, triggered)
+        iter_start = time.time()
+        last_ping  = iter_start
+        log.info("[LIVE] 🔁 Starting scan loop iteration")
 
-        # Scan pass
+        candidates: List[Tuple[str, float, List[str]]] = []
+        scanned = skipped = 0
+        cand_logs_emitted = 0
+
         for sym in symbols:
+            scanned += 1
             try:
                 price, triggered, passed = analyze_symbol(sym, settings)
             except Exception as e:
-                logger.exception(f"{sym}: analyze_symbol crashed — {e}")
-                continue
+                skipped += 1
+                log.debug("%s: analyze_symbol failed: %s", sym, e)
+                price = None
+                passed = False
+                triggered = None
+
+            now = time.time()
+            if now - last_ping >= HEARTBEAT_SEC:
+                rate = scanned / max(now - iter_start, 1e-6)
+                remaining = max(total_syms - scanned, 0)
+                eta = remaining / rate if rate > 0 else float('inf')
+                log.info("[LIVE] progress: %d/%d scanned (%.1f/s) skipped=%d candidates=%d ETA≈%.0fs",
+                         scanned, total_syms, rate, skipped, len(candidates),
+                         (eta if eta != float('inf') else -1))
+                last_ping = now
+
             if not passed or price is None:
                 continue
 
-            tokens = [(t or '').replace(' ', '').lower() for t in (triggered or [])]
+            tokens = [(t or '').strip() for t in (triggered or [])]
+            tokens_lc = [t.replace(' ', '').lower() for t in tokens]
             sig_count = len(tokens)
-            has_sma20 = any('price>sma20' in t or 'price>sma(20)' in t for t in tokens)
-            has_adx   = any(t.startswith('adx') or 'adx>=' in t for t in tokens)
-            has_macd  = any('macd' in t for t in tokens)
+            has_sma20 = any('price>sma20' in t or 'price>sma(20)' in t for t in tokens_lc)
+            has_adx   = any(t.startswith('adx') or 'adx>=' in t for t in tokens_lc)
+            has_macd  = any('macd' in t for t in tokens_lc)
             meets_reqs = (('adx' not in req or has_adx) and ('macd' not in req or has_macd))
 
-            if (sig_count >= strict_signals) and (not require_sma20 or has_sma20) and meets_reqs:
-                candidates.append((sym, float(price), list(triggered)))
+            # keep pretty candidate logs; unlimited by default
+            if cand_limit is None or cand_limit < 0 or cand_logs_emitted < cand_limit:
+                log_candidate(sym, float(price), list(triggered or []), scanned, total_syms)
+                cand_logs_emitted += 1
 
-        # Nothing to do this round
+            if not meets_reqs:
+                continue
+            if require_sma20 and not has_sma20:
+                continue
+
+            candidates.append((sym, float(price), list(triggered or [])))
+
+        elapsed = time.time() - iter_start
+        log.info("[LIVE] summary: scanned=%d skipped=%d candidates=%d (%.1fs)",
+                 scanned, skipped, len(candidates), elapsed)
+
         if not candidates:
-            logger.info("[LIVE] no candidates this round")
-            time.sleep(getattr(settings, "poll_interval", 5.0))
+            log.info("[LIVE] no candidates this round")
+            time.sleep(settings.poll_interval)
             continue
 
-        # Rank candidates
-        def _score(sym, price, triggered):
+        def _score(sym: str, price: float, triggered: List[str]) -> float:
             return len(triggered) * 10 + price * 0.01
+
         ranked = sorted(candidates, key=lambda t: _score(*t), reverse=True)
 
-        # --- context used by risk gates / qty calc -------------------------
+        preview = ", ".join([f"{s}@{p:.2f}({len(tr)})" for s, p, tr in ranked[:5]])
+        log.info("[LIVE] top candidates: %s%s", preview or "none", " …" if len(ranked) > 5 else "")
+
         try:
             acct = broker.get_account_summary() or {}
-            live_bp = float(acct.get("buying_power") or acct.get("settled_cash") or 0.0)
+            live_bp = _extract_buying_power(acct)
+            if live_bp is None:
+                log.warning("[LIVE] buying power unknown (no usable key/positive value); will not cash-cap qty")
         except Exception as e:
-            logger.warning(f"[LIVE] account summary failed: {e}")
+            log.warning("[LIVE] account summary failed: %s (no cash cap)", e)
             live_bp = None
 
         trade_log = get_trades(10000)
@@ -78,13 +244,13 @@ def run_live_loop(settings, broker_mode: str = "SIM", picks: int = 1):
             "min_add_interval_s": 300,
             "min_add_distance_pct": 1.0,
             "max_position_qty": 999999,
-            "t_plus_settlement_days": 2
+            "t_plus_settlement_days": 2,
         }
 
-        def _get_buy_events(sym):
+        def _get_buy_events(sym: str):
             ev = []
             for t in (trade_log or []):
-                if (t.get("symbol") == sym) and (str(t.get("action","")).upper() == "BUY"):
+                if (t.get("symbol") == sym) and (str(t.get("action", "")).upper() == "BUY"):
                     ts = t.get("trade_time")
                     try:
                         dt = datetime.fromisoformat(str(ts).replace('Z', '+00:00'))
@@ -97,14 +263,13 @@ def run_live_loop(settings, broker_mode: str = "SIM", picks: int = 1):
                                "qty":   int(float(t.get("qty") or 0))})
             return sorted(ev, key=lambda e: e["time"])
 
-        def _pyramid_ok(sym, price, qty, rules):
+        def _pyramid_ok(sym: str, price: float, qty: int, rules: Dict[str, Any]):
             pos = holdingsL.get(sym, {"qty": 0, "avg_cost": None, "last_price": None})
             buys = _get_buy_events(sym)
-            reasons = []
+            reasons: List[str] = []
 
-            # cash gate: prefer live buying power, fallback to sim cash
-            available = live_bp if live_bp is not None else get_cash()
-            if (available - price * qty) < 1.00:
+            available = live_bp if (isinstance(live_bp, (int, float)) and live_bp > 0) else None
+            if available is not None and (available - price * qty) < 1.00:
                 reasons.append("cash")
 
             if not buys:
@@ -137,41 +302,86 @@ def run_live_loop(settings, broker_mode: str = "SIM", picks: int = 1):
                 reasons.append("max_qty")
 
             return (len(reasons) == 0), reasons
-        # -------------------------------------------------------------------
 
-        # Guardrail: only one live position / one buy per day
-        if lg.has_bought_today() or lg.open_position_exists():
-            logger.info("[GR] Buy gate closed (already bought today or an open position exists)")
-            time.sleep(getattr(settings, "poll_interval", 5.0))
+        if not override_gate and (lg.has_bought_today() or lg.open_position_exists()):
+            log.info("[GR] Buy gate closed (already bought today or an open position exists)")
+            time.sleep(settings.poll_interval)
             continue
+        elif override_gate:
+            log.warning("[GR] TEMP OVERRIDE: ignoring guardrail ('bought today' / 'open position') for this run")
 
-        # Try to buy top-ranked candidate that passes gates
         purchased = False
         for sym, price, triggered in ranked:
             if len(triggered) < strict_signals:
                 continue
 
-            sim_qty = compute_qty(settings, price)
-            qty = min(sim_qty, int(live_bp // price)) if live_bp is not None else sim_qty
+            max_per_trade = float("inf")
+            try:
+                _mpt = getattr(settings, "max_per_trade", None)
+                if _mpt not in (None, "", "NONE", "None", "INF", "Inf"):
+                    max_per_trade = float(_mpt)
+            except Exception:
+                pass
+
+            afford_qty = qty_by_caps(price, broker, max_per_trade)
+            qty = afford_qty
+
+            if sget(settings, "first_day_one_only", False):
+                qty = min(qty, 1)
+
+            safe_cap = sget(settings, "safe_cap_qty", None)
+            if safe_cap is not None:
+                try:
+                    qty = min(qty, int(safe_cap))
+                except (TypeError, ValueError):
+                    pass
+
+            if qty < 1 and afford_qty >= 1:
+                qty = 1
+
+            if SAFE_ON and SAFE_MAX > 0:
+                qty = min(qty, SAFE_MAX)
+
+            bp = _extract_buying_power(broker.get_account_summary() or {})
+            bp_str = f"{bp:.2f}" if isinstance(bp, (int, float)) else "None"
+            mpt_str = (f"{max_per_trade:.1f}" if isinstance(max_per_trade, (int, float)) and
+                       max_per_trade != float("inf") else "inf")
+            log.info(
+                "[LIVE] considering %-6s px=%.2f afford_qty=%d live_bp=%s max_per_trade=%s safe_cap=%s -> qty=%d",
+                sym, float(price), afford_qty, bp_str,
+                mpt_str, (safe_cap if safe_cap is not None else "N/A"), qty
+            )
+
             if qty < 1:
-                logger.info(f"[LIVE] Skip {sym}: qty < 1 (price={price:.2f}, live_bp={live_bp})")
+                log.info("[LIVE] Skip %s: qty < 1", sym)
                 continue
 
-            ok, why = _pyramid_ok(sym, price, qty, pyramid_rules)
+            ok, why = _pyramid_ok(sym, price, qty, {
+                "max_adds": 2,
+                "min_add_interval_s": 300,
+                "min_add_distance_pct": 1.0,
+                "max_position_qty": 999999,
+                "t_plus_settlement_days": 2,
+            })
             if not ok:
-                logger.info(f"[LIVE] Blocked {sym} by pyramiding: {','.join(why)}")
+                log.info("[LIVE] Blocked %s by pyramiding: %s", sym, ",".join(why))
                 continue
 
             try:
-                resp = broker.buy(sym, qty, price)    # ⬅️ no 'armed' check
-                logger.info(f"[LIVE] ✅ BUY {sym} x{qty} @ {price:.2f} via {broker.name} -> {resp}")
-                lg.record_entry(sym, qty)             # ⬅️ arm the auto-seller for next open
+                resp = broker.buy(sym, qty, price)
+                if not resp.get("ok"):
+                    log.info("[LIVE] skip %s: %s", sym, resp.get("reason"))
+                    continue
+
+                log.info("[LIVE] ✅ BUY %s x%d @ %.2f via %s -> %s",
+                         sym, qty, price, getattr(broker, "name", "BROKER"), resp)
+                if getattr(broker, "name", "").upper() == "LIVE":
+                    lg.record_entry(sym, qty)
                 purchased = True
                 break
             except Exception as e:
-                logger.exception(f"[LIVE] BUY failed for {sym}: {e}")
+                log.exception("[LIVE] BUY failed for %s: %s", sym, e)
 
         if not purchased:
-            logger.info("[LIVE] ranked selection found no purchasable candidates (all gated)")
-
-        time.sleep(getattr(settings, "poll_interval", 5.0))
+            log.info("[LIVE] ranked selection found no purchasable candidates (all gated)")
+        time.sleep(settings.poll_interval)

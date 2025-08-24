@@ -2117,6 +2117,57 @@ def _dig(d, path, default=None):
         if cur is None:
             return default
     return cur
+def _build_holdings_from_positions(positions):
+    """Return (rows, unrealized_pnl, cost_basis, positions_value)."""
+    rows = []
+    for pos in positions or []:
+        sym  = (pos.get("symbol") or "").upper()
+        if sym in IGNORED_TICKERS:
+            continue
+
+        qty  = int(pos.get("qty") or 0)
+        last = float(pos.get("last_price") or 0.0)
+        avg  = float(pos.get("price_paid") or 0.0)
+
+        # day gain: prefer broker-provided, else (last - prev_close) * qty
+        day_gain = 0.0
+        try:
+            day_gain = float(
+                pos.get("todaysGainLoss")
+                or pos.get("todaysGainLossBase")
+                or 0.0
+            )
+        except Exception:
+            pass
+        if not day_gain:
+            pc = pos.get("previous_close") or pos.get("prev_close") or pos.get("close_prev")
+            try:
+                pc = float(pc)
+                if pc:
+                    day_gain = (last - pc) * qty
+            except Exception:
+                pass
+
+        change = (last - avg) if avg else 0.0
+        total_gain = (last - avg) * qty if (qty and avg) else 0.0
+        value = last * qty
+
+        rows.append({
+            "symbol": sym,
+            "qty": qty,
+            "last_price": round(last, 4),
+            "price_paid": round(avg, 4),
+            "change": round(change, 4),
+            "change_pct": (change / avg * 100.0) if avg else 0.0,
+            "day_gain": round(day_gain, 2),
+            "total_gain": round(total_gain, 2),
+            "value": round(value, 2),
+        })
+
+    unrealized = round(sum(r["total_gain"] for r in rows), 2)
+    cost_basis = sum((r["price_paid"] or 0.0) * (r["qty"] or 0) for r in rows)
+    positions_value = round(sum(r["value"] for r in rows), 2)
+    return rows, unrealized, cost_basis, positions_value
 
 def _normalize_account(raw: dict) -> dict:
     """
@@ -2181,109 +2232,95 @@ def _normalize_account(raw: dict) -> dict:
         "account_type": str(account_type),
     }
 
+# ── LIVE DASHBOARD ─────────────────────────────────────────────────────────────
+
 @app.route("/live", methods=["GET"])
 def live_view():
-    # balances
+    # Account (safe normalization)
     try:
-        raw_summary = get_account_summary()
-    except Exception as e:
-        app.logger.warning("[LIVE] summary failed: %s", e)
-        raw_summary = {}
+        raw_summary = get_account_summary() or {}
+        account = _normalize_account(raw_summary if isinstance(raw_summary, dict) else {})
+    except Exception:
+        account = {}
 
-    account = _normalize_account(raw_summary if isinstance(raw_summary, dict) else {})
-
-    # positions
+    # Positions -> holdings for first paint (optional; JS will refresh anyway)
     try:
-        positions = get_positions()  # list of dicts from service
-    except Exception as e:
-        app.logger.warning("[LIVE] positions failed: %s", e)
-        positions = []
+        raw_positions = get_positions() or []
+        positions = _normalize_positions_payload(raw_positions)
+        holdings, _, _, _ = _build_holdings_from_positions(positions)
+    except Exception:
+        holdings = []
 
-    # build holdings rows (hide IGNORED_TICKERS if you keep that)
-    holdings_rows = []
-    for p in positions:
-        sym  = (p.get("symbol") or "").upper()
-        if sym in IGNORED_TICKERS:
-            continue
-        qty  = int(p.get("qty") or 0)
-        avg  = float(p.get("price_paid") or 0.0)
-        last = float(p.get("last_price") or 0.0)
-
-        change = last - avg if avg else 0.0
-        holdings_rows.append({
-            "symbol": sym,
-            "last_price": last,
-            "change": change,
-            "change_pct": (change / avg * 100.0) if avg else 0.0,
-            "qty": qty,
-            "price_paid": avg,
-            "day_gain": 0.0,  # optional: wire up true day calc later
-            "total_gain": (last - avg) * qty if qty and avg else 0.0,
-            "value": last * qty,
-        })
-
-    # P&L
-    cost_basis = sum((h["price_paid"] or 0.0) * (h["qty"] or 0) for h in holdings_rows)
-    unrealized = round(sum(h["total_gain"] for h in holdings_rows), 2)
-    upct       = round((unrealized / cost_basis * 100.0), 2) if cost_basis else 0.0
-    realized   = 0.0
-    rpct       = round((realized / cost_basis * 100.0), 2) if cost_basis else 0.0
-
+    # Render with empty trades and no KPI math — JS fills everything from /live/status
     return render_template(
         "live.html",
         account=account,
         account_type=(account.get("account_type") or "Cash"),
-        holdings=holdings_rows,
-        trades=[],
-        unrealized_pnl=unrealized,
-        unrealized_pnl_pct=upct,
-        realized_pnl=realized,
-        realized_pnl_pct=rpct,
+        holdings=holdings,
+        trades=[],  # important: don't seed with SIM/history here
     )
 @app.route("/live/status", methods=["GET"])
 def live_status():
     from services import etrade_service as et
 
-    # account
+    # account summary (no math with P&L here)
     try:
         account = _normalize_account(et.get_account_summary() or {})
     except Exception:
         account = {}
 
-    # positions (hide GEVO)
-    holdings = []
+    # positions -> normalized rows -> holdings table + metrics
     try:
-        for pos in (et.get_positions() or []):
-            sym = (pos.get("symbol") or "").upper()
-            if sym in IGNORED_TICKERS:
-                continue
-            holdings.append({
-                "qty":        int(pos.get("qty") or 0),
-                "last_price": float(pos.get("last_price") or 0.0),
-                "price_paid": float(pos.get("price_paid") or 0.0),
-            })
+        raw_positions = et.get_positions() or []
     except Exception:
-        pass
+        raw_positions = []
 
-    # metrics
-    unrealized = round(sum((h["last_price"] - (h["price_paid"] or 0.0)) * (h["qty"] or 0) for h in holdings), 2)
-    cost = sum((h["price_paid"] or 0.0) * (h["qty"] or 0) for h in holdings)
+    positions = _normalize_positions_payload(raw_positions)
+    holdings, unrealized, cost, positions_value = _build_holdings_from_positions(positions)
     upct = round((unrealized / cost * 100.0), 2) if cost else 0.0
 
+    # realized P&L (live only)
     try:
         from services.trading_helpers import get_realized_pl
-        realized = round(float(get_realized_pl() or 0.0), 2)
+        realized = round(float(get_realized_pl(mode="LIVE") or 0.0), 2)
     except Exception:
         realized = 0.0
     rpct = round((realized / cost * 100.0), 2) if cost else 0.0
 
-    return jsonify({"account": account, "metrics": {
-        "unrealized_pnl": unrealized,
-        "unrealized_pnl_pct": upct,
-        "realized_pnl": realized,
-        "realized_pnl_pct": rpct,
-    }})
+    # recent trades (live only)
+    trades = []
+    try:
+        from services.trading_helpers import get_trades
+        for t in (get_trades(limit=50) or []):
+            mode = (t.get("mode") or t.get("source") or "LIVE").upper()
+            if mode != "LIVE":
+                continue
+            trades.append({
+                "time":   _fmt_trade_time(t.get("time") or t.get("timestamp")),
+                "symbol": t.get("symbol"),
+                "action": t.get("action"),
+                "qty":    t.get("qty"),
+                "price":  _safe_float(t.get("price")),
+                "pl":     _safe_float(t.get("pl") or t.get("pnl")),
+                "mode":   "LIVE",
+            })
+    except Exception:
+        pass
 
+    return jsonify({
+        "account": account,
+        "holdings": holdings,
+        "trades": trades,
+        "metrics": {
+            # what the JS reads:
+            "unrealized_total": positions_value,     # label "Unrealized P&L (Total)" in UI
+            "positions_value": positions_value,      # also exposed as a row
+            "unrealized_pnl": unrealized,
+            "unrealized_pnl_pct": upct,
+            "realized_pnl": realized,
+            "realized_pnl_pct": rpct,
+        }
+    })
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True, use_reloader=True)

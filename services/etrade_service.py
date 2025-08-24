@@ -1,126 +1,267 @@
-# services/etrade_service.py
-import os, json, requests
-from requests_oauthlib import OAuth1
-from dotenv import load_dotenv, find_dotenv
+from __future__ import annotations
+import os, time, logging
+from typing import Iterable
 
-load_dotenv(find_dotenv(), override=True)
+# Reuse the proven live session + base URL from broker_live
+from services.broker_live import (
+    _sesh,                   # OAuth1 session
+    get_account_id_key,      # robust accountIdKey
+    BASE as _BASE,           # https://api.etrade.com/v1
+    get_quote as _get_quote, # raw quotes
+)
 
-BASE_URL = os.getenv("ETRADE_API_HOST", "https://api.etrade.com")
-def get_equity_value() -> float:
-    """Total account value = cash-ish + sum of market values."""
-    aid = _primary_account_id()
+log = logging.getLogger("etrade_service")
 
-    # Balance: prefer netCash, else money market balance
-    bj = _eget(f"/v1/accounts/{aid}/balance.json", {"instType": "BROKERAGE"}).json()
-    b  = bj.get("BalanceResponse", {}) or {}
-    cashish = (
-        (b.get("Computed", {}) or {}).get("netCash")
-        or (b.get("Cash", {}) or {}).get("moneyMktBalance")
-        or 0.0
-    )
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Tuple
 
-    # Portfolio: sum marketValue
-    pj = _eget(f"/v1/accounts/{aid}/portfolio.json", {"instType": "BROKERAGE"}).json()
-    mv_total = 0.0
+# assuming you already have something like this
+def _svc() -> Tuple[ETradeService, str]:
+    et = ETradeService()
+    aid = os.getenv("ETRADE_ACCOUNT_ID_KEY") or et.first_account_id_key()
+    if not aid:
+        raise RuntimeError("No ETRADE_ACCOUNT_ID_KEY and no accounts returned")
+    return et, aid
+
+def get_quotes_map(symbols: List[str]) -> Dict[str, Dict[str, float]]:
+    """Return {SYM: {'last': x, 'prev_close': y}} using E*TRADE quotes."""
+    out: Dict[str, Dict[str, float]] = {}
+    if not symbols:
+        return out
+
+    et, _ = _svc()
+    uniq = sorted({s.upper() for s in symbols if s})
+    syms_csv = ",".join(uniq)
     try:
-        acct = pj["PortfolioResponse"]["AccountPortfolio"][0]
-        pos  = acct.get("Position") or []
-        if isinstance(pos, dict):
-            pos = [pos]
-        for p in pos:
-            mv_total += float(p.get("marketValue") or 0.0)
-    except Exception:
-        pass
+        data = et._get(f"/market/quote/{syms_csv}.json", params={"detailFlag": "ALL"})
+        qd = (data.get("QuoteResponse") or {}).get("QuoteData") or []
+        if isinstance(qd, dict):
+            qd = [qd]
+        for q in qd:
+            prod = q.get("Product") or {}
+            sym = (prod.get("symbol") or "").upper()
+            allf = q.get("All") or {}
+            last = allf.get("lastTrade") or allf.get("lastTradePrice") or allf.get("price") or 0.0
+            prev = allf.get("previousClose") or allf.get("prevClose") or allf.get("close") or 0.0
+            try:
+                out[sym] = {"last": float(last or 0.0), "prev_close": float(prev or 0.0)}
+            except Exception:
+                pass
+    except Exception as e:
+        log.exception("quotes fetch failed: %s", e)
+    return out
 
-    return round(float(cashish) + float(mv_total), 2)
+def list_recent_trades(days: int = 5) -> List[Dict[str, Any]]:
+    """
+    Recently executed trades via Orders API; falls back to Transactions API.
+    """
+    et, aid = _svc()
+    end = datetime.utcnow()
+    start = end - timedelta(days=max(1, days))
+    out: List[Dict[str, Any]] = []
 
-def _read_tokens_json():
-    """Fallback to etrade_tokens.json if env is not set."""
-    p = os.path.join(os.path.dirname(os.path.dirname(__file__)), "etrade_tokens.json")
+    # Primary: Orders (EXECUTED)
     try:
-        with open(p, "r", encoding="utf-8") as f:
-            j = json.load(f)
-        return {
-            "ck":  j.get("consumer_key")  or j.get("key"),
-            "cs":  j.get("consumer_secret") or j.get("secret"),
-            "tok": j.get("oauth_token"),
-            "ts":  j.get("oauth_token_secret"),
+        params = {
+            "fromDate": start.strftime("%Y-%m-%d"),
+            "toDate": end.strftime("%Y-%m-%d"),
+            "status": "EXECUTED",
+            "count": 200,
+            "sortOrder": "DESC",
         }
-    except Exception:
-        return {"ck": None, "cs": None, "tok": None, "ts": None}
+        resp = et._get(f"/accounts/{aid}/orders.json", params=params)
+        orders = (resp.get("OrdersResponse") or {}).get("Order") or []
+        if isinstance(orders, dict):
+            orders = [orders]
 
-def _oauth1():
-    ck  = os.getenv("ETRADE_CONSUMER_KEY")    or os.getenv("CONSUMER_KEY")    or os.getenv("ETRADE_API_KEY")
-    cs  = os.getenv("ETRADE_CONSUMER_SECRET") or os.getenv("CONSUMER_SECRET") or os.getenv("ETRADE_API_SECRET")
-    tok = os.getenv("OAUTH_TOKEN")            or os.getenv("ETRADE_OAUTH_TOKEN")
-    ts  = os.getenv("OAUTH_TOKEN_SECRET")     or os.getenv("ETRADE_OAUTH_TOKEN_SECRET")
-    if not all([ck, cs, tok, ts]):
-        fb = _read_tokens_json()
-        ck  = ck  or fb["ck"]; cs = cs or fb["cs"]; tok = tok or fb["tok"]; ts = ts or fb["ts"]
-    if not all([ck, cs, tok, ts]):
-        raise RuntimeError("Missing E*TRADE OAuth creds (env variables or etrade_tokens.json).")
-    return OAuth1(ck, cs, tok, ts, signature_type="auth_header")
+        for o in orders:
+            details = o.get("OrderDetail") or []
+            if isinstance(details, dict):
+                details = [details]
+            for d in details:
+                status = (d.get("status") or "").upper()
+                if status not in {"EXECUTED", "FILLED", "PARTIALLY_EXECUTED", "PARTIAL"}:
+                    continue
+                when = d.get("executedTime") or d.get("placedTime") or o.get("placedTime") or ""
+                instrs = d.get("Instrument") or []
+                if isinstance(instrs, dict):
+                    instrs = [instrs]
+                for ins in instrs:
+                    prod = ins.get("Product") or {}
+                    sym = (prod.get("symbol") or "").upper()
+                    action = (ins.get("orderAction") or d.get("orderAction") or o.get("orderAction") or "").upper()
+                    qty = ins.get("filledQuantity") or d.get("filledQuantity") or ins.get("quantity") or 0
+                    px = ins.get("averageExecutionPrice") or d.get("averageExecutionPrice") or ins.get("limitPrice") or 0.0
+                    try: qty = int(float(qty or 0))
+                    except Exception: qty = 0
+                    try: px = float(px or 0.0)
+                    except Exception: px = 0.0
+                    if sym and qty:
+                        out.append({"time": str(when), "symbol": sym, "action": action or "BUY", "qty": qty, "price": px, "pl": 0.0})
+        if out:
+            out.sort(key=lambda x: str(x.get("time","")), reverse=True)
+            return out
+    except Exception as e:
+        log.exception("orders fetch failed: %s", e)
 
-def _with_ck(params=None):
-    """Add consumerKey param some account endpoints require."""
-    p = dict(params or {})
-    ck = (os.getenv("ETRADE_CONSUMER_KEY") or os.getenv("CONSUMER_KEY") or os.getenv("ETRADE_API_KEY"))
-    if ck:
-        p.setdefault("consumerKey", ck)
-    return p
+    # Fallback: Transactions
+    try:
+        tparams = {"startDate": start.strftime("%Y-%m-%d"), "endDate": end.strftime("%Y-%m-%d")}
+        data = et._get(f"/accounts/{aid}/transactions.json", params=tparams)
+        items = (data.get("TransactionListResponse") or {}).get("Transaction") or []
+        if isinstance(items, dict):
+            items = [items]
+        for t in items:
+            sym = (t.get("symbol") or (t.get("Product") or {}).get("symbol") or "").upper()
+            qty = t.get("quantity") or t.get("qty") or 0
+            if not sym or not qty:
+                continue
+            act = (t.get("transactionType") or t.get("type") or t.get("subType") or "").upper()
+            if not act:
+                desc = (t.get("description") or "").upper()
+                act = "SELL" if "SELL" in desc else ("BUY" if "BUY" in desc else "")
+            px = t.get("price") or t.get("tradePrice") or 0.0
+            ts = t.get("transactionDate") or t.get("date") or t.get("time") or ""
+            try: qty = int(float(qty))
+            except Exception: qty = 0
+            try: px = float(px or 0.0)
+            except Exception: px = 0.0
+            if act in {"BUY","SELL","BUY_TO_COVER","SELL_SHORT"}:
+                out.append({"time": str(ts), "symbol": sym, "action": act, "qty": qty, "price": px, "pl": 0.0})
+        out.sort(key=lambda x: str(x.get("time","")), reverse=True)
+        return out
+    except Exception as e:
+        log.exception("transactions fallback failed: %s", e)
+
+    return out
+
+# ---------------- HTTP helpers (always go through broker_live session) ----------------
 
 def _eget(path: str, params: dict | None = None):
-    r = requests.get(
-        BASE_URL + path,
-        params=_with_ck(params),
-        auth=_oauth1(),
-        headers={"Accept": "application/json"},
-        timeout=30,
-    )
+    s = _sesh()
+    r = s.get(f"{_BASE}{path}", params=params or {}, headers={"Accept": "application/json"})
     r.raise_for_status()
     return r
 
-# ---------- Public API ----------
+def _epost(path, body):
+    url = f"https://api.etrade.com/v1{path}"
+    r = _oauth_session.post(url, json=body, headers={"Content-Type": "application/json"})
+    if r.status_code >= 400:
+        # Surface the server’s error payload for debugging
+        err_txt = None
+        try:
+            err_txt = r.json()
+        except Exception:
+            err_txt = r.text
+        raise RuntimeError(f"etrade POST {path} -> {r.status_code}: {err_txt}")
+    return r.json()
+
+# ---------------- Account helpers ----------------
 
 def _primary_account_id() -> str:
-    """Use env override if present to avoid list.json; else fetch it."""
-    aid = os.getenv("ETRADE_ACCOUNT_ID_KEY") or os.getenv("ACCOUNT_ID_KEY")
-    if aid:
-        return aid
-    j = _eget("/v1/accounts/list.json").json()
-    accounts = j.get("AccountListResponse", {}).get("Accounts", {}).get("Account", [])
-    if isinstance(accounts, dict):
-        accounts = [accounts]
-    if not accounts:
-        raise RuntimeError("No E*TRADE accounts returned.")
-    return accounts[0].get("accountIdKey") or accounts[0].get("accountId")
+    """Use env override if present, else discover via accounts/list."""
+    return (
+        os.getenv("ETRADE_ACCOUNT_ID_KEY")
+        or os.getenv("ACCOUNT_ID_KEY")
+        or get_account_id_key()
+    )
 
-def fetch_etrade_quote(symbol: str):
-    """Return last price (float) if possible; else the raw quote dict."""
-    resp = _eget(f"/v1/market/quote/{symbol}.json")
-    j = resp.json()
-    try:
-        qd = j["QuoteResponse"]["QuoteData"][0]
-        allq = qd.get("All", {})
-        last = allq.get("lastTrade") or allq.get("lastPrice") or qd.get("lastTrade")
-        return float(last)
-    except Exception:
-        return j
+# ---------------- Quotes ----------------
+
+def _extract_last_price(qd: dict) -> float | None:
+    if not isinstance(qd, dict):
+        return None
+    blocks = [qd.get("All") or {}, qd.get("Intraday") or {}, qd]
+    for d in blocks:
+        for key in ("lastTrade", "lastPrice", "close", "previousClose"):
+            v = d.get(key)
+            try:
+                if v is not None:
+                    return float(v)
+            except Exception:
+                pass
+    return None
+
+def fetch_etrade_quote(symbols: str | Iterable[str]) -> float | dict[str, float] | None:
+    """
+    If given a single symbol (str) -> returns the last price float (or None).
+    If given an iterable -> returns {symbol: last_price} for those found.
+    """
+    if isinstance(symbols, str):
+        sym_list = [symbols.strip().upper()]
+        single = True
+    else:
+        sym_list = [str(s).strip().upper() for s in symbols if str(s).strip()]
+        single = False
+
+    if not sym_list:
+        return None if single else {}
+
+    data = _get_quote(",".join(sym_list)) or {}
+    resp = data.get("QuoteResponse") or data.get("QuotesResponse") or {}
+    items = resp.get("QuoteData") or []
+    if isinstance(items, dict):
+        items = [items]
+
+    out: dict[str, float] = {}
+    for qd in items:
+        prod = (qd.get("Product") or {})
+        sym  = (prod.get("symbol") or "").upper()
+        px   = _extract_last_price(qd)
+        if sym and (px is not None):
+            out[sym] = px
+
+    return out.get(sym_list[0]) if single else out
+
+# ---------------- Portfolio / Balances (backwards-compatible API) ----------------
 
 def get_account_summary() -> dict:
+    """
+    Return E*TRADE balances JSON and also add convenience keys:
+      - buying_power
+      - settled_cash
+    """
     aid = _primary_account_id()
-    j = _eget(f"/v1/accounts/{aid}/balance.json", {"instType": "BROKERAGE"}).json()
-    return j
+    r = _eget(f"/accounts/{aid}/balance.json", {"instType": "BROKERAGE"})
+    j = r.json() or {}
+
+    br = j.get("BalanceResponse", {}) or {}
+    comp = br.get("Computed", {}) or {}
+    cash = br.get("Cash", {}) or {}
+
+    buying_power = (
+        comp.get("cashBuyingPower")
+        or comp.get("cashAvailableForInvestment")
+        or comp.get("availableFundsForTrading")
+        or comp.get("marginBuyingPower")
+        or 0.0
+    )
+    settled_cash = comp.get("netCash") or cash.get("moneyMktBalance") or 0.0
+
+    out = dict(j)
+    try:
+        out["buying_power"] = float(buying_power or 0.0)
+    except Exception:
+        out["buying_power"] = 0.0
+    try:
+        out["settled_cash"] = float(settled_cash or 0.0)
+    except Exception:
+        out["settled_cash"] = 0.0
+    return out
 
 def get_positions() -> list[dict]:
-    """Return a flat list of positions: symbol/qty/price_paid/last_price."""
+    """
+    Flat list of open positions suitable for dashboards:
+      {symbol, qty, price_paid, last_price}
+    """
     aid = _primary_account_id()
-    j = _eget(f"/v1/accounts/{aid}/portfolio.json", {"instType": "BROKERAGE"}).json()
+    r = _eget(f"/accounts/{aid}/portfolio.json", {"instType": "BROKERAGE"})
+    j = r.json() or {}
 
-    out = []
+    out: list[dict] = []
     try:
-        pr = j.get("PortfolioResponse", {})
-        aps = pr.get("AccountPortfolio", [])
+        pr = j.get("PortfolioResponse", {}) or {}
+        aps = pr.get("AccountPortfolio") or []
         if isinstance(aps, dict):
             aps = [aps]
 
@@ -136,7 +277,7 @@ def get_positions() -> list[dict]:
                     pass
             return default
 
-        for ap in aps or []:
+        for ap in aps:
             pos = ap.get("Position")
             if not pos:
                 continue
@@ -144,19 +285,235 @@ def get_positions() -> list[dict]:
             for p in pos:
                 prod = p.get("Product", {}) or {}
                 sym  = (prod.get("symbol") or "").upper()
+                if not sym:
+                    continue
                 qty  = float(p.get("quantity") or p.get("qty") or 0)
                 paid = float(p.get("pricePaid") or p.get("averagePrice") or 0)
-                last = _pick(p,
-                             "Quick.quote.lastTrade",
-                             "Quick.quote.lastPrice",
-                             "Quick.lastTrade",
-                             default=0.0)
-                last = float(last or 0.0)
-                out.append({
-                    "symbol": sym, "qty": qty,
-                    "price_paid": paid, "last_price": last,
-                })
+                last = _pick(
+                    p,
+                    "Quick.quote.lastTrade",
+                    "Quick.quote.lastPrice",
+                    "Quick.lastTrade",
+                    default=0.0,
+                )
+                try:
+                    last = float(last or 0.0)
+                except Exception:
+                    last = 0.0
+                out.append({"symbol": sym, "qty": qty, "price_paid": paid, "last_price": last})
     except Exception:
-        pass
+        log.exception("Failed to parse positions response")
+    return out
+
+# ---------------- Order preview/place (compatible shims) ----------------
+
+_DOT_TICKER_FIXES = {"BRK-B": "BRK.B", "BF-B": "BF.B"}
+def _normalize_symbol(sym: str) -> str:
+    return _DOT_TICKER_FIXES.get(sym, sym)
+
+def preview_equity_order(account_id_key: str, symbol: str, qty: int, price: float | None, *, price_type="LIMIT"):
+    # E*TRADE likes numbers as strings in requests; stick to that to avoid type fussiness
+    qty_s   = str(int(qty))
+    lim_s   = f"{price:.2f}" if (price_type == "LIMIT" and price is not None) else "0"
+
+    body = {
+        "PreviewOrderRequest": {
+            "orderType": "EQ",
+            "clientOrderId": f"live-{int(time.time()*1000)}",
+            "Order": [{
+                "allOrNone": False,
+                "priceType": "MARKET" if price_type.upper() == "MARKET" else "LIMIT",
+                "orderTerm": "GOOD_FOR_DAY",
+                "marketSession": "REGULAR",
+                "stopPrice": "" if price_type.upper() != "STOP" else lim_s,
+                **({"limitPrice": lim_s} if price_type.upper() == "LIMIT" else {}),
+                "Instrument": [{
+                    "Product": { "securityType": "EQ", "symbol": _normalize_symbol(symbol) },
+                    "orderAction": "BUY",
+                    "quantityType": "QUANTITY",
+                    "quantity": qty_s
+                }]
+            }]
+        }
+    }
+    return _epost(f"/accounts/{account_id_key}/orders/preview.json", body)
+
+def place_equity_order(preview_resp: dict, qty: int | None = None) -> dict:
+    aid = _primary_account_id()
+
+    pr = preview_resp.get("PreviewOrderResponse") or {}
+    orders = pr.get("Order") or []
+    if not orders:
+        raise RuntimeError(f"preview response missing Order: {preview_resp}")
+
+    order = orders[0]
+    instr = order.get("Instrument") or []
+    if qty is not None and instr:
+        instr[0]["quantity"] = int(qty)
+
+    # robust previewId grab across response shapes
+    pid = None
+    for k, v in pr.items():
+        if isinstance(v, list) and v and isinstance(v[0], dict) and "previewId" in v[0]:
+            pid = v[0]["previewId"]
+            break
+        if isinstance(v, dict) and "previewId" in v:
+            pid = v["previewId"]
+            break
+    if not pid:
+        pid = pr.get("previewId")
+
+    place_body = {
+        "PlaceOrderRequest": {
+            "Order": [{
+                "orderType": order.get("orderType", "EQ"),
+                "clientOrderId": order.get("clientOrderId"),
+                "priceType": order.get("priceType"),
+                **({"limitPrice": order.get("limitPrice")} if order.get("priceType") in {"LIMIT", "STOP_LIMIT"} else {}),
+                **({"stopPrice":  order.get("stopPrice")}  if order.get("priceType") in {"STOP", "STOP_LIMIT"} else {}),
+                "orderTerm": order.get("orderTerm", "GOOD_FOR_DAY"),
+                "marketSession": order.get("marketSession", "REGULAR"),
+                "allOrNone": bool(order.get("allOrNone", False)),
+                "Instrument": instr,
+                **({"PreviewIds": [{"previewId": pid}]} if pid else {}),
+            }]
+        }
+    }
+
+    r = _epost(f"/accounts/{aid}/orders/place.json", place_body)
+    return r.json()
+
+def list_recent_trades(days: int = 5) -> List[Dict[str, Any]]:
+    """
+    Return recently executed trades (BUY/SELL) using the Orders API,
+    and fall back to the Transactions API if needed.
+    """
+    et, aid = _svc()
+    end = datetime.utcnow()
+    start = end - timedelta(days=max(1, days))
+
+    # ── Primary: Orders API (most reliable for executed fills)
+    params = {
+        "fromDate": start.strftime("%Y-%m-%d"),
+        "toDate": end.strftime("%Y-%m-%d"),
+        "status": "EXECUTED",     # executed orders only
+        "count": 100,
+        "sortOrder": "DESC",
+    }
+    out: List[Dict[str, Any]] = []
+
+    try:
+        resp = et._get(f"/accounts/{aid}/orders.json", params=params)
+        orr = resp.get("OrdersResponse", {}) or resp
+        orders = orr.get("Order") or []
+        if isinstance(orders, dict):
+            orders = [orders]
+
+        for o in orders:
+            details = o.get("OrderDetail") or o.get("orderDetail") or []
+            if isinstance(details, dict):
+                details = [details]
+
+            for d in details:
+                status = (d.get("status") or "").upper()
+                if status not in {"EXECUTED", "FILLED", "PARTIALLY_EXECUTED", "PARTIAL"}:
+                    continue
+
+                instrs = d.get("Instrument") or d.get("instrument") or []
+                if isinstance(instrs, dict):
+                    instrs = [instrs]
+
+                # pick a timestamp; executedTime when available
+                tstamp = d.get("executedTime") or d.get("placedTime") or o.get("placedTime") or ""
+
+                for ins in instrs:
+                    prod = ins.get("Product") or ins.get("product") or {}
+                    sym = (prod.get("symbol") or "").upper()
+                    action = (ins.get("orderAction") or d.get("orderAction") or o.get("orderAction") or "").upper()
+
+                    qty = (
+                        ins.get("filledQuantity") or d.get("filledQuantity") or
+                        ins.get("quantity") or d.get("quantity") or 0
+                    )
+                    try:
+                        qty = int(float(qty or 0))
+                    except Exception:
+                        qty = 0
+
+                    price = (
+                        ins.get("averageExecutionPrice") or d.get("averageExecutionPrice") or
+                        ins.get("limitPrice") or d.get("limitPrice") or 0.0
+                    )
+                    try:
+                        price = float(price or 0.0)
+                    except Exception:
+                        price = 0.0
+
+                    if sym and qty:
+                        out.append({
+                            "time":  str(tstamp),
+                            "symbol": sym,
+                            "action": action or ("BUY" if qty > 0 else "SELL"),
+                            "qty":    qty,
+                            "price":  price,
+                            "pl":     0.0,  # P/L is not provided at order level; keep 0 for now
+                        })
+
+        if out:
+            out.sort(key=lambda x: str(x.get("time", "")), reverse=True)
+            return out
+
+    except Exception as e:
+        log.exception("orders fetch failed: %s", e)
+
+    # ── Fallback: Transactions API (more permissive filter)
+    try:
+        tparams = {
+            "startDate": start.strftime("%Y-%m-%d"),
+            "endDate": end.strftime("%Y-%m-%d"),
+        }
+        data = et._get(f"/accounts/{aid}/transactions.json", params=tparams)
+        tr = data.get("TransactionListResponse", {}) or data
+        items = tr.get("Transaction") or tr.get("Transactions") or []
+        if isinstance(items, dict):
+            items = [items]
+
+        for t in items:
+            sym = (t.get("symbol") or (t.get("Product") or {}).get("symbol") or "").upper()
+            qty = t.get("quantity") or t.get("qty") or 0
+            if not sym or not qty:
+                continue  # skip non-trade entries
+
+            act = (t.get("transactionType") or t.get("type") or t.get("subType") or "").upper()
+            if not act:
+                desc = (t.get("description") or "").upper()
+                act = "SELL" if "SELL" in desc else ("BUY" if "BUY" in desc else "")
+
+            price = t.get("price") or t.get("tradePrice") or t.get("amount") or 0.0
+            pl = t.get("gain") or t.get("pnl") or 0.0
+            ts = t.get("transactionDate") or t.get("date") or t.get("time") or ""
+
+            try: qty = int(float(qty))
+            except Exception: qty = 0
+            try: price = float(price or 0.0)
+            except Exception: price = 0.0
+            try: pl = float(pl or 0.0)
+            except Exception: pl = 0.0
+
+            if act in {"BUY", "SELL", "BUY_TO_COVER", "SELL_SHORT"}:
+                out.append({
+                    "time":   str(ts),
+                    "symbol": sym,
+                    "action": act,
+                    "qty":    qty,
+                    "price":  price,
+                    "pl":     pl,
+                })
+
+        out.sort(key=lambda x: str(x.get("time", "")), reverse=True)
+        return out
+
+    except Exception as e:
+        log.exception("transactions fallback failed: %s", e)
 
     return out

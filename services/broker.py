@@ -1,103 +1,367 @@
-"""
-Broker adapter layer so the same scan/ranking code can route
-to SIM or to E*TRADE with a tiny switch.
-"""
+# services/broker.py
 from __future__ import annotations
-import os
-import logging
 
-logger = logging.getLogger("broker")
+import os, re, time, json, math, logging
+from typing import Any, Dict, Optional, List
 
-# --- SIM broker -------------------------------------------------------
-class SimBroker:
-    """Wraps existing simulation helpers."""
-    name = "SIM"
+import requests
+from requests_oauthlib import OAuth1
 
-    def get_account_summary(self) -> dict:
-        # Sim uses your stored/ledger cash so the UI can still show something
+log = logging.getLogger(__name__)
+
+# ── .env helpers ──────────────────────────────────────────────────────────────
+try:
+    from dotenv import load_dotenv, find_dotenv
+    load_dotenv(find_dotenv(), override=True)
+except Exception:
+    pass
+
+def _alias_env(a: str, b: str) -> None:
+    va, vb = os.getenv(a), os.getenv(b)
+    if va and not vb:
+        os.environ[b] = va
+    if vb and not va:
+        os.environ[a] = vb
+
+for A, B in [
+    ("OAUTH_TOKEN", "ETRADE_ACCESS_TOKEN"),
+    ("OAUTH_TOKEN_SECRET", "ETRADE_ACCESS_TOKEN_SECRET"),
+    ("ETRADE_CONSUMER_KEY", "CONSUMER_KEY"),
+    ("ETRADE_CONSUMER_SECRET", "CONSUMER_SECRET"),
+]:
+    _alias_env(A, B)
+
+os.environ.setdefault("ETRADE_API_HOST", "https://api.etrade.com")
+
+
+# ── price & symbol utilities ──────────────────────────────────────────────────
+def _normalize_symbol(sym: str) -> str:
+    if not sym:
+        return sym
+    s = sym.upper().strip()
+    if "-" in s and len(s.split("-")[-1]) <= 2:
+        s = s.replace("-", ".")
+    return s
+
+def _tick_size(price: float) -> float:
+    return 0.01 if (price or 0) >= 1 else 0.0001
+
+def _round_limit(price: Optional[float], side: str) -> Optional[float]:
+    if price is None:
+        return None
+    t = _tick_size(price)
+    q = price / t
+    q = math.floor(q) if str(side).upper().startswith("BUY") else math.ceil(q)
+    px = q * t
+    return float(f"{px:.2f}" if t == 0.01 else f"{px:.4f}")
+
+
+# ── custom error ──────────────────────────────────────────────────────────────
+class ETradeHTTPError(RuntimeError):
+    def __init__(self, status_code: int, payload: Any):
+        self.status_code = status_code
+        self.payload = payload
+        super().__init__(f"{status_code}: {payload}")
+
+
+# ── raw E*TRADE client ───────────────────────────────────────────────────────
+class ETradeService:
+    def __init__(self) -> None:
+        self.host = os.getenv("ETRADE_API_HOST", "https://api.etrade.com").rstrip("/")
+        self.base = f"{self.host}/v1"
+
+        ck = os.getenv("ETRADE_CONSUMER_KEY")
+        cs = os.getenv("ETRADE_CONSUMER_SECRET")
+        at = os.getenv("ETRADE_ACCESS_TOKEN")
+        ats = os.getenv("ETRADE_ACCESS_TOKEN_SECRET")
+        if not all([ck, cs, at, ats]):
+            missing = [n for n, v in [
+                ("ETRADE_CONSUMER_KEY", ck),
+                ("ETRADE_CONSUMER_SECRET", cs),
+                ("ETRADE_ACCESS_TOKEN", at),
+                ("ETRADE_ACCESS_TOKEN_SECRET", ats),
+            ] if not v]
+            raise RuntimeError(f"Missing env: {', '.join(missing)}")
+
+        self.session = requests.Session()
+        self.session.auth = OAuth1(ck, cs, at, ats)
+
+    def _headers(self) -> Dict[str, str]:
+        return {"Content-Type": "application/json", "Accept": "application/json"}
+
+    def _get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        url = f"{self.base}{path}"
+        r = self.session.get(url, params=params, headers=self._headers(), timeout=30)
+        if r.status_code >= 400:
+            try: body = r.json()
+            except Exception: body = r.text
+            log.error("GET %s -> %s\n%s", url, r.status_code, body)
+            raise ETradeHTTPError(r.status_code, body)
+        try: return r.json()
+        except Exception: return {}
+
+    def _post(self, path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        url = f"{self.base}{path}"
+        r = self.session.post(url, data=json.dumps(payload), headers=self._headers(), timeout=30)
+        if r.status_code >= 400:
+            try: body = r.json()
+            except Exception: body = r.text
+            try: dbg = json.dumps(payload, indent=2)
+            except Exception: dbg = str(payload)
+            log.error("POST %s -> %s\npayload=%s\nresp=%s", url, r.status_code, dbg, body)
+            raise ETradeHTTPError(r.status_code, body)
+        try: return r.json()
+        except Exception: return {}
+
+    # accounts
+    def list_accounts(self) -> Dict[str, Any]:
+        return self._get("/accounts/list.json")
+
+    def first_account_id_key(self) -> Optional[str]:
         try:
-            from services.trading_helpers import get_cash
-            return {"mode": "SIM", "buying_power": float(get_cash()), "settled_cash": float(get_cash())}
-        except Exception:
-            return {"mode": "SIM", "buying_power": 0.0, "settled_cash": 0.0}
-
-    def buy(self, symbol: str, qty: int, price: float | None = None, order_type: str = "MARKET") -> dict:
-        from services.trading_helpers import buy_stock
-        if qty <= 0:
-            raise ValueError("qty must be >= 1")
-        buy_stock(symbol, int(qty), float(price or 0.0))
-        return {"mode": "SIM", "status": "FILLED", "symbol": symbol, "qty": int(qty), "price": float(price or 0.0)}
-
-    def sell(self, symbol: str, qty: int | None = None, price: float | None = None, order_type: str = "MARKET") -> dict:
-        from services.trading_helpers import sell_stock
-        sell_stock(symbol, qty, price)
-        return {"mode": "SIM", "status": "FILLED", "symbol": symbol, "qty": int(qty or 0), "price": float(price or 0.0)}
-
-
-# --- E*TRADE broker ---------------------------------------------------
-class EtradeBroker:
-    """
-    Thin wrapper over your E*TRADE API helpers. This assumes you will expose:
-      - get_account_summary() -> dict with buying_power/settled_cash
-      - preview_equity_order(side, symbol, qty, order_type="MARKET", price=None)
-      - place_equity_order(preview) -> dict
-    If those helpers aren't present yet, buy/sell will raise a clear error.
-    """
-    name = "LIVE"
-
-    def __init__(self):
-        # Optional sanity: check env keys present
-        ck = os.getenv("ETRADE_CONSUMER_KEY") or os.getenv("ETRADE_API_KEY")
-        cs = os.getenv("ETRADE_CONSUMER_SECRET") or os.getenv("ETRADE_API_SECRET")
-        if not (ck and cs):
-            logger.warning("[LIVE] Missing E*TRADE consumer key/secret in environment")
-
-        try:
-            from services.etrade_service import fetch_etrade_quote  # noqa: F401
-        except Exception:
-            logger.warning("[LIVE] Could not import services.etrade_service; quotes may fail")
-
-    def get_account_summary(self) -> dict:
-        try:
-            from services.etrade_service import get_account_summary
+            data = self.list_accounts()
+            a = data.get("AccountListResponse", {}).get("Accounts", {}).get("Account", [])
+            if isinstance(a, list) and a:
+                return a[0].get("accountIdKey")
         except Exception as e:
-            logger.warning(f"[LIVE] get_account_summary not available: {e}")
+            log.exception("Failed to list accounts: %s", e)
+        return None
+
+    def get_balances(self, account_id_key: str) -> Dict[str, Any]:
+        return self._get(f"/accounts/{account_id_key}/balance.json", params={"instType": "BROKERAGE"})
+
+    # quotes (optional batch helper)
+    def get_quotes_batch(self, symbols: List[str]) -> Dict[str, Any]:
+        if not symbols: return {}
+        syms = ",".join(symbols)
+        return self._get(f"/market/quote/{syms}.json", params={"detailFlag": "INTRADAY","skipMiniOptionsCheck": True})
+
+    # orders
+    @staticmethod
+    def _coerce_price(p: Optional[float]) -> Optional[float]:
+        if p is None: return None
+        return round(float(p), 4)
+
+    def preview_equity_order(self, account_id_key: str, symbol: str, quantity: int, price: Optional[float],
+                             action: str, order_term: str="GOOD_FOR_DAY", market_session: str="REGULAR",
+                             price_type: str="LIMIT", client_order_id: Optional[str]=None,
+                             all_or_none: bool=False) -> Dict[str, Any]:
+        if client_order_id is None:
+            client_order_id = f"TA{int(time.time())%1000000000}"
+        px = self._coerce_price(price)
+        payload = {
+            "PreviewOrderRequest": {
+                "orderType": "EQ",
+                "clientOrderId": client_order_id,
+                "Order": [{
+                    "allOrNone": bool(all_or_none),
+                    "priceType": (price_type if px is not None else "MARKET"),
+                    "orderTerm": order_term,
+                    "marketSession": market_session,
+                    **({"limitPrice": px} if px is not None else {}),
+                    "Instrument": [{
+                        "Product": {"securityType": "EQ", "symbol": symbol},
+                        "orderAction": action,
+                        "quantityType": "QUANTITY",
+                        "quantity": int(quantity),
+                    }],
+                }],
+            }
+        }
+        return self._post(f"/accounts/{account_id_key}/orders/preview.json", payload)
+
+    def place_equity_order(self, account_id_key: str, symbol: str, quantity: int, price: Optional[float],
+                           action: str, preview_id: int, order_term: str="GOOD_FOR_DAY",
+                           market_session: str="REGULAR", price_type: str="LIMIT",
+                           client_order_id: Optional[str]=None, all_or_none: bool=False) -> Dict[str, Any]:
+        if client_order_id is None:
+            client_order_id = f"TA{int(time.time())%1000000000}"
+        px = self._coerce_price(price)
+        payload = {
+            "PlaceOrderRequest": {
+                "orderType": "EQ",
+                "clientOrderId": client_order_id,
+                "PreviewIds": [{"previewId": int(preview_id)}],
+                "Order": [{
+                    "allOrNone": bool(all_or_none),
+                    "priceType": (price_type if px is not None else "MARKET"),
+                    "orderTerm": order_term,
+                    "marketSession": market_session,
+                    **({"limitPrice": px} if px is not None else {}),
+                    "Instrument": [{
+                        "Product": {"securityType": "EQ", "symbol": symbol},
+                        "orderAction": action,
+                        "quantityType": "QUANTITY",
+                        "quantity": int(quantity),
+                    }],
+                }],
+            }
+        }
+        return self._post(f"/accounts/{account_id_key}/orders/place.json", payload)
+
+
+# ── Broker facade with BP pre-check & graceful skip ───────────────────────────
+class LiveBroker:
+    def __init__(self, mode: str = "LIVE") -> None:
+        self.mode = (mode or "LIVE").upper()
+        self.name = "E*TRADE"
+        self._et = ETradeService()
+        self._account_id_key = os.getenv("ETRADE_ACCOUNT_ID_KEY") or self._et.first_account_id_key()
+        if not self._account_id_key:
+            raise RuntimeError("Unable to resolve ETRADE_ACCOUNT_ID_KEY; check env or /accounts/list.")
+        self._last_bp: Optional[float] = None
+        self._bp_ts: float = 0.0
+        self._bp_ttl = int(os.getenv("LIVE_BP_TTL_SECONDS", "45"))
+
+    # --- BP helpers
+    def _update_bp_from_balance(self) -> Optional[float]:
+        try:
+            bal = self._et.get_balances(self._account_id_key)
+            bl = bal.get("BalanceResponse", {})
+            for key in ("cashAvailableForInvestment","netCash","marginBuyingPower","cashBuyingPower","computedCashAvailableForInvestment"):
+                if key in bl and isinstance(bl[key], (int, float)):
+                    self._last_bp = float(bl[key]); self._bp_ts = time.time()
+                    return self._last_bp
+        except Exception as e:
+            log.debug("BP refresh failed: %s", e)
+        return None
+
+    def get_buying_power(self, fresh: bool=False) -> Optional[float]:
+        if fresh or (time.time() - self._bp_ts) > self._bp_ttl or self._last_bp is None:
+            return self._update_bp_from_balance()
+        return self._last_bp
+
+    def get_account_summary(self) -> Dict[str, Any]:
+        try:
+            bal = self._et.get_balances(self._account_id_key)
+            bl = bal.get("BalanceResponse", {})
+            summary = {"raw": bal}
+            for k in ("accountId","accountType","accountDescription"):
+                if k in bl: summary[k] = bl[k]
+            for key in ("cashAvailableForInvestment","netCash","marginBuyingPower","cashBuyingPower","computedCashAvailableForInvestment"):
+                if key in bl and isinstance(bl[key], (int, float)):
+                    self._last_bp = float(bl[key]); self._bp_ts = time.time()
+                    summary["buying_power"] = self._last_bp
+                    break
+            return summary
+        except Exception as e:
+            log.exception("Failed to fetch account summary: %s", e)
             return {}
-        try:
-            data = get_account_summary()
-            # normalize common keys for the UI
-            bp  = float(data.get("buying_power") or data.get("accountBP") or 0.0)
-            sc  = float(data.get("settled_cash") or data.get("settledCash") or 0.0)
-            typ = data.get("account_type") or data.get("accountType") or ""
-            return {"mode": "LIVE", "buying_power": bp, "settled_cash": sc, "account_type": typ, **data}
-        except Exception as e:
-            logger.error(f"[LIVE] account summary failed: {e}")
-            return {}
 
-    def buy(self, symbol: str, qty: int, price: float | None = None, order_type: str = "MARKET") -> dict:
-        try:
-            from services.etrade_service import preview_equity_order, place_equity_order
-        except Exception as e:
-            raise RuntimeError("E*TRADE order helpers are not wired yet (need preview_equity_order/place_equity_order).") from e
-        if qty <= 0:
-            raise ValueError("qty must be >= 1")
-        prev = preview_equity_order(side="BUY", symbol=symbol, qty=int(qty), order_type=order_type, price=price)
-        return place_equity_order(prev)
+    # --- core trade
+    def _trade(self, action: str, symbol: str, quantity: int, price: Optional[float], **kw) -> Dict[str, Any]:
+        q = int(quantity)
+        sym = _normalize_symbol(symbol)
+        px = _round_limit(price, action) if price is not None else None
+        log.info("[LIVE] %s request for %s x%d @%s", action, sym, q, px)
 
-    def sell(self, symbol: str, qty: int | None = None, price: float | None = None, order_type: str = "MARKET") -> dict:
-        try:
-            from services.etrade_service import preview_equity_order, place_equity_order
-        except Exception as e:
-            raise RuntimeError("E*TRADE order helpers are not wired yet (need preview_equity_order/place_equity_order).") from e
-        prev = preview_equity_order(side="SELL", symbol=symbol, qty=int(qty or 0), order_type=order_type, price=price)
-        return place_equity_order(prev)
+        # Pre-check affordability using cached BP (quick) — avoids noisy 8400s
+        bp = self.get_buying_power(fresh=False) or 0.0
+        if px and bp >= 0:
+            afford = int(bp // max(px, 1e-9))
+            if afford <= 0:
+                log.info("[LIVE] skip %s: insufficient BP=%.2f for %s @%.4f", sym, bp, action, px)
+                return {"ok": False, "skipped": True, "reason": "INSUFFICIENT_FUNDS", "buying_power": bp}
+            if afford < q:
+                log.info("[LIVE] downsizing %s pre-check %d→%d (BP=%.2f, px=%.4f)", sym, q, afford, bp, px)
+                q = afford
+
+        attempts = 0
+        while q > 0 and attempts < 6:
+            attempts += 1
+            try:
+                prev = self._et.preview_equity_order(self._account_id_key, sym, q, px, action, **kw)
+            except ETradeHTTPError as e:
+                err = (isinstance(e.payload, dict) and e.payload.get("Error")) or {}
+                code = str(err.get("code") or "")
+                msg = err.get("message") or ""
+
+                # 8400: insufficient funds — reduce qty; if it would hit 0, skip gracefully
+                if e.status_code == 400 and code == "8400":
+                    m = re.search(r"maximum allowable quantity was estimated to be\s+(\d+)", msg)
+                    new_q = None
+                    if m:
+                        try: new_q = int(m.group(1))
+                        except Exception: new_q = None
+                    # ensure actual reduction
+                    if new_q is None or new_q >= q:
+                        new_q = max(q - 1, 0)
+                    log.info("[LIVE] downsizing %s from %d→%d due to 8400 (%s)", sym, q, new_q, msg[:120])
+                    if new_q <= 0:
+                        log.info("[LIVE] skip %s: BP insufficient even for 1 share", sym)
+                        return {"ok": False, "skipped": True, "reason": "INSUFFICIENT_FUNDS_8400"}
+                    q = new_q
+                    continue
+
+                # 1018: invalid price — round; if unchanged, switch to MARKET
+                if e.status_code == 400 and code == "1018":
+                    if px is not None:
+                        rounded = _round_limit(px, action)
+                        if rounded != px:
+                            log.info("[LIVE] rounding price %s→%s for %s (1018)", px, rounded, sym)
+                            px = rounded
+                            continue
+                        log.info("[LIVE] switching %s to MARKET due to 1018: %s", sym, msg[:120])
+                        px = None
+                        continue
+                    raise
+
+                # 2009: invalid symbol — try normalization once
+                if e.status_code == 400 and code == "2009":
+                    new_sym = _normalize_symbol(sym)
+                    if new_sym != sym:
+                        log.info("[LIVE] retrying with normalized symbol %s→%s (2009)", sym, new_sym)
+                        sym = new_sym
+                        continue
+                    raise
+
+                raise  # other errors bubble up
+
+            # success: parse preview and update cached BP from preview if present
+            prev_resp = prev.get("PreviewOrderResponse") or prev.get("PreviewOrderResponseV2") or prev
+            try:
+                bp2 = (prev_resp.get("marginBpDetails", {}).get("marginable", {}) or {}).get("currentNetBp")
+                if isinstance(bp2, (int, float)):
+                    self._last_bp = float(bp2); self._bp_ts = time.time()
+            except Exception:
+                pass
+
+            preview_id = None
+            if isinstance(prev_resp, dict):
+                preview_id = prev_resp.get("previewId")
+                if not preview_id:
+                    ids = prev_resp.get("PreviewIds") or []
+                    if isinstance(ids, list) and ids:
+                        preview_id = ids[0].get("previewId")
+            if not preview_id:
+                return {"ok": False, "skipped": True, "reason": "PREVIEW_NO_ID", "raw": prev}
+
+            placed = self._et.place_equity_order(self._account_id_key, sym, q, px, action, preview_id, **kw)
+            try:
+                pr = placed.get("PlaceOrderResponse") or placed.get("PlaceOrderResponseV2") or {}
+                ids = pr.get("OrderIds") or []
+                oid = ids[0].get("orderId") if isinstance(ids, list) and ids else pr.get("orderId")
+                log.info("[LIVE] placed orderId=%s for %s x%d (%s)", oid, sym, q, action)
+            except Exception:
+                log.debug("[LIVE] could not parse orderId from place response")
+
+            return {"ok": True, "preview": prev, "placed": placed}
+
+        # attempts exhausted or q drained to 0 — skip, don't raise
+        log.info("[LIVE] skip %s: unable to size order within buying power (q=%d)", sym, q)
+        return {"ok": False, "skipped": True, "reason": "CANNOT_SIZE"}
+
+    def buy(self, symbol: str, quantity: int, price: Optional[float] = None, **kw) -> Dict[str, Any]:
+        return self._trade("BUY", symbol, quantity, price, **kw)
+
+    def sell(self, symbol: str, quantity: int, price: Optional[float] = None, **kw) -> Dict[str, Any]:
+        return self._trade("SELL", symbol, quantity, price, **kw)
 
 
-def get_broker(mode: str | None = None):
-    """
-    mode: "SIM" (default) or "LIVE"
-    """
-    mode = (mode or os.getenv("BROKER_MODE") or "SIM").upper()
-    if mode == "LIVE":
-        return EtradeBroker()
-    return SimBroker()
+# singleton
+_singleton = None
+def get_broker(mode: Optional[str] = "LIVE") -> LiveBroker:
+    global _singleton
+    if _singleton is None:
+        _singleton = LiveBroker(mode)
+    return _singleton

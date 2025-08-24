@@ -54,7 +54,8 @@
   "take_profit_pct": 12,
   "sell_after_days": 1,
 
-
+  "broker_mode": "LIVE",
+  "scan_sleep_secs": 5,
   "max_per_trade": 150,
   "pause_when_market_closed": true,
   "nuke_db": false,

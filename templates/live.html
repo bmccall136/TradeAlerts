@@ -58,31 +58,40 @@
     {% endif %}
   </div>
 
-  <!-- P&L -->
-  <div class="kpi-card">
-    <div class="kpi-title">P&L</div>
+	<div class="kpi-card">
+	  <div class="kpi-title">P&L</div>
 
-    <div class="kv">
-      <span class="label">Unrealized P&L</span>
-      <span id="upnl">${{ '{:,.2f}'.format(unrealized_pnl or 0.0) }}</span>
-    </div>
+	  <div class="kv">
+		<span class="label">Total (Cash + Positions)</span>
+		</span>
+		<span id="utotal" class="num"></span>
+	  </div>
 
-    <div class="kv">
-      <span class="label">Unrealized P&L %</span>
-      <span id="upct">{{ '{:,.2f}%'.format((unrealized_pnl_pct if unrealized_pnl_pct is not none else 0.0)) }}</span>
-    </div>
+	  <div class="kv">
+		<span class="label">Positions Value</span>
+		<span id="posval" class="num"></span>
+	  </div>
+	  <div class="kv">
+	  <span class="label">Unrealized P&L</span>
+	  <span id="upnl" class="num"></span>
+	</div>
+	  <div class="kv">
+		<span class="label">Unrealized P&L %</span>
+		<span id="upct" class="num"></span>
+	  </div>
 
-    <div class="kv">
-      <span class="label">Realized P&L</span>
-      <span id="rpnl">${{ '{:,.2f}'.format(realized_pnl or 0.0) }}</span>
-    </div>
+	  <div class="kv">
+		<span class="label">Realized P&L</span>
+		<span id="rpnl" class="num"></span>
+	  </div>
 
-    <div class="kv">
-      <span class="label">Realized P&L %</span>
-      <span id="rpct">{{ '{:,.2f}%'.format((realized_pnl_pct if realized_pnl_pct is not none else 0.0)) }}</span>
-    </div>
-  </div>
-</div>
+	  <div class="kv">
+		<span class="label">Realized P&L %</span>
+		<span id="rpct" class="num"></span>
+	  </div>
+	</div>
+   </div>
+
 <!-- ========================
 </span>
 <!-- Holdings (same table classes/order as Sim) -->
@@ -147,110 +156,111 @@
   </table>
 </div>
 
-{% endblock %}
 <script>
 (function () {
-  const fmt = v => '$' + Number(v || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const $ = id => document.getElementById(id);
+  const money = n => '$' + Number(n ?? 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  const pct   = n => Number(n ?? 0).toFixed(2) + '%';
 
-  async function refreshLive() {
-    try {
-      const res = await fetch('/live/status', {cache: 'no-store'});
-      if (!res.ok) return;
-      const data = await res.json();
+  function setMoney(id, val, colorize=false){
+    const el = $(id); if (!el) return;
+    el.textContent = money(val);
+    if (colorize) colorizeNum(el, Number(val));
+  }
+  function setPct(id, val, colorize=false){
+    const el = $(id); if (!el) return;
+    el.textContent = pct(val);
+    if (colorize) colorizeNum(el, Number(val));
+  }
+  function colorizeNum(el, v){
+    el.classList.remove('pn-pos','pn-neg','pn-flat');
+    el.classList.add(v>0 ? 'pn-pos' : v<0 ? 'pn-neg' : 'pn-flat');
+  }
 
-      const acct = data.account || {};
-      const el = id => document.getElementById(id);
+  async function refresh(){
+    try{
+      const r = await fetch('/live/status',{cache:'no-store'});
+      if (!r.ok) return;
+      const { account={}, metrics={}, holdings=[], trades=[] } = await r.json();
 
-      if (el('bp')) el('bp').textContent = fmt(acct.buying_power);
-      if (el('sc')) el('sc').textContent = fmt(acct.settled_cash);
-      if (el('eq') && acct.equity_value !== undefined) el('eq').textContent = fmt(acct.equity_value);
+      // cash to include: prefer settled cash, else buying power
+      const cash = Number(account.settled_cash ?? account.buying_power ?? 0) || 0;
+      const posVal = Number(metrics.positions_value ?? 0) || 0;
 
-      // holdings
-      const hBody = el('holdings-body');
-      if (hBody) {
+      // KPIs
+      setMoney('utotal', posVal + cash, false);   // neutral
+      setMoney('posval', posVal, false);          // neutral
+      setPct  ('upct',   metrics.unrealized_pnl_pct, true);
+      setMoney('rpnl',   metrics.realized_pnl, true);
+      setPct  ('rpct',   metrics.realized_pnl_pct, true);
+	  // KPIs
+	  setMoney('utotal', posVal + cash, false);   // Total (Cash + Positions)
+	  setMoney('posval', posVal, false);
+
+	  // NEW: Unrealized P&L ($)
+	  const upnl = Number(metrics.unrealized_pnl ?? metrics.unrealizedPnl ?? 0);
+	  setMoney('upnl', upnl, true);
+
+	  setPct  ('upct',   metrics.unrealized_pnl_pct, true);
+	  setMoney('rpnl',   metrics.realized_pnl, true);
+	  setPct  ('rpct',   metrics.realized_pnl_pct, true);
+	  
+
+      // holdings table (unchanged from your current)
+      const hBody = $('holdings-body');
+      if (hBody){
         hBody.innerHTML = '';
-        const rows = data.holdings || [];
-        if (rows.length === 0) {
+        if (!holdings.length){
           hBody.innerHTML = `<tr><td colspan="9" class="text-center">No holdings.</td></tr>`;
-        } else {
-          for (const h of rows) {
+        }else{
+          for (const h of holdings){
             const tr = document.createElement('tr');
             tr.innerHTML = `
               <td>${h.symbol ?? ''}</td>
-              <td>${fmt(h.last_price)}</td>
-              <td>$0.00</td>
-              <td>0.00%</td>
+              <td>${money(h.last_price)}</td>
+              <td>${money(h.change)}</td>
+              <td>${(h.change_pct!=null)? Number(h.change_pct).toFixed(2)+'%':'—'}</td>
               <td>${h.qty ?? 0}</td>
-              <td>${fmt(h.price_paid)}</td>
-              <td>${fmt(h.day_gain)}</td>
-              <td>${fmt(h.total_gain)}</td>
-              <td>${fmt(h.value)}</td>
-            `;
+              <td>${money(h.price_paid)}</td>
+              <td>${money(h.day_gain)}</td>
+              <td>${money(h.total_gain)}</td>
+              <td>${money(h.value)}</td>`;
             hBody.appendChild(tr);
           }
         }
       }
 
-      // trades (optional; empty list right now)
-      const tBody = el('trades-body');
-      if (tBody) {
+      // trades table (unchanged from your current)
+      const tBody = $('trades-body');
+      if (tBody){
         tBody.innerHTML = '';
-        const trs = data.trades || [];
-        if (trs.length === 0) {
+        if (!trades.length){
           tBody.innerHTML = `<tr><td colspan="6" class="text-center">No trades yet</td></tr>`;
-        } else {
-          for (const t of trs) {
+        }else{
+          for (const t of trades){
             const tr = document.createElement('tr');
             tr.innerHTML = `
               <td>${t.time ?? ''}</td>
               <td>${t.symbol ?? ''}</td>
               <td>${t.action ?? ''}</td>
               <td>${t.qty ?? 0}</td>
-              <td>${fmt(t.price)}</td>
-              <td>${fmt(t.pl)}</td>
-            `;
+              <td>${money(t.price)}</td>
+              <td>${money(t.pl)}</td>`;
             tBody.appendChild(tr);
           }
         }
       }
-    } catch (e) {
-      // silent; page still shows last good values
+    }catch(e){
+      console.warn('live/status refresh failed:', e);
     }
   }
 
-  // first paint + every 30s; only when tab is visible
-  refreshLive();
-  setInterval(() => {
-    if (document.visibilityState === 'visible') refreshLive();
-  }, 30000);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', refresh);
+  } else {
+    refresh();
+  }
+  setInterval(()=>{ if (document.visibilityState==='visible') refresh(); }, 10000);
 })();
 </script>
-<script>
-function money(n){ return '$' + Number(n ?? 0).toFixed(2); }
-function pct(n){ return Number(n ?? 0).toFixed(2) + '%'; }
-
-async function refresh() {
-  try {
-    const r = await fetch('/live/status');
-    const { account, metrics } = await r.json();
-
-    // existing fields
-    const bp = document.getElementById('bp');
-    const sc = document.getElementById('sc');
-    const eq = document.getElementById('eq');
-    if (bp) bp.textContent = money(account?.buying_power ?? 0);
-    if (sc) sc.textContent = money(account?.settled_cash ?? 0);
-    if (eq) eq.textContent = money(account?.equity_value ?? 0);
-
-    // new P&L fields
-    document.getElementById('upnl').textContent = money(metrics.unrealized_pnl);
-    document.getElementById('upct').textContent = pct(metrics.unrealized_pnl_pct);
-    document.getElementById('rpnl').textContent = money(metrics.realized_pnl);
-    document.getElementById('rpct').textContent = pct(metrics.realized_pnl_pct);
-  } catch (e) {
-    console.warn('live/status refresh failed:', e);
-  }
-}
-refresh();
-setInterval(refresh, 10000);
-</script>
+{% endblock %}

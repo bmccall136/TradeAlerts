@@ -24,6 +24,27 @@ select {
     outline: none;
     cursor: pointer;
 }
+/* tooltip bubble */
+.hint{
+  display:inline-block;margin-left:.35rem;width:16px;height:16px;line-height:16px;
+  text-align:center;border-radius:50%;font-weight:600;font-size:.75rem;background:#333;color:#bbb;
+  cursor:help
+}
+.hint:hover{background:#444;color:#fff}
+
+/* P&L positive/negative coloring */
+.pn-pos{color:#17c964}
+.pn-neg{color:#f31260}
+.num { min-width: 6ch; display: inline-block; text-align: right; }
+.num:empty::before { content: '—'; opacity: 0.55; }
+.pn-pos { color: #55d17a; }
+.pn-neg { color: #ff6b6b; }
+.pn-pos { color:#16c784; }   /* green */
+.pn-neg { color:#ff4d4d; }   /* red   */
+.pn-flat{ color:#c9d1d9; }   /* neutral */
+.kpi-card { font-size: 0.95rem; }
+.kpi-card .kpi-title { font-size: 1rem; }
+.table.alerts-table { font-size: 0.95rem; }
 
 /*— Container to center content and limit width —*/
 .container {
