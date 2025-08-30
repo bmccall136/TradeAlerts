@@ -2426,36 +2426,33 @@ def live_view():
 @app.route("/live/status")
 @always_json
 def live_status():
-    import json    
     import os, json, datetime as _dt
-    from flask import request, jsonify, current_app
+    from flask import request, current_app
     from services import etrade_service as et
 
+    # -------- params / debug --------
     days = request.args.get("days", type=int) or 7
     days = max(1, min(days, 30))
     raw_dbg = (request.args.get("debug") or "0").strip()
     debug_level = int(raw_dbg) if raw_dbg.isdigit() else 0
-    # ---------- tiny helpers ----------
+
+    # -------- tiny helpers --------
     def _to_ts(val) -> int:
         try:
             if isinstance(val, (int, float)):
                 v = float(val)
                 return int(v if v > 10_000_000_000 else v * 1000)
             s = str(val or "")
-            if " " in s and "T" not in s:
-                s = s.replace(" ", "T")
-            if not s.endswith("Z") and "+" not in s:
-                s += "Z"
+            if " " in s and "T" not in s: s = s.replace(" ", "T")
+            if not s.endswith("Z") and "+" not in s: s += "Z"
             dt = _dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
             return int(dt.timestamp() * 1000)
         except Exception:
             return 0
 
     def _safe_float(x):
-        try:
-            return float(x)
-        except Exception:
-            return 0.0
+        try: return float(x)
+        except Exception: return 0.0
 
     def _fmt_trade_time(ms_or_dt):
         try:
@@ -2466,29 +2463,27 @@ def live_status():
             return ""
 
     def _normalize_account(summary):
-        """Coerce E*TRADE account summary into a flat dict with settled_cash/buying_power."""
+        """Flatten E*TRADE summary → {'settled_cash','buying_power'} with fallbacks."""
         out = {}
         def visit(n):
             if isinstance(n, dict):
-                # common fields across responses
                 if "settledCash" in n and "settled_cash" not in out:
                     out["settled_cash"] = _safe_float(n.get("settledCash"))
                 if "cashAvailableForInvestment" in n and "buying_power" not in out:
                     out["buying_power"] = _safe_float(n.get("cashAvailableForInvestment"))
                 if "buyingPower" in n and "buying_power" not in out:
                     out["buying_power"] = _safe_float(n.get("buyingPower"))
-                for v in n.values():
-                    visit(v)
+                for v in n.values(): visit(v)
             elif isinstance(n, (list, tuple)):
-                for v in n:
-                    visit(v)
+                for v in n: visit(v)
         visit(summary or {})
-        # sensible fallbacks
-        out.setdefault("settled_cash", _safe_float(summary.get("settled_cash") if isinstance(summary, dict) else 0))
+        # fallbacks
+        if isinstance(summary, dict):
+            out.setdefault("settled_cash", _safe_float(summary.get("settled_cash")))
         out.setdefault("buying_power", out.get("settled_cash", 0.0))
         return out
 
-    # ------ E*TRADE quote parsing (robust) ------
+    # -------- quotes parsing (robust over E*TRADE shapes) --------
     def _dig_etrade_quotes_to_map(payload):
         out = {}
         def _to_f(x):
@@ -2526,20 +2521,16 @@ def live_status():
                         eh_last = _to_f(eh.get("lastPrice"))
                         if eh_last is not None:
                             last = eh_last
-
                 if last is None and isinstance(intr, dict):
                     last = intr.get("lastTrade") or intr.get("lastPrice")
-
                 if last is None:
                     for k in ("lastTrade","lastPrice","quoteLast","regularMarketPrice","close","last"):
                         v = node.get(k)
-                        if _to_f(v) is not None:
-                            last = v; break
+                        if _to_f(v) is not None: last = v; break
                 if prev is None:
                     for k in ("previousClose","priorClose","regularMarketPreviousClose"):
                         v = node.get(k)
-                        if _to_f(v) is not None:
-                            prev = v; break
+                        if _to_f(v) is not None: prev = v; break
 
                 if sym and last is not None:
                     _put(sym, last, prev)
@@ -2552,76 +2543,52 @@ def live_status():
         return out
 
     def _fetch_last_prices(symbols, debug_level=0):
-        """
-        E*TRADE quotes only. Tries multiple signatures.
-        Returns (qmap, quotes_dbg_or_None)
-        """
         req = [s.upper() for s in symbols if s]
         if not req:
             return {}, None
 
         et_syms = list({*(req), *[s.replace("-", ".") for s in req]})
-        qmap = {}
-        quotes_dbg = [] if debug_level else None
-
-        def _glimpse(obj, depth=2, width=6):
-            if depth <= 0:
-                return f"<{type(obj).__name__}>"
-            if isinstance(obj, dict):
-                ks = list(obj.keys())
-                return {"__type": "dict", "keys": ks[:width]}
-            if isinstance(obj, (list, tuple)):
-                return {"__type": "list", "len": len(obj), "sample": _glimpse(obj[0], depth-1, width) if obj else None}
-            if isinstance(obj, (bytes, bytearray)):
-                try: return (obj[:120]).decode("utf-8","ignore") + ("…bytes" if len(obj)>120 else "")
-                except Exception: return f"<bytes len={len(obj)}>"
-            if isinstance(obj, str):
-                s = obj.strip().replace("\n", " ")
-                return s[:160] + ("…" if len(s) > 160 else "")
-            return f"<{type(obj).__name__}>"
+        qmap, quotes_dbg = {}, ([] if debug_level else None)
 
         def _merge(raw, tag):
-            # collect tiny shape hints when debugging
             if quotes_dbg is not None:
-                quotes_dbg.append({"tag": tag, "type": type(raw).__name__, "glimpse": _glimpse(raw)})
-
+                def _glimpse(obj, depth=2, width=6):
+                    if depth <= 0: return f"<{type(obj).__name__}>"
+                    if isinstance(obj, dict):
+                        ks = list(obj.keys()); return {"__type":"dict","keys":ks[:width]}
+                    if isinstance(obj, (list, tuple)):
+                        return {"__type":"list","len":len(obj)}
+                    return f"<{type(obj).__name__}>"
+                quotes_dbg.append({"tag": tag, "type": type(raw).__name__})
             if isinstance(raw, (bytes, bytearray)):
-                try: raw = json.loads(raw.decode("utf-8", "ignore"))
+                try: raw = json.loads(raw.decode("utf-8","ignore"))
                 except Exception: return False
             elif isinstance(raw, str):
                 try: raw = json.loads(raw)
                 except Exception: return False
-
             parsed = _dig_etrade_quotes_to_map(raw) or {}
             if parsed:
                 qmap.update(parsed)
                 return True
             return False
 
-        # ---- multi-quote attempts ----
+        # multi-quote attempts
         if hasattr(et, "get_quotes"):
             for caller in (
                 lambda syms: et.get_quotes(syms),
                 lambda syms: et.get_quotes(symbols=syms),
-                lambda syms: et.get_quotes(tickers=syms),
                 lambda syms: et.get_quotes(",".join(syms)),
                 lambda syms: et.get_quotes(symbols=",".join(syms)),
                 lambda syms: et.get_quotes(syms, detailFlag="ALL"),
                 lambda syms: et.get_quotes(symbols=syms, detailFlag="ALL"),
-                lambda syms: et.get_quotes(",".join(syms), detailFlag="ALL"),
-                lambda syms: et.get_quotes(symbols=",".join(syms), detailFlag="ALL"),
-                lambda syms: et.get_quotes(productList=[{"symbol": s} for s in syms]),
-                lambda syms: et.get_quotes(productList=[{"symbol": s} for s in syms], detailFlag="ALL"),
             ):
                 try:
                     if _merge(caller(et_syms), "multi"):
                         break
-                except TypeError:
-                    continue
                 except Exception:
                     pass
 
-        # ---- per-symbol backfill ----
+        # per-symbol fill
         missing = [s for s in et_syms if s.upper() not in qmap]
         if missing and hasattr(et, "get_quote"):
             for s in missing:
@@ -2630,28 +2597,20 @@ def live_status():
                     lambda sym: et.get_quote(sym),
                     lambda sym: et.get_quote(symbol=sym),
                     lambda sym: et.get_quote({"symbol": sym}),
-                    lambda sym: et.get_quote(product={"symbol": sym}),
                     lambda sym: et.get_quote(sym, detailFlag="ALL"),
                     lambda sym: et.get_quote(symbol=sym, detailFlag="ALL"),
-                    lambda sym: et.get_quote({"symbol": sym, "detailFlag": "ALL"}),
-                    lambda sym: et.get_quote(product={"symbol": sym, "detailFlag": "ALL"}),
                 ):
                     try:
                         if _merge(caller(s), f"one:{s}"):
-                            got = True
-                            break
-                    except TypeError:
-                        continue
+                            got = True; break
                     except Exception:
                         pass
                 if quotes_dbg is not None and not got:
-                    quotes_dbg.append({"tag": f"miss:{s}", "note": "no signature matched/parsed"})
+                    quotes_dbg.append({"tag": f"miss:{s}"})
 
         return qmap, quotes_dbg
 
-
     def _collect_holdings(raw_positions):
-        """Extract [{'symbol','qty','price_paid'}] from E*TRADE positions blob."""
         out = []
         def visit(n):
             if isinstance(n, dict):
@@ -2665,22 +2624,20 @@ def live_status():
                             out.append({"symbol": str(sym).upper(), "qty": q, "price_paid": _safe_float(avg)})
                     except Exception:
                         pass
-                for v in n.values():
-                    visit(v)
+                for v in n.values(): visit(v)
             elif isinstance(n, (list, tuple)):
-                for v in n:
-                    visit(v)
+                for v in n: visit(v)
         visit(raw_positions or [])
         return out
 
-    # ---------- Account ----------
+    # -------- account --------
     try:
         account = _normalize_account(et.get_account_summary() or {})
     except Exception as e:
         current_app.logger.warning("[LIVE] account summary failed: %s", e)
         account = {}
 
-    # ---------- Positions -> holdings ----------
+    # -------- positions/holdings --------
     try:
         raw_positions = et.get_positions() or []
     except Exception as e:
@@ -2688,49 +2645,35 @@ def live_status():
         raw_positions = []
     holdings = _collect_holdings(raw_positions)
 
-    # ---------- Quotes ----------
+    # -------- quotes + enrich holdings --------
     syms = [h["symbol"] for h in holdings if h.get("symbol")]
     qmap, quotes_dbg = _fetch_last_prices(syms, debug_level=debug_level)
 
-    # ---- Enrich holdings with E*TRADE last/prev (no qmap, no yfinance) ----
-    positions_value = 0.0
-    unrealized = 0.0
-    upct = 0.0
-
     for h in holdings:
-        sym  = (h.get("symbol") or "").upper()
-        qty  = float(h.get("qty") or 0)
-        paid = float(h.get("price_paid") or 0)
+        s   = (h.get("symbol") or "").upper()
+        qty = _safe_float(h.get("qty"))
+        paid= _safe_float(h.get("price_paid"))
+        q   = qmap.get(s, {})
+        last= q.get("last"); prev = q.get("prev")
 
-        # Use your working helper:
-        try:
-            last, prev = get_last_and_prev(sym, paid)   # defined earlier in dashboard.py
-        except Exception:
-            last = prev = None
-
-        # Store last/value
         if last is not None:
-            h["last_price"] = round(float(last), 2)
-            h["value"] = round(qty * float(last), 2)
-
-        # Day P&L if prev available
+            h["last_price"] = round(last, 2)
+            h["value"]      = round(qty * last, 2)
         if last is not None and prev is not None and prev > 0:
-            day_pl = (float(last) - float(prev)) * qty
-            h["day_pl"] = round(day_pl, 2)
-            h["day_pl_pct"] = round((float(last) / float(prev) - 1.0) * 100.0, 2)
-
-        # Total P&L vs price paid
+            day_pl = (last - prev) * qty
+            h["day_pl"]     = round(day_pl, 2)
+            h["day_pl_pct"] = round((last / prev - 1.0) * 100.0, 2)
         if last is not None and paid > 0:
-            tot_pl = (float(last) - paid) * qty
-            h["total_pl"] = round(tot_pl, 2)
-            h["total_pl_pct"] = round((float(last) / paid - 1.0) * 100.0, 2)
+            tot_pl = (last - paid) * qty
+            h["total_pl"]     = round(tot_pl, 2)
+            h["total_pl_pct"] = round((last / paid - 1.0) * 100.0, 2)
 
-    # Recompute rollups
-    positions_value = round(sum(float(h.get("value") or 0) for h in holdings), 2)
-    cost = round(sum(float(h.get("price_paid") or 0) * float(h.get("qty") or 0) for h in holdings), 2)
-    unrealized = round(sum(((float(h.get("last_price") or 0) - float(h.get("price_paid") or 0)) * float(h.get("qty") or 0)) for h in holdings), 2)
-    upct = round((unrealized / cost * 100.0), 2) if cost else 0.0
-    # ---------- Trades (transactions preferred; executions fallback) ----------
+    positions_value = round(sum(_safe_float(h.get("value")) for h in holdings), 2)
+    cost            = round(sum(_safe_float(h.get("price_paid")) * _safe_float(h.get("qty")) for h in holdings), 2)
+    unrealized      = round(sum((_safe_float(h.get("last_price")) - _safe_float(h.get("price_paid"))) * _safe_float(h.get("qty")) for h in holdings), 2)
+    upct            = round((unrealized / cost * 100.0), 2) if cost else 0.0
+
+    # -------- trades: source (transactions preferred; executions fallback) --------
     trades_src = []
     got_transactions = False
     try:
@@ -2739,7 +2682,6 @@ def live_status():
             got_transactions = True
     except Exception:
         got_transactions = False
-
     if not got_transactions:
         try:
             trades_src = et.recent_executions_as_trades(max(days * 16, 50)) or []
@@ -2748,9 +2690,8 @@ def live_status():
 
     def _bucket_time(ts):
         try:
-            if isinstance(ts, (int, float)):
-                return int(round(float(ts) / 60000.0))
-            return int(round(_dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp() * 1000 / 60000.0))
+            if isinstance(ts, (int, float)): return int(round(float(ts) / 60000.0))
+            return int(round(_dt.datetime.fromisoformat(str(ts).replace("Z","+00:00")).timestamp() * 1000 / 60000.0))
         except Exception:
             return 0
 
@@ -2760,14 +2701,12 @@ def live_status():
     seen, mapped = set(), []
     for t in trades_src or []:
         sym  = (t.get("symbol") or "").upper()
-        if sym in IGNORE:
-            continue
+        if sym in IGNORE: continue
         side = (t.get("action") or "").upper()
         qty  = int(t.get("qty") or 0)
         px   = float(t.get("price") or 0.0)
         key  = (_bucket_time(t.get("time")), sym, side, qty, round(px, 2))
-        if key in seen:
-            continue
+        if key in seen: continue
         seen.add(key)
         mapped.append({
             "time":   _fmt_trade_time(t.get("time")),
@@ -2778,14 +2717,61 @@ def live_status():
             "amount": _safe_float(t.get("amount")),
         })
 
-    # ---------- Cash / totals ----------
+    # -------- FIFO enrich: price_paid/pl/pl_pct and realized today KPI --------
+    def _enrich_trades_fifo(trades):
+        lots: dict[str, list[list[float]]] = {}
+        today = _dt.datetime.utcnow().date()
+        realized_today = 0.0
+        realized_basis_today = 0.0
+        enriched = []
+        for t in sorted(trades, key=lambda x: _to_ts(x.get("time"))):
+            ts   = _to_ts(t.get("time"))
+            date = _dt.datetime.utcfromtimestamp(ts/1000.0).date() if ts else today
+            sym  = (t.get("symbol") or "").upper()
+            side = (t.get("action") or "").upper()
+            qty  = int(t.get("qty") or 0)
+            px   = float(t.get("price") or 0.0)
+            if qty <= 0 or px <= 0 or not sym:
+                continue
+
+            lots.setdefault(sym, [])
+            if side == "BUY":
+                lots[sym].append([qty, px])
+                enriched.append({**t, "price_paid": px, "pl": 0.0, "pl_pct": 0.0, "_ts": ts})
+            elif side == "SELL":
+                remain = qty; basis_cost = 0.0; basis_shares = 0
+                while remain > 0 and lots[sym]:
+                    lot_qty, lot_px = lots[sym][0]
+                    take = min(remain, lot_qty)
+                    basis_cost   += take * lot_px
+                    basis_shares += take
+                    lot_qty      -= take
+                    remain       -= take
+                    if lot_qty == 0: lots[sym].pop(0)
+                    else:            lots[sym][0][0] = lot_qty
+                avg_basis = (basis_cost / basis_shares) if basis_shares else 0.0
+                pnl = (px - avg_basis) * basis_shares if basis_shares else 0.0
+                pnl_pct = ((px / avg_basis - 1.0) * 100.0) if avg_basis else 0.0
+                if date == today:
+                    realized_today       += pnl
+                    realized_basis_today += (avg_basis * basis_shares)
+                enriched.append({**t, "price_paid": avg_basis, "pl": pnl, "pl_pct": pnl_pct, "_ts": ts})
+            else:
+                enriched.append({**t, "_ts": ts})
+
+        try: enriched.sort(key=lambda r: r.get("_ts", 0), reverse=True)
+        except Exception: pass
+        for r in enriched: r.pop("_ts", None)
+
+        realized_today_pct = (realized_today / realized_basis_today * 100.0) if realized_basis_today > 0 else 0.0
+        return enriched, realized_today, realized_today_pct
+
+    mapped, realized_today, realized_today_pct = _enrich_trades_fifo(mapped)
+
+    # -------- cash / totals / payload --------
     cash_balance = _safe_float(account.get("settled_cash") or account.get("buying_power") or 0)
     total_value  = round(positions_value + cash_balance, 2)
-    # ... all your calculations above ...
 
-    debug = (request.args.get("debug") == "1")
-
-    # keep whatever you already compute for account/holdings/trades/metrics
     payload = {
         "ok": True,
         "days": days,
@@ -2796,31 +2782,19 @@ def live_status():
             "positions_value": positions_value,
             "unrealized_pnl": unrealized,
             "unrealized_pnl_pct": upct,
-            "realized_pnl": 0.0,
-            "realized_pnl_pct": 0.0,
+            "realized_pnl": round(realized_today, 2),
+            "realized_pnl_pct": round(realized_today_pct, 2),
             "total_value": total_value,
             "cash_balance": cash_balance,
         },
     }
-
     if debug_level:
         payload["_debug"] = {
             "requested": syms,
             "qmap_keys": sorted(list(qmap.keys())),
             "quotes": quotes_dbg or [],
         }
-
     return payload
-
-    if debug_level:
-        payload["_debug"] = {
-            "requested": syms,
-            "qmap_keys": sorted(list(qmap.keys())),
-            "quotes": quotes_dbg or [],
-        }
-
-    return payload
-
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True, use_reloader=True)
