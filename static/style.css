@@ -31,6 +31,11 @@ select {
   cursor:help
 }
 .hint:hover{background:#444;color:#fff}
+.num.pos, .alerts-table .pos { color:#39d353 !important; } /* green  */
+.num.neg, .alerts-table .neg { color:#f05454 !important; } /* red    */
+
+.pos { color: #39d353; }  /* green */
+.neg { color: #f05454; }  /* red   */
 
 /* P&L positive/negative coloring */
 .pn-pos{color:#17c964}

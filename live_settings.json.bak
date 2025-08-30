@@ -32,7 +32,7 @@
   "atr_threshold": 2.0,
   "atr_pct_on": true,
   "atr_pct": 0.5,
-  
+
   "super_on": true,
   "super_fast": 7,
   "super_slow": 21,
@@ -45,23 +45,23 @@
   "gap_pct": 1.5,
 
   "single_entry_only": false,
-  "use_trailing_stop": true,
-  "trailing_stop_pct": 12,
   "max_pyramids": 3,
   "account_type": "cash",
 
-  "stop_loss_pct": 5,
-  "take_profit_pct": 12,
+  "stop_loss_pct": 4,
+  "take_profit_pct": 0,
+
   "sell_after_days": 1,
 
-  "broker_mode": "LIVE",
+  "broker_mode": "etrade",
+  "broker": "LIVE",
+  "mode": "live",
   "scan_sleep_secs": 5,
-  "max_per_trade": 150,
   "pause_when_market_closed": true,
   "nuke_db": false,
-  "poll_interval": 5.0,
 
-  "required_filters": ["adx","macd"],
+  "poll_interval": 3.0,
+  "required_filters": ["adx", "macd"],
 
   "adx_on": true,
   "adx_len": 14,
@@ -69,4 +69,19 @@
 
   "strict_buy_signals": 4,
   "require_sma20": true,
+
+  "use_trailing_stop": false,
+  "trailing_stop_pct": 0.9,
+  "trail_arm_gain_pct": 0.5,
+  "trail_floor_to_entry": true,
+  "trail_tiers": [[3, 0.7], [5, 0.5]],
+
+  "take_profit_pct": 1.5,
+  "stop_loss_pct": 2.0,
+
+  "market_session": "REGULAR",
+  "order_term": "GOOD_UNTIL_CANCEL",
+
+  "prefer_quotes": false,
+  "sell_blocklist": ["GEVO"]
 }

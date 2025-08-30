@@ -1,83 +1,49 @@
-# live_start.py
-import os, sys, json, logging
-from types import SimpleNamespace
-from pathlib import Path
-def _normalize_mode(val) -> str:
-    v = (str(val or "SIM").strip().upper())
-    aliases = {
-        "ETRADE": "LIVE",        # 👈 treat ETRADE as LIVE
-        "LIVE_TRADING": "LIVE",
-        "REAL": "LIVE",
-        "PAPER": "SIM",
-        "PAPERTRADING": "SIM",
-        "SIMULATION": "SIM",
-    }
-    v = aliases.get(v, v)
-    return "LIVE" if v == "LIVE" else "SIM"
+#!/usr/bin/env python3
+import os, json, logging, sys
 
-def load_live_settings(path: str) -> SimpleNamespace:
-    p = Path(path)
-    try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-        print(f"🔧 Using live settings from {p.resolve()}")
-        return SimpleNamespace(**data)
-    except Exception as e:
-        print(f"⚠️ Could not read {p.resolve()} ({e}); using empty settings")
-        return SimpleNamespace()
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("launcher")
+
+ROOT = os.path.abspath(os.path.dirname(__file__))
+SETTINGS_PATH = os.path.join(ROOT, "live_settings.json")
+SYMS_PATH = os.path.join(ROOT, "sp500_symbols.txt")
+
+def load_json(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def load_symbols(path):
+    with open(path, "r", encoding="utf-8") as f:
+        return [ln.strip().split(",")[0].upper() for ln in f if ln.strip()]
+
+def _norm_mode(v):
+    v = (str(v or "SIM").strip().upper())
+    return "LIVE" if v in ("LIVE","ETRADE","REAL") else "SIM"
+# after LiveBroker is created and before the first scan loop
+bal = broker.get_balances()           # whatever method returns the raw balances dict
+bp, settled = broker.get_buying_power(), broker.get_settled_cash()  # or your equivalents
+log.info("[LIVE] initial funds from broker: settled=%s, bp=%s", settled, bp)
+
+def main():
+    log.info("▶️  Live launcher starting…")
+
+    # Guardrails banner (optional env flags)
+    log.info("GUARDRAILS_ENABLED = %s", str(os.getenv("GUARDRAILS_ENABLED","true")).lower())
+    log.info("LIVE_SAFE_MODE     = %s", str(os.getenv("LIVE_SAFE_MODE","true")).lower())
+
+    data = load_json(SETTINGS_PATH)
+    raw_mode = data.get("broker_mode", "LIVE")
+    mode = _norm_mode(os.getenv("BROKER_MODE") or raw_mode)
+
+    from services.market_service import get_symbols
+    symbols = get_symbols(SYMS_PATH)
+
+    from services.live_loop import run_live_loop
+    log.info("🔧 Using live settings from %s", SETTINGS_PATH)
+    log.info("▶️  Live loop starting (mode=%s)", mode)
+
+    # If you also pass settings as dict, run_live_loop will normalize it.
+    run_live_loop(data, symbols, broker_mode=mode)
 
 if __name__ == "__main__":
-    # Logging
-    lvl = os.getenv("LOG_LEVEL", "INFO").upper()
-    logging.basicConfig(
-        level=getattr(logging, lvl, logging.INFO),
-        format="%(asctime)s %(levelname)5s %(name)s: %(message)s"
-    )
-    logging.getLogger("live").setLevel(getattr(logging, lvl, logging.INFO))
-
-    print("▶️  Live launcher starting…")
-
-    # .env (optional)
-    try:
-        from dotenv import load_dotenv
-        load_dotenv()
-    except Exception:
-        pass
-
-    # Guardrails env echoes
-    print("GUARDRAILS_ENABLED =", os.getenv("GUARDRAILS_ENABLED"))
-    print("LIVE_SAFE_MODE     =", os.getenv("LIVE_SAFE_MODE"))
-    print("LIVE_MAX_QTY       =", os.getenv("LIVE_MAX_QTY"))
-
-    # Start guardrails helper thread (if available)
-    try:
-        from services import live_guardrails as lg
-        if hasattr(lg, "start_guardrails_auto_seller"):
-            lg.start_guardrails_auto_seller()
-            print("✅ Guardrails auto-seller thread started")
-        else:
-            print("ℹ️  live_guardrails.start_guardrails_auto_seller() not found — skipping")
-    except Exception as e:
-        print("⚠️  Guardrails init skipped:", e)
-
-    # Settings path & load
-    settings_path = os.getenv("LIVE_SETTINGS_PATH", "live_settings.json")
-    cfg = load_live_settings(settings_path)
-
-    # Broker mode (env overrides cfg; default to ETRADE)
-    broker_mode = (os.getenv("BROKER_MODE") or getattr(cfg, "broker_mode", "ETRADE") or "ETRADE").upper()
-    raw_mode = data.get("broker_mode")  # should be "LIVE" from JSON
-    env_mode = os.getenv("BROKER_MODE") # optional override
-    picked = env_mode if env_mode else raw_mode
-    mode = _normalize_mode(picked)
-
-    log.info("▶️  Live loop starting (raw_mode=%r, env=%r, normalized=%s)",
-             raw_mode, env_mode, mode)
-
-from services.live_loop import run_live_loop
-run_live_loop(settings, symbols, broker_mode=mode)
-
-    # Run live loop (blocks)
-    from services.live_loop import run_live_loop
-    print(f"▶️  Live loop starting (mode={broker_mode})")
-    sys.stdout.flush()
-    run_live_loop(cfg, broker_mode=broker_mode)
+    sys.exit(main())

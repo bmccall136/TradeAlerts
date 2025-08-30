@@ -1,0 +1,72 @@
+{
+  "2025-08-27": {
+    "symbols": {
+      "EMR": {
+        "lots": [
+          {
+            "qty": 1,
+            "price": 131.17
+          }
+        ]
+      },
+      "GDDY": {
+        "lots": [
+          {
+            "qty": 1,
+            "price": 146.57
+          }
+        ]
+      },
+      "TECH": {
+        "lots": [
+          {
+            "qty": 2,
+            "price": 54.89
+          }
+        ]
+      }
+    },
+    "trades": [
+      {
+        "time": 1756236644000,
+        "symbol": "EMR",
+        "action": "SELL",
+        "qty": 1,
+        "price": 132.95,
+        "basis_used": 0.0,
+        "pl": 132.95,
+        "pl_pct": 0.0
+      },
+      {
+        "time": 1756236522000,
+        "symbol": "GDDY",
+        "action": "SELL",
+        "qty": 1,
+        "price": 145.85,
+        "basis_used": 0.0,
+        "pl": 145.85,
+        "pl_pct": 0.0
+      },
+      {
+        "time": 1756235966000,
+        "symbol": "TECH",
+        "action": "SELL",
+        "qty": 2,
+        "price": 56.8,
+        "basis_used": 0.0,
+        "pl": 113.6,
+        "pl_pct": 0.0
+      }
+    ],
+    "realized": 392.4,
+    "basis_sold": 0.0,
+    "seen": [
+      "1755880693000|TECH|BUY|2|54.89",
+      "1755881127000|GDDY|BUY|1|146.57",
+      "1755881903000|EMR|BUY|1|131.17",
+      "1756235966000|TECH|SELL|2|56.8",
+      "1756236522000|GDDY|SELL|1|145.85",
+      "1756236644000|EMR|SELL|1|132.95"
+    ]
+  }
+}
