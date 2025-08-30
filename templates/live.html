@@ -144,7 +144,8 @@
   </table>
 </div>
 <script>
-// returns the first finite, positive number from a list (or null)
+(() => {
+// ---------- helpers ----------
 function firstPositive(values){
   for (const v of values){
     const n = Number(v);
@@ -152,38 +153,57 @@ function firstPositive(values){
   }
   return null;
 }
-</script>
-<script>
+function set(sel, val){ const el = document.querySelector(sel); if (el) el.textContent = (val ?? '—'); }
+function money(x){ x = parseFloat(x); return Number.isFinite(x) ? `$${x.toFixed(2)}` : '$0.00'; }
+function pct(x){ x = parseFloat(x); return Number.isFinite(x) ? `${x.toFixed(2)}%` : '0.00%'; }
+function paintStatus(ok){
+  const dot = document.querySelector('.status-block > div > div:last-child');
+  if (dot) dot.style.color = ok ? '#39d353' : '#f05454';
+}
+function colorize(el, num){
+  if (!el) return;
+  el.classList.remove('pos','neg');
+  if (typeof num === 'number' && !isNaN(num)) {
+    if (num > 0) el.classList.add('pos'); else if (num < 0) el.classList.add('neg');
+  }
+}
+function paintSign(sel, num){
+  const el = document.querySelector(sel);
+  if (!el) return;
+  el.classList.remove('pos','neg');
+  const n = parseFloat(num);
+  if (isFinite(n)) { if (n > 0) el.classList.add('pos'); else if (n < 0) el.classList.add('neg'); }
+}
+
+// ---------- main refresh ----------
 async function refreshLive() {
   try {
     const r = await fetch('/live/status?days=7');
     const d = await r.json();
 
-    // paint status dot (green on success, red on error/ok:false)
     paintStatus(!!d && d.ok !== false);
 
     const m = d.metrics || {};
     const a = d.account || {};
 
-    // ----- Buying Power: robust fallback + sticky last-good value -----
+    // Buying Power (sticky)
     let bp = firstPositive([
-      a?.buying_power,
-      a?.available_funds,
-      a?.accountBalance?.marginBuyingPower,
-      a?.cash_balance,
-      a?.cash,
-      a?.settled_cash
+      a && a.buying_power,
+      a && a.available_funds,
+      a && a.accountBalance && a.accountBalance.marginBuyingPower,
+      a && a.cash_balance,
+      a && a.cash,
+      a && a.settled_cash
     ]);
-
     if (bp == null) {
       const last = Number(localStorage.getItem('bp_last') || '');
-      if (Number.isFinite(last) && last > 0) bp = last;  // keep last good value
+      if (Number.isFinite(last) && last > 0) bp = last;
     } else {
-      localStorage.setItem('bp_last', String(bp));       // remember good value
+      localStorage.setItem('bp_last', String(bp));
     }
     set('#bp', money(bp ?? 0));
 
-    // The rest stays the same
+    // KPIs
     set('#sc',     money(a.settled_cash));
     set('#utotal', money(m.total_value));
     set('#posval', money(m.positions_value));
@@ -191,30 +211,29 @@ async function refreshLive() {
     set('#upct',   pct(m.unrealized_pnl_pct));
     set('#rpnl',   money(m.realized_pnl));
     set('#rpct',   pct(m.realized_pnl_pct));
-
     paintSign('#upnl', m.unrealized_pnl);
     paintSign('#upct', m.unrealized_pnl_pct);
     paintSign('#rpnl', m.realized_pnl);
     paintSign('#rpct', m.realized_pnl_pct);
 
-    renderHoldings(d.holdings || []);
+    // Build a fallback map for last prices from recent trades
+    const lastFromTrades = {};
+    for (const t of (d.trades || [])) {
+      const sym = (t.symbol || '').toUpperCase();
+      const px  = Number(t.price);
+      if (sym && Number.isFinite(px)) lastFromTrades[sym] = px;
+    }
+
+    renderHoldings(d.holdings || [], lastFromTrades);
     renderTrades(d.trades || []);
   } catch (e) {
     paintStatus(false);
     console.error('refreshLive failed:', e);
   }
 }
-function set(sel, val){ const el = document.querySelector(sel); if (el) el.textContent = (val ?? '—'); }
-function money(x){ x = parseFloat(x); return Number.isFinite(x) ? `$${x.toFixed(2)}` : '$0.00'; }
-function pct(x){ x = parseFloat(x); return Number.isFinite(x) ? `${x.toFixed(2)}%` : '0.00%'; }
 
-function paintStatus(ok){
-  const dot = document.querySelector('.status-block > div > div:last-child');
-  if (dot) dot.style.color = ok ? '#39d353' : '#f05454';
-}
-
-// ----- tables -----
-function renderHoldings(rows){
+// ---------- holdings ----------
+function renderHoldings(rows, lastFromTrades = {}) {
   const tb = document.querySelector('#holdings-body');
   if (!tb) return;
   tb.innerHTML = '';
@@ -229,26 +248,41 @@ function renderHoldings(rows){
     const tpln = (h.total_pl != null)     ? Number(h.total_pl)     : null;
     const tppn = (h.total_pl_pct != null) ? Number(h.total_pl_pct) : null;
 
-    const last = (h.last_price != null) ? money(h.last_price) : '—';
+    const sym  = (h.symbol || '').toUpperCase();
     const qty  = h.qty ?? 0;
-    const paid = (h.price_paid != null) ? money(h.price_paid) : '—';
+
+    const lastNum  = (h.last_price != null ? Number(h.last_price) : NaN);
+    const tradeNum = Number(lastFromTrades[sym]);
+    const paidNum  = (h.price_paid != null ? Number(h.price_paid) : NaN);
+
+    const lastChosen = Number.isFinite(lastNum)  ? lastNum
+                     : Number.isFinite(tradeNum) ? tradeNum
+                     : Number.isFinite(paidNum)  ? paidNum
+                     : null;
+
+    const lastTxt = (lastChosen == null) ? '—' : money(lastChosen);
+    const paidTxt = (h.price_paid != null) ? money(h.price_paid) : '—';
+
+    let value = h.value;
+    if (value == null && lastChosen != null && Number.isFinite(qty)) value = lastChosen * qty;
+    const valueTxt = (value == null) ? '—' : money(value);
+
     const dpl  = (dpln != null) ? money(dpln) : '—';
     const dpp  = (dppn != null) ? pct(dppn)   : '—';
     const tpl  = (tpln != null) ? money(tpln) : '—';
     const tpp  = (tppn != null) ? pct(tppn)   : '—';
-    const val  = (h.value != null) ? money(h.value) : '—';
 
     tb.insertAdjacentHTML('beforeend', `
       <tr>
-        <td>${h.symbol || ''}</td>
-        <td>${last}</td>
+        <td>${sym}</td>
+        <td>${lastTxt}</td>
         <td>${qty}</td>
-        <td>${paid}</td>
+        <td>${paidTxt}</td>
         <td class="day-pl">${dpl}</td>
         <td class="day-pl-pct">${dpp}</td>
         <td class="tot-pl">${tpl}</td>
         <td class="tot-pl-pct">${tpp}</td>
-        <td>${val}</td>
+        <td>${valueTxt}</td>
       </tr>`);
 
     const row = tb.lastElementChild;
@@ -259,57 +293,60 @@ function renderHoldings(rows){
   }
 }
 
-function colorize(el, num){
-  if (!el) return;
-  el.classList.remove('pos','neg');
-  if (typeof num === 'number' && !isNaN(num)) {
-    if (num > 0) el.classList.add('pos');
-    else if (num < 0) el.classList.add('neg');
-  }
-}
-
-function paintSign(sel, num){
-  const el = document.querySelector(sel);
-  if (!el) return;
-  el.classList.remove('pos','neg');
-  const n = parseFloat(num);
-  if (isFinite(n)) {
-    if (n > 0) el.classList.add('pos');
-    else if (n < 0) el.classList.add('neg');
-  }
-}
-
+// ---------- trades (this was missing/undefined) ----------
 function renderTrades(rows){
   const tb = document.querySelector('#trades-body');
   if (!tb) return;
   tb.innerHTML = '';
-  if (!rows.length){ tb.innerHTML = `<tr><td class="muted" colspan="8">No trades yet</td></tr>`; return; }
+  if (!rows.length){
+    tb.innerHTML = `<tr><td class="muted" colspan="8">No trades yet</td></tr>`;
+    return;
+  }
+
   for (const t of rows){
-    const time  = t.time || '—';
-    const sym   = t.symbol || '';
-    const side  = t.action || '';
-    const qty   = t.qty ?? 0;
-    const px    = t.price != null ? t.price.toFixed(2) : '—';
-    const paid  = t.price_paid != null ? t.price_paid.toFixed(2) : '—';
-    const pl    = t.pl != null ? t.pl.toFixed(2) : '—';
-    const plpct = t.pl_pct != null ? t.pl_pct.toFixed(2)+'%' : '—';
+    const time = t.time || '—';
+    const sym  = (t.symbol || '').toUpperCase();
+    const side = t.action || '';
+    const qty  = t.qty ?? 0;
+
+    let px    = (t.price      != null) ? Number(t.price)      : null;
+    let paid  = (t.price_paid != null) ? Number(t.price_paid) : null;
+    let pl    = (t.pl         != null) ? Number(t.pl)         : null;
+    let plpct = (t.pl_pct     != null) ? Number(t.pl_pct)     : null;
+
+    // sensible defaults for BUYs so cells aren’t blank
+    if (side === 'BUY') {
+      if (paid == null && px != null) paid = px;
+      if (pl == null)    pl = 0;
+      if (plpct == null) plpct = 0;
+    }
+
+    const pxTxt   = (px    == null) ? '—' : money(px);
+    const paidTxt = (paid  == null) ? '—' : money(paid);
+    const plTxt   = (pl    == null) ? '—' : money(pl);
+    const plpTxt  = (plpct == null) ? '—' : pct(plpct);
+
     tb.insertAdjacentHTML('beforeend', `
       <tr>
         <td>${time}</td>
         <td>${sym}</td>
         <td>${side}</td>
         <td>${qty}</td>
-        <td>${px === '—' ? '—' : '$' + px}</td>
-        <td>${paid === '—' ? '—' : '$' + paid}</td>
-        <td>${pl === '—' ? '—' : '$' + pl}</td>
-        <td>${plpct}</td>
+        <td>${pxTxt}</td>
+        <td class="tr-paid">${paidTxt}</td>
+        <td class="tr-pl">${plTxt}</td>
+        <td class="tr-pl-p">${plpTxt}</td>
       </tr>`);
+
+    colorize(tb.lastElementChild.querySelector('.tr-pl'),   pl);
+    colorize(tb.lastElementChild.querySelector('.tr-pl-p'), plpct);
   }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  refreshLive();
+  refreshLive().catch(console.error);
   setInterval(refreshLive, 30000);
 });
+})();
 </script>
 {% endblock %}
