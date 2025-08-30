@@ -90,16 +90,35 @@ def get_quote(symbols: str) -> dict:
     return r.json()
 
 # --- preview/place (unchanged) ---
-def preview_equity_order(accountIdKey: str, *,
-                         action: str, symbol: str, qty: int,
-                         priceType: str = "MARKET",
+def preview_equity_order(accountIdKey: str, *, 
+                         action: str | None = None,
+                         side: str | None = None,             # alias
+                         symbol: str,
+                         qty: int | None = None,
+                         quantity: int | None = None,         # alias
+                         priceType: str | None = None,
+                         price: float | None = None,          # alias for limit
                          limitPrice: float | None = None,
-                         stopPrice: float  | None = None,
+                         stopPrice: float | None = None,
                          term: str = "GOOD_FOR_DAY") -> dict:
-    """
-    action: BUY | SELL | SELL_SHORT | BUY_TO_COVER
-    priceType: MARKET | LIMIT | STOP | STOP_LIMIT
-    """
+    # normalize
+    action = (action or side)
+    if not action:
+        raise ValueError("action/side is required")
+    qty = qty if qty is not None else quantity
+    if qty is None:
+        raise ValueError("qty/quantity is required")
+
+    if priceType is None:
+        priceType = "LIMIT" if (price is not None or limitPrice is not None) else "MARKET"
+    if limitPrice is None and price is not None:
+        limitPrice = price
+
+    if priceType in ("LIMIT", "STOP_LIMIT") and limitPrice is None:
+        raise ValueError("limitPrice (or price) required for LIMIT/STOP_LIMIT")
+    if priceType in ("STOP", "STOP_LIMIT") and stopPrice is None:
+        raise ValueError("stopPrice required for STOP/STOP_LIMIT")
+
     body = {
       "PreviewOrderRequest": {
         "orderType": "EQ",
@@ -127,24 +146,46 @@ def preview_equity_order(accountIdKey: str, *,
     return r.json()
 
 def place_from_preview(accountIdKey: str, preview_json: dict) -> dict:
-    pr = preview_json.get("PreviewOrderResponse") or {}
-    pv = (pr.get("PreviewIds") or [{}])[0].get("previewId")
-    ords = pr.get("Order") or []
+    # tolerate key casing and dict/list shapes
+    pr = (preview_json.get("PreviewOrderResponse")
+          or preview_json.get("previewOrderResponse")
+          or {})
+    preview_ids = (pr.get("PreviewIds")
+                   or pr.get("previewIds")
+                   or [])
+    if isinstance(preview_ids, dict):
+        preview_ids = [preview_ids]
+
+    pv = (preview_ids or [{}])[0].get("previewId")
+    ords = (pr.get("Order") or pr.get("order") or [])
+
     if not pv or not ords:
         raise RuntimeError(f"Preview response missing previewId/Order: {preview_json}")
 
     body = {
       "PlaceOrderRequest": {
         "orderType": "EQ",
-        "clientOrderId": pr.get("clientOrderId") or pr.get("ClientOrderId") or f"ta-{pv}",
-        "PreviewIds": [{"previewId": pv}],
-        "Order": ords
+        "clientOrderId": (
+            pr.get("clientOrderId")
+            or pr.get("ClientOrderId")
+            or f"ta-{pv}"
+        ),
+        "PreviewIds": [{"previewId": str(pv)}],
+        "Order": ords,  # carry through exactly what was previewed
       }
     }
+
     s = _sesh()
     r = s.post(f"{BASE}/accounts/{accountIdKey}/orders/place.json", json=body)
-    if r.status_code != 200:
-        raise RuntimeError(f"place_from_preview {r.status_code}: {r.text}")
+
+    # E*TRADE often returns 201 Created on success
+    if r.status_code not in (200, 201):
+        try:
+            detail = r.json()
+        except Exception:
+            detail = r.text
+        raise RuntimeError(f"place_from_preview {r.status_code}: {detail}")
+
     return r.json()
 def market_buy(symbol: str, qty: int) -> dict:
     acct = get_account_id_key()

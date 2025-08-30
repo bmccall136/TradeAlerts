@@ -27,7 +27,7 @@ auth = OAuth1(
 )
 
 # Define the endpoint and symbol
-symbol = "AAPL"
+symbol = "PSX"
 url = f"https://api.etrade.com/v1/market/quote/{symbol}.json"
 
 # Make the request

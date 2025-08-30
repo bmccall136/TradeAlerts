@@ -61,11 +61,10 @@
 	<div class="kpi-card">
 	  <div class="kpi-title">P&L</div>
 
-	  <div class="kv">
-		<span class="label">Total (Cash + Positions)</span>
-		</span>
-		<span id="utotal" class="num"></span>
-	  </div>
+	<div class="kv">
+	  <span class="label">Total (Cash + Positions)</span>
+	  <span id="utotal" class="num"></span>
+	</div>
 
 	  <div class="kv">
 		<span class="label">Positions Value</span>
@@ -80,20 +79,18 @@
 		<span id="upct" class="num"></span>
 	  </div>
 
-	  <div class="kv">
-		<span class="label">Realized P&L</span>
-		<span id="rpnl" class="num"></span>
-	  </div>
-
-	  <div class="kv">
-		<span class="label">Realized P&L %</span>
-		<span id="rpct" class="num"></span>
-	  </div>
+	<div class="kv">
+	  <span class="label">Realized P&L</span>
+	  <span id="rpnl" class="num"></span>
+	</div>
+	<div class="kv">
+	  <span class="label">Realized P&L %</span>
+	  <span id="rpct" class="num"></span>
+	</div>
 	</div>
    </div>
 
-<!-- ========================
-</span>
+<!-- ========================== -->
 <!-- Holdings (same table classes/order as Sim) -->
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h3 class="text-white mb-0">Holdings</h3>
@@ -103,152 +100,190 @@
   <table class="table table-striped table-bordered alerts-table text-white">
     <thead class="table-light">
       <tr>
-        <th>Symbol</th><th>Last Price</th><th>Change</th><th>Change %</th>
-        <th>Qty</th><th>Price Paid</th><th>Day Gain/Loss</th>
-        <th>Total Gain/Loss</th><th>Value</th>
+        <th>Symbol</th>
+        <th>Last Price</th>
+        <th>Qty</th>
+        <th>Price Paid</th>
+        <th>Day P&L</th>
+        <th>Day P&L %</th>
+        <th>Total P&L</th>
+        <th>Total P&L %</th>
+        <th>Value</th>
       </tr>
     </thead>
-	<tbody id="holdings-body">
-	  {# existing server-rendered rows are fine; JS will replace #}
-	  {% for h in holdings or [] %}
-	  <tr>
-		<td>{{ h.symbol }}</td>
-		<td>${{ '%.2f'|format(h.last_price or 0) }}</td>
-		<td>$0.00</td>
-		<td>0.00%</td>
-		<td>{{ h.qty }}</td>
-		<td>${{ '%.2f'|format(h.price_paid or 0) }}</td>
-		<td>$0.00</td>
-		<td>${{ '%.2f'|format((h.last_price - h.price_paid) * h.qty if h.qty else 0) }}</td>
-		<td>${{ '%.2f'|format(h.value or (h.last_price*h.qty)) }}</td>
-	  </tr>
-	  {% else %}
-	  <tr><td colspan="9" class="text-center">No holdings.</td></tr>
-	  {% endfor %}
-	</tbody>
+    <tbody id="holdings-body">
+      {% for h in holdings or [] %}
+      <tr>
+        <td>{{ h.symbol }}</td>
+        <td>${{ '%.2f'|format(h.last_price or 0) }}</td>
+        <td>{{ h.qty }}</td>
+        <td>${{ '%.2f'|format(h.price_paid or 0) }}</td>
+        <td>${{ '%.2f'|format(h.day_pl or 0) }}</td>
+        <td>{{ '%.2f'|format(h.day_pl_pct or 0) }}%</td>
+        <td>${{ '%.2f'|format(h.total_pl or 0) }}</td>
+        <td>{{ '%.2f'|format(h.total_pl_pct or 0) }}%</td>
+        <td>${{ '%.2f'|format(h.value or ((h.last_price or 0) * (h.qty or 0))) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" class="text-center">No holdings.</td></tr>
+      {% endfor %}
+    </tbody>
   </table>
 </div>
 
-<!-- Recent Trades (match Sim "Trade History") -->
-<h3 class="text-white mt-5 mb-3">Recent Trades</h3>
+<h3 class="section-title">Recent Trades</h3>
 <div class="table-responsive">
   <table class="table table-striped table-bordered alerts-table text-white">
     <thead class="table-light">
       <tr>
-        <th>Time</th><th>Symbol</th><th>Action</th>
-        <th>Qty</th><th>Price</th><th>P/L</th>
+        <th>Time</th><th>Symbol</th><th>Side</th><th>Qty</th><th>Price</th><th>Price Paid</th><th>P&L</th><th>P&L %</th>
+
       </tr>
     </thead>
-	<tbody id="trades-body">
-	  {% for t in trades or [] %}
-	  <tr>
-		<td>{{ t.time }}</td>
-		<td>{{ t.symbol }}</td>
-		<td>{{ t.action }}</td>
-		<td>{{ t.qty }}</td>
-		<td>${{ '%.2f'|format(t.price or 0) }}</td>
-		<td>${{ '%.2f'|format(t.pl or 0) }}</td>
-	  </tr>
-	  {% else %}
-	  <tr><td colspan="6" class="text-center">No trades yet</td></tr>
-	  {% endfor %}
-	</tbody>
+    <tbody id="trades-body"></tbody>
   </table>
 </div>
 
 <script>
-(function () {
-  const $ = id => document.getElementById(id);
-  const money = n => '$' + Number(n ?? 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
-  const pct   = n => Number(n ?? 0).toFixed(2) + '%';
+async function refreshLive() {
+  try {
+    const r = await fetch('/live/status?days=7');
+    const d = await r.json();
+	
+    // paint status dot (green on success, red on error/ok:false)
+    paintStatus(!!d && d.ok !== false);
 
-  function setMoney(id, val, colorize=false){
-    const el = $(id); if (!el) return;
-    el.textContent = money(val);
-    if (colorize) colorizeNum(el, Number(val));
+    const m = d.metrics || {};
+    const a = d.account || {};
+
+    set('#bp',     money(a.buying_power));
+    set('#sc',     money(a.settled_cash));
+    set('#utotal', money(m.total_value));
+    set('#posval', money(m.positions_value));
+    set('#upnl',   money(m.unrealized_pnl));
+    set('#upct',   pct(m.unrealized_pnl_pct));
+    set('#rpnl',   money(m.realized_pnl));
+    set('#rpct',   pct(m.realized_pnl_pct));
+
+	paintSign('#upnl', m.unrealized_pnl);
+	paintSign('#upct', m.unrealized_pnl_pct);
+	paintSign('#rpnl', m.realized_pnl);
+	paintSign('#rpct', m.realized_pnl_pct);
+
+    renderHoldings(d.holdings || []);
+    renderTrades(d.trades || []);
+  } catch (e) {
+    paintStatus(false);
+    console.error('refreshLive failed:', e);
   }
-  function setPct(id, val, colorize=false){
-    const el = $(id); if (!el) return;
-    el.textContent = pct(val);
-    if (colorize) colorizeNum(el, Number(val));
-  }
-  function colorizeNum(el, v){
-    el.classList.remove('pn-pos','pn-neg','pn-flat');
-    el.classList.add(v>0 ? 'pn-pos' : v<0 ? 'pn-neg' : 'pn-flat');
-  }
+}
 
-  async function refresh(){
-    try{
-      const r = await fetch('/live/status',{cache:'no-store'});
-      if (!r.ok) return;
-      const { account={}, metrics={}, holdings=[], trades=[] } = await r.json();
+function set(sel, val){ const el = document.querySelector(sel); if (el) el.textContent = (val ?? '—'); }
+function money(x){ x = parseFloat(x); return Number.isFinite(x) ? `$${x.toFixed(2)}` : '$0.00'; }
+function pct(x){ x = parseFloat(x); return Number.isFinite(x) ? `${x.toFixed(2)}%` : '0.00%'; }
 
-      // cash to include: prefer settled cash, else buying power
-      const cash = Number(account.settled_cash ?? account.buying_power ?? 0) || 0;
-      const posVal = Number(metrics.positions_value ?? 0) || 0;
+function paintStatus(ok){
+  const dot = document.querySelector('.status-block > div > div:last-child');
+  if (dot) dot.style.color = ok ? '#39d353' : '#f05454';
+}
 
-      // KPIs
-      setMoney('utotal', posVal + cash, false);   // neutral
-      setMoney('posval', posVal, false);          // neutral
-      setPct  ('upct',   metrics.unrealized_pnl_pct, true);
-      setMoney('rpnl',   metrics.realized_pnl, true);
-      setPct  ('rpct',   metrics.realized_pnl_pct, true);
-
-      // holdings table (unchanged from your current)
-      const hBody = $('holdings-body');
-      if (hBody){
-        hBody.innerHTML = '';
-        if (!holdings.length){
-          hBody.innerHTML = `<tr><td colspan="9" class="text-center">No holdings.</td></tr>`;
-        }else{
-          for (const h of holdings){
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-              <td>${h.symbol ?? ''}</td>
-              <td>${money(h.last_price)}</td>
-              <td>${money(h.change)}</td>
-              <td>${(h.change_pct!=null)? Number(h.change_pct).toFixed(2)+'%':'—'}</td>
-              <td>${h.qty ?? 0}</td>
-              <td>${money(h.price_paid)}</td>
-              <td>${money(h.day_gain)}</td>
-              <td>${money(h.total_gain)}</td>
-              <td>${money(h.value)}</td>`;
-            hBody.appendChild(tr);
-          }
-        }
-      }
-
-      // trades table (unchanged from your current)
-      const tBody = $('trades-body');
-      if (tBody){
-        tBody.innerHTML = '';
-        if (!trades.length){
-          tBody.innerHTML = `<tr><td colspan="6" class="text-center">No trades yet</td></tr>`;
-        }else{
-          for (const t of trades){
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-              <td>${t.time ?? ''}</td>
-              <td>${t.symbol ?? ''}</td>
-              <td>${t.action ?? ''}</td>
-              <td>${t.qty ?? 0}</td>
-              <td>${money(t.price)}</td>
-              <td>${money(t.pl)}</td>`;
-            tBody.appendChild(tr);
-          }
-        }
-      }
-    }catch(e){
-      console.warn('live/status refresh failed:', e);
-    }
+// ----- tables -----
+function renderHoldings(rows){
+  const tb = document.querySelector('#holdings-body');
+  if (!tb) return;
+  tb.innerHTML = '';
+  if (!rows.length){
+    tb.innerHTML = `<tr><td class="muted" colspan="9">No holdings.</td></tr>`;
+    return;
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', refresh);
-  } else {
-    refresh();
+  for (const h of rows){
+    const dpln = (h.day_pl != null)       ? Number(h.day_pl)       : null;
+    const dppn = (h.day_pl_pct != null)   ? Number(h.day_pl_pct)   : null;
+    const tpln = (h.total_pl != null)     ? Number(h.total_pl)     : null;
+    const tppn = (h.total_pl_pct != null) ? Number(h.total_pl_pct) : null;
+
+    const last = (h.last_price != null) ? money(h.last_price) : '—';
+    const qty  = h.qty ?? 0;
+    const paid = (h.price_paid != null) ? money(h.price_paid) : '—';
+    const dpl  = (dpln != null) ? money(dpln) : '—';
+    const dpp  = (dppn != null) ? pct(dppn)   : '—';
+    const tpl  = (tpln != null) ? money(tpln) : '—';
+    const tpp  = (tppn != null) ? pct(tppn)   : '—';
+    const val  = (h.value != null) ? money(h.value) : '—';
+
+    tb.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td>${h.symbol || ''}</td>
+        <td>${last}</td>
+        <td>${qty}</td>
+        <td>${paid}</td>
+        <td class="day-pl">${dpl}</td>
+        <td class="day-pl-pct">${dpp}</td>
+        <td class="tot-pl">${tpl}</td>
+        <td class="tot-pl-pct">${tpp}</td>
+        <td>${val}</td>
+      </tr>`);
+
+    const row = tb.lastElementChild;
+    colorize(row.querySelector('.day-pl'),     dpln);
+    colorize(row.querySelector('.day-pl-pct'), dppn);
+    colorize(row.querySelector('.tot-pl'),     tpln);
+    colorize(row.querySelector('.tot-pl-pct'), tppn);
   }
-  setInterval(()=>{ if (document.visibilityState==='visible') refresh(); }, 10000);
-})();
+}
+
+function colorize(el, num){
+  if (!el) return;
+  el.classList.remove('pos','neg');
+  if (typeof num === 'number' && !isNaN(num)) {
+    if (num > 0) el.classList.add('pos');
+    else if (num < 0) el.classList.add('neg');
+  }
+}
+
+function paintSign(sel, num){
+  const el = document.querySelector(sel);
+  if (!el) return;
+  el.classList.remove('pos','neg');
+  const n = parseFloat(num);
+  if (isFinite(n)) {
+    if (n > 0) el.classList.add('pos');
+    else if (n < 0) el.classList.add('neg');
+  }
+}
+
+function renderTrades(rows){
+  const tb = document.querySelector('#trades-body');
+  if (!tb) return;
+  tb.innerHTML = '';
+  if (!rows.length){ tb.innerHTML = `<tr><td class="muted" colspan="8">No trades yet</td></tr>`; return; }
+  for (const t of rows){
+    const time  = t.time || '—';
+    const sym   = t.symbol || '';
+    const side  = t.action || '';
+    const qty   = t.qty ?? 0;
+    const px    = t.price != null ? t.price.toFixed(2) : '—';
+    const paid  = t.price_paid != null ? t.price_paid.toFixed(2) : '—';
+    const pl    = t.pl != null ? t.pl.toFixed(2) : '—';
+    const plpct = t.pl_pct != null ? t.pl_pct.toFixed(2)+'%' : '—';
+    tb.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td>${time}</td>
+        <td>${sym}</td>
+        <td>${side}</td>
+        <td>${qty}</td>
+        <td>${px === '—' ? '—' : '$' + px}</td>
+        <td>${paid === '—' ? '—' : '$' + paid}</td>
+        <td>${pl === '—' ? '—' : '$' + pl}</td>
+        <td>${plpct}</td>
+      </tr>`);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  refreshLive();
+  setInterval(refreshLive, 30000);
+});
 </script>
 {% endblock %}

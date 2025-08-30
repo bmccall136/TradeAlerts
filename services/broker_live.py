@@ -83,6 +83,10 @@ def get_account_id_key(force: bool = False) -> str:
     log.info("[LIVE] Using accountIdKey=%s", _ACCOUNT_ID_KEY)
     return _ACCOUNT_ID_KEY
 
+def get_oauth_session():
+    """Public session factory expected by services.etrade_service."""
+    return _sesh()
+
 def get_quote(symbols: str) -> dict:
     s = _sesh()
     r = s.get(f"{BASE}/market/quote/{symbols}.json", params={"detailFlag": "ALL"})

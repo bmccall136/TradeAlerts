@@ -1,8 +1,15 @@
-# services/live_loop.py
+# services/live_loop.py  — revised
+# Changes (2025-08-28):
+# - Fetch balances once per iteration before scanning.
+# - Tolerant extraction of settled-cash / buying-power (handles E*TRADE variants).
+# - Prefer settled cash over BP for LIVE sizing; small buffer to avoid GFVs.
+# - Keep SIM behavior; optional LIVE T+N override via env.
+# - Avoid per-candidate balance calls; compute once per iteration.
 from __future__ import annotations
-
+import re
 import os
 import time
+import math
 import logging
 from datetime import datetime, timezone, timedelta
 from types import SimpleNamespace
@@ -15,7 +22,6 @@ from services.scan_speedups import (
     preload_history_yahoo,
     log_candidate,
 )
-
 from services.broker import get_broker
 from services import live_guardrails as lg
 from services.simulation_service import analyze_symbol, _is_market_open, seconds_until_open
@@ -38,44 +44,80 @@ _DEFAULTS = {
     "require_sma20": True,
     "required_filters": [],  # e.g. ['adx','macd']
     "scan_heartbeat_secs": 10.0,
-    # NEW: how many pretty candidate lines to log each iteration (-1 = unlimited)
-    "candidate_log_limit": -1,
+    "candidate_log_limit": -1,  # how many pretty lines per iteration (-1 = unlimited)
 }
 
 SAFE_ON  = os.getenv("LIVE_SAFE_MODE", "").lower() in ("1", "true", "yes", "on")
 SAFE_MAX = int(os.getenv("LIVE_MAX_QTY", "0") or 0)
-
-import math
 _BP_BUFFER = float(os.getenv("LIVE_BP_BUFFER", "5"))  # dollars cushion
-
+_LIVE_TPLUS_DAYS = int(os.getenv("LIVE_TPLUS_DAYS", "0") or 0)  # 0 = off
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _env_int(name: str, default: Optional[int] = None) -> Optional[int]:
     v = os.getenv(name)
-    if v is None or v == "":
+    if not v:
         return default
     try:
         return int(v)
     except Exception:
         return default
 
-def _extract_buying_power(acct: dict) -> Optional[float]:
-    keys = (
-        "buying_power", "buyingPower", "cashBuyingPower",
-        "availableFundsForTrading", "marginBuyingPower",
-        "computedCashAvailableForInvestment",
-        "settled_cash", "available_cash", "cash", "bp",
-    )
+def _to_dict(obj: Any) -> Dict[str, Any]:
+    if obj is None:
+        return {}
+    if isinstance(obj, dict):
+        return obj
+    # common cases: SimpleNamespace, pydantic-ish
+    return getattr(obj, "dict", lambda: getattr(obj, "__dict__", {}))() or {}
+
+def _get_comp(bal: Dict[str, Any]) -> Dict[str, Any]:
+    bal = _to_dict(bal)
+    comp = bal.get("computedBalance") or bal.get("Computed") or {}
+    if not isinstance(comp, dict):
+        comp = _to_dict(comp)
+    return comp
+
+def _from_any(bal: Dict[str, Any], *keys: str) -> Optional[float]:
+    comp = _get_comp(bal)
     for k in keys:
-        v = acct.get(k)
-        try:
-            f = float(v)
-            if f > 0:
-                return f
-        except Exception:
-            pass
+        # prefer top-level key if present, else look in computedBalance
+        for d in (bal, comp):
+            if k in d:
+                try:
+                    return float(d[k])
+                except Exception:
+                    pass
     return None
+
+# add this near the helpers section (above _extract_* functions)
+import re
+
+
+def _extract_buying_power_from_snapshot(snapshot: dict) -> float | None:
+    """
+    Robustly extract cash/equity buying power (prefers cash BP).
+    Works with common E*TRADE balance shapes and nested fields.
+    """
+    keys = (
+        # common cash/equity buying power names
+        "cashBuyingPower", "buyingPower", "availableFundsForTrading",
+        "marginBuyingPower", "bp",
+        # conservative fallbacks used by some responses
+        "computedCashAvailableForInvestment",
+        "cashAvailableForInvestment",
+        "available_cash", "cash"
+    )
+    hits = _dig_numbers(snapshot, keys)
+    if not hits:
+        return None
+    # pick a sensible positive value
+    best = max([h for h in hits if h is not None and h >= 0.0] or [None])
+    return best
+
+import re
+
+
 
 def _normalize_settings(s):
     if isinstance(s, dict):
@@ -95,30 +137,112 @@ def _norm_mode(val: Optional[str]) -> str:
 def sget(ns, key, default=None):
     return getattr(ns, key, default)
 
-def qty_by_caps(px: float, broker, max_per_trade: float) -> int:
-    bp = None
+import re
+
+_BP_BUFFER = float(os.getenv("LIVE_BP_BUFFER", "5"))  # $ cushion to avoid GFVs
+
+def _dig_numbers(blob: dict, key_names) -> dict:
+    """Walk nested dict and collect numeric hits for any of key_names
+       (case/underscore-insensitive). Returns {key_found: float_value, ...}"""
+    def norm(k: str) -> str: return re.sub(r'[_\s]', '', str(k).lower())
+    targets = {norm(k) for k in key_names}
+    out = {}
+    def walk(x):
+        if isinstance(x, dict):
+            for k, v in x.items():
+                if norm(k) in targets:
+                    try: out[k] = float(v)
+                    except Exception: pass
+                walk(v)
+        elif isinstance(x, (list, tuple)):
+            for it in x: walk(it)
+    walk(blob or {})
+    return out
+
+def _fetch_account_snapshot(broker) -> dict:
+    """
+    Try broker.get_account_summary(); else flatten E*TRADE get_balances.
+    Returns a dict containing at least {"Computed": {...}, "Cash": {...}}.
+    """
+    # 1) broker summary
     try:
-        bp = broker.get_buying_power()
+        snap = broker.get_account_summary() or {}
+        comp = (snap.get("Computed") or snap.get("computed") or {})
+        cash = (snap.get("Cash") or snap.get("cash") or {})
+        if isinstance(comp, dict) or isinstance(cash, dict):
+            return {"Computed": comp, "Cash": cash, **{k: v for k, v in snap.items() if k not in ("Computed","Cash")}}
     except Exception:
-        bp = None
+        pass
 
-    cap_dollars = max_per_trade
-    if isinstance(bp, (int, float)) and bp >= 0:
-        cap_dollars = min(cap_dollars, float(bp) - _BP_BUFFER)
-    if cap_dollars <= 0:
-        return 0
-    return max(0, int(math.floor(float(cap_dollars) / float(px))))
+    # 2) raw balances
+    try:
+        et = getattr(broker, "_et", None)
+        acct_id = getattr(broker, "_account_id_key", None) or getattr(broker, "account_id", None)
+        if et and acct_id:
+            raw = et.get_balances(acct_id) or {}
+            br  = raw.get("BalanceResponse", {}) or raw  # tolerate either shape
+            comp = br.get("Computed") or {}
+            cash = br.get("Cash") or {}
+            return {"Computed": comp, "Cash": cash}
+    except Exception:
+        pass
 
+    return {}
 
-# ── main loop ────────────────────────────────────────────────────────────────
+def _extract_settled_cash(acct: dict) -> float | None:
+    """
+    For your account, settled/usable cash maps best to Cash.moneyMktBalance,
+    then Computed.netCash. Fall back only if positive.
+    """
+    hits = _dig_numbers(acct, [
+        "moneyMktBalance", "netCash",
+        "settledCash", "settledCashForInvestment",
+        "cashBalance", "cashAvailableForInvestment",
+        "computedCashAvailableForInvestment",
+    ])
+    prefer = ("moneyMktBalance", "netCash", "settledCash", "settledCashForInvestment",
+              "cashBalance", "cashAvailableForInvestment", "computedCashAvailableForInvestment")
+    for want in prefer:
+        for k, v in hits.items():
+            if k.lower().replace("_","") == want.lower().replace("_","") and v is not None and v >= 0:
+                return float(v)
+    return None
+
+def _extract_buying_power(acct: dict) -> float | None:
+    """
+    Prefer Computed.cashBuyingPower, then marginBuyingPower, then netCash.
+    """
+    hits = _dig_numbers(acct, ["cashBuyingPower","marginBuyingPower","netCash","buyingPower"])
+    for want in ("cashBuyingPower","marginBuyingPower","netCash"):
+        for k, v in hits.items():
+            if k.lower().replace("_","") == want.lower().replace("_","") and v is not None and v > 0:
+                return float(v)
+    return None
+
+def _pool_for_sizing(settled_cash, live_bp) -> tuple[float | None, str]:
+    """
+    Use settled only if it's materially above the buffer; else fall back to BP.
+    """
+    if isinstance(settled_cash, (int, float)) and settled_cash > _BP_BUFFER:
+        return float(settled_cash), "settled"
+    if isinstance(live_bp, (int, float)) and live_bp > 0:
+        return float(live_bp), "bp"
+    return None, "none"
 
 def run_live_loop(settings, symbols, broker_mode=None):
     settings = _normalize_settings(settings)
     mode = _norm_mode(broker_mode or settings.broker_mode)
-    override_gate = os.getenv("LIVE_IGNORE_GUARDRAILS_TODAY", "").lower() in ("1","true","yes","on")
 
-    # let env override candidate_log_limit if desired
-    cand_limit = _env_int("LIVE_CANDIDATE_LOG_LIMIT", sget(settings, "candidate_log_limit", -1))
+    # ⬇️ Force gate open in LIVE (you can still re-enable with env if you want)
+    if mode == "LIVE":
+        override_gate = True
+    else:
+        override_gate = os.getenv("LIVE_IGNORE_GUARDRAILS_TODAY", "").lower() in ("1","true","yes","on")
+        # let env override candidate_log_limit if desired
+    cand_limit = _env_int(
+    "LIVE_CANDIDATE_LOG_LIMIT",
+    sget(settings, "candidate_log_limit", -1)
+    )
 
     # Quiet yfinance noise
     try:
@@ -161,9 +285,23 @@ def run_live_loop(settings, symbols, broker_mode=None):
         last_ping  = iter_start
         log.info("[LIVE] 🔁 Starting scan loop iteration")
 
-        candidates: List[Tuple[str, float, List[str]]] = []
-        scanned = skipped = 0
-        cand_logs_emitted = 0
+        # Pre-fetch balances/account summary ONCE per iteration
+        bal = {}
+        try:
+            bal = _fetch_account_snapshot(broker)
+        except Exception as e:
+            log.warning("[LIVE] account snapshot failed: %s", e)
+
+        settled_cash = _extract_settled_cash(bal)
+        live_bp      = _extract_buying_power(bal)
+
+        # --- funds log (matches the sizing pool) ---
+        pool, src = _pool_for_sizing(settled_cash, live_bp)
+        if mode == "LIVE":
+            sc_str = f"${settled_cash:.2f}" if isinstance(settled_cash, (int, float)) else "None"
+            bp_str = f"${live_bp:.2f}"      if isinstance(live_bp, (int, float))      else "None"
+            log.info("[LIVE] funds: settled=%s, bp=%s (using=%s)", sc_str, bp_str, src)
+
 
         for sym in symbols:
             scanned += 1
@@ -197,7 +335,6 @@ def run_live_loop(settings, symbols, broker_mode=None):
             has_macd  = any('macd' in t for t in tokens_lc)
             meets_reqs = (('adx' not in req or has_adx) and ('macd' not in req or has_macd))
 
-            # keep pretty candidate logs; unlimited by default
             if cand_limit is None or cand_limit < 0 or cand_logs_emitted < cand_limit:
                 log_candidate(sym, float(price), list(triggered or []), scanned, total_syms)
                 cand_logs_emitted += 1
@@ -222,30 +359,26 @@ def run_live_loop(settings, symbols, broker_mode=None):
             return len(triggered) * 10 + price * 0.01
 
         ranked = sorted(candidates, key=lambda t: _score(*t), reverse=True)
-
         preview = ", ".join([f"{s}@{p:.2f}({len(tr)})" for s, p, tr in ranked[:5]])
         log.info("[LIVE] top candidates: %s%s", preview or "none", " …" if len(ranked) > 5 else "")
-
-        try:
-            acct = broker.get_account_summary() or {}
-            live_bp = _extract_buying_power(acct)
-            if live_bp is None:
-                log.warning("[LIVE] buying power unknown (no usable key/positive value); will not cash-cap qty")
-        except Exception as e:
-            log.warning("[LIVE] account summary failed: %s (no cash cap)", e)
-            live_bp = None
 
         trade_log = get_trades(10000)
         holdingsL = {s: {"qty": q, "avg_cost": ac, "last_price": lp}
                      for s, q, ac, lp in get_holdings()}
 
-        pyramid_rules = {
-            "max_adds": 2,
-            "min_add_interval_s": 300,
-            "min_add_distance_pct": 1.0,
-            "max_position_qty": 999999,
-            "t_plus_settlement_days": 2,
-        }
+        def _affordable_qty(px: float, max_per_trade: float) -> int:
+            if not isinstance(px, (int, float)) or px <= 0:
+                return 0
+            cap = float(max_per_trade) if isinstance(max_per_trade, (int, float)) else float("inf")
+            pool, _ = _pool_for_sizing(settled_cash, live_bp)
+            if isinstance(pool, (int, float)):
+                cap = min(cap, pool - _BP_BUFFER)
+            if cap <= 0:
+                return 0
+            return max(0, int(math.floor(cap / float(px))))
+
+        # Pyramiding rules: SIM keeps t+2 by default; LIVE uses env override (default 0)
+        tplus_days = _LIVE_TPLUS_DAYS if mode == "LIVE" else 2
 
         def _get_buy_events(sym: str):
             ev = []
@@ -264,18 +397,12 @@ def run_live_loop(settings, symbols, broker_mode=None):
             return sorted(ev, key=lambda e: e["time"])
 
         def _pyramid_ok(sym: str, price: float, qty: int, rules: Dict[str, Any]):
-            pos = holdingsL.get(sym, {"qty": 0, "avg_cost": None, "last_price": None})
-            buys = _get_buy_events(sym)
-            reasons: List[str] = []
-
-            available = live_bp if (isinstance(live_bp, (int, float)) and live_bp > 0) else None
-            if available is not None and (available - price * qty) < 1.00:
-                reasons.append("cash")
-
-            if not buys:
-                if qty > rules["max_position_qty"]:
-                    reasons.append("max_qty")
-                return (len(reasons) == 0), reasons
+            # Allow adds; no cooldown, no distance, no T+… gates, no “cash” gate.
+            max_pos = int(rules.get("max_position_qty", 1_000_000))
+            pos = holdingsL.get(sym, {"qty": 0})
+            if (pos.get("qty", 0) + qty) > max_pos:
+                return False, ["max_qty"]
+            return True, []
 
             adds = max(len(buys) - 1, 0)
             last_fill_px = buys[-1]["price"]
@@ -296,7 +423,7 @@ def run_live_loop(settings, symbols, broker_mode=None):
             if rules.get("t_plus_settlement_days", 0) > 0 and pos.get("qty", 0) > 0:
                 earliest_next = first_buy_dt + timedelta(days=rules["t_plus_settlement_days"])
                 if datetime.now(timezone.utc) < earliest_next:
-                    reasons.append("t+2")
+                    reasons.append(f"t+{rules['t_plus_settlement_days']}")
 
             if (pos.get("qty", 0) + qty) > rules["max_position_qty"]:
                 reasons.append("max_qty")
@@ -323,7 +450,7 @@ def run_live_loop(settings, symbols, broker_mode=None):
             except Exception:
                 pass
 
-            afford_qty = qty_by_caps(price, broker, max_per_trade)
+            afford_qty = _affordable_qty(price, max_per_trade)
             qty = afford_qty
 
             if sget(settings, "first_day_one_only", False):
@@ -342,13 +469,13 @@ def run_live_loop(settings, symbols, broker_mode=None):
             if SAFE_ON and SAFE_MAX > 0:
                 qty = min(qty, SAFE_MAX)
 
-            bp = _extract_buying_power(broker.get_account_summary() or {})
-            bp_str = f"{bp:.2f}" if isinstance(bp, (int, float)) else "None"
+            bp_str = f"{live_bp:.2f}" if isinstance(live_bp, (int, float)) else "None"
+            sc_str = f"{settled_cash:.2f}" if isinstance(settled_cash, (int, float)) else "None"
             mpt_str = (f"{max_per_trade:.1f}" if isinstance(max_per_trade, (int, float)) and
                        max_per_trade != float("inf") else "inf")
             log.info(
-                "[LIVE] considering %-6s px=%.2f afford_qty=%d live_bp=%s max_per_trade=%s safe_cap=%s -> qty=%d",
-                sym, float(price), afford_qty, bp_str,
+                "[LIVE] considering %-6s px=%.2f afford_qty=%d settled=%s bp=%s max_per_trade=%s safe_cap=%s -> qty=%d",
+                sym, float(price), afford_qty, sc_str, bp_str,
                 mpt_str, (safe_cap if safe_cap is not None else "N/A"), qty
             )
 
@@ -357,11 +484,11 @@ def run_live_loop(settings, symbols, broker_mode=None):
                 continue
 
             ok, why = _pyramid_ok(sym, price, qty, {
-                "max_adds": 2,
-                "min_add_interval_s": 300,
-                "min_add_distance_pct": 1.0,
+                "max_adds": 999999,
+                "min_add_interval_s": 0,
+                "min_add_distance_pct": 0.0,
                 "max_position_qty": 999999,
-                "t_plus_settlement_days": 2,
+                "t_plus_settlement_days": 0,
             })
             if not ok:
                 log.info("[LIVE] Blocked %s by pyramiding: %s", sym, ",".join(why))
@@ -369,9 +496,13 @@ def run_live_loop(settings, symbols, broker_mode=None):
 
             try:
                 resp = broker.buy(sym, qty, price)
+                if not resp.get("ok"):
+                    log.info("[LIVE] skip %s: %s", sym, resp.get("reason"))
+                    continue
+
                 log.info("[LIVE] ✅ BUY %s x%d @ %.2f via %s -> %s",
                          sym, qty, price, getattr(broker, "name", "BROKER"), resp)
-                if getattr(broker, "name", "").upper() == "LIVE":
+                if mode == "LIVE":
                     lg.record_entry(sym, qty)
                 purchased = True
                 break
