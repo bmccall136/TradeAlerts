@@ -3038,9 +3038,9 @@ def live_status():
             except Exception as e:
                 _log("warning", "[LIVE] start filter failed for %s: %s", start_s, e)
 
+        # Enrich with FIFO, then normalize rounding
         trades_enriched, realized_today, realized_today_pct = _fifo_realized_today(mapped)
 
-        # Normalize numeric rounding for trades
         for t in trades_enriched:
             if "price_paid" in t and t["price_paid"] is not None:
                 t["price_paid"] = round(_safe_float(t["price_paid"]) or 0.0, 2)
@@ -3048,6 +3048,23 @@ def live_status():
                 t["pl"] = round(_safe_float(t["pl"]) or 0.0, 2)
             if "pl_pct" in t and t["pl_pct"] is not None:
                 t["pl_pct"] = round(_safe_float(t["pl_pct"]) or 0.0, 2)
+
+        # --- NEW: realized over the whole lookback window (after start cutoff) ---
+        realized_total = round(sum(
+            _safe_float(t.get("pl"))
+            for t in trades_enriched
+            if (t.get("action") == "SELL" and t.get("pl") is not None)
+        ), 2)
+
+        realized_basis_total = sum(
+            (_safe_float(t.get("price_paid")) or 0.0) * int(_safe_float(t.get("qty")))
+            for t in trades_enriched
+            if (t.get("action") == "SELL" and t.get("price_paid") is not None)
+        )
+
+        realized_total_pct = round(
+            (realized_total / realized_basis_total * 100.0), 2
+        ) if realized_basis_total > 0 else 0.0
 
         # --------------- Equity fallback ---------------
         if not account.get("equity_value"):
@@ -3068,13 +3085,13 @@ def live_status():
                 "positions_value": positions_value,
                 "unrealized_pnl": unrealized,
                 "unrealized_pnl_pct": upct,
-                "realized_pnl": realized_today,
-                "realized_pnl_pct": realized_today_pct,
+                # use totals across the window instead of "today"
+                "realized_pnl": realized_total,
+                "realized_pnl_pct": realized_total_pct,
                 "total_value": total_value,
                 "cash_balance": cash_balance,
             },
         }
-
         if debug_level:
             payload["_debug"] = {
                 "start": start_s or None,
