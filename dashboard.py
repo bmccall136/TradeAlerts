@@ -43,6 +43,51 @@ import pandas as pd
 from functools import wraps
 from flask import jsonify, Response, current_app
 import json  # make sure this is available inside the route
+import re
+
+def parse_max_qty_from_msg(msg: str):
+    m = re.search(r'maximum allowable quantity was estimated to be\s+(\d+)', msg or "", re.I)
+    return int(m.group(1)) if m else None
+
+def place_buy_with_preview_fallback(broker, symbol, qty, limit_px):
+    ok, err = broker.preview_buy(symbol, qty, limit_px)  # whatever your preview wrapper returns
+    if ok:
+        return broker.place_buy(symbol, qty, limit_px)
+
+    # 8400 insufficient funds -> try the “allowed” quantity if present
+    if getattr(err, "code", None) == 8400:
+        max_q = parse_max_qty_from_msg(getattr(err, "message", ""))
+        if max_q and 1 <= max_q < qty:
+            return broker.place_buy(symbol, max_q, limit_px)
+    # otherwise bubble up / skip
+    raise err
+
+def pick_qty(limit_px, acct, max_per_trade):
+    """
+    limit_px: float
+    acct: dict from et.get_account_summary() or balances endpoint
+    max_per_trade: e.g. 150.0 dollars
+    """
+    def _f(x): 
+        try: return float(x) if x is not None else 0.0
+        except: return 0.0
+
+    # Prefer the tightest/most conservative figure
+    candidates = [
+        _f(acct.get("available_funds")),
+        _f(acct.get("cashAvailableForInvestment")),  # some payloads use this
+        _f(acct.get("cash_balance")),
+        _f(acct.get("settled_cash")),
+    ]
+    avail = min(c for c in candidates if c > 0) if any(c > 0 for c in candidates) else 0.0
+
+    # Safety buffer so tiny price wiggles or fees don’t cause a preview reject
+    buffer_dollars = 3.00
+    spend_cap = max(0.0, min(avail, float(max_per_trade)) - buffer_dollars)
+
+    if limit_px <= 0 or spend_cap <= 0:
+        return 0
+    return int(spend_cap // float(limit_px))
 
 def always_json(f):
     @wraps(f)
@@ -2852,12 +2897,51 @@ def live_status():
             enriched.sort(key=lambda r: _to_ms_for_compare(r.get("time_ms")), reverse=True)
             return enriched, round(realized_val, 2), round(realized_pct, 2)
 
-        # --------------- Account -----------------------
-        try:
-            account = _normalize_account(et.get_account_summary() or {})
-        except Exception as e:
-            _log("warning", "[LIVE] account summary failed: %s", e)
-            account = {}
+        # --------------- Account (real-time / conservative) ---------------
+        from services import broker as _broker
+        b = _broker.get_broker('LIVE')
+
+        # ask E*TRADE for real-time balances so BP matches the site
+        raw = b._et._get(
+            f"/accounts/{b.account_id_key}/balance.json",
+            params={"instType": "BROKERAGE", "realTimeNAV": "true"}
+        ) or {}
+        br   = (raw.get("BalanceResponse") or raw) or {}
+        comp = (br.get("Computed") or {})
+        cash = (br.get("Cash") or {})
+        rtv  = (comp.get("RealTimeValues") or {})
+
+        def _first_num(*vals):
+            for v in vals:
+                if isinstance(v, (int, float)):
+                    return float(v)
+            return None
+
+        # what the UI will bind to
+        account = {
+            "account_id":   br.get("accountId"),
+            "account_type": br.get("accountType") or br.get("accountMode"),
+
+            # UI “Buying Power” — same number E*TRADE shows as Margin Purchasing Power
+            "buying_power": b._fresh_funds(),  # uses a short TTL + realTimeNAV
+
+            # UI “Available to Withdraw”
+            "available_to_withdraw": _first_num(
+                comp.get("cashAvailableForWithdrawal"),
+                comp.get("totalAvailableForWithdrawal"),
+            ),
+
+            # UI “Equity Value” (matches the site’s Total Assets)
+            "equity_value": _first_num(
+                rtv.get("totalAccountValue"),
+                comp.get("netCash"),
+            ),
+
+            # (optional extras if you want them around)
+            "cashBuyingPower":   comp.get("cashBuyingPower"),
+            "marginBuyingPower": comp.get("marginBuyingPower"),
+            "moneyMktBalance":   cash.get("moneyMktBalance"),
+}
 
         # --------------- Positions / Holdings ----------
         try:
@@ -3049,6 +3133,7 @@ def live_status():
             if "pl_pct" in t and t["pl_pct"] is not None:
                 t["pl_pct"] = round(_safe_float(t["pl_pct"]) or 0.0, 2)
 
+    
         # --- NEW: realized over the whole lookback window (after start cutoff) ---
         realized_total = round(sum(
             _safe_float(t.get("pl"))
@@ -3072,7 +3157,11 @@ def live_status():
             account["equity_value"] = eq
 
         # --------------- Payload -----------------------
-        cash_balance = float(account.get("settled_cash") or account.get("buying_power") or 0.0)
+        cash_balance = float(
+            account.get("buying_power")
+            or account.get("available_to_withdraw")
+            or 0.0
+        )
         total_value = round(positions_value + cash_balance, 2)
 
         payload = {

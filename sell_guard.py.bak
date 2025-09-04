@@ -1,220 +1,479 @@
-# sell_guard.py — STOP + optional trailing, JSON-driven, with blocklist + backoff
-import os, json, time, sys, logging
-from typing import Dict, Any, Optional, Set
+#!/usr/bin/env python3
+"""
+sell_guard.py — live/shadow sell gate with E*TRADE.
+- Normalizes positions payload (fixes "'str'.get" crash)
+- Fetches quotes (last/bid/ask)
+- Decides SELL_TARGET / SELL_STOP / TIMEOUT / HOLD
+- Places LIMIT sell (live mode) or logs only (shadow mode)
+"""
+import json, os, time
+from pathlib import Path
 
-# Your app services
-from services.broker import get_broker
-from services.etrade_service import get_positions  # use existing implementation
-
-# ---- logging ----
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s sell-guard: %(message)s",
-    datefmt="%H:%M:%S",
-    handlers=[logging.StreamHandler(stream=sys.stdout)]  # stdout (not stderr)
-)
-log = logging.getLogger("sell-guard")
-
-# ---- tunables / constants ----
-BLOCKLIST_LOG_SECS = 60.0
-BACKOFF_MIN = 5.0
-BACKOFF_MAX = 60.0
-
-DEFAULTS = {
-    "use_trailing_stop": False,
-    "trailing_stop_pct": 3.0,
-    "stop_loss_pct": 5.0,
-    "take_profit_pct": 0.0,
-    "poll_interval": 3.0,
-    "market_session": "REGULAR",
-    "order_term": "GOOD_UNTIL_CANCEL",
-    "prefer_quotes": False,
-    "sell_blocklist": [],
-
-    # NEW:
-    "trail_arm_gain_pct": 2.0,       # arm after +2%
-    "trail_floor_to_entry": True,    # keep floor at entry when armed
-    "trail_tiers": []                # e.g. [[5,6],[10,4]]
+_DEFAULTS = {
+    "mode": "live",
+    "target_bps": 20,          # +0.20%
+    "stop_bps": 100,           # -1.00%
+    "max_hold_mins": 60,
+    "throttle_ms": 30_000,
+    "limit_from": "last",      # "bid" | "last" | "mid"
+    "limit_offset_bps": 0,
+    "blocklist": ["GEVO"],
 }
 
-def load_settings(path="live_settings.json") -> Dict[str, Any]:
-    cfg = dict(DEFAULTS)
-    try:
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.loads(f.read())
-            if isinstance(data, dict):
-                # only accept known keys
-                for k in list(data.keys()):
-                    if k in cfg:
-                        cfg[k] = data[k]
-    except Exception as e:
-        log.warning("failed reading %s: %s (using defaults)", path, e)
+class _Cfg:
+    path: Path = None
+    mtime: float = 0.0
+    data: dict = _DEFAULTS.copy()
 
-    # Optional ENV overrides
-    def _f(name, d):
-        v = os.getenv(name)
-        if v is None: return d
-        try: return float(v)
-        except: return d
+CFG_FILE = Path(os.getenv("SCALP_CONFIG_JSON") or "scalp_config.json")
+LIVE_SETTINGS_FILE = Path("live_settings.json")  # optional fallback
 
-    def _b(name, d):
-        v = (os.getenv(name) or "").strip().lower()
-        if v == "": return d
-        return v in ("1", "true", "yes", "on")
-
-    cfg["use_trailing_stop"] = _b("USE_TRAILING_STOP", cfg["use_trailing_stop"])
-    cfg["trailing_stop_pct"] = _f("TRAIL_PCT", cfg["trailing_stop_pct"])
-    cfg["stop_loss_pct"]     = _f("STOP_LOSS_PCT", cfg["stop_loss_pct"])
-    cfg["take_profit_pct"]   = _f("TAKE_PROFIT_PCT", cfg["take_profit_pct"])
-    cfg["poll_interval"]     = max(0.5, min(_f("POLL_INTERVAL", cfg["poll_interval"]), 30.0))
-    cfg["prefer_quotes"]     = _b("PREFER_QUOTES", cfg["prefer_quotes"])
-
-    bl_env = os.getenv("SELL_BLOCKLIST")
-    if bl_env:
-        cfg["sell_blocklist"] = [x.strip().upper() for x in bl_env.split(",") if x.strip()]
-
-    # normalize
-    cfg["sell_blocklist"] = [str(x).upper() for x in cfg.get("sell_blocklist", [])]
-    return cfg
-
-def _do_sell(broker, sym: str, qty: int, reason: str, cfg: Dict[str, Any]) -> None:
-    """Place a market sell via whatever API is available."""
-    try:
-        if hasattr(broker, "sell_market"):
-            try:
-                broker.sell_market(sym, qty, session=cfg["market_session"], tif=cfg["order_term"])
-            except TypeError:
-                broker.sell_market(sym, qty)
-        elif hasattr(broker, "sell"):
-            broker.sell(sym, qty)
+def _deep_merge(dst: dict, src: dict) -> dict:
+    out = dict(dst)
+    for k, v in (src or {}).items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _deep_merge(out[k], v)
         else:
-            # try E*TRADE helper directly
-            from services import etrade_service as es
-            if hasattr(es, "sell_market"):
-                es.sell_market(sym, qty, session=cfg["market_session"], tif=cfg["order_term"])
-            elif hasattr(es, "place_market_order"):
-                es.place_market_order(symbol=sym, qty=qty, side="SELL",
-                                      session=cfg["market_session"], term=cfg["order_term"])
-            else:
-                raise AttributeError("No sell function available")
-        log.warning("SOLD %s x%d @ MARKET (reason=%s)", sym, qty, reason)
+            out[k] = v
+    return out
+
+def _coerce_int(d: dict, key: str, minv: int = None):
+    if key in d and d[key] is not None:
+        try:
+            d[key] = int(d[key])
+        except Exception:
+            pass
+    if minv is not None and isinstance(d.get(key), int):
+        d[key] = max(d[key], minv)
+
+def _normalize(cfg: dict) -> dict:
+    # env overrides (keep your existing envs working)
+    env = {
+        "mode": os.getenv("LIVE_SELL_MODE"),
+        "target_bps": os.getenv("SCALP_TARGET_BPS"),
+        "stop_bps": os.getenv("SCALP_STOP_BPS"),
+        "max_hold_mins": os.getenv("SCALP_MAX_HOLD_MINS"),
+        "throttle_ms": os.getenv("SELL_THROTTLE_MS"),
+        "limit_from": os.getenv("SELL_LIMIT_FROM"),
+        "limit_offset_bps": os.getenv("SELL_LIMIT_OFFSET_BPS"),
+        "blocklist": os.getenv("SELL_BLOCKLIST"),
+    }
+    # parse simple CSV → list for blocklist
+    if env["blocklist"]:
+        env["blocklist"] = [s.strip().upper() for s in env["blocklist"].split(",") if s.strip()]
+    env_clean = {k: v for k, v in env.items() if v not in (None, "", "None")}
+
+    merged = _deep_merge(_DEFAULTS, cfg or {})
+    merged = _deep_merge(merged, env_clean)
+
+    # Coercions & guards
+    _coerce_int(merged, "target_bps", 1)
+    _coerce_int(merged, "stop_bps", 1)
+    _coerce_int(merged, "max_hold_mins", 1)
+    _coerce_int(merged, "throttle_ms", 0)
+    _coerce_int(merged, "limit_offset_bps", 0)
+
+    mode = str(merged.get("mode") or "").lower()
+    if mode not in ("live", "shadow"):
+        merged["mode"] = "live"
+
+    src = str(merged.get("limit_from") or "last").lower()
+    if src not in ("bid", "last", "mid"):
+        merged["limit_from"] = "last"
+
+    # normalize blocklist
+    bl = merged.get("blocklist") or []
+    merged["blocklist"] = [str(s).upper() for s in bl if str(s).strip()]
+    return merged
+
+def load_scalp_cfg() -> dict:
+    """
+    Hot-reloading config:
+    - Prefer SCALP_CONFIG_JSON path (scalp_config.json)
+    - Else try live_settings.json with a 'scalp' section
+    - Else fall back to defaults/env
+    """
+    paths = [CFG_FILE, LIVE_SETTINGS_FILE]
+    for p in paths:
+        if p.exists():
+            mtime = p.stat().st_mtime
+            if _Cfg.path != p or _Cfg.mtime != mtime:
+                try:
+                    data = json.loads(p.read_text(encoding="utf-8") or "{}")
+                    if p == LIVE_SETTINGS_FILE:
+                        data = data.get("scalp", data)  # allow nested
+                    _Cfg.data = _normalize(data)
+                    _Cfg.path, _Cfg.mtime = p, mtime
+                except Exception:
+                    # keep last good
+                    pass
+            break
+    else:
+        # none of the files exist; stick to defaults+env each call
+        _Cfg.data = _normalize({})
+        _Cfg.path, _Cfg.mtime = None, 0.0
+
+    return _Cfg.data
+
+from __future__ import annotations
+import os, time, logging
+from decimal import Decimal, InvalidOperation
+from datetime import datetime, timedelta, time as dtime, timezone
+
+try:
+    from zoneinfo import ZoneInfo  # py>=3.9
+except Exception:
+    ZoneInfo = None
+
+# --- E*TRADE service ---------------------------------------------------------
+# We only rely on your existing functions in services.etrade_service
+from services import etrade_service as et
+
+LOG = logging.getLogger("sell-guard")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+
+ET_TZ = ZoneInfo("America/New_York") if ZoneInfo else timezone(timedelta(hours=-5))
+
+# =============================================================================
+# Helpers
+# =============================================================================
+
+def _to_f(x):
+    try:
+        if x is None: return None
+        if isinstance(x, (int, float, Decimal)): return float(x)
+        return float(str(x).replace(",", "").strip())
+    except Exception:
+        return None
+
+def _to_d(x) -> Decimal | None:
+    try:
+        if x is None: return None
+        if isinstance(x, Decimal): return x
+        return Decimal(str(x))
+    except Exception:
+        return None
+
+def _now_et():
+    return datetime.now(ET_TZ)
+
+def _minutes_since_open_et(now_et: datetime | None = None) -> int:
+    """Approx minutes since 9:30am ET (no holiday logic)."""
+    now_et = now_et or _now_et()
+    open_dt = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+    if now_et < open_dt:
+        return 0
+    return int((now_et - open_dt).total_seconds() // 60)
+
+def _collect_holdings(raw) -> list[dict]:
+    """
+    Walk the E*TRADE portfolio blob and return a flat list of positions:
+      [{'symbol','qty','price_paid', ('costBasis'/'totalCost' if found)}]
+    This is the key fix that prevents iterating strings from the dict.
+    """
+    out: list[dict] = []
+
+    def visit(n):
+        if isinstance(n, dict):
+            prod = n.get("Product") or n.get("product") or {}
+            sym  = n.get("symbol") or prod.get("symbol")
+            qty  = (n.get("quantity") or n.get("qty") or n.get("positionQty")
+                    or n.get("longQty") or n.get("longQuantity") or n.get("positionQuantity"))
+            avg  = (n.get("pricePaid") or n.get("avgPrice") or n.get("averagePrice")
+                    or n.get("costPerShare") or n.get("costBasisPerShare"))
+            cb   = n.get("costBasis") or n.get("totalCost")
+
+            if sym and qty:
+                q = _to_f(qty)
+                if q and q > 0:
+                    rec = {
+                        "symbol": str(sym).upper(),
+                        "qty": q,
+                        "price_paid": _to_f(avg),
+                    }
+                    c = _to_f(cb)
+                    if c is not None:
+                        rec["costBasis"] = c
+                        rec["totalCost"] = c
+                    out.append(rec)
+
+            for v in n.values():
+                visit(v)
+
+        elif isinstance(n, (list, tuple)):
+            for v in n:
+                visit(v)
+
+    visit(raw or {})
+    return out
+
+def _dig_quote_fields(payload) -> dict[str, dict]:
+    """
+    Parse E*TRADE quote payload (multi) -> {SYM: {'last':..., 'bid':..., 'ask':...}}
+    """
+    out: dict[str, dict] = {}
+
+    def _put(sym, last=None, bid=None, ask=None):
+        if not sym:
+            return
+        s = str(sym).upper()
+        d = out.setdefault(s, {})
+        if last is not None: d["last"] = _to_f(last)
+        if bid  is not None: d["bid"]  = _to_f(bid)
+        if ask  is not None: d["ask"]  = _to_f(ask)
+
+    def visit(node):
+        if isinstance(node, dict):
+            prod = node.get("Product") or node.get("product") or {}
+            sym  = node.get("symbol") or prod.get("symbol")
+
+            allb = node.get("All") or node.get("all") or {}
+            last = allb.get("lastTrade") or allb.get("lastPrice")
+            bid  = allb.get("bid")
+            ask  = allb.get("ask")
+            # Some payloads carry Intraday block:
+            intr = node.get("Intraday") or node.get("intraday") or {}
+            if last is None:
+                last = intr.get("lastTrade") or intr.get("lastPrice")
+            # Extended hours last -> prefer it if present:
+            eh = allb.get("ExtendedHourQuoteDetail") or {}
+            if eh:
+                eh_last = _to_f(eh.get("lastPrice"))
+                if eh_last is not None:
+                    last = eh_last
+
+            if sym and (last is not None or bid is not None or ask is not None):
+                _put(sym, last, bid, ask)
+
+            for v in node.values():
+                visit(v)
+
+        elif isinstance(node, (list, tuple)):
+            for v in node:
+                visit(v)
+
+    visit(payload or {})
+    return out
+
+def _fetch_quotes_map(symbols: list[str]) -> dict[str, dict]:
+    """Return {SYM: {'last':..., 'bid':..., 'ask':...}}"""
+    if not symbols:
+        return {}
+    try:
+        raw = et.get_quotes(symbols, detailFlag="ALL")
+        q = _dig_quote_fields(raw)
+        # Fill anything missing via singles (rare)
+        missing = [s for s in symbols if s.upper() not in q]
+        for s in missing:
+            try:
+                one = et.get_quote(s, detailFlag="ALL")
+                q.update(_dig_quote_fields(one))
+            except Exception:
+                pass
+        return q
     except Exception as e:
-        log.error("Sell error for %s x%d (%s): %s", sym, qty, reason, e)
+        LOG.error("quotes fetch failed: %s", e)
+        return {}
+
+def _compute_entry(position: dict) -> float | None:
+    """
+    Use price_paid if present; else compute avg from (costBasis/totalCost)/qty.
+    """
+    paid = _to_f(position.get("price_paid"))
+    if paid and paid > 0:
+        return round(paid, 4)
+    cb = position.get("costBasis") or position.get("totalCost")
+    qty = _to_f(position.get("qty"))
+    try:
+        if cb is not None and qty and qty > 0:
+            return round(float(cb) / float(qty), 4)
+    except Exception:
+        return None
+    return None
+
+def _mid(bid, ask):
+    try:
+        b = _to_f(bid); a = _to_f(ask)
+        if b is None or a is None: return None
+        return (b + a) / 2.0
+    except Exception:
+        return None
+
+from decimal import Decimal
+
+def _sell_limit_from_cfg(last, bid, ask, *, limit_from: str, offset_bps: int) -> float | None:
+    """
+    Compute SELL limit price using JSON config.
+    limit_from: 'bid' | 'last' | 'mid'
+    offset_bps: positive = tighten toward inside; for sells we subtract offset
+    """
+    src = (limit_from or "bid").strip().lower()
+    if src == "last":
+        ref = _to_f(last)
+    elif src == "mid":
+        ref = _mid(bid, ask)
+    else:  # default 'bid'
+        ref = _to_f(bid) or _to_f(last)
+
+    if ref is None:
+        return None
+
+    # For a SELL, we typically place slightly BELOW ref (subtract offset)
+    px = Decimal(str(ref)) * (Decimal(1) - (Decimal(int(offset_bps)) / Decimal(10_000)))
+    return float(px.quantize(Decimal("0.01")))
+
+# =============================================================================
+# Decision / gate
+# =============================================================================
+
+def decide_signal(entry: Decimal, last: Decimal, et_mins: int,
+                  target_bps: int, stop_bps: int, max_hold_mins: int) -> str:
+    """
+    Return 'SELL_TARGET' / 'SELL_STOP' / 'TIMEOUT' / 'HOLD'
+    """
+    try:
+        gain_bps = (last / entry - Decimal(1)) * Decimal(10_000)
+    except Exception:
+        return "HOLD"
+
+    if gain_bps >= Decimal(target_bps):
+        return "SELL_TARGET"
+    if gain_bps <= Decimal(-stop_bps):
+        return "SELL_STOP"
+    if et_mins >= int(max_hold_mins):
+        return "TIMEOUT"
+    return "HOLD"
+
+# =============================================================================
+# Main loop
+# =============================================================================
 
 def main():
-    cfg = load_settings()
-    blockset: Set[str] = set(cfg["sell_blocklist"])
+    # --- JSON-backed config (env can still override via the loader) ---
+    cfg = load_scalp_cfg()  # reads scalp_config.json (or live_settings.json["scalp"])
 
-    log.info(
-        "started (STOP=%.2f%%, trailing=%s %.2f%%, TP=%s, poll=%.1fs, session=%s, tif=%s, prefer_quotes=%s, blocklist=%s)",
-        cfg["stop_loss_pct"],
-        "on" if cfg["use_trailing_stop"] else "off",
-        cfg["trailing_stop_pct"],
-        f'{cfg["take_profit_pct"]:.2f}%' if cfg["take_profit_pct"] > 0 else "off",
-        cfg["poll_interval"],
-        cfg["market_session"],
-        cfg["order_term"],
-        cfg["prefer_quotes"],
-        ",".join(sorted(blockset)) if blockset else "(none)",
+    mode         = cfg["mode"]                 # 'live' | 'shadow'
+    TARGET_BPS   = cfg["target_bps"]
+    STOP_BPS     = cfg["stop_bps"]
+    MAX_HOLD     = cfg["max_hold_mins"]
+    throttle_ms  = cfg["throttle_ms"]
+    limit_from   = cfg["limit_from"]           # 'bid' | 'last' | 'mid'
+    offset_bps   = cfg["limit_offset_bps"]
+    blocklist    = set(cfg["blocklist"])
+
+    poll_sec     = float((os.getenv("POLL_SEC") or "3.0"))  # keep your existing poll override
+
+    LOG.info(
+        "started (MODE=%s, TP=%.2f%%, STOP=%.2f%%, MAX_HOLD=%dm, limit_from=%s, off=%dbps, poll=%.1fs, blocklist=%s)",
+        mode.upper(), TARGET_BPS/100.0, STOP_BPS/100.0, MAX_HOLD, limit_from, offset_bps, poll_sec,
+        ",".join(sorted(blocklist)) or "—"
     )
 
-    broker = get_broker(os.getenv("MODE", "LIVE"))
-    last_sell_at: Dict[str, float] = {}
-    state: Dict[str, Dict[str, Any]] = {}
-    blocked_log_next: Dict[str, float] = {}
+    # E*TRADE account identification (nice to log)
+    try:
+        aid = et.account_id_key()
+        LOG.info("[LIVE] Using accountIdKey=%s", aid)
+    except Exception:
+        LOG.info("[LIVE] Using accountIdKey=<unknown>")
 
-    stop_k  = 1.0 - (cfg["stop_loss_pct"] / 100.0) if cfg["stop_loss_pct"] > 0 else None
-    trail_k = 1.0 - (cfg["trailing_stop_pct"] / 100.0) if cfg["use_trailing_stop"] else None
-    tp_k    = 1.0 + (cfg["take_profit_pct"] / 100.0) if cfg["take_profit_pct"] > 0 else None
-
-    backoff = BACKOFF_MIN
+    # last sell time per symbol for throttling
+    last_sell_ts: dict[str, float] = {}
 
     while True:
         try:
-            positions = get_positions() or []
+            # 1) Positions (normalize!)
+            raw_positions = et.get_positions() or {}
+            positions = _collect_holdings(raw_positions)
+            # filter blocklist
+            positions = [p for p in positions if p["symbol"] not in blocklist]
+
             if not positions:
-                time.sleep(cfg["poll_interval"])
-                backoff = BACKOFF_MIN
-                continue
+                time.sleep(poll_sec); continue
+
+            # 2) Quotes for all symbols
+            syms = sorted({p["symbol"] for p in positions})
+            quotes = _fetch_quotes_map(syms)
+
+            et_mins = _minutes_since_open_et()
 
             for p in positions:
-                sym = (p.get("symbol") or "").upper()
-                if not sym:
+                s   = p["symbol"]
+                qty = _to_f(p.get("qty")) or 0.0
+                if qty <= 0: 
                     continue
 
-                # Blocklist throttle (log at most once/min per symbol)
-                if sym in blockset:
-                    now = time.time()
-                    if now >= blocked_log_next.get(sym, 0):
-                        log.info("%s: blocked; skipping position", sym)
-                        blocked_log_next[sym] = now + BLOCKLIST_LOG_SECS
+                entry_f = _compute_entry(p)
+                if not entry_f:
                     continue
 
-                qty = int(p.get("qty") or p.get("quantity") or 0)
-                if qty <= 0:
+                q = quotes.get(s, {})
+                last = _to_d(q.get("last"))
+                bid  = _to_d(q.get("bid"))
+                ask  = _to_d(q.get("ask"))
+
+                if last is None:
+                    # if last missing, attempt to use mid or bid to decide
+                    last = _to_d(_mid(q.get("bid"), q.get("ask")) or q.get("bid") or q.get("ask"))
+                if last is None:
+                    # nothing to do for this symbol without a price
                     continue
 
-                # Prices
-                last = p.get("last_price") or p.get("lastPrice") or p.get("mark") or p.get("last") or 0.0
-                try:
-                    last = float(last or 0.0)
-                except:
-                    last = 0.0
+                signal = decide_signal(Decimal(str(entry_f)), last, et_mins, TARGET_BPS, STOP_BPS, MAX_HOLD)
 
-                entry = p.get("price_paid") or p.get("avgPrice") or p.get("averagePrice")
-                try:
-                    entry = float(entry) if entry is not None else None
-                except:
-                    entry = None
-                if entry is None:
-                    cb = p.get("costBasis") or p.get("totalCost")
+                if signal == "HOLD":
+                    LOG.debug("%s HOLD (entry=%.2f, last=%.2f)", s, entry_f, float(last))
+                    continue
+
+                # throttle
+                now = time.time()
+                if now - last_sell_ts.get(s, 0.0) * 1.0 < (throttle_ms / 1000.0):
+                    LOG.info("%s %s (throttled)", s, signal)
+                    continue
+
+                # Compute limit
+                lim = _sell_limit_from_cfg(last, bid, ask, limit_from=limit_from, offset_bps=offset_bps)
+                if lim is None:
+                    LOG.info("%s %s but no valid limit (last=%.2f, bid=%.2f, ask=%.2f)", s, signal, float(last or 0), float(bid or 0), float(ask or 0))
+                    continue
+
+                if mode == "live":
                     try:
-                        cb = float(cb) if cb is not None else None
-                    except:
-                        cb = None
-                    if cb is not None and qty > 0:
-                        entry = cb / qty
-
-                st = state.get(sym) or {}
-                st_entry = float(entry if entry is not None else (last or 0.0))
-
-                if "entry" not in st:
-                    st["entry"] = st_entry
-                    st["hi"] = st_entry
+                        # Place LIMIT sell using your etrade_service helpers
+                        aid = et.account_id_key()
+                        # Preview
+                        prv = et.preview_equity_order(aid, s, int(qty), lim, price_type="LIMIT")
+                        # Change action to SELL (preview_equity_order assumes BUY; adjust Instrument)
+                        try:
+                            # best-effort swap action to SELL inside preview payload
+                            od = prv.get("PreviewOrderResponse", {}).get("Order", [])
+                            if od and isinstance(od[0].get("Instrument"), list):
+                                od[0]["Instrument"][0]["orderAction"] = "SELL"
+                        except Exception:
+                            pass
+                        # Place
+                        placed = et.place_equity_order(prv, qty=int(qty))
+                        LOG.info("%s %s -> placed LIMIT %.2f x%d (resp ok)", s, signal, lim, int(qty))
+                        last_sell_ts[s] = now
+                    except Exception as e:
+                        LOG.error("%s %s -> place failed: %s", s, signal, e)
                 else:
-                    st["hi"] = max(float(st["hi"]), float(last))
-
-                fixed_stop = round(st["entry"] * stop_k, 2) if stop_k is not None else None
-                trail_stop = round(st["hi"] * trail_k, 2) if trail_k is not None else None
-                tp_px      = round(st["entry"] * tp_k, 2) if tp_k is not None else None
-
-                if last > 0:
-                    now = time.time()
-                    if now - last_sell_at.get(sym, 0) >= 2.0:
-                        if fixed_stop is not None and last <= fixed_stop:
-                            _do_sell(broker, sym, qty, reason=f"stop({cfg['stop_loss_pct']:.2f}%<= {fixed_stop})", cfg=cfg)
-                            last_sell_at[sym] = now
-                        elif trail_stop is not None and last <= trail_stop:
-                            _do_sell(broker, sym, qty, reason=f"trail({cfg['trailing_stop_pct']:.2f}%<= {trail_stop})", cfg=cfg)
-                            last_sell_at[sym] = now
-                        elif tp_px is not None and last >= tp_px:
-                            _do_sell(broker, sym, qty, reason=f"take_profit(>= {tp_px})", cfg=cfg)
-                            last_sell_at[sym] = now
-
-                state[sym] = st
-
-            time.sleep(cfg["poll_interval"])
-            backoff = BACKOFF_MIN  # successful iteration
+                    # shadow: log only
+                    LOG.info("%s %s -> would place LIMIT %.2f x%d (entry=%.2f, last=%.2f, et_mins=%d)",
+                             s, signal, lim, int(qty), entry_f, float(last), et_mins)
+                    last_sell_ts[s] = now
 
         except KeyboardInterrupt:
-            log.info("exiting (keyboard)")
+            LOG.info("stopping (Ctrl-C)")
             break
         except Exception as e:
-            log.error("loop error: %s", e)
-            time.sleep(backoff)
-            backoff = min(backoff * 1.5, BACKOFF_MAX)
-            continue
+            LOG.error("loop error: %s", e)
+
+        time.sleep(poll_sec)
+
+# =============================================================================
 
 if __name__ == "__main__":
     main()

@@ -38,10 +38,12 @@
       <span id="bp">${{ '{:,.2f}'.format((account or {}).get('buying_power') or 0.0) }}</span>
     </div>
 
-    <div class="kv">
-      <span class="label">Settled Cash</span>
-      <span id="sc">${{ '{:,.2f}'.format((account or {}).get('settled_cash') or 0.0) }}</span>
-    </div>
+	<div class="kv">
+	  <span class="label">Available to Withdraw</span>
+	  <span id="aw">
+		${{ '{:,.2f}'.format((account or {}).get('available_to_withdraw') or 0.0) }}
+	  </span>
+	</div>
 
     {% if (account or {}).get('equity_value') is not none %}
     <div class="kv">
@@ -190,42 +192,57 @@ function fmtET(x){
 // ---------- main refresh ----------
 async function refreshLive() {
   try {
-	const DEFAULT_START = '2025-08-22';
-	const start = localStorage.getItem('live_start') || DEFAULT_START;
-	const qs = new URLSearchParams({ start, debug: '1' });   // add debug=1 for now
-	const r = await fetch(`/live/status?${qs.toString()}`);
-	const d = await r.json();                  // ← you were missing this line
-	paintStatus(d?.ok !== false);
+    const DEFAULT_START = '2025-08-22';
+    const start = localStorage.getItem('live_start') || DEFAULT_START;
+    const qs = new URLSearchParams({ start, debug: '1' });
+    const r = await fetch(`/live/status?${qs.toString()}`);
+    const d = await r.json();
+    if (!d || d.ok === false) { paintStatus(false); return; }
+    paintStatus(true);
 
     const m = d.metrics || {};
     const a = d.account || {};
-	// ...after you parse:
-	if (!d || d.ok === false) {
-	  paintStatus(false);
-	  return;     // bail early instead of continuing on errors
-	}
+    const ui = (a && a.ui) || {};
 
-    // Buying Power (sticky)
-    let bp = firstPositive([
-      a && a.buying_power,
-      a && a.available_funds,
-      a && a.accountBalance && a.accountBalance.marginBuyingPower,
-      a && a.cash_balance,
-      a && a.cash,
-      a && a.settled_cash
-    ]);
+    // ── Buying Power (prefer broker’s realtime/most-conservative) ──
+    let bp =
+      ui.buying_power ??
+      a.buying_power ??
+      a.cashBuyingPower ??
+      a.marginBuyingPower ?? null;
+
     if (bp == null) {
-      const last = Number(localStorage.getItem('bp_last') || '');
-      if (Number.isFinite(last) && last > 0) bp = last;
+      bp = firstPositive([
+        a.available_funds,
+        a.cash_balance,
+        a.cash,
+        a.settled_cash
+      ]);
+      if (bp == null) {
+        const last = Number(localStorage.getItem('bp_last') || '');
+        if (Number.isFinite(last) && last > 0) bp = last;
+      }
     } else {
       localStorage.setItem('bp_last', String(bp));
     }
     set('#bp', money(bp ?? 0));
 
-    // KPIs
-    set('#sc',     money(a.settled_cash));
-    set('#utotal', money(m.total_value));
-    set('#posval', money(m.positions_value));
+    // ── Available to Withdraw (feeds the line that used to be "Settled Cash") ──
+    const aw =
+      ui.available_to_withdraw ??
+      a.available_to_withdraw ??
+      a.cashAvailableForWithdrawal ??
+      a.cashAvailableForInvestment ??
+      a.settled_cash;
+    set('#sc', money(aw ?? 0));
+
+    // ── Totals / Positions (prefer realtime NAV & positions value) ──
+    const totalVal = ui.nav ?? m.total_value;
+    const posVal   = ui.positions_value ?? m.positions_value;
+    set('#utotal', money(totalVal));
+    set('#posval', money(posVal));
+
+    // P&L
     set('#upnl',   money(m.unrealized_pnl));
     set('#upct',   pct(m.unrealized_pnl_pct));
     set('#rpnl',   money(m.realized_pnl));
@@ -234,8 +251,8 @@ async function refreshLive() {
     paintSign('#upct', m.unrealized_pnl_pct);
     paintSign('#rpnl', m.realized_pnl);
     paintSign('#rpct', m.realized_pnl_pct);
-	
-	renderHoldings(d.holdings || []);
+
+    renderHoldings(d.holdings || []);
     renderTrades(d.trades || []);
   } catch (e) {
     paintStatus(false);
