@@ -1,0 +1,22 @@
+@echo off
+setlocal
+cd /d C:\TradeAlerts
+
+set "PYTHONPATH=C:\TradeAlerts"
+
+rem Scalp parameters
+set "SCALP_TARGET_BPS=40"           rem +0.40% take
+set "SCALP_STOP_BPS=80"             rem -0.80% cut
+set "SCALP_MAX_HOLD_MINS=120"
+
+rem Order placement mode & limit details
+set "LIVE_SELL_MODE=live"           rem 'shadow' to dry-run, 'live' to place orders
+set "SELL_LIMIT_FROM=bid"           rem 'bid' | 'last' | 'mid'
+set "SELL_LIMIT_OFFSET_BPS=0"
+set "SELL_THROTTLE_MS=30000"
+
+rem E*TRADE account if needed
+rem set "ETRADE_ACCOUNT_ID_KEY=YOUR_ACCOUNT_ID_KEY"
+
+python .\dashboard.py
+endlocal

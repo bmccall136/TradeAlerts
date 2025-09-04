@@ -38,10 +38,12 @@
       <span id="bp">${{ '{:,.2f}'.format((account or {}).get('buying_power') or 0.0) }}</span>
     </div>
 
-    <div class="kv">
-      <span class="label">Settled Cash</span>
-      <span id="sc">${{ '{:,.2f}'.format((account or {}).get('settled_cash') or 0.0) }}</span>
-    </div>
+	<div class="kv">
+	  <span class="label">Available to Withdraw</span>
+	  <span id="aw">
+		${{ '{:,.2f}'.format((account or {}).get('available_to_withdraw') or 0.0) }}
+	  </span>
+	</div>
 
     {% if (account or {}).get('equity_value') is not none %}
     <div class="kv">
@@ -199,6 +201,8 @@ async function refreshLive() {
 
     const m = d.metrics || {};
     const a = d.account || {};
+	const ui = (a && a.ui) || {};
+
 	// ...after you parse:
 	if (!d || d.ok === false) {
 	  paintStatus(false);
@@ -338,7 +342,7 @@ function renderTrades(rows){
 
     tb.insertAdjacentHTML('beforeend', `
       <tr>
-        <td>${time}</td>
+        <td>${timeTxt}</td>
         <td>${sym}</td>
         <td>${side}</td>
         <td>${qty}</td>

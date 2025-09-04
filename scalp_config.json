@@ -1,0 +1,10 @@
+{
+  "mode": "live",                 // "live" or "shadow"
+  "target_bps": 20,               // +0.20% take-profit
+  "stop_bps": 100,                // -1.00% stop-loss
+  "max_hold_mins": 60,            // force exit after 60 minutes
+  "throttle_ms": 30000,           // 30s per-symbol throttle
+  "limit_from": "last",           // "bid" | "last" | "mid"
+  "limit_offset_bps": 0,          // add/subtract to limit price
+  "blocklist": ["GEVO"]           // symbols to never sell via guard
+}

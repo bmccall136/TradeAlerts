@@ -1,17 +1,27 @@
-@echo off
-setlocal
-cd /d C:\TradeAlerts
-set "SCRIPT=C:\TradeAlerts\sell_guard.py"
-set "LOG=C:\TradeAlerts\logs\sell_guard.log"
+param(
+  [ValidateSet('shadow','live')]
+  [string]$Mode = 'live'
+)
 
-REM Kill any previous runs that might hold the log
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Stop-Process -Name python -Force -ErrorAction SilentlyContinue; $pat='sell_guard\.py|sell_guard\.log|TradeAlerts|Tee-Object|start_sell_guard'; 'powershell','pwsh','cmd' | ForEach-Object { Get-CimInstance Win32_Process -Filter ('Name=''{0}.exe''' -f $_) -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match $pat } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force } }"
+Set-Location C:\TradeAlerts
+New-Item -ItemType Directory -Path .\logs -Force | Out-Null
 
-REM If LOG is locked, fall back to a timestamped file
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$log='%LOG%'; try { $fs=[IO.File]::Open($log,'Append','Write','None'); $fs.Close() } catch { $ts=Get-Date -Format 'yyyyMMdd-HHmmss'; $log = 'C:\TradeAlerts\logs\sell_guard.' + $ts + '.log'; Write-Host ('[start] Log locked, using ' + $log); [Environment]::SetEnvironmentVariable('SG_LOG',$log,'Process') }"
+# If this shell doesn't already have it, uncomment and set your key:
+# $env:ETRADE_ACCOUNT_ID_KEY = 'kW8LbkuGisPCK9Ey7C8iWA'
 
-if defined SG_LOG set "LOG=%SG_LOG%"
+# Path so Python can import your package
+$env:PYTHONPATH = 'C:\TradeAlerts'
 
-set PYTHONUNBUFFERED=1
-powershell -NoProfile -ExecutionPolicy Bypass -Command "python -u '%SCRIPT%' 2>&1 | Tee-Object -FilePath '%LOG%' -Append"
-endlocal
+# ---- Scalp / gate config ----
+$env:LIVE_SELL_MODE          = $Mode      # 'shadow' logs only; 'live' places orders
+$env:SELL_LIMIT_FROM         = 'bid'      # 'bid' | 'last' | 'mid'
+$env:SELL_LIMIT_OFFSET_BPS   = '0'        # e.g., 10 = 0.10% below chosen ref
+$env:SELL_THROTTLE_MS        = '30000'    # 30s per symbol
+$env:SCALP_TARGET_BPS        = '40'       # +0.40% target
+$env:SCALP_STOP_BPS          = '80'       # -0.80% stop
+$env:SCALP_MAX_HOLD_MINS     = '120'      # max hold time
+
+$log = 'C:\TradeAlerts\logs\sell_guard.log'
+
+# Run and tee output to a log file
+python -u .\sell_guard.py 2>&1 | Tee-Object -FilePath $log -Append
