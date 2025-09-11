@@ -1,22 +1,37 @@
 @echo off
-setlocal
-cd /d C:\TradeAlerts
+setlocal enableextensions
 
-set "PYTHONPATH=C:\TradeAlerts"
+set "ROOT=C:\TradeAlerts"
+set "SCRIPT=%ROOT%\sell_guard.py"
 
-rem Scalp parameters
-set "SCALP_TARGET_BPS=40"           rem +0.40% take
-set "SCALP_STOP_BPS=80"             rem -0.80% cut
-set "SCALP_MAX_HOLD_MINS=120"
+rem --- choose python ---
+set "PY=%ROOT%\.venv\Scripts\python.exe"
+if not exist "%PY%" set "PY=%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
+if not exist "%PY%" set "PY=python"
 
-rem Order placement mode & limit details
-set "LIVE_SELL_MODE=live"           rem 'shadow' to dry-run, 'live' to place orders
-set "SELL_LIMIT_FROM=bid"           rem 'bid' | 'last' | 'mid'
-set "SELL_LIMIT_OFFSET_BPS=0"
-set "SELL_THROTTLE_MS=30000"
+if not exist "%SCRIPT%" (
+  echo [ERROR] Missing: %SCRIPT%
+  exit /b 1
+)
 
-rem E*TRADE account if needed
-rem set "ETRADE_ACCOUNT_ID_KEY=YOUR_ACCOUNT_ID_KEY"
+rem ===== dedicated sell-guard config =====
+set "SELL_GUARD_SETTINGS=%ROOT%\sell_guard.settings.json"
+set "SELL_GUARD_LOGLEVEL=INFO"
 
-python .\dashboard.py
+rem ===== UNSET legacy vars so they can’t override =====
+set SCALP_CONFIG_JSON=
+set SCALP_TARGET_BPS=
+set SELL_BLOCKLIST=
+
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command ^
+  "[Console]::InputEncoding  = [System.Text.UTF8Encoding]::new($false);" ^
+  "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false);" ^
+  "$OutputEncoding = [Console]::OutputEncoding;" ^
+  "chcp 65001 > $null; Set-Location -LiteralPath '%ROOT%';" ^
+  "$env:SELL_GUARD_SETTINGS = '%SELL_GUARD_SETTINGS%';" ^
+  "$env:SELL_GUARD_LOGLEVEL = '%SELL_GUARD_LOGLEVEL%';" ^
+  "$env:PYTHONUTF8='1'; $env:PYTHONIOENCODING='utf-8'; $env:PYTHONUNBUFFERED='1';" ^
+  "Write-Host '===== starting SELL GUARD (PowerShell via .BAT) =====' -ForegroundColor Cyan;" ^
+  "cmd /c """"%PY%"" -u ""%SCRIPT%"""""
+
 endlocal

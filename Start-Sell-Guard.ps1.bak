@@ -1,0 +1,66 @@
+# --- Console theme ---
+try {
+    $raw = $Host.UI.RawUI
+    $raw.BackgroundColor = 'Black'
+    $raw.ForegroundColor = 'Gray'
+    $raw.WindowTitle     = 'TradeAlerts'
+    Clear-Host
+} catch {}
+
+$ErrorActionPreference = 'Continue'
+Set-Location -Path 'C:\TradeAlerts'
+
+# 🔧 ensure config file path and export env var for the child Python process
+$cfgPath = 'C:\TradeAlerts\sell_guard_settings.json'
+$env:SELL_GUARD_SETTINGS = $cfgPath
+Write-Host "Using SELL_GUARD_SETTINGS=$env:SELL_GUARD_SETTINGS"
+if (-not (Test-Path $cfgPath)) {
+    Write-Host "WARNING: $cfgPath not found; script will fall back to live_settings.json" -ForegroundColor Yellow
+}
+
+$logDir  = Join-Path -Path 'C:\TradeAlerts' -ChildPath 'logs'
+$pidsDir = Join-Path -Path 'C:\TradeAlerts' -ChildPath 'pids'
+if (-not (Test-Path $logDir))  { New-Item -Path $logDir  -ItemType Directory -Force | Out-Null }
+if (-not (Test-Path $pidsDir)) { New-Item -Path $pidsDir -ItemType Directory -Force | Out-Null }
+$log    = Join-Path -Path $logDir  -ChildPath 'StartSellGuard.log'
+$pidFile= Join-Path -Path $pidsDir -ChildPath 'sell_guard.pid'
+
+Start-Transcript -Path $log -Append | Out-Null
+Write-Host "=== $(Get-Date) START Sell Guard (PID-backed) ==="
+$Python = "C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe"
+Write-Host "Python: $Python"
+Write-Host "CWD: $((Get-Location).Path)"
+
+# Clean old PID file if present
+if (Test-Path $pidFile) { Remove-Item $pidFile -Force -ErrorAction SilentlyContinue }
+
+try {
+  Write-Host "Launching: $py -u .\sell_guard.py (same window)"
+
+  $sp = @{
+    FilePath         = $py
+    ArgumentList     = @('-u','.\sell_guard.py')
+    WorkingDirectory = 'C:\TradeAlerts'
+    NoNewWindow      = $true
+    PassThru         = $true
+  }
+  $p = Start-Process @sp
+  if ($p -and $p.Id) {
+    $p.Id | Out-File -FilePath $pidFile -Encoding ascii -Force
+    Write-Host "Recorded PID $($p.Id) -> $pidFile"
+  }
+
+  Wait-Process -Id $p.Id
+} catch {
+  Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
+}
+
+Write-Host "=== $(Get-Date) END Sell Guard ==="
+Stop-Transcript | Out-Null
+
+Write-Host ''
+Write-Host '--------------------------------------------------'
+Write-Host 'Window will stay open. Close it when you are done.' -ForegroundColor Yellow
+Write-Host 'Press Ctrl+C or click the close [X] to exit.' -ForegroundColor Yellow
+while ($true) { Start-Sleep -Seconds 3600 }
+

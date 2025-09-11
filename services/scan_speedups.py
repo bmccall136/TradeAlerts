@@ -1,5 +1,6 @@
 # services/scan_speedups.py
 from __future__ import annotations
+from services.triggers_logger import append_trigger_row
 
 import logging
 from typing import Dict, Iterable, Iterator, List, Sequence, Tuple, Optional
@@ -77,7 +78,20 @@ def _dedupe_preserve_order(items):
 def log_candidate(sym: str, price: float, triggered: List[str], scanned_i: int, total: int) -> None:
     pretty = [_pretty_signal_name(x) for x in (triggered or [])]
     pretty = _dedupe_preserve_order(pretty)
+    # console log (unchanged)
     log.info("[LIVE] ➕ candidate %-6s px=%.2f signals=%s", sym, float(price), ", ".join(pretty))
+    # CSV (one-hot indicator flags)
+    try:
+        append_trigger_row(
+            symbol=sym,
+            price=price,
+            triggered=pretty,             # we can feed the pretty list; mapper is tolerant
+            source="speed_scan",
+            notes=f"{scanned_i}/{total}",
+            signals_pretty=", ".join(pretty),
+        )
+    except Exception as e:
+        log.debug("triggers CSV append failed for %s: %s", sym, e)
 
 # ── fast quotes via E*TRADE + fallback to yfinance ───────────────────────────
 

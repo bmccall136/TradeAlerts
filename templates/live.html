@@ -5,7 +5,12 @@
   <div class="d-flex justify-content-between align-items-start mb-4" style="min-height:54px; position:relative;">
 
     <!-- Left: (now empty to match layout spacing; you can remove entirely if desired) -->
-    <div></div>
+    <div>
+<div class="kv">
+  <span class="label">Day trades (PDT, last 5 days)</span>
+  <span id="dt_pdt5" class="num">—</span>
+</div>
+	</div>
 
     <!-- Center: title (no badge) -->
     <h2 class="text-warning mb-0 position-absolute start-50 translate-middle-x" style="width:fit-content;">
@@ -103,6 +108,7 @@
     <thead class="table-light">
       <tr>
         <th>Symbol</th>
+		<th>Opened (ET)</th>
         <th>Last Price</th>
         <th>Qty</th>
         <th>Price Paid</th>
@@ -200,34 +206,71 @@ async function refreshLive() {
     if (!d || d.ok === false) { paintStatus(false); return; }
     paintStatus(true);
 
-    const m = d.metrics || {};
-    const a = d.account || {};
+    const m  = d.metrics || {};
+    const a  = d.account || {};
     const ui = (a && a.ui) || {};
 
-    // ── Buying Power (prefer broker’s realtime/most-conservative) ──
-    let bp =
-      ui.buying_power ??
-      a.buying_power ??
-      a.cashBuyingPower ??
-      a.marginBuyingPower ?? null;
-
-    if (bp == null) {
-      bp = firstPositive([
-        a.available_funds,
-        a.cash_balance,
-        a.cash,
-        a.settled_cash
-      ]);
-      if (bp == null) {
-        const last = Number(localStorage.getItem('bp_last') || '');
-        if (Number.isFinite(last) && last > 0) bp = last;
+    // ---- PDT counter (last 5 trading days) ----
+    (function () {
+      const pdt = m.daytrades_pdt5 || {};
+      const pdtTotal = Number(pdt.total || 0);
+      set('#dt_pdt5', `${pdtTotal} in last 5 days`);
+      const elPdt = document.querySelector('#dt_pdt5');
+      if (elPdt) {
+        elPdt.classList.remove('pos','neg');
+        if (pdtTotal >= 3) elPdt.classList.add('neg'); // warn at 3+
       }
-    } else {
-      localStorage.setItem('bp_last', String(bp));
-    }
-    set('#bp', money(bp ?? 0));
+    })();
 
-    // ── Available to Withdraw (feeds the line that used to be "Settled Cash") ──
+// Buying Power (sticky)
+let bp = firstPositive([
+  a && a.buying_power,
+  a && a.available_funds,
+  a && a.accountBalance && a.accountBalance.marginBuyingPower,
+  a && a.cash_balance,
+  a && a.cash,
+  a && a.settled_cash
+]);
+if (bp == null) {
+  const last = Number(localStorage.getItem('bp_last') || '');
+  if (Number.isFinite(last) && last > 0) bp = last;
+} else {
+  localStorage.setItem('bp_last', String(bp));
+}
+set('#bp', money(bp ?? 0));
+
+// ✨ NEW: actually populate “Available to Withdraw”
+set('#aw', money(
+  firstPositive([
+    a && a.available_to_withdraw,
+    a && a.available_funds,          // some accounts expose this instead
+    a && a.cash_available_to_withdraw,
+    a && a.buying_power,             // last resort fallback
+  ]) ?? 0
+));
+
+// KPIs
+// If you still want to show settled cash somewhere, keep this:
+set('#sc',     money(a.settled_cash));
+
+// ✨ NEW: show true Equity Value on the Equity row
+set('#eq', money(
+  firstPositive([a && a.equity_value]) ??
+  ((a?.settled_cash || 0) + (m?.positions_value || 0))
+));
+
+set('#utotal', money(m.total_value));
+set('#posval', money(m.positions_value));
+set('#upnl',   money(m.unrealized_pnl));
+set('#upct',   pct(m.unrealized_pnl_pct));
+set('#rpnl',   money(m.realized_pnl));
+set('#rpct',   pct(m.realized_pnl_pct));
+paintSign('#upnl', m.unrealized_pnl);
+paintSign('#upct', m.unrealized_pnl_pct);
+paintSign('#rpnl', m.realized_pnl);
+paintSign('#rpct', m.realized_pnl_pct);
+
+    // ---- Available to Withdraw ----
     const aw =
       ui.available_to_withdraw ??
       a.available_to_withdraw ??
@@ -236,13 +279,13 @@ async function refreshLive() {
       a.settled_cash;
     set('#sc', money(aw ?? 0));
 
-    // ── Totals / Positions (prefer realtime NAV & positions value) ──
+    // ---- Totals / Positions ----
     const totalVal = ui.nav ?? m.total_value;
     const posVal   = ui.positions_value ?? m.positions_value;
     set('#utotal', money(totalVal));
     set('#posval', money(posVal));
 
-    // P&L
+    // ---- P&L ----
     set('#upnl',   money(m.unrealized_pnl));
     set('#upct',   pct(m.unrealized_pnl_pct));
     set('#rpnl',   money(m.realized_pnl));
@@ -252,6 +295,7 @@ async function refreshLive() {
     paintSign('#rpnl', m.realized_pnl);
     paintSign('#rpct', m.realized_pnl_pct);
 
+    // ---- Tables ----
     renderHoldings(d.holdings || []);
     renderTrades(d.trades || []);
   } catch (e) {
@@ -271,10 +315,12 @@ function renderHoldings(rows) {
     return;
   }
 
+
   for (const h of rows){
     const sym  = (h.symbol || '').toUpperCase();
     const qty  = h.qty ?? 0;
-
+	const openedTxt = h.open_time ? String(h.open_time) :
+                      (h.open_time_ms ? fmtET(h.open_time_ms) : '—');
     // ONLY server-provided last_price
     const lastNum = (h.last_price != null && !isNaN(Number(h.last_price)))
       ? Number(h.last_price) : null;
@@ -302,6 +348,7 @@ function renderHoldings(rows) {
     tb.insertAdjacentHTML('beforeend', `
       <tr>
         <td>${sym}</td>
+		 <td>${openedTxt}</td>
         <td>${lastTxt}</td>
         <td>${qty}</td>
         <td>${paidTxt}</td>
@@ -321,27 +368,32 @@ function renderHoldings(rows) {
 }
 
 // ---------- trades (this was missing/undefined) ----------
-function renderTrades(rows){
+function renderTrades(rows) {
   const tb = document.querySelector('#trades-body');
   if (!tb) return;
+
   tb.innerHTML = '';
-  if (!rows.length){
+  if (!rows || !rows.length) {
     tb.innerHTML = `<tr><td class="muted" colspan="8">No trades yet</td></tr>`;
     return;
   }
 
-  for (const t of rows){
-    const timeTxt = fmtET(t.time || t.time_et || t.time_utc);
-    const sym  = (t.symbol || '').toUpperCase();
-    const side = t.action || '';
-    const qty  = t.qty ?? 0;
+  for (const t of rows) {
+    // time: prefer ET string; else derive from epoch ms
+    const timeTxt =
+      (t.time && String(t.time)) ||
+      (t.time_ms != null ? fmtET(t.time_ms) : '—');
+
+    const sym   = (t.symbol || '').toUpperCase();
+    const side  = t.action || '';
+    const qty   = Number.isFinite(+t.qty) ? +t.qty : 0;
 
     let px    = (t.price      != null) ? Number(t.price)      : null;
     let paid  = (t.price_paid != null) ? Number(t.price_paid) : null;
     let pl    = (t.pl         != null) ? Number(t.pl)         : null;
     let plpct = (t.pl_pct     != null) ? Number(t.pl_pct)     : null;
 
-    // sensible defaults for BUYs so cells aren’t blank
+    // sensible defaults so cells aren’t blank for BUYs
     if (side === 'BUY') {
       if (paid == null && px != null) paid = px;
       if (pl == null)    pl = 0;
@@ -365,11 +417,22 @@ function renderTrades(rows){
         <td class="tr-pl-p">${plpTxt}</td>
       </tr>`);
 
-    colorize(tb.lastElementChild.querySelector('.tr-pl'),   pl);
-    colorize(tb.lastElementChild.querySelector('.tr-pl-p'), plpct);
+    // colorize P&L
+    const row = tb.lastElementChild;
+    if (row) {
+      const colorize = (el, num) => {
+        if (!el) return;
+        el.classList.remove('pos','neg');
+        if (typeof num === 'number' && !Number.isNaN(num)) {
+          if (num > 0) el.classList.add('pos');
+          else if (num < 0) el.classList.add('neg');
+        }
+      };
+      colorize(row.querySelector('.tr-pl'),   pl);
+      colorize(row.querySelector('.tr-pl-p'), plpct);
+    }
   }
 }
-
 document.addEventListener('DOMContentLoaded', () => {
   refreshLive().catch(console.error);
   setInterval(refreshLive, 30000);

@@ -1,0 +1,27 @@
+==== Mon 09/08/2025 20:37:38.28 START etrade_auth_flow ====
+Traceback (most recent call last):
+  File "C:\TradeAlerts\etrade_auth_flow.py", line 53, in <module>
+    print("\n\U0001f511 Opening browser to authorize E*TRADE access…")
+  File "C:\Users\bmccall\AppData\Local\Programs\Python\Python311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\U0001f511' in position 2: character maps to <undefined>
+==== Mon 09/08/2025 20:37:39.89 END etrade_auth_flow (exit 1) ====
+==== Mon 09/08/2025 20:41:23.53 START etrade_auth_flow ====
+Traceback (most recent call last):
+  File "C:\TradeAlerts\etrade_auth_flow.py", line 53, in <module>
+    print("\n\U0001f511 Opening browser to authorize E*TRADE access…")
+  File "C:\Users\bmccall\AppData\Local\Programs\Python\Python311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\U0001f511' in position 2: character maps to <undefined>
+==== Mon 09/08/2025 20:41:25.14 END etrade_auth_flow (exit 1) ====
+==== Mon 09/08/2025 20:41:36.61 START etrade_auth_flow ====
+Traceback (most recent call last):
+  File "C:\TradeAlerts\etrade_auth_flow.py", line 53, in <module>
+    print("\n\U0001f511 Opening browser to authorize E*TRADE access…")
+  File "C:\Users\bmccall\AppData\Local\Programs\Python\Python311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\U0001f511' in position 2: character maps to <undefined>
+==== Mon 09/08/2025 20:41:38.22 END etrade_auth_flow (exit 1) ====

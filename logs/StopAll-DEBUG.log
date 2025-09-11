@@ -1,0 +1,142 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20250908222209
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Process ID: 110940
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 22:22:09 STOP ALL (DEBUG) ===
+WARNING: Not running as Administrator. Some processes may not be killable (ACCESS DENIED).
+Right-click the BAT/PS1 and choose 'Run as administrator' for full kill ability.
+Killing powershell(cmdline) PID 111240: "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" "-file" " C:\TradeAlerts\Start-Live.ps1 "
+Killing powershell(cmdline) PID 65260: "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" "-file" " C:\TradeAlerts\Start-Sell-Guard.ps1 "
+Killing powershell(cmdline) PID 110940: "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" "-file" " C:\TradeAlerts\Stop-All.ps1 "
+**********************
+Windows PowerShell transcript start
+Start time: 20250908222317
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Process ID: 98488
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 22:23:17 STOP ALL (DEBUG) ===
+WARNING: Not running as Administrator. Some processes may not be killable (ACCESS DENIED).
+Right-click the BAT/PS1 and choose 'Run as administrator' for full kill ability.
+Killing python(live/sell_guard) PID 51112: "C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe" -u .\live_start.py
+Killing powershell(cmdline) PID 106368: "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" "-file" " C:\TradeAlerts\Start-Live.ps1 "
+Killing powershell(cmdline) PID 108988: "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" "-file" " C:\TradeAlerts\Start-Sell-Guard.ps1 "
+Killing powershell(cmdline) PID 98488: "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" "-file" " C:\TradeAlerts\Stop-All.ps1 "
+**********************
+Windows PowerShell transcript start
+Start time: 20250908222431
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Process ID: 113640
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 22:24:32 STOP ALL (DEBUG) ===
+WARNING: Not running as Administrator. Some processes may not be killable (ACCESS DENIED).
+Right-click the BAT/PS1 and choose 'Run as administrator' for full kill ability.
+Killing python(live/sell_guard) PID 113020: "C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe" -u .\live_start.py
+Killing powershell(cmdline) PID 112956: "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" "-file" " C:\TradeAlerts\Start-Live.ps1 "
+Killing powershell(cmdline) PID 113596: "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" "-file" " C:\TradeAlerts\Start-Sell-Guard.ps1 "
+Killing powershell(cmdline) PID 113640: "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" "-file" " C:\TradeAlerts\Stop-All.ps1 "
+**********************
+Windows PowerShell transcript start
+Start time: 20250908224838
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Process ID: 45964
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 22:48:39 STOP ALL (DEBUG v2) ===
+Press Ctrl+C to quit this debug session.
+PS>TerminatingError(): "The pipeline has been stopped."
+>> TerminatingError(): "The pipeline has been stopped."
+>> $global:?
+True
+**********************
+Windows PowerShell transcript end
+End time: 20250908224909
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250908224950
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: powershell -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All.ps1
+Process ID: 107668
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 22:49:50 STOP ALL (DEBUG v2) ===
+Press Ctrl+C to quit this debug session.
+**********************
+Windows PowerShell transcript start
+Start time: 20250908225621
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: powershell -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All.ps1
+Process ID: 108796
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 22:56:22 STOP ALL (DEBUG v2) ===
+Press Ctrl+C to quit this debug session.
