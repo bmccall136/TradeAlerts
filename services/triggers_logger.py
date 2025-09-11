@@ -1,0 +1,86 @@
+# services/triggers_logger.py
+from __future__ import annotations
+import csv, os
+from pathlib import Path
+from datetime import datetime, timezone
+
+LOG_DIR = Path(os.getenv("TRIGGERS_LOG_DIR", r"C:\TradeAlerts\logs"))
+
+# Binary, one-hot indicator columns (add more any time; header stays stable)
+INDICATOR_COLS = [
+    "adx", "rsi", "rsi_slope",
+    "macd", "macd_hist",
+    "bb", "bb_breakout",
+    "price_gt_sma20",
+    "vwap", "vol_spike",
+    "atr", "range", "gap",
+    "news",
+]
+
+BASE_COLS = [
+    "time_et", "symbol", "price",
+    "source",           # who wrote the row (e.g., speed_scan)
+    "notes",            # optional short string
+    "signals_pretty",   # human-friendly list (for eyeballing)
+]
+
+CSV_COLS = BASE_COLS + INDICATOR_COLS
+
+def _today_path() -> Path:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    d = datetime.now().astimezone()
+    return LOG_DIR / f"triggers_{d:%Y-%m-%d}.csv"
+
+def _ensure_header(fp: Path):
+    if not fp.exists() or fp.stat().st_size == 0:
+        with fp.open("w", newline="", encoding="utf-8") as f:
+            csv.writer(f).writerow(CSV_COLS)
+
+def _norm_triggers(triggered: list[str]) -> set[str]:
+    """Map various trigger strings to our fixed column keys."""
+    out = set()
+    for t in (triggered or []):
+        s = (t or "").lower().strip().replace(" ", "")
+        if s.startswith("adx"): out.add("adx")
+        if "rsi" in s: out.add("rsi")
+        if "rsislope" in s or "rsi∠" in s: out.add("rsi_slope")
+        if "macd" in s: out.add("macd")
+        if "hist" in s and "macd" in s: out.add("macd_hist")
+        if "bb" in s: out.add("bb")
+        if "bb" in s and ("break" in s or "bo" in s): out.add("bb_breakout")
+        if "price>sma20" in s or "price>sma(20)" in s or s == "sma20": out.add("price_gt_sma20")
+        if "vwap" in s: out.add("vwap")
+        if "vol" in s: out.add("vol_spike")
+        if "atr" in s: out.add("atr")
+        if "range" in s: out.add("range")
+        if "gap" in s: out.add("gap")
+        if "news" in s or "headline" in s: out.add("news")
+    return out
+
+def append_trigger_row(symbol: str, price: float,
+                       triggered: list[str],
+                       source: str = "speed_scan",
+                       notes: str = "",
+                       signals_pretty: str = "") -> None:
+    fp = _today_path()
+    _ensure_header(fp)
+
+    flags = {k: 0 for k in INDICATOR_COLS}
+    for k in _norm_triggers(triggered):
+        if k in flags:
+            flags[k] = 1
+
+    now_et = datetime.now().astimezone()
+    row = {
+        "time_et": now_et.strftime("%Y-%m-%d %H:%M:%S"),
+        "symbol": symbol,
+        "price": f"{float(price):.2f}",
+        "source": source,
+        "notes": notes or "",
+        "signals_pretty": signals_pretty or ", ".join(triggered or []),
+        **flags,
+    }
+
+    with fp.open("a", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=CSV_COLS)
+        w.writerow(row)

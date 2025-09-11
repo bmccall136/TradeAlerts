@@ -46,6 +46,267 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
+# Dot-ticker fixes + normalizer
+# --- symbol + traversal helpers ---
+_DOT_TICKER_FIXES = {
+    # add any broker quirks here if needed
+    # "BRK-B": "BRK.B",
+}
+# --- OPEN ORDERS / AVAILABILITY ------------------------------------------------
+
+# aliases so legacy calls don't blow up
+
+# ---------- OPEN ORDERS (robust) ----------
+def get_open_orders(account_id_key: str, days: int = 14) -> dict:
+    """
+    Return the raw open-orders payload. Try no dates first (most compatible),
+    then fall back to a recent window with both YYYY-MM-DD and MM/DD/YYYY.
+    """
+    import datetime as _dt
+
+    # 1) no dates – many tenants accept this and avoid 400s
+    try:
+        return _eget(f"/accounts/{account_id_key}/orders.json",
+                     params={"status": "OPEN"})
+    except Exception:
+        pass
+
+    end = _dt.date.today()
+    start = end - _dt.timedelta(days=max(1, int(days)))
+
+    # 2) date window – try both formats
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y"):
+        try:
+            return _eget(
+                f"/accounts/{account_id_key}/orders.json",
+                params={
+                    "status": "OPEN",
+                    "fromDate": start.strftime(fmt),
+                    "toDate": end.strftime(fmt),
+                },
+            )
+        except Exception:
+            continue
+
+    # 3) last resort – bubble the error for visibility
+    return _eget(f"/accounts/{account_id_key}/orders.json",
+                 params={"status": "OPEN"})
+
+
+def open_sell_qty_map(account_id_key: str) -> dict[str, float]:
+    """
+    Build {SYMBOL: reserved_qty} from OPEN sell orders.
+    We traverse generically so minor schema changes don’t break us.
+    """
+    raw = get_open_orders(account_id_key) or {}
+    out: dict[str, float] = {}
+
+    def _to_f(x):
+        try:
+            if x is None: return 0.0
+            return float(str(x).replace(",", "").strip())
+        except Exception:
+            return 0.0
+
+    def _put(sym, qty):
+        if not sym: return
+        key = str(sym).upper()
+        out[key] = out.get(key, 0.0) + max(0.0, _to_f(qty))
+
+    def _walk(n, status_hint: str | None = None):
+        # We’re flexible about where status/action/qty/symbol live.
+        if isinstance(n, dict):
+            st = (n.get("orderStatus") or n.get("status") or status_hint or "").upper()
+            action = (n.get("orderAction") or n.get("action") or "").upper()
+            sym = n.get("symbol") or (n.get("Product") or {}).get("symbol")
+
+            # quantities (prefer remaining if present)
+            qty = (n.get("remainingQuantity") or n.get("remainingQty") or
+                   n.get("orderedQuantity") or n.get("quantity") or
+                   n.get("qty"))
+
+            # If this node clearly looks like an order-leg, process it.
+            if action.startswith("SELL") and (st in ("OPEN", "WORKING", "PARTIALLY_FILLED", "")):
+                # adjust for partial fills if we can see it
+                filled = _to_f(n.get("filledQuantity") or n.get("executedQuantity") or 0)
+                if qty is not None:
+                    rem = _to_f(qty) - max(0.0, filled)
+                    _put(sym, rem)
+
+            # Recurse
+            for v in n.values():
+                _walk(v, st or status_hint)
+
+        elif isinstance(n, (list, tuple)):
+            for v in n:
+                _walk(v, status_hint)
+
+    _walk(raw)
+    # Normalize any tiny negatives to zero
+    return {k: (v if v > 0 else 0.0) for k, v in out.items()}
+
+
+def available_to_sell(account_id_key: str, symbol: str) -> int:
+    """
+    Clamp what we attempt to sell to: long_qty(symbol) - reserved_open_sell_qty(symbol)
+    """
+    sym = (symbol or "").upper()
+    long_map = long_qty_map() or {}
+    open_map = open_sell_qty_map(account_id_key) or {}
+    avail = int(max(0.0, float(long_map.get(sym, 0.0)) - float(open_map.get(sym, 0.0))))
+    return avail
+
+def long_qty_map() -> dict[str, float]:
+    """
+    Return {SYM: qty_available} using positions.
+    Prefer 'available' qty if E*TRADE provides it; else fall back to long qty.
+    """
+    out = {}
+    raw = get_positions() or []
+    def visit(n):
+        if isinstance(n, dict):
+            prod = n.get("Product") or n.get("product") or {}
+            sym  = _sym_upper(n.get("symbol") or prod.get("symbol"))
+            if sym:
+                q = _dig_available_qty(n)
+                if q is not None:
+                    out[sym] = float(q)
+            for v in n.values():
+                visit(v)
+        elif isinstance(n, (list, tuple)):
+            for v in n:
+                visit(v)
+    visit(raw)
+    return out
+
+def _normalize_account(raw):
+    """
+    Normalize E*TRADE balances to fields the UI expects.
+    - buying_power            -> marginBuyingPower | cashBuyingPower | buyingPower
+    - available_to_withdraw   -> cashAvailableForWithdrawal
+    - settled_cash            -> alias of available_to_withdraw (UI uses this id)
+    - equity_value            -> netAccountValue (aka Net Account Value)
+    """
+    def _dig(node, names):
+        # recursive lookup by key name anywhere in the blob
+        if node is None:
+            return None
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k in names and v is not None:
+                    return v
+            for v in node.values():
+                found = _dig(v, names)
+                if found is not None:
+                    return found
+        elif isinstance(node, (list, tuple)):
+            for v in node:
+                found = _dig(v, names)
+                if found is not None:
+                    return found
+        return None
+
+    def _to_f(x):
+        try:
+            if x is None:
+                return None
+            return float(str(x).replace(',', '').strip())
+        except Exception:
+            return None
+
+    r = raw or {}
+
+    buying_power = _to_f(_dig(r, {
+        "marginBuyingPower", "cashBuyingPower", "buyingPower"
+    }))
+
+    available_to_withdraw = _to_f(_dig(r, {
+        "cashAvailableForWithdrawal"  # this is what the site shows
+    }))
+
+    # Keep the old key the UI currently reads
+    settled_cash = available_to_withdraw
+
+    equity_value = _to_f(_dig(r, {
+        "netAccountValue", "netAssets", "netValue", "totalAccountValue"
+    }))
+
+    out = {
+        "buying_power": buying_power,
+        "available_to_withdraw": available_to_withdraw,
+        "settled_cash": settled_cash,
+        "equity_value": equity_value,
+    }
+
+    # retain a few optional helpers/fallbacks if present
+    cash_balance = _to_f(_dig(r, {"cashBalance", "cash", "settledCash"}))
+    if cash_balance is not None:
+        out["cash_balance"] = cash_balance
+
+    return out
+
+def available_to_sell(account_id_key: str, symbol: str) -> int:
+    """
+    Integer shares actually free to sell now:
+      available_from_positions(sym) - open_sell_reserved(sym), floored at 0.
+    """
+    sym = _sym_upper(symbol)
+    long_map = long_qty_map()
+    open_map = open_sell_qty_map(account_id_key)
+    avail = max(0.0, float(long_map.get(sym, 0.0)) - float(open_map.get(sym, 0.0)))
+    return int(avail // 1)  # ensure whole shares
+def _normalize_symbol(sym: str) -> str:
+    if not sym:
+        return sym
+    s = sym.upper().strip()
+    # prefer dot for class shares; ET accepts both but we normalize once
+    if "-" in s and len(s.split("-")[-1]) <= 2:
+        s = s.replace("-", ".")
+    return _DOT_TICKER_FIXES.get(s, s)
+
+def _visit(node, fn):
+    """Depth-first walk calling fn(dict_node)."""
+    if isinstance(node, dict):
+        fn(node)
+        for v in node.values():
+            _visit(v, fn)
+    elif isinstance(node, (list, tuple)):
+        for v in node:
+            _visit(v, fn)
+
+def list_open_orders(symbol: str | None = None) -> list[dict]:
+    aid = account_id_key()
+    s = get_oauth_session()
+    r = s.get(f"https://api.etrade.com/v1/accounts/{aid}/orders.json",
+              params={"status":"OPEN","count":50,"sortOrder":"DESC"},
+              timeout=15)
+    if r.status_code == 204: return []
+    r.raise_for_status()
+    j = r.json() or {}
+    orders = (j.get("OrdersResponse") or {}).get("Order") or []
+    if isinstance(orders, dict): orders = [orders]
+    rows = []
+    for o in orders:
+        for d in (o.get("OrderDetail") or []):
+            for ins in (d.get("Instrument") or []):
+                prod = ins.get("Product") or {}
+                sym = (prod.get("symbol") or "").upper()
+                if symbol and sym != str(symbol).upper():
+                    continue
+                rows.append({
+                    "symbol": sym,
+                    "action": (ins.get("orderAction") or "").upper(),
+                    "qty": int(float(ins.get("quantity") or ins.get("orderedQuantity") or 0) or 0),
+                })
+    return rows
+
+
+def get_balances(account_id_key: str) -> dict:
+    return _get(
+        f"/accounts/{account_id_key}/balance.json",
+        params={"instType": "BROKERAGE", "realTimeNAV": "true"},
+    )
+
 
 def account_id_key() -> str:
     """
@@ -825,7 +1086,7 @@ def account_id_key() -> str:
     # 2) Try a helper you might already have
     try:
         from services.broker_live import get_account_id_key as _get
-        aid = _get() or ""
+        aid = account_id_key() or ""
         if aid:
             return aid
     except Exception:
@@ -1008,7 +1269,8 @@ def get_quotes_map(symbols: List[str]) -> Dict[str, Dict[str, float]]:
     uniq = sorted({s.upper() for s in symbols if s})
     syms_csv = ",".join(uniq)
     try:
-        data = et._get(f"/market/quote/{syms_csv}.json", params={"detailFlag": "ALL"})
+        raw = _eget(f"/accounts/{account_id_key}/orders.json",
+            params={"status": "OPEN", "fromDate": from_date, "toDate": to_date}) or {}
         qd = (data.get("QuoteResponse") or {}).get("QuoteData") or []
         if isinstance(qd, dict):
             qd = [qd]
@@ -1082,7 +1344,8 @@ def list_recent_trades(days: int = 5) -> List[Dict[str, Any]]:
     # Fallback: Transactions
     try:
         tparams = {"startDate": start.strftime("%Y-%m-%d"), "endDate": end.strftime("%Y-%m-%d")}
-        data = et._get(f"/accounts/{aid}/transactions.json", params=tparams)
+        raw = _eget(f"/accounts/{account_id_key}/orders.json",
+            params={"status": "OPEN"}) or {}
         items = (data.get("TransactionListResponse") or {}).get("Transaction") or []
         if isinstance(items, dict):
             items = [items]
@@ -1111,6 +1374,44 @@ def list_recent_trades(days: int = 5) -> List[Dict[str, Any]]:
     return out
 
 # ---------------- HTTP helpers (always go through broker_live session) ----------------
+# --- NEW helpers (put near your other small helpers) --------------------------
+def _uf(x):
+    """safe float"""
+    try:
+        return float(x)
+    except Exception:
+        return None
+
+def _sym_upper(x):
+    return (str(x or "")).strip().upper()
+
+def _dig_available_qty(pos: dict) -> float | None:
+    """
+    Try multiple keys E*TRADE uses for 'shares you can sell now' on an equity position.
+    Falls back to long quantity if no explicit available key exists.
+    """
+    cand_keys = [
+        "availableQty", "availableQuantity", "availQty", "openQty",  # common variants
+        "longAvailableQty", "longAvailableQuantity",
+    ]
+    # long/position qty fallbacks
+    long_keys = ["longQty", "longQuantity", "positionQty", "positionQuantity", "quantity"]
+
+    # look for explicit 'available' first
+    for k in cand_keys:
+        v = pos.get(k)
+        fv = _uf(v)
+        if fv is not None:
+            return max(0.0, fv)
+
+    # fall back to long qty if nothing else
+    for k in long_keys:
+        v = pos.get(k)
+        fv = _uf(v)
+        if fv is not None:
+            return max(0.0, fv)
+
+    return None
 
 def _eget(path: str, params: dict | None = None):
     s = _sesh()
@@ -1127,6 +1428,97 @@ def _epost(path, body):
         except Exception: err = r.text
         raise RuntimeError(f"etrade POST {path} -> {r.status_code}: {err}")
     return r.json()
+# Back-compat aliases (catch any legacy calls)
+_get  = _eget
+_post = _epost
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OAuth liveness + keepalive (append near end of services/etrade_service.py)
+# ─────────────────────────────────────────────────────────────────────────────
+import threading
+from datetime import datetime, timedelta, timezone
+try:
+    from zoneinfo import ZoneInfo  # py>=3.9
+except Exception:
+    ZoneInfo = None
+
+_ET = ZoneInfo("America/New_York") if ZoneInfo else timezone(timedelta(hours=-5))
+
+_AUTH_DEAD = False
+_last_api_hit = 0.0
+
+class AuthExpiredError(RuntimeError):
+    pass
+
+def _is_auth_error(exc: Exception | str) -> bool:
+    s = str(exc)
+    # E*TRADE tends to use 401/Unauthorized or oauth_problem messages when auth dies
+    return ("oauth_problem" in s.lower()
+            or "token_rejected" in s.lower()
+            or "unauthorized" in s.lower()
+            or "401" in s)
+
+# Save originals to wrap
+_orig__eget = _eget
+_orig__epost = _epost
+
+def _wrap_eget(path: str, params: dict | None = None):
+    global _last_api_hit, _AUTH_DEAD
+    try:
+        r = _orig__eget(path, params)
+        _last_api_hit = time.time()
+        return r
+    except Exception as e:
+        if _is_auth_error(e):
+            _AUTH_DEAD = True
+        raise
+
+def _wrap_epost(path: str, body: dict):
+    global _last_api_hit, _AUTH_DEAD
+    try:
+        r = _orig__epost(path, body)
+        _last_api_hit = time.time()
+        return r
+    except Exception as e:
+        if _is_auth_error(e):
+            _AUTH_DEAD = True
+        raise
+
+# Swap in wrappers so all higher-level funcs benefit
+_eget = _wrap_eget
+_epost = _wrap_epost
+
+def auth_ok() -> bool:
+    """
+    Best-effort: returns False if we’ve observed an OAuth failure since last re-auth.
+    (Daily midnight ET expiration still requires manual re-auth.)
+    """
+    if _AUTH_DEAD:
+        return False
+    return True
+
+def keepalive_daemon(interval_min: int = 60):
+    """Ping a cheap endpoint periodically to avoid inactivity expiry (best-effort)."""
+    global _AUTH_DEAD
+    while True:
+        try:
+            # sleep first so we don't hammer at import time
+            time.sleep(max(60, int(interval_min * 60)))
+            if _AUTH_DEAD:
+                continue
+            # This endpoint is light and widely permitted; we ignore the body.
+            _eget("/accounts/list.json")
+        except Exception as e:
+            # If auth-related, flip the flag; otherwise just swallow and retry later.
+            if _is_auth_error(e):
+                _AUTH_DEAD = True
+
+# Start the keepalive thread unless explicitly disabled
+try:
+    if os.getenv("ETRADE_KEEPALIVE", "1").lower() not in ("0", "false", "no"):
+        threading.Thread(target=keepalive_daemon, args=(60,), daemon=True).start()
+except Exception:
+    pass
 
 # ---------------- Account helpers ----------------
 
@@ -1235,32 +1627,76 @@ def get_positions():
     except ValueError:
         return []  # be tolerant, return empty positions on bad payloads
     return j
-def _normalize_symbol(sym: str) -> str:
-    return _DOT_TICKER_FIXES.get(sym, sym)
 
-def preview_equity_order(account_id_key: str, symbol: str, qty: int, price: float | None, *, price_type="LIMIT"):
-    # E*TRADE likes numbers as strings in requests; stick to that to avoid type fussiness
-    qty_s   = str(int(qty))
-    lim_s   = f"{price:.2f}" if (price_type == "LIMIT" and price is not None) else "0"
+# make sure you have at top of file:
+# import time
+
+def preview_equity_order(
+    account_id_key: str,
+    symbol: str,
+    qty: int,
+    price: float | None,
+    *,
+    action: str = "BUY",
+    price_type: str = "LIMIT",
+    order_term: str = "GOOD_FOR_DAY",
+    market_session: str = "REGULAR",
+    stop_price: float | None = None,
+    offset_type: str | None = None,
+    offset_value: float | None = None,
+    client_order_id: str | None = None,
+) -> dict:
+    """
+    Builds a PreviewOrderRequest for E*TRADE equities.
+
+    RULES:
+      - MARKET:     no limitPrice/stopPrice
+      - LIMIT:      limitPrice = price
+      - STOP:       stopPrice  = (stop_price or price)  <-- important fix
+      - STOP_LIMIT: limitPrice = price, stopPrice = stop_price (both required)
+      - TRAILING_*: set offsetType/offsetValue
+    """
+    action = (action or "BUY").upper()
+    pt = (price_type or ("LIMIT" if price is not None else "MARKET")).upper()
+
+    # --- IMPORTANT: map legacy callers that pass STOP trigger as "price"
+    if pt in {"STOP", "STOP_MARKET"} and stop_price is None and price is not None:
+        stop_price = float(price)
+        price = None  # ensure we don't accidentally send limitPrice for STOP
+
+    order: dict = {
+        "allOrNone": False,
+        "priceType": pt,
+        "orderTerm": order_term,
+        "marketSession": market_session,
+        "Instrument": [{
+            "Product": {"securityType": "EQ", "symbol": _normalize_symbol(symbol)},
+            "orderAction": action,
+            "quantityType": "QUANTITY",
+            "quantity": str(int(qty)),
+        }],
+    }
+
+    # Prices
+    if pt in {"LIMIT", "STOP_LIMIT"} and price is not None:
+        order["limitPrice"] = f"{float(price):.2f}"
+    if pt in {"STOP", "STOP_MARKET", "STOP_LIMIT"}:
+        if stop_price is None:
+            raise ValueError("stop_price required for STOP/STOP_LIMIT orders")
+        order["stopPrice"] = f"{float(stop_price):.2f}"
+
+    # Trailing stop fields
+    if pt in {"TRAILING_STOP_PRCT", "TRAILING_STOP_CNST"}:
+        if offset_value is None:
+            raise ValueError("offset_value required for trailing stops")
+        order["offsetType"]  = offset_type or pt
+        order["offsetValue"] = float(offset_value)
 
     body = {
         "PreviewOrderRequest": {
             "orderType": "EQ",
-            "clientOrderId": f"live-{int(time.time()*1000)}",
-            "Order": [{
-                "allOrNone": False,
-                "priceType": "MARKET" if price_type.upper() == "MARKET" else "LIMIT",
-                "orderTerm": "GOOD_FOR_DAY",
-                "marketSession": "REGULAR",
-                "stopPrice": "" if price_type.upper() != "STOP" else lim_s,
-                **({"limitPrice": lim_s} if price_type.upper() == "LIMIT" else {}),
-                "Instrument": [{
-                    "Product": { "securityType": "EQ", "symbol": _normalize_symbol(symbol) },
-                    "orderAction": "BUY",
-                    "quantityType": "QUANTITY",
-                    "quantity": qty_s
-                }]
-            }]
+            "clientOrderId": client_order_id or f"live-{int(time.time()*1000)}",
+            "Order": [order],
         }
     }
     return _epost(f"/accounts/{account_id_key}/orders/preview.json", body)
@@ -1276,37 +1712,29 @@ def place_equity_order(preview_resp: dict, qty: int | None = None) -> dict:
     order = orders[0]
     instr = order.get("Instrument") or []
     if qty is not None and instr:
-        instr[0]["quantity"] = int(qty)
+        # E*TRADE is fine with numbers or numeric strings; keep consistent with preview
+        instr[0]["quantity"] = str(int(qty))
 
-    # robust previewId grab across response shapes
-    pid = None
-    for k, v in pr.items():
-        if isinstance(v, list) and v and isinstance(v[0], dict) and "previewId" in v[0]:
-            pid = v[0]["previewId"]
-            break
-        if isinstance(v, dict) and "previewId" in v:
-            pid = v["previewId"]
-            break
+    # robust previewId extraction
+    pid = pr.get("previewId")
     if not pid:
-        pid = pr.get("previewId")
-
+        for k, v in pr.items():
+            if isinstance(v, list) and v and isinstance(v[0], dict) and "previewId" in v[0]:
+                pid = v[0]["previewId"]; break
+            if isinstance(v, dict) and "previewId" in v:
+                pid = v["previewId"]; break
+    if not pid:
+        raise RuntimeError("previewId not found in preview response")
+    if not preview_resp or "Error" in preview_resp:
+        raise RuntimeError(f"preview failed: {preview_resp}")    
     place_body = {
         "PlaceOrderRequest": {
-            "Order": [{
-                "orderType": order.get("orderType", "EQ"),
-                "clientOrderId": order.get("clientOrderId"),
-                "priceType": order.get("priceType"),
-                **({"limitPrice": order.get("limitPrice")} if order.get("priceType") in {"LIMIT", "STOP_LIMIT"} else {}),
-                **({"stopPrice":  order.get("stopPrice")}  if order.get("priceType") in {"STOP", "STOP_LIMIT"} else {}),
-                "orderTerm": order.get("orderTerm", "GOOD_FOR_DAY"),
-                "marketSession": order.get("marketSession", "REGULAR"),
-                "allOrNone": bool(order.get("allOrNone", False)),
-                "Instrument": instr,
-                **({"PreviewIds": [{"previewId": pid}]} if pid else {}),
-            }]
+            "orderType": order.get("orderType", "EQ"),
+            "clientOrderId": order.get("clientOrderId"),
+            "PreviewIds": [{"previewId": int(pid)}],      # <-- correct location
+            "Order": [order],
         }
     }
-
     r = _epost(f"/accounts/{aid}/orders/place.json", place_body)
     return r.json()
 
@@ -1399,7 +1827,9 @@ def list_recent_trades(days: int = 5) -> List[Dict[str, Any]]:
             "startDate": start.strftime("%Y-%m-%d"),
             "endDate": end.strftime("%Y-%m-%d"),
         }
-        data = et._get(f"/accounts/{aid}/transactions.json", params=tparams)
+        raw = _eget(f"/accounts/{account_id_key}/orders.json",
+            params={"status": "OPEN"}) or {}
+
         tr = data.get("TransactionListResponse", {}) or data
         items = tr.get("Transaction") or tr.get("Transactions") or []
         if isinstance(items, dict):
@@ -1460,35 +1890,6 @@ class ETradeService:
     def get_balances(self, account_id_key: str) -> dict:
         # map to your function-style summary/balances fetch
         return get_account_summary(account_id_key)
-
-    # broker.py MAY call preview explicitly (it mostly jumps straight to place)
-    def preview_equity_order(
-        self,
-        account_id_key: str,
-        symbol: str,
-        qty: int,
-        limit_price: float,
-        **kwargs
-    ) -> dict:
-        # Uses your existing function; kwargs (action, etc.) are ignored for now
-        return preview_equity_order(account_id_key, symbol, qty, limit_price)
-
-    # broker.py calls: self._et.place_equity_order(action=..., symbol=..., qty=..., limit_price=...)
-    # We accept those kwargs, run a preview, then place using the preview response.
-    def place_equity_order(self, **kwargs) -> dict:
-        # Prefer a supplied preview response if one is given.
-        preview_resp = kwargs.get("preview_resp")
-
-        if preview_resp is None:
-            aid = kwargs.get("account_id_key") or account_id_key()
-            symbol = kwargs["symbol"]
-            qty = int(kwargs["qty"])
-            limit_price = kwargs.get("limit_price")
-            # Run a preview using your function-style API
-            preview_resp = preview_equity_order(aid, symbol, qty, limit_price)
-
-        # Your function-style placer expects a preview response (and optional qty override)
-        return place_equity_order(preview_resp, qty=kwargs.get("qty"))
 
 
 # Provide a RateLimitError name so broker.py can import/catch it even if

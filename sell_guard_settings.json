@@ -1,0 +1,26 @@
+{
+  "mode": "live",
+  "target_bps": 200,
+  "stop_bps": 100,
+  "max_hold_mins": 100000,
+  "throttle_ms": 30000,
+  "limit_from": "bid",
+  "limit_offset_bps": 0,
+  "blocklist": [],
+
+  "avoid_daytrades": true,
+  "allow_intraday_stoploss": false,
+  "min_hold_days": 1,
+
+  "protect_after_mins": 0,
+  "arm_hard_below_bps": 150,
+  "hard_stop_bps": 100,
+  "arm_trail_above_bps": 300,
+  "trailing_prct": 3.0,
+  
+  "sell_window_start_hhmm": "09:35",
+  "sell_window_end_hhmm":  "15:55",
+
+  "use_extended_hours": false,
+  "market_fallback_for": ["SELL_STOP", "TIMEOUT", "SELL_TARGET"]
+}

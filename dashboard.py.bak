@@ -485,6 +485,37 @@ logging.basicConfig(
 # ─── Flask app setup ─────────────────────────────────────────
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET', 'supersecret')
+# ---- logging: console + rotating file ----
+import sys, logging, logging.handlers
+from pathlib import Path
+
+def _setup_logging_and_wrappers(app):
+    log_dir = Path(r"C:\TradeAlerts\logs"); log_dir.mkdir(parents=True, exist_ok=True)
+    fmt = logging.Formatter("%(asctime)s %(levelname)-5s %(name)s: %(message)s")
+
+    # app logger
+    app.logger.setLevel(logging.INFO)
+    if not any(isinstance(h, logging.StreamHandler) for h in app.logger.handlers):
+        sh = logging.StreamHandler(sys.stdout); sh.setFormatter(fmt); app.logger.addHandler(sh)
+    if not any(isinstance(h, logging.FileHandler) for h in app.logger.handlers):
+        fh = logging.handlers.RotatingFileHandler(log_dir / "dashboard.log",
+                                                  maxBytes=10_000_000, backupCount=7, encoding="utf-8")
+        fh.setFormatter(fmt); app.logger.addHandler(fh)
+
+    # werkzeug (http access) → same file
+    wz = logging.getLogger("werkzeug"); wz.setLevel(logging.INFO)
+    if not any(isinstance(h, logging.FileHandler) for h in wz.handlers):
+        wz.addHandler(fh)
+
+    # root too (so library INFO/ERROR surface)
+    root = logging.getLogger(); root.setLevel(logging.INFO)
+    if not any(isinstance(h, logging.FileHandler) for h in root.handlers):
+        root.addHandler(fh)
+
+    # turn on the E*TRADE quote call wrapper so calls are visible in logs
+    _etrade_log_wrap()
+
+_setup_logging_and_wrappers(app)
 
 from pathlib import Path
 FLAG = Path("need_oauth.flag")
@@ -653,6 +684,61 @@ def get_recent_trades_and_realized(days:int=2):
     # newest-first
     trades.sort(key=lambda x: str(x["time"]), reverse=True)
     return trades, round(realized, 2)
+
+from datetime import datetime
+
+def _pct(num, den):
+    try:
+        return round((float(num) / float(den)) * 100, 2) if den else 0.0
+    except Exception:
+        return 0.0
+
+# Sum unrealized P&L from your holdings rows
+def _sum_unrealized_from_holdings(holdings):
+    tot = 0.0
+    for h in holdings or []:
+        try:
+            qty  = float(h.get("qty") or 0)
+            last = float(h.get("last") or 0)
+            paid = float(h.get("price_paid") or 0)
+            tot += (last - paid) * qty
+        except Exception:
+            pass
+    return round(tot, 2)
+
+# Sum realized P&L from your recent-trades rows (SELL only)
+# Set the start date here (or read from config/env if you prefer)
+REALIZED_SINCE = "2025-08-22"
+
+def _sum_realized_from_trades(trades, since_str=REALIZED_SINCE):
+    # very forgiving parser for your “Time (ET)” strings
+    def _parse_dt(s):
+        if not s:
+            return None
+        s = str(s).replace("T", " ")
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(s[:len(fmt)], fmt)
+            except Exception:
+                continue
+        return None
+
+    since_dt = _parse_dt(since_str) or datetime.min
+    tot = 0.0
+    for t in trades or []:
+        try:
+            if str(t.get("side", "")).upper() != "SELL":
+                continue
+            tdt = _parse_dt(t.get("time_et") or t.get("time") or t.get("ts"))
+            if tdt and tdt < since_dt:
+                continue
+            qty   = float(t.get("qty") or 0)
+            price = float(t.get("price") or 0)
+            paid  = float(t.get("price_paid") or 0)
+            tot  += (price - paid) * qty
+        except Exception:
+            pass
+    return round(tot, 2)
 
 def _get(path: str, params=None):
     r = requests.get(BASE_URL + path, params=params or {}, auth=_oauth1(), headers={"Accept":"application/json"})
@@ -2646,7 +2732,8 @@ def live_status():
                     getattr(log, level)(msg, *args)
             except Exception:
                 pass
-
+        open_since: dict = {}
+        holdings:   list = []
         # ---------------- Query params -----------------
         start_s = (request.args.get("start") or "").strip()     # e.g. '2025-08-22'
         debug_level = int((request.args.get("debug") or 0))
@@ -2663,9 +2750,65 @@ def live_status():
                 except Exception:
                     days = 7
             else:
-                days = 7
-
+               days = 7
         # ---------------- Helpers ----------------------
+        def _num(x):
+            """Best-effort float, else None."""
+            try:
+                return float(str(x).replace(',', '').strip())
+            except Exception:
+                return None
+
+        def _pick_last_prev(q):
+            """
+            Accepts q as either:
+              - simple dict like {'last': 123.4, 'prev': 122.0}, or
+              - raw-ish E*TRADE 'QuoteData' / 'All' shapes, or
+              - a bare number (last), or string.
+            Returns (last, prev) as floats or (None, None).
+            """
+            # bare number/string
+            if isinstance(q, (int, float, str)):
+                return (_num(q), None)
+
+            if not isinstance(q, dict):
+                return (None, None)
+
+            # normalized map already?
+            if 'last' in q or 'prev' in q:
+                return (_num(q.get('last')), _num(q.get('prev')))
+
+            # try common E*TRADE shapes
+            # 1) top-level 'All'
+            allb = q.get('All') or q.get('all') or {}
+            last = _num(allb.get('lastTrade') or allb.get('lastPrice'))
+            prev = _num(allb.get('previousClose') or allb.get('priorClose'))
+
+            # take extended-hours last if present
+            eh = allb.get('ExtendedHourQuoteDetail') or {}
+            eh_last = _num(eh.get('lastPrice'))
+            if eh_last is not None:
+                last = eh_last if eh_last is not None else last
+
+            # 2) sometimes values live at the top level
+            if last is None:
+                for k in ('lastTrade', 'lastPrice', 'close', 'last'):
+                    v = q.get(k)
+                    nv = _num(v)
+                    if nv is not None:
+                        last = nv
+                        break
+
+            if prev is None:
+                for k in ('previousClose', 'priorClose'):
+                    v = q.get(k)
+                    nv = _num(v)
+                    if nv is not None:
+                        prev = nv
+                        break
+
+            return (last, prev)
+
         def _to_f(x):
             try:
                 if x is None:
@@ -2838,18 +2981,20 @@ def live_status():
             visit(raw_positions or [])
             return out
 
-        def _fifo_realized_today(trades):
+        def _fifo_enrich_and_daytrades(trades):
             """
-            Enrich trades with FIFO basis for SELLs: fills price_paid/pl/pl_pct.
-            Also returns today's realized P&L (ET) and % on realized basis.
+            Enrich trades with FIFO basis and compute day-trade stats.
+            A 'day trade' = any SELL whose FIFO-closed shares all came from BUY lots
+            opened on the same ET calendar day as the SELL.
+            Returns: enriched_trades, realized_today_val, realized_today_pct, daytrade_stats
             """
-            lots = {}  # sym -> [[qty, px], ...] FIFO
+            lots = {}  # sym -> [[qty, px, buy_date], ...]
             today_et = _dt.datetime.now(tz=_ET).date()
             realized_val = 0.0
             realized_basis = 0.0
             enriched = []
+            daytrades = []  # {"date": date, "pl": float, "qty": int}
 
-            # Process chronologically
             chron = sorted(trades, key=lambda t: _to_ms_for_compare(t.get("time_ms")))
             for t in chron:
                 ts_ms = _to_ms_for_compare(t.get("time_ms"))
@@ -2860,52 +3005,85 @@ def live_status():
                 px = _to_f(t.get("price"))
 
                 if not sym or qty <= 0 or (px or 0) <= 0:
-                    enriched.append({**t})
-                    continue
+                    enriched.append({**t});  continue
 
                 lots.setdefault(sym, [])
+
                 if side == "BUY":
-                    lots[sym].append([qty, px])
+                    lots[sym].append([qty, px, t_date])
                     enriched.append({**t, "price_paid": px, "pl": 0.0, "pl_pct": 0.0})
-                elif side == "SELL":
-                    remain = qty
-                    basis_cost = 0.0
-                    basis_sh = 0
-                    while remain > 0 and lots[sym]:
-                        lot_qty, lot_px = lots[sym][0]
-                        take = min(remain, lot_qty)
-                        basis_cost += take * lot_px
-                        basis_sh += take
-                        lot_qty -= take
-                        remain -= take
-                        if lot_qty == 0:
-                            lots[sym].pop(0)
-                        else:
-                            lots[sym][0][0] = lot_qty
-                    avg_basis = (basis_cost / basis_sh) if basis_sh else 0.0
-                    pnl = (px - avg_basis) * basis_sh if basis_sh else 0.0
-                    pnl_pct = ((px / avg_basis - 1.0) * 100.0) if avg_basis else 0.0
-                    if t_date == today_et:
-                        realized_val += pnl
-                        realized_basis += (avg_basis * basis_sh)
-                    enriched.append({**t, "price_paid": avg_basis, "pl": pnl, "pl_pct": pnl_pct})
-                else:
-                    enriched.append({**t})
+                    continue
 
-            realized_pct = (realized_val / realized_basis * 100.0) if realized_basis > 0 else 0.0
-            # newest first for UI
+                if side != "SELL":
+                    enriched.append({**t});  continue
+
+                # SELL: consume FIFO; track if all matched lots are same-day
+                remain = qty
+                basis_cost = 0.0
+                basis_sh = 0
+                same_day = True
+                while remain > 0 and lots[sym]:
+                    lot_qty, lot_px, lot_date = lots[sym][0]
+                    take = min(remain, lot_qty)
+                    basis_cost += take * lot_px
+                    basis_sh += take
+                    if lot_date != t_date:
+                        same_day = False
+                    lot_qty -= take
+                    remain -= take
+                    if lot_qty == 0:
+                        lots[sym].pop(0)
+                    else:
+                        lots[sym][0][0] = lot_qty
+
+                avg_basis = (basis_cost / basis_sh) if basis_sh else 0.0
+                pnl = (px - avg_basis) * basis_sh if basis_sh else 0.0
+                pnl_pct = ((px / avg_basis - 1.0) * 100.0) if avg_basis else 0.0
+
+                if t_date == today_et:
+                    realized_val += pnl
+                    realized_basis += (avg_basis * basis_sh)
+
+                if basis_sh > 0 and same_day:
+                    daytrades.append({"date": t_date, "pl": pnl, "qty": basis_sh})
+
+                enriched.append({**t, "price_paid": avg_basis, "pl": pnl, "pl_pct": pnl_pct})
+
             enriched.sort(key=lambda r: _to_ms_for_compare(r.get("time_ms")), reverse=True)
-            return enriched, round(realized_val, 2), round(realized_pct, 2)
+            realized_pct = (realized_val / realized_basis * 100.0) if realized_basis > 0 else 0.0
 
-        # --------------- Account (real-time / conservative) ---------------
+            # aggregate last 9 trading days from the dates present
+            by_date = {}
+            for d in daytrades:
+                k = d["date"].isoformat()
+                rec = by_date.setdefault(k, {"count": 0, "profitable": 0})
+                rec["count"] += 1
+                if (d["pl"] or 0) > 0:
+                    rec["profitable"] += 1
+
+            # PDT: count ALL day trades (win or loss) in the last 5 trading days
+            pdt_dates = sorted({d["date"] for d in daytrades}, reverse=True)[:5]
+            pdt_total = 0
+            pdt_map = {}
+            for dt in pdt_dates:
+                k = dt.isoformat()
+                c = by_date.get(k, {"count": 0})
+                pdt_map[k] = {"count": c["count"]}
+                pdt_total += c["count"]
+
+            daytrade_stats = { "pdt5": { "dates": pdt_map, "total": pdt_total } }
+            return enriched, round(realized_val, 2), round(realized_pct, 2), daytrade_stats
+
+
+        # --------------- Account (E*TRADE real-time) ---------------
         from services import broker as _broker
         b = _broker.get_broker('LIVE')
 
-        # ask E*TRADE for real-time balances so BP matches the site
         raw = b._et._get(
             f"/accounts/{b.account_id_key}/balance.json",
             params={"instType": "BROKERAGE", "realTimeNAV": "true"}
         ) or {}
+
         br   = (raw.get("BalanceResponse") or raw) or {}
         comp = (br.get("Computed") or {})
         cash = (br.get("Cash") or {})
@@ -2913,35 +3091,27 @@ def live_status():
 
         def _first_num(*vals):
             for v in vals:
-                if isinstance(v, (int, float)):
-                    return float(v)
+                try:
+                    if v is not None:
+                        return float(v)
+                except Exception:
+                    pass
             return None
 
-        # what the UI will bind to
+        nav         = _first_num(rtv.get("totalAccountValue"), comp.get("totalAccountValue"), comp.get("accountTotal"))
+        bp          = _first_num(comp.get("marginBuyingPower"), comp.get("cashBuyingPower"), b._fresh_funds())
+        avail_wd    = _first_num(comp.get("totalAvailableForWithdrawal"), comp.get("cashAvailableForWithdrawal"))
+        settled_cash= _first_num(comp.get("netCash"), comp.get("cashBalance"), cash.get("moneyMktBalance"))
+
         account = {
             "account_id":   br.get("accountId"),
             "account_type": br.get("accountType") or br.get("accountMode"),
+            "buying_power": bp,
+            "available_to_withdraw": avail_wd,
+            "equity_value": nav,          # drives the UI “Equity Value”
+            "settled_cash": settled_cash, # used by the fallback later
+        }
 
-            # UI “Buying Power” — same number E*TRADE shows as Margin Purchasing Power
-            "buying_power": b._fresh_funds(),  # uses a short TTL + realTimeNAV
-
-            # UI “Available to Withdraw”
-            "available_to_withdraw": _first_num(
-                comp.get("cashAvailableForWithdrawal"),
-                comp.get("totalAvailableForWithdrawal"),
-            ),
-
-            # UI “Equity Value” (matches the site’s Total Assets)
-            "equity_value": _first_num(
-                rtv.get("totalAccountValue"),
-                comp.get("netCash"),
-            ),
-
-            # (optional extras if you want them around)
-            "cashBuyingPower":   comp.get("cashBuyingPower"),
-            "marginBuyingPower": comp.get("marginBuyingPower"),
-            "moneyMktBalance":   cash.get("moneyMktBalance"),
-}
 
         # --------------- Positions / Holdings ----------
         try:
@@ -2952,6 +3122,32 @@ def live_status():
 
         holdings = _collect_holdings(raw_positions)
 
+        # --- Fallback: ensure a row exists for each long inventory symbol (e.g., WBD) ---
+        try:
+            inv = et.long_qty_map() or {}
+        except Exception as e:
+            _log("warning", "[LIVE] long_qty_map failed: %s", e)
+            inv = {}
+
+        by_sym = {(h.get("symbol") or "").upper(): {**h}
+                  for h in (holdings or []) if h.get("symbol")}
+        for sym, qty in (inv or {}).items():
+            s = (sym or "").upper()
+            if not s:
+                continue
+            if s in by_sym:
+                try:
+                    by_sym[s]["qty"] = float(qty)
+                except Exception:
+                    pass
+            else:
+                try:
+                    by_sym[s] = {"symbol": s, "qty": float(qty), "price_paid": None}
+                except Exception:
+                    by_sym[s] = {"symbol": s, "qty": 0.0, "price_paid": None}
+
+        holdings = list(by_sym.values())
+        # ---- next line in your file should be the Quotes section header ----
         # --------------- Quotes (E*TRADE only) ---------
         syms = [h["symbol"] for h in holdings if h.get("symbol")]
         qmap = {}
@@ -3007,42 +3203,64 @@ def live_status():
                     except Exception as e:
                         _log("warning", "[LIVE] get_quote(%s) failed: %s", s, e)
 
-        # Enrich holdings with prices / P&L (ETRADE only)
-        for h in holdings:
-            s = (h.get("symbol") or "").upper()
-            qty = _safe_float(h.get("qty"))
-            paid = _to_f(h.get("price_paid"))
-            q = qmap.get(s, {})
-            last = _to_f(q.get("last"))
-            prev = _to_f(q.get("prev"))
+            for h in holdings:
+                s    = (h.get("symbol") or "").upper()
+                qty  = _safe_float(h.get("qty"))             # numeric or 0.0
+                paid = _to_f(h.get("price_paid"))            # may be None
 
-            if last is not None and last > 0:
-                h["last_price"] = round(last, 2)
-                h["value"] = round(qty * last, 2)
+                # quotes pulled earlier into qmap
+                q    = qmap.get(s, {})
+                last = _to_f(q.get("last"))
+                prev = _to_f(q.get("prev"))
 
-            if last is not None and prev is not None and prev > 0:
-                day_pl = (last - prev) * qty
-                h["day_pl"] = round(day_pl, 2)
-                try:
-                    h["day_pl_pct"] = round((last / prev - 1.0) * 100.0, 2)
-                except Exception:
-                    pass
+                # --- Opened (ET) (guarded) ---
+                ots = open_since.get(s)
+                if ots:
+                    try:
+                        h["open_time_ms"] = int(_safe_float(ots))
+                    except Exception:
+                        pass
+                    h["open_time"] = _fmt_et(ots) or ""
 
-            if last is not None and last > 0 and (paid or 0) > 0:
-                tot_pl = (last - paid) * qty
-                h["total_pl"] = round(tot_pl, 2)
-                try:
-                    h["total_pl_pct"] = round((last / paid - 1.0) * 100.0, 2)
-                except Exception:
-                    pass
+                # --- Last/Value ---
+                if last is not None and last > 0:
+                    h["last_price"] = round(last, 2)
+                    if qty is not None:
+                        h["value"] = round(qty * last, 2)
 
-        # Hide partial rows if we couldn't populate last/value
-        for h in holdings:
-            if not (h.get("last_price") and h.get("value") is not None):
-                h.pop("last_price", None)
-                h.pop("value", None)
+                # --- Day P&L ---
+                if (
+                    last is not None and prev is not None and
+                    prev > 0 and qty is not None
+                ):
+                    day_pl = (last - prev) * qty
+                    h["day_pl"] = round(day_pl, 2)
+                    try:
+                        h["day_pl_pct"] = round((last / prev - 1.0) * 100.0, 2)
+                    except Exception:
+                        pass
 
-        # --------------- Rollups -----------------------
+                # --- Total P&L (vs price_paid) ---
+                if (
+                    last is not None and last > 0 and
+                    paid is not None and paid > 0 and
+                    qty is not None
+                ):
+                    tot_pl = (last - paid) * qty
+                    h["total_pl"] = round(tot_pl, 2)
+                    try:
+                        h["total_pl_pct"] = round((last / paid - 1.0) * 100.0, 2)
+                    except Exception:
+                        pass
+
+        try:
+            # Hide partial rows if we couldn't populate last/value
+            for h in holdings:
+                if not (h.get("last_price") and h.get("value") is not None):
+                    h.pop("last_price", None)
+                    h.pop("value", None)
+        except Exception as e:
+            _log("warning", "[LIVE] holdings enrichment failed: %s", e)        # --------------- Rollups -----------------------
         positions_value = round(sum(_safe_float(h.get("value")) for h in holdings), 2)
         cost_basis_sum = round(
             sum(_safe_float(h.get("price_paid")) * _safe_float(h.get("qty")) for h in holdings),
@@ -3121,9 +3339,87 @@ def live_status():
                 mapped = [t for t in mapped if _to_ms_for_compare(t.get("time_ms")) >= cutoff_ms]
             except Exception as e:
                 _log("warning", "[LIVE] start filter failed for %s: %s", start_s, e)
+        def _open_since_map(trades):
+            """
+            Build {SYM: earliest_open_lot_time_ms} from FIFO across BUY/SELL trades.
+            Uses trade['time_ms'] and trade['action'] ('BUY'/'SELL').
+            """
+            lots = {}          # sym -> list of [qty, px, time_ms]
+            for t in sorted(trades, key=lambda x: _to_ms_for_compare(x.get("time_ms"))):
+                sym  = (t.get("symbol") or "").upper()
+                side = (t.get("action") or "").upper()
+                qty  = int(_safe_float(t.get("qty")))
+                tms  = _to_ms_for_compare(t.get("time_ms"))
+                px   = _to_f(t.get("price"))
+                if not sym or qty <= 0:
+                    continue
+                lots.setdefault(sym, [])
+                if side == "BUY":
+                    lots[sym].append([qty, px, tms])
+                elif side == "SELL":
+                    remain = qty
+                    while remain > 0 and lots[sym]:
+                        lq, lpx, lts = lots[sym][0]
+                        take = min(remain, lq)
+                        lq -= take
+                        remain -= take
+                        if lq == 0:
+                            lots[sym].pop(0)
+                        else:
+                            lots[sym][0][0] = lq
+            # earliest remaining lot time for each symbol
+            out = {}
+            for sym, stk in lots.items():
+                if stk:
+                    out[sym] = min((r[2] or 0) for r in stk if r and len(r) >= 3)
+            return out
+
+        # --- always initialize so it's in scope even on failures
+        open_since = {}
+
+        try:
+            # use the chronological, pre-enriched list ("mapped") — that's enough
+            open_since = _open_since_map(mapped) if mapped else {}
+        except Exception as e:
+            _log("warning", "[LIVE] open_since_map failed: %s", e)
+            open_since = {}
+
+        # --- BEFORE you start enriching holdings, add: ---
+        open_since = {}  # make sure it exists even if we fail to build it
+
+        try:
+            from services.trading_helpers import get_trades
+            import datetime as _dt
+
+            def _to_ms(val):
+                try:
+                    if isinstance(val, (int, float)):
+                        v = float(val)
+                        return int(v if v > 10_000_000_000 else v * 1000)
+                    s = str(val or "")
+                    if " " in s and "T" not in s:
+                        s = s.replace(" ", "T")
+                    if "Z" not in s and "+" not in s:
+                        s += "Z"
+                    return int(_dt.datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp() * 1000)
+                except Exception:
+                    return 0
+
+            for t in get_trades() or []:
+                sym  = (t.get("symbol") or "").upper()
+                act  = (t.get("action") or "").upper()
+                ts   = t.get("time_ms") or t.get("time_utc") or t.get("time") or t.get("timestamp")
+                ms   = _to_ms(ts)
+                if act == "SELL":
+                    open_since.pop(sym, None)        # back to flat
+                elif act == "BUY" and sym:
+                    open_since.setdefault(sym, ms)   # first BUY since flat
+        except Exception as e:
+            current_app.logger.warning("[LIVE] holdings enrichment failed building open_since: %s", e)
+            open_since = {}  # keep it safe
 
         # Enrich with FIFO, then normalize rounding
-        trades_enriched, realized_today, realized_today_pct = _fifo_realized_today(mapped)
+        trades_enriched, realized_today, realized_today_pct, dt_stats = _fifo_enrich_and_daytrades(mapped)
 
         for t in trades_enriched:
             if "price_paid" in t and t["price_paid"] is not None:
@@ -3133,7 +3429,8 @@ def live_status():
             if "pl_pct" in t and t["pl_pct"] is not None:
                 t["pl_pct"] = round(_safe_float(t["pl_pct"]) or 0.0, 2)
 
-    
+        open_since = _open_since_map(mapped)   # or trades_enriched; mapped is fine
+
         # --- NEW: realized over the whole lookback window (after start cutoff) ---
         realized_total = round(sum(
             _safe_float(t.get("pl"))
@@ -3151,6 +3448,55 @@ def live_status():
             (realized_total / realized_basis_total * 100.0), 2
         ) if realized_basis_total > 0 else 0.0
 
+        # ---------- infer "Opened (ET)" per symbol from trades ----------
+        def _infer_open_times(holdings, trades):
+            """
+            For each symbol, walk trades chronologically and track position size.
+            The 'opened' time is the first BUY after the last time size dropped to 0.
+            """
+            # index trades by symbol, oldest -> newest
+            by_sym = {}
+            for t in sorted(trades, key=lambda x: _to_ms_for_compare(x.get("time_ms"))):
+                s = (t.get("symbol") or "").upper()
+                if not s:
+                    continue
+                by_sym.setdefault(s, []).append(t)
+
+            out = {}
+            for h in holdings:
+                s   = (h.get("symbol") or "").upper()
+                qty = int(_safe_float(h.get("qty")) or 0)
+                if not s or qty <= 0:
+                    continue
+
+                pos = 0
+                opened_et = None
+                for t in by_sym.get(s, []):
+                    side = (t.get("action") or "").upper()
+                    q    = int(_safe_float(t.get("qty")) or 0)
+                    if side == "BUY":
+                        prev = pos
+                        pos += q
+                        if prev <= 0 and pos > 0:
+                            # use the ET-formatted time we already included for UI
+                            opened_et = t.get("time") or _fmt_et(t.get("time_ms"))
+                    elif side == "SELL":
+                        pos -= q
+                        if pos <= 0:
+                            opened_et = None  # position fully closed; next BUY will re-open
+                # If we still hold shares, use the last 'opened' moment we saw
+                if (qty > 0) and opened_et:
+                    out[s] = opened_et
+
+            return out
+
+        opened_map = _infer_open_times(holdings, trades_enriched)
+        for h in holdings:
+            s = (h.get("symbol") or "").upper()
+            if s in opened_map:
+               opened = opened_map[s]
+               h["opened_et"] = opened          # new name you introduced
+               h["open_time"] = opened          # legacy name the UI expects
         # --------------- Equity fallback ---------------
         if not account.get("equity_value"):
             eq = round((account.get("settled_cash") or 0.0) + (positions_value or 0.0), 2)
@@ -3161,7 +3507,10 @@ def live_status():
             account.get("buying_power")
             or account.get("available_to_withdraw")
             or 0.0
-)        total_value = round(positions_value + cash_balance, 2)
+        )
+        unrealized      = _sum_unrealized_from_holdings(holdings)
+        realized_total  = _sum_realized_from_trades(recent_trades, REALIZED_SINCE)
+        total_value     = round((positions_value or 0.0) + (cash_balance or 0.0), 2)
 
         payload = {
             "ok": True,
@@ -3171,14 +3520,14 @@ def live_status():
             "trades": trades_enriched,
             "metrics": {
                 "positions_value": positions_value,
-                "unrealized_pnl": unrealized,
-                "unrealized_pnl_pct": upct,
-                # use totals across the window instead of "today"
-                "realized_pnl": realized_total,
-                "realized_pnl_pct": realized_total_pct,
+                "unrealized_pl": unrealized,
+                "unrealized_pl_pct": _pct(unrealized, total_value),
+                "realized_pl": realized_total,
+                "realized_pl_pct": _pct(realized_total, total_value),
                 "total_value": total_value,
                 "cash_balance": cash_balance,
-            },
+                "daytrades_pdt5": (dt_stats or {}).get("pdt5"),
+            }
         }
         if debug_level:
             payload["_debug"] = {
@@ -3189,6 +3538,15 @@ def live_status():
                 "positions_value": positions_value,
                 "cost_basis_sum": cost_basis_sum,
             }
+
+        # API health flag used by the green/red dot
+        payload["etrade_ok"] = bool(
+            account.get("account_id")
+            or (account.get("equity_value") not in (None, 0))
+            or (account.get("buying_power") is not None)
+            or bool(holdings)
+            or bool(qmap)
+        )
 
         return payload
 

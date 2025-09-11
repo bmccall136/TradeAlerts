@@ -50,7 +50,6 @@ def _safe_float(x) -> Optional[float]:
 
 def _pretty_signal_name(t: str) -> str:
     t = (t or "").strip()
-    # very light prettifier; keep original if we don't recognize
     m = t.lower().replace(" ", "")
     if m.startswith("adx"):
         return "ADX ≥ 20"
@@ -60,14 +59,25 @@ def _pretty_signal_name(t: str) -> str:
         return "BB breakout"
     if "rsi" in m:
         return "RSI 📈"
+    if "atr" in m:
+        return "ATR % ≥ 0.5%"  # generic prettifier
     if "price>sma20" in m or "price>sma(20)" in m:
         return "Price > SMA20"
     return t
 
-def log_candidate(sym: str, price: float, triggered: List[str], scanned_i: int, total: int) -> None:
-    pretty = ", ".join(_pretty_signal_name(x) for x in (triggered or []))
-    log.info("[LIVE] ➕ candidate %-6s px=%.2f signals=%s", sym, float(price), pretty)
+def _dedupe_preserve_order(items):
+    seen = set()
+    out = []
+    for x in items:
+        if x not in seen:
+            out.append(x)
+            seen.add(x)
+    return out
 
+def log_candidate(sym: str, price: float, triggered: List[str], scanned_i: int, total: int) -> None:
+    pretty = [_pretty_signal_name(x) for x in (triggered or [])]
+    pretty = _dedupe_preserve_order(pretty)
+    log.info("[LIVE] ➕ candidate %-6s px=%.2f signals=%s", sym, float(price), ", ".join(pretty))
 
 # ── fast quotes via E*TRADE + fallback to yfinance ───────────────────────────
 

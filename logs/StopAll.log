@@ -1,0 +1,835 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20250908215853
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\Users\bmccall\Downloads\Stop-All.ps1 
+Process ID: 110944
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 21:58:54 STOP ALL ===
+Done.
+**********************
+Windows PowerShell transcript end
+End time: 20250908215856
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250908215958
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Process ID: 41568
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 21:59:59 STOP ALL ===
+Done.
+**********************
+Windows PowerShell transcript end
+End time: 20250908220001
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250908220043
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Process ID: 111600
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 22:00:44 STOP ALL ===
+Done.
+**********************
+Windows PowerShell transcript end
+End time: 20250908220046
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250908220116
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Process ID: 82096
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 22:01:16 STOP ALL ===
+Done.
+**********************
+Windows PowerShell transcript end
+End time: 20250908220118
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250908220506
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Process ID: 109700
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 22:05:06 STOP ALL ===
+Killing PID 108360: "C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe" -u .\live_start.py
+Done.
+**********************
+Windows PowerShell transcript end
+End time: 20250908220508
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250908220716
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Process ID: 65324
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 22:07:17 STOP ALL ===
+Done.
+**********************
+Windows PowerShell transcript end
+End time: 20250908220718
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250908220805
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Process ID: 33424
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 22:08:05 STOP ALL ===
+Killing PID 105872: "C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe" -u .\live_start.py
+Done.
+**********************
+Windows PowerShell transcript end
+End time: 20250908220807
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250908220922
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Process ID: 109320
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 22:09:22 STOP ALL ===
+Done.
+**********************
+Windows PowerShell transcript end
+End time: 20250908220924
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250908221753
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Process ID: 109540
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 22:17:53 STOP ALL (strong) ===
+Cannot overwrite variable PID because it is read-only or constant.
+At C:\TradeAlerts\Stop-All.ps1:17 char:14
++     foreach ($pid in $pids | Where-Object { $_ -gt 0 }) {
++              ~~~~
+    + CategoryInfo          : WriteError: (PID:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+Cannot overwrite variable PID because it is read-only or constant.
+At C:\TradeAlerts\Stop-All.ps1:17 char:14
++     foreach ($pid in $pids | Where-Object { $_ -gt 0 }) {
++              ~~~~
+    + CategoryInfo          : WriteError: (PID:String) [], SessionStateUnauthorizedAccessExceptio
+   n
+    + FullyQualifiedErrorId : VariableNotWritable
+
+Done.
+**********************
+Windows PowerShell transcript end
+End time: 20250908221756
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250908221822
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Process ID: 68636
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 22:18:23 STOP ALL (strong) ===
+Cannot overwrite variable PID because it is read-only or constant.
+At C:\TradeAlerts\Stop-All.ps1:17 char:14
++     foreach ($pid in $pids | Where-Object { $_ -gt 0 }) {
++              ~~~~
+    + CategoryInfo          : WriteError: (PID:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+Cannot overwrite variable PID because it is read-only or constant.
+At C:\TradeAlerts\Stop-All.ps1:17 char:14
++     foreach ($pid in $pids | Where-Object { $_ -gt 0 }) {
++              ~~~~
+    + CategoryInfo          : WriteError: (PID:String) [], SessionStateUnauthorizedAccessExceptio
+   n
+    + FullyQualifiedErrorId : VariableNotWritable
+
+Done.
+**********************
+Windows PowerShell transcript end
+End time: 20250908221826
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250908224206
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: powershell -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All.ps1
+Process ID: 82728
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 22:42:06 STOP ALL (pinpoint + pid) ===
+PS>TerminatingError(): "Cannot overwrite variable pid because it is read-only or constant."
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All.ps1:36 char:13
++             Kill-PID [int]$pidText $pf
++             ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All.ps1:36 char:13
++             Kill-PID [int]$pidText $pf
++             ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+
+PS>TerminatingError(): "Cannot overwrite variable pid because it is read-only or constant."
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All.ps1:51 char:23
++ foreach ($p in $py) { Kill-PID $p.ProcessId "python(cmdline)" }
++                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All.ps1:51 char:23
++ foreach ($p in $py) { Kill-PID $p.ProcessId "python(cmdline)" }
++                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+
+>> TerminatingError(): "Cannot overwrite variable pid because it is read-only or constant."
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All.ps1:51 char:23
++ foreach ($p in $py) { Kill-PID $p.ProcessId "python(cmdline)" }
++                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All.ps1:51 char:23
++ foreach ($p in $py) { Kill-PID $p.ProcessId "python(cmdline)" }
++                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+
+PS>TerminatingError(): "Cannot overwrite variable pid because it is read-only or constant."
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All.ps1:59 char:23
++ foreach ($p in $ps) { Kill-PID $p.ProcessId "powershell(cmdline)" }
++                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All.ps1:59 char:23
++ foreach ($p in $ps) { Kill-PID $p.ProcessId "powershell(cmdline)" }
++                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+
+>> TerminatingError(): "Cannot overwrite variable pid because it is read-only or constant."
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All.ps1:59 char:23
++ foreach ($p in $ps) { Kill-PID $p.ProcessId "powershell(cmdline)" }
++                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All.ps1:59 char:23
++ foreach ($p in $ps) { Kill-PID $p.ProcessId "powershell(cmdline)" }
++                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+
+Done.
+**********************
+Windows PowerShell transcript end
+End time: 20250908224209
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250908231328
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Process ID: 112948
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+===  9/8/2025 11:13:29 PM  STOP ALL (super-clean) ===
+Killing  sell_guard.pid  PID  83836
+Killing  python(cmdline)  PID  111024
+Killing  powershell(cmdline)  PID  16004
+Killing  powershell(cmdline)  PID  8124
+Summary: killed python= 2 , powershell= 2
+Log: C:\TradeAlerts\logs\StopAll.log
+**********************
+Windows PowerShell transcript end
+End time: 20250908231331
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250909001638
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 105080
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/09/2025 00:16:38 STOP ALL (aggressive) ===
+PS>TerminatingError(): "Cannot overwrite variable pid because it is read-only or constant."
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All-clean.ps1:31 char:40
++ ... ($pidText -match '^\d+$') { if (Kill-ById ([int]$pidText) $pf) { $kPy ...
++                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All-clean.ps1:31 char:40
++ ... ($pidText -match '^\d+$') { if (Kill-ById ([int]$pidText) $pf) { $kPy ...
++                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+
+PS>TerminatingError(): "Cannot overwrite variable pid because it is read-only or constant."
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All-clean.ps1:46 char:27
++ ... $p in $ps) { if (Kill-ById $p.ProcessId "powershell(cmdline)") { $kPS ...
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All-clean.ps1:46 char:27
++ ... $p in $ps) { if (Kill-ById $p.ProcessId "powershell(cmdline)") { $kPS ...
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+
+>> TerminatingError(): "Cannot overwrite variable pid because it is read-only or constant."
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All-clean.ps1:46 char:27
++ ... $p in $ps) { if (Kill-ById $p.ProcessId "powershell(cmdline)") { $kPS ...
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All-clean.ps1:46 char:27
++ ... $p in $ps) { if (Kill-ById $p.ProcessId "powershell(cmdline)") { $kPS ...
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+
+>> TerminatingError(): "Cannot overwrite variable pid because it is read-only or constant."
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All-clean.ps1:46 char:27
++ ... $p in $ps) { if (Kill-ById $p.ProcessId "powershell(cmdline)") { $kPS ...
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All-clean.ps1:46 char:27
++ ... $p in $ps) { if (Kill-ById $p.ProcessId "powershell(cmdline)") { $kPS ...
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+
+
+Summary: killed python=0, powershell=0
+Log: C:\TradeAlerts\logs\StopAll.log
+**********************
+Windows PowerShell transcript end
+End time: 20250909001640
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250909001801
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 108744
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/09/2025 00:18:02 STOP ALL (aggressive) ===
+PS>TerminatingError(): "Cannot overwrite variable pid because it is read-only or constant."
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All-clean.ps1:46 char:27
++ ... $p in $ps) { if (Kill-ById $p.ProcessId "powershell(cmdline)") { $kPS ...
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All-clean.ps1:46 char:27
++ ... $p in $ps) { if (Kill-ById $p.ProcessId "powershell(cmdline)") { $kPS ...
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+
+>> TerminatingError(): "Cannot overwrite variable pid because it is read-only or constant."
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All-clean.ps1:46 char:27
++ ... $p in $ps) { if (Kill-ById $p.ProcessId "powershell(cmdline)") { $kPS ...
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All-clean.ps1:46 char:27
++ ... $p in $ps) { if (Kill-ById $p.ProcessId "powershell(cmdline)") { $kPS ...
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+
+>> TerminatingError(): "Cannot overwrite variable pid because it is read-only or constant."
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All-clean.ps1:46 char:27
++ ... $p in $ps) { if (Kill-ById $p.ProcessId "powershell(cmdline)") { $kPS ...
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All-clean.ps1:46 char:27
++ ... $p in $ps) { if (Kill-ById $p.ProcessId "powershell(cmdline)") { $kPS ...
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+
+>> TerminatingError(): "Cannot overwrite variable pid because it is read-only or constant."
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All-clean.ps1:46 char:27
++ ... $p in $ps) { if (Kill-ById $p.ProcessId "powershell(cmdline)") { $kPS ...
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+Cannot overwrite variable pid because it is read-only or constant.
+At C:\TradeAlerts\Stop-All-clean.ps1:46 char:27
++ ... $p in $ps) { if (Kill-ById $p.ProcessId "powershell(cmdline)") { $kPS ...
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : WriteError: (pid:String) [], SessionStateUnauthorizedAccessException
+    + FullyQualifiedErrorId : VariableNotWritable
+
+
+Summary: killed python=0, powershell=0
+Log: C:\TradeAlerts\logs\StopAll.log
+**********************
+Windows PowerShell transcript end
+End time: 20250909001804
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250909002024
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 103000
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/09/2025 00:20:24 STOP ALL (fixed) ===
+Killing powershell(cmdline) PID 111708
+Killing powershell(cmdline) PID 51692
+Killing powershell(cmdline) PID 105080
+Killing powershell(cmdline) PID 103000
+**********************
+Windows PowerShell transcript start
+Start time: 20250909002105
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 110652
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/09/2025 00:21:05 STOP ALL (fixed) ===
+Killing powershell(cmdline) PID 112272
+Killing powershell(cmdline) PID 110652
+**********************
+Windows PowerShell transcript start
+Start time: 20250909002115
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 103000
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/09/2025 00:21:15 STOP ALL (fixed) ===
+Killing powershell(cmdline) PID 103000
+**********************
+Windows PowerShell transcript start
+Start time: 20250909002432
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 49568
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/09/2025 00:24:33 STOP ALL (fixed) ===
+Killing sell_guard.pid PID 100792
+Killing powershell(cmdline) PID 110172
+Killing powershell(cmdline) PID 110232
+Killing powershell(cmdline) PID 49568
+**********************
+Windows PowerShell transcript start
+Start time: 20250909002521
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 111344
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/09/2025 00:25:21 STOP ALL (fixed) ===
+Killing sell_guard.pid PID 111444
+Killing powershell(cmdline) PID 32336
+Killing powershell(cmdline) PID 27148
+Killing powershell(cmdline) PID 111344
+**********************
+Windows PowerShell transcript start
+Start time: 20250909003307
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 23300
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/09/2025 00:33:07 STOP ALL (fixed live) ===
+Killing sell_guard.pid PID 74116
+Killing python(cmdline) PID 110248
+Killing python(cmdline) PID 44308
+Killing powershell(cmdline) PID 106912
+Killing powershell(cmdline) PID 90040
+Killing powershell(cmdline) PID 23300
+**********************
+Windows PowerShell transcript start
+Start time: 20250909003740
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 98488
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/09/2025 00:37:40 STOP ALL (fixed live) ===
+Killing sell_guard.pid PID 9372
+Killing python(cmdline) PID 104520
+Killing powershell(cmdline) PID 79404
+Killing powershell(cmdline) PID 112212
+Killing powershell(cmdline) PID 98488
+**********************
+Windows PowerShell transcript start
+Start time: 20250909133650
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 101160
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/09/2025 13:36:50 STOP ALL (fixed live) ===
+Killing python(cmdline) PID 114080
+Killing powershell(cmdline) PID 37664
+Killing powershell(cmdline) PID 101160
+**********************
+Windows PowerShell transcript start
+Start time: 20250909160501
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 116000
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/09/2025 16:05:02 STOP ALL (fixed live) ===
+Killing sell_guard.pid PID 109424
+Killing powershell(cmdline) PID 111648
+Killing powershell(cmdline) PID 116000
+**********************
+Windows PowerShell transcript start
+Start time: 20250910160504
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 109996
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/10/2025 16:05:04 STOP ALL (fixed live) ===
+Killing sell_guard.pid PID 118924
+PS>TerminatingError(Stop-Process): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find a process with the process identifier 118924."
+taskkill tree for sell_guard.pid 118924 issued.
+Killing python(cmdline) PID 105080
+Killing powershell(cmdline) PID 116060
+Killing powershell(cmdline) PID 121544
+Killing powershell(cmdline) PID 109996
+**********************
+Windows PowerShell transcript start
+Start time: 20250911155731
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 126408
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/11/2025 15:57:31 STOP ALL (fixed live) ===
+Killing sell_guard.pid PID 88260
+PS>TerminatingError(Stop-Process): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find a process with the process identifier 88260."
+taskkill tree for sell_guard.pid 88260 issued.
+Killing python(cmdline) PID 117456
+Killing powershell(cmdline) PID 127572
+Killing powershell(cmdline) PID 126408
+**********************
+Windows PowerShell transcript start
+Start time: 20250911160502
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 131616
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/11/2025 16:05:02 STOP ALL (fixed live) ===
+Killing sell_guard.pid PID 40092
+Killing python(cmdline) PID 91396
+Killing powershell(cmdline) PID 66320
+Killing powershell(cmdline) PID 131440
+Killing powershell(cmdline) PID 131616

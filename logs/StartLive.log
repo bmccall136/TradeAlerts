@@ -1,0 +1,198 @@
+==== Mon 09/08/2025 21:26:59.56 START Start Live ====
+PY="C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe" 
+CWD="C:\TradeAlerts" 
+**********************
+Windows PowerShell transcript start
+Start time: 20250908212809
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\Users\bmccall\Downloads\Start-Live.ps1 
+Process ID: 107632
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 21:28:09 START Start Live ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+**********************
+Windows PowerShell transcript start
+Start time: 20250908213053
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\Users\bmccall\Downloads\Start-Live.ps1 
+Process ID: 32700
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 21:30:53 START Start Live ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+**********************
+Windows PowerShell transcript start
+Start time: 20250908213559
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: powershell -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
+Process ID: 76880
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 21:35:59 START Start Live ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+**********************
+Windows PowerShell transcript start
+Start time: 20250908214159
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\Users\bmccall\Downloads\Start-Live (keep-open).ps1 
+Process ID: 90396
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 21:41:59 START Start Live ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+**********************
+Windows PowerShell transcript start
+Start time: 20250908214403
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Start-Live.ps1 
+Process ID: 65332
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 21:44:03 START Start Live ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+**********************
+Windows PowerShell transcript start
+Start time: 20250908214828
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Start-Live.ps1 
+Process ID: 33828
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 21:48:29 START Start Live ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+2025-09-08 21:48:29,311 INFO launcher: ??  Live launcher starting?
+2025-09-08 21:48:29,312 INFO launcher: GUARDRAILS_ENABLED = true
+2025-09-08 21:48:29,312 INFO launcher: LIVE_SAFE_MODE     = true
+? TradingHelpers loaded; simulation DB path is C:\TradeAlerts\simulation.db
+2025-09-08 21:48:32,472 INFO launcher: ?? Using live settings from C:\TradeAlerts\live_settings.jso
+n
+2025-09-08 21:48:32,472 INFO launcher: ??  Live loop starting (mode=LIVE)
+2025-09-08 21:48:32,474 INFO live_guardrails: [GR] auto-seller started (enabled=True)
+2025-09-08 21:48:32,703 INFO live: ?? Broker wired: LiveBroker (mode=LIVE, broker.name=E*TRADE)
+2025-09-08 21:48:32,703 INFO live: [LIVE] config: strict=5 require_sma20=True req=['adx', 'macd', '
+vol', 'vwap'] universe=503
+**********************
+Windows PowerShell transcript start
+Start time: 20250908215553
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Start-Live.ps1 
+Process ID: 49688
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 21:55:53 START Start Live ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+2025-09-08 21:55:53,804 INFO launcher: ??  Live launcher starting?
+2025-09-08 21:55:53,804 INFO launcher: GUARDRAILS_ENABLED = true
+2025-09-08 21:55:53,805 INFO launcher: LIVE_SAFE_MODE     = true
+? TradingHelpers loaded; simulation DB path is C:\TradeAlerts\simulation.db
+2025-09-08 21:55:56,845 INFO launcher: ?? Using live settings from C:\TradeAlerts\live_settings.jso
+n
+2025-09-08 21:55:56,845 INFO launcher: ??  Live loop starting (mode=LIVE)
+2025-09-08 21:55:56,849 INFO live_guardrails: [GR] auto-seller started (enabled=True)
+2025-09-08 21:55:57,023 INFO live: ?? Broker wired: LiveBroker (mode=LIVE, broker.name=E*TRADE)
+2025-09-08 21:55:57,024 INFO live: [LIVE] config: strict=5 require_sma20=True req=['adx', 'macd', '
+vol', 'vwap'] universe=503
+=== 09/08/2025 21:56:06 END Start Live ===
+**********************
+Windows PowerShell transcript end
+End time: 20250908215606
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250908215657
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: powershell -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
+Process ID: 110680
+PSVersion: 5.1.26100.4061
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4061
+BuildVersion: 10.0.26100.4061
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/08/2025 21:56:57 START Start Live ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
