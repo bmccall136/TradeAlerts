@@ -33,9 +33,53 @@ select {
 .hint:hover{background:#444;color:#fff}
 .num.pos, .alerts-table .pos { color:#39d353 !important; } /* green  */
 .num.neg, .alerts-table .neg { color:#f05454 !important; } /* red    */
+/* readable text on dark cards */
+.card.bg-dark .kpi-card { color:#e9ecef; }          /* values */
+.card.bg-dark .kpi-card .small { color:#cfd4da; }   /* labels */
+
+/* keep sign colors working alongside the above */
+.text-pos{color:#41d17d}.text-neg{color:#ff5c5c}.text-zero{color:#aaaaaa}
+.kpi-cash-extra { font-variant-numeric: tabular-nums; }
+/* kill accidental link styling inside the cards */
+.kpi-card a { color:inherit; text-decoration:none; }
+.kpi-card a:hover { text-decoration:underline; }
 
 .pos { color: #39d353; }  /* green */
 .neg { color: #f05454; }  /* red   */
+/* readable text on dark KPI cards */
+.card.bg-dark .kpi-card { color:#e9ecef; }          /* main numbers */
+.card.bg-dark .kpi-card .small { color:#cfd4da; }   /* labels/subtext */
+
+/* if anything shows as blue-underlined */
+.kpi-card a { color:inherit; text-decoration:none; }
+.kpi-card a:hover { text-decoration:underline; }
+
+/* sign colors (already used by your JS) */
+.text-pos{color:#41d17d}.text-neg{color:#ff5c5c}.text-zero{color:#aaaaaa}
+
+/* Keep your sign colors working (no !important so they can be overridden if needed) */
+.text-pos { color: #41d17d; }
+.text-neg { color: #ff5c5c; }
+.text-zero { color: #aaaaaa; }
+/* readable text on dark cards */
+.card.bg-dark .kpi-card,
+.card.bg-dark .summary-card { color: #e9ecef; }
+
+.card.bg-dark .kpi-card .small,
+.card.bg-dark .summary-card .label { color: #cfd4da; }
+
+/* if any old 'text-muted' remains inside these cards, brighten it */
+.card.bg-dark .kpi-card .text-muted,
+.card.bg-dark .summary-card .text-muted { color: #cfd4da !important; }
+
+/* kill link styling inside these cards (no more blue + underline) */
+.kpi-card a, .summary-card a { color: inherit; text-decoration: none; }
+.kpi-card a:hover, .summary-card a:hover { text-decoration: underline; }
+
+/* keep sign colors */
+.text-pos { color:#41d17d; }
+.text-neg { color:#ff5c5c; }
+.text-zero{ color:#aaaaaa; }
 
 /* P&L positive/negative coloring */
 .pn-pos{color:#17c964}
@@ -50,6 +94,10 @@ select {
 .kpi-card { font-size: 0.95rem; }
 .kpi-card .kpi-title { font-size: 1rem; }
 .table.alerts-table { font-size: 0.95rem; }
+/* dark theme helpers */
+.text-pos { color: #41d17d; }  /* green */
+.text-neg { color: #ff5c5c; }  /* red */
+.text-zero { color: #aaaaaa; } /* neutral */
 
 /*— Container to center content and limit width —*/
 .container {

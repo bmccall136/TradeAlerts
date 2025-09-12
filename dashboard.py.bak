@@ -357,6 +357,32 @@ def _fifo_realized_today(trades):
     realized_today_pct = round((realized_today / realized_basis * 100.0), 2) if realized_basis > 0 else 0.0
     return enriched, round(realized_today, 2), realized_today_pct
 
+# near the top of dashboard.py
+from datetime import datetime, timedelta
+import zoneinfo
+
+def _safe_float(x):
+    try: return float(x)
+    except: return 0.0
+
+_TZ_ET = zoneinfo.ZoneInfo("America/New_York")
+
+def _to_dt_local(t):
+    """Accepts epoch ms or 'YYYY-MM-DD HH:MM:SS' -> ET-aware datetime (or None)."""
+    if t is None: return None
+    try:
+        n = float(t)
+        if n > 10_000_000_000:
+            return datetime.fromtimestamp(n/1000.0, _TZ_ET)
+    except: pass
+    s = str(t).strip()
+    if not s: return None
+    try:
+        if 'T' in s: s = s.replace('T',' ')
+        # treat naive strings as ET
+        return datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=_TZ_ET)
+    except: return None
+
 def _etrade_log_wrap():
     """Wrap etrade_service get_quotes/get_quote so we SEE calls in Flask logs."""
     global _ET_LOG_WRAPPED
@@ -597,6 +623,55 @@ BASE_URL = os.getenv("ETRADE_API_HOST", "https://api.etrade.com")  # ensure PROD
 from datetime import datetime, timezone
 
 # --- small helpers -----------------------------------------------------------
+# ─────────────────────────────────────────────────────────────
+# FIFO cost-basis + Realized P&L buckets (ET timezone aware)
+# ─────────────────────────────────────────────────────────────
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+_TZ_ET = ZoneInfo("America/New_York")
+
+def _to_ts(x) -> int:
+    """Epoch ms from epoch s/ms or ISO/ET 'YYYY-MM-DD HH:MM:SS'."""
+    if x is None or x == "":
+        return 0
+    # epoch seconds / ms
+    try:
+        n = float(str(x).strip())
+        return int(n if n > 10_000_000_000 else n * 1000)
+    except Exception:
+        pass
+    s = str(x).strip().replace("T", " ").replace("Z", "")
+    try:
+        return int(datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=_TZ_ET).timestamp() * 1000)
+    except Exception:
+        try:
+            return int(datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=_TZ_ET).timestamp() * 1000)
+        except Exception:
+            return 0
+
+def _to_dt_local(x):
+    """ET datetime from any of the time fields we emit."""
+    ts = _to_ts(x)
+    return datetime.fromtimestamp(ts/1000.0, _TZ_ET) if ts else None
+
+def _as_float(x, default=0.0):
+    try:
+        if isinstance(x, str):
+            x = x.replace("$", "").replace(",", "").strip()
+        return float(x)
+    except Exception:
+        return float(default)
+
+def fifo_enrich_trades(trades):
+    """
+    Return (enriched_trades, realized_today, realized_today_pct).
+    Enriches SELL rows with FIFO cost basis -> price_paid, pl, pl_pct.
+    """
+    lots = {}  # sym -> [[qty, px], ...] FIFO
+    enriched = []
+    realized_today = 0.0
+    realized_basis = 0.0
+    today = datetime.now(ZoneInfo("UTC")).date()
 
 def _safe_float(val, default: float = 0.0) -> float:
     """
@@ -686,12 +761,132 @@ def get_recent_trades_and_realized(days:int=2):
     return trades, round(realized, 2)
 
 from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
-def _pct(num, den):
+def _to_dt_local(ts, tz="America/New_York"):
+    if ts in (None, ""): return None
+    tzinfo = ZoneInfo(tz)
+    # epoch sec/millis
     try:
-        return round((float(num) / float(den)) * 100, 2) if den else 0.0
+        iv = int(str(ts))
+        return datetime.fromtimestamp(iv / (1000 if iv > 10_000_000_000 else 1), tz=tzinfo)
     except Exception:
-        return 0.0
+        pass
+    s = str(ts).strip().replace("T"," ").replace("Z","")
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s, fmt).replace(tzinfo=tzinfo)
+        except Exception:
+            pass
+    try:
+        dt = datetime.fromisoformat(s)
+        return dt.replace(tzinfo=tzinfo) if dt.tzinfo is None else dt.astimezone(tzinfo)
+    except Exception:
+        return None
+
+# --- Realized P&L bucket helpers --------------------------------------------
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+_TZ_ET = ZoneInfo("America/New_York")
+
+def _to_dt_local(ts, tz=_TZ_ET):
+    """Accepts epoch sec/ms or 'YYYY-MM-DD HH:MM:SS' (naive = ET)."""
+    if ts in (None, ""):
+        return None
+    # epoch?
+    try:
+        n = int(str(ts))
+        return datetime.fromtimestamp(n / (1000 if n > 10_000_000_000 else 1), tz)
+    except Exception:
+        pass
+    s = str(ts).strip().replace("T", " ").replace("Z", "")
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s, fmt).replace(tzinfo=tz)
+        except Exception:
+            continue
+    try:
+        dt = datetime.fromisoformat(s)
+        return dt.replace(tzinfo=tz) if dt.tzinfo is None else dt.astimezone(tz)
+    except Exception:
+        return None
+
+def summarize_realized_buckets(trades):
+    """
+    Buckets realized P&L into {week, month, all} using Eastern Time.
+    Expects SELL rows with:
+      - t['pl']  (realized P&L for that fill/lot set)
+      - t['qty'] (shares)
+      - t['price_paid'] (FIFO average basis per share; used for %)
+      - t['time_ms'] or t['time'] (ISO string)
+    """
+    from datetime import datetime, timedelta, timezone
+    try:
+        from zoneinfo import ZoneInfo
+        ET = ZoneInfo("America/New_York")
+    except Exception:
+        ET = timezone(timedelta(hours=-5))  # crude ET fallback
+
+    def _to_ms(x):
+        if x is None:
+            return None
+        if isinstance(x, (int, float)):
+            return int(x)
+        s = str(x).strip()
+        # 'YYYY-MM-DD HH:MM:SS' or 'YYYY-MM-DDTHH:MM:SS'
+        try:
+            dt = datetime.fromisoformat(s.replace("T", " "))
+            return int(dt.replace(tzinfo=ET).timestamp() * 1000)
+        except Exception:
+            return None
+
+    today = datetime.now(ET).date()
+    week_start  = today - timedelta(days=today.weekday())  # Monday
+    month_start = today.replace(day=1)
+
+    acc = {
+        "week":  {"pnl": 0.0, "basis": 0.0},
+        "month": {"pnl": 0.0, "basis": 0.0},
+        "all":   {"pnl": 0.0, "basis": 0.0},
+    }
+
+    for t in trades or []:
+        side = (t.get("action") or t.get("side") or "").upper()
+        if side != "SELL":
+            continue
+
+        pl   = float(t.get("pl") or t.get("pnl") or 0.0)
+        qty  = int(float(t.get("qty") or 0))
+        px   = t.get("price_paid")
+        basis = abs(float(px) * qty) if (px is not None) else 0.0
+
+        ms = t.get("time_ms")
+        if ms is None:
+            ms = _to_ms(t.get("time"))
+        try:
+            d = datetime.fromtimestamp(ms/1000, ET).date() if ms else today
+        except Exception:
+            d = today
+
+        # accumulate
+        if d >= week_start:
+            acc["week"]["pnl"]  += pl
+            acc["week"]["basis"] += basis
+        if d >= month_start:
+            acc["month"]["pnl"] += pl
+            acc["month"]["basis"] += basis
+
+        acc["all"]["pnl"]   += pl
+        acc["all"]["basis"] += basis
+
+    out = {}
+    for k, v in acc.items():
+        basis = v["basis"]
+        pct = (v["pnl"] / basis * 100.0) if basis > 0 else 0.0
+        out[k] = {"pnl": round(v["pnl"], 2), "pct": round(pct, 2)}
+    return out
 
 # Sum unrealized P&L from your holdings rows
 def _sum_unrealized_from_holdings(holdings):
@@ -3051,7 +3246,44 @@ def live_status():
 
             enriched.sort(key=lambda r: _to_ms_for_compare(r.get("time_ms")), reverse=True)
             realized_pct = (realized_val / realized_basis * 100.0) if realized_basis > 0 else 0.0
+            from flask import current_app
 
+            def live_status():
+                # ... your existing account/quotes logic ...
+
+                # Build the trades list FIRST (this is the same list you return in JSON)
+                trades = transactions_as_trades( ... )  # <- your existing call
+                current_app.logger.info("[LIVE] transactions_as_trades -> %d", len(trades))
+
+                # NOW compute realized buckets from those trades
+                try:
+                    realized_buckets = realized_buckets_from_trades(trades)
+                except Exception:
+                    current_app.logger.exception("realized_buckets summarize failed")
+                    realized_buckets = {"week":{"pnl":0,"pct":0},
+                                        "month":{"pnl":0,"pct":0},
+                                        "all":{"pnl":0,"pct":0}}
+
+                metrics = {
+                    "cash_balance": cash_balance,
+                    "positions_value": positions_value,
+                    "total_value": total_value,
+                    "unrealized_pnl": unrealized_pnl,
+                    "unrealized_pnl_pct": unrealized_pnl_pct,
+                    "realized_pnl": realized_pnl,
+                    "realized_pnl_pct": realized_pnl_pct,
+                    "daytrades_pdt5": daytrades_pdt5,
+                    "realized_buckets": realized_buckets,  # <-- add here
+                }
+
+                return jsonify({
+                    "ok": True,
+                    "account": account_payload,
+                    "metrics": metrics,
+                    "holdings": holdings_payload,
+                    "trades": trades,
+                    "_debug": debug_info,
+                })
             # aggregate last 9 trading days from the dates present
             by_date = {}
             for d in daytrades:
@@ -3272,6 +3504,13 @@ def live_status():
         )
         upct = round((unrealized / cost_basis_sum * 100.0), 2) if cost_basis_sum else 0.0
 
+        # Seed; we compute for real after trades are built/enriched.
+        realized_buckets = {
+            "week": {"pnl": 0.0, "pct": 0.0},
+            "month": {"pnl": 0.0, "pct": 0.0},
+            "all": {"pnl": 0.0, "pct": 0.0},
+        }
+
         # --------------- Trades ------------------------
         # Prefer transactions (has BUY/SELL + amounts). Fallback to executions only if truly needed.
         trades_src = []
@@ -3420,6 +3659,16 @@ def live_status():
 
         # Enrich with FIFO, then normalize rounding
         trades_enriched, realized_today, realized_today_pct, dt_stats = _fifo_enrich_and_daytrades(mapped)
+        # Realized P&L buckets (now that SELL rows have FIFO price_paid)
+        try:
+            realized_buckets = summarize_realized_buckets(trades_enriched)
+        except Exception:
+            current_app.logger.exception("realized_buckets summarize failed")
+            realized_buckets = {
+                "week": {"pnl": 0.0, "pct": 0.0},
+                "month": {"pnl": 0.0, "pct": 0.0},
+                "all": {"pnl": 0.0, "pct": 0.0},
+            }
 
         for t in trades_enriched:
             if "price_paid" in t and t["price_paid"] is not None:
@@ -3508,9 +3757,12 @@ def live_status():
             or account.get("available_to_withdraw")
             or 0.0
         )
-        unrealized      = _sum_unrealized_from_holdings(holdings)
-        realized_total  = _sum_realized_from_trades(recent_trades, REALIZED_SINCE)
-        total_value     = round((positions_value or 0.0) + (cash_balance or 0.0), 2)
+        total_value = round(positions_value + cash_balance, 2)
+        try:
+            realized_buckets = summarize_realized_buckets(trades)
+        except Exception:
+            current_app.logger.exception("realized_buckets summarize failed")
+            realized_buckets = {"week":{"pnl":0,"pct":0},"month":{"pnl":0,"pct":0},"all":{"pnl":0,"pct":0}}
 
         payload = {
             "ok": True,
@@ -3520,14 +3772,15 @@ def live_status():
             "trades": trades_enriched,
             "metrics": {
                 "positions_value": positions_value,
-                "unrealized_pl": unrealized,
-                "unrealized_pl_pct": _pct(unrealized, total_value),
-                "realized_pl": realized_total,
-                "realized_pl_pct": _pct(realized_total, total_value),
+                "unrealized_pnl": unrealized,
+                "unrealized_pnl_pct": upct,
+                "realized_pnl": realized_total,
+                "realized_pnl_pct": realized_total_pct,
                 "total_value": total_value,
                 "cash_balance": cash_balance,
                 "daytrades_pdt5": (dt_stats or {}).get("pdt5"),
-            }
+                "realized_buckets": realized_buckets,
+            },
         }
         if debug_level:
             payload["_debug"] = {

@@ -600,6 +600,98 @@ def _enrich_with_transactions(rows: list[dict], days: int = 7) -> None:
             r["pl"] = 0.0
             r["pl_pct"] = 0.0
 
+# --- BEGIN: realized P&L buckets --------------------------------------------
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+def _to_dt_utc(ts):
+    if not ts:
+        return None
+    # ts can be epoch (sec/ms) or ISO
+    try:
+        tsv = int(str(ts))
+        if tsv > 10_000_000_000:
+            return datetime.fromtimestamp(tsv / 1000, tz=ZoneInfo("UTC"))
+        return datetime.fromtimestamp(tsv, tz=ZoneInfo("UTC"))
+    except Exception:
+        try:
+            s = str(ts).replace("Z", "+00:00")
+            return datetime.fromisoformat(s).astimezone(ZoneInfo("UTC"))
+        except Exception:
+            return None
+
+def summarize_realized_buckets(trades, tz="America/New_York"):
+    """
+    Expects `trades` like those you already return in /live/status.
+    For each SELL-like trade, uses t.get('realized_pnl') if present,
+    else falls back to t.get('pnl') or t.get('net').
+
+    Percent = pnl / max(denominator) where denominator prefers
+    abs(cost_basis) then abs(proceeds) then abs(price*qty).
+    """
+    now_local = datetime.now(ZoneInfo(tz))
+    month_start = now_local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    week_start = (now_local - timedelta(days=now_local.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    buckets = {
+        "week": {"pnl": 0.0, "den": 0.0},
+        "month": {"pnl": 0.0, "den": 0.0},
+        "all": {"pnl": 0.0, "den": 0.0},
+    }
+
+    def _is_sell(t):
+        side = (t.get("side") or t.get("action") or "").upper()
+        return side in ("SELL", "SELL_SHORT", "SS_COVER", "SELL_TO_CLOSE", "STC", "SLD")
+
+    for t in trades or []:
+        if not _is_sell(t):
+            continue
+
+        # timestamp normalization
+        dt = _to_dt_utc(t.get("time") or t.get("timestamp"))
+        if not dt:
+            continue
+        dt_local = dt.astimezone(ZoneInfo(tz))
+
+        # pnl & denominator
+        pnl = t.get("realized_pnl")
+        if pnl is None:
+            pnl = t.get("pnl")
+        if pnl is None:
+            pnl = t.get("net")  # e.g., proceeds minus fees if available
+        if pnl is None:
+            # very conservative fallback: no P&L if missing
+            pnl = 0.0
+
+        cost = t.get("cost_basis") or t.get("cost") or 0.0
+        proceeds = t.get("proceeds") or t.get("amount") or 0.0
+        if not cost and not proceeds:
+            # estimate denominator from price * qty
+            px = float(t.get("price") or 0.0)
+            qty = abs(float(t.get("qty") or t.get("quantity") or 0.0))
+            proceeds = px * qty
+
+        den = abs(cost) or abs(proceeds) or 0.0
+
+        # apply to buckets
+        if dt_local >= week_start:
+            buckets["week"]["pnl"] += float(pnl)
+            buckets["week"]["den"] += float(den)
+        if dt_local >= month_start:
+            buckets["month"]["pnl"] += float(pnl)
+            buckets["month"]["den"] += float(den)
+        buckets["all"]["pnl"] += float(pnl)
+        buckets["all"]["den"] += float(den)
+
+    def _pct(p, d):
+        return (p / d * 100.0) if d and abs(d) > 1e-9 else 0.0
+
+    return {
+        "week":  {"pnl": round(buckets["week"]["pnl"], 2),  "pct": round(_pct(buckets["week"]["pnl"],  buckets["week"]["den"]), 2)},
+        "month": {"pnl": round(buckets["month"]["pnl"], 2), "pct": round(_pct(buckets["month"]["pnl"], buckets["month"]["den"]), 2)},
+        "all":   {"pnl": round(buckets["all"]["pnl"], 2),   "pct": round(_pct(buckets["all"]["pnl"],   buckets["all"]["den"]), 2)},
+    }
+# --- END: realized P&L buckets ----------------------------------------------
 
 def recent_executions_as_trades(count: int = 50) -> list[dict]:
     """
@@ -709,6 +801,114 @@ def recent_executions_as_trades(count: int = 50) -> list[dict]:
     for r in rows:
         r.pop("_dt", None)
     return rows
+
+# --- BEGIN: public quotes() shim for sell_guard --------------------------------
+from datetime import datetime, timezone
+
+def _extract_price_fields(q: dict, use_extended: bool = False):
+    """
+    Normalize E*TRADE quote payloads (regular or extended-hours) into
+    { last, bid, ask, time_utc }.
+    """
+    if not isinstance(q, dict):
+        return None
+
+    # Known locations in E*TRADE responses
+    regular = q.get("All") or q.get("QuoteData") or q
+    ext = q.get("ExtendedHourQuoteDetail") or q.get("Extended") or {}
+
+    src = ext if use_extended and isinstance(ext, dict) else regular
+
+    def _flt(x):
+        try:
+            return float(x)
+        except Exception:
+            return None
+
+    last = _flt(
+        src.get("lastTrade") or src.get("LastTrade") or
+        src.get("lastPrice") or src.get("LastPrice") or
+        src.get("last")
+    )
+    bid  = _flt(src.get("bid") or src.get("Bid"))
+    ask  = _flt(src.get("ask") or src.get("Ask"))
+
+    # Timestamps show up variably; prefer UTC if present
+    ts = (
+        src.get("dateTimeUTC") or src.get("timeUTC") or src.get("TimeUTC") or
+        regular.get("dateTimeUTC") or regular.get("timeUTC") or regular.get("TimeUTC")
+    )
+    # Fallbacks (epoch millis / seconds)
+    if not ts:
+        ts = src.get("time") or src.get("Time") or regular.get("time") or regular.get("Time")
+
+    dt_utc = None
+    if ts:
+        try:
+            # E*TRADE sometimes returns epoch millis
+            tsv = int(ts)
+            if tsv > 10_000_000_000:  # millis
+                dt_utc = datetime.fromtimestamp(tsv / 1000, tz=timezone.utc)
+            else:  # seconds
+                dt_utc = datetime.fromtimestamp(tsv, tz=timezone.utc)
+        except Exception:
+            # ISO or unknown formats
+            try:
+                dt_utc = datetime.fromisoformat(str(ts).replace("Z", "+00:00")).astimezone(timezone.utc)
+            except Exception:
+                dt_utc = None
+
+    return {
+        "last": last,
+        "bid": bid,
+        "ask": ask,
+        "time_utc": dt_utc.isoformat() if dt_utc else None,
+    }
+
+def quotes(symbols, use_extended: bool = False, per_symbol_fetch=None):
+    """
+    Public: return normalized quotes for a list of symbols.
+
+    Output shape:
+      {
+        "AAPL": {"last": 228.12, "bid": 228.10, "ask": 228.13, "time_utc": "…"},
+        ...
+      }
+
+    Implementation notes:
+    - Uses a provided `per_symbol_fetch(sym)` if given; otherwise tries
+      `fetch_etrade_quote(sym)` from this module.
+    - Parses multiple E*TRADE shapes robustly (All/ExtendedHourQuoteDetail/etc).
+    """
+    if not symbols:
+        return {}
+
+    # Prefer a direct per-symbol fetch helper if caller injects one
+    if per_symbol_fetch and callable(per_symbol_fetch):
+        fetch_fn = per_symbol_fetch
+    else:
+        # Use an existing function in this module if present
+        try:
+            fetch_fn = globals().get("fetch_etrade_quote")
+            if not callable(fetch_fn):
+                raise AttributeError("fetch_etrade_quote missing")
+        except Exception as e:
+            raise AttributeError(
+                "quotes(): no valid quote fetch function available; "
+                "ensure fetch_etrade_quote(sym) exists in etrade_service.py"
+            ) from e
+
+    out = {}
+    for sym in symbols:
+        try:
+            raw = fetch_fn(sym)
+            norm = _extract_price_fields(raw or {}, use_extended=use_extended)
+            out[sym] = norm or {"last": None, "bid": None, "ask": None, "time_utc": None}
+        except Exception:
+            # Never explode the caller; provide a null record so the guard can log/skips
+            out[sym] = {"last": None, "bid": None, "ask": None, "time_utc": None}
+    return out
+# --- END: public quotes() shim for sell_guard ----------------------------------
 
 def transactions_as_trades(days: int = 3) -> list[dict]:
     """

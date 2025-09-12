@@ -710,6 +710,114 @@ def recent_executions_as_trades(count: int = 50) -> list[dict]:
         r.pop("_dt", None)
     return rows
 
+# --- BEGIN: public quotes() shim for sell_guard --------------------------------
+from datetime import datetime, timezone
+
+def _extract_price_fields(q: dict, use_extended: bool = False):
+    """
+    Normalize E*TRADE quote payloads (regular or extended-hours) into
+    { last, bid, ask, time_utc }.
+    """
+    if not isinstance(q, dict):
+        return None
+
+    # Known locations in E*TRADE responses
+    regular = q.get("All") or q.get("QuoteData") or q
+    ext = q.get("ExtendedHourQuoteDetail") or q.get("Extended") or {}
+
+    src = ext if use_extended and isinstance(ext, dict) else regular
+
+    def _flt(x):
+        try:
+            return float(x)
+        except Exception:
+            return None
+
+    last = _flt(
+        src.get("lastTrade") or src.get("LastTrade") or
+        src.get("lastPrice") or src.get("LastPrice") or
+        src.get("last")
+    )
+    bid  = _flt(src.get("bid") or src.get("Bid"))
+    ask  = _flt(src.get("ask") or src.get("Ask"))
+
+    # Timestamps show up variably; prefer UTC if present
+    ts = (
+        src.get("dateTimeUTC") or src.get("timeUTC") or src.get("TimeUTC") or
+        regular.get("dateTimeUTC") or regular.get("timeUTC") or regular.get("TimeUTC")
+    )
+    # Fallbacks (epoch millis / seconds)
+    if not ts:
+        ts = src.get("time") or src.get("Time") or regular.get("time") or regular.get("Time")
+
+    dt_utc = None
+    if ts:
+        try:
+            # E*TRADE sometimes returns epoch millis
+            tsv = int(ts)
+            if tsv > 10_000_000_000:  # millis
+                dt_utc = datetime.fromtimestamp(tsv / 1000, tz=timezone.utc)
+            else:  # seconds
+                dt_utc = datetime.fromtimestamp(tsv, tz=timezone.utc)
+        except Exception:
+            # ISO or unknown formats
+            try:
+                dt_utc = datetime.fromisoformat(str(ts).replace("Z", "+00:00")).astimezone(timezone.utc)
+            except Exception:
+                dt_utc = None
+
+    return {
+        "last": last,
+        "bid": bid,
+        "ask": ask,
+        "time_utc": dt_utc.isoformat() if dt_utc else None,
+    }
+
+def quotes(symbols, use_extended: bool = False, per_symbol_fetch=None):
+    """
+    Public: return normalized quotes for a list of symbols.
+
+    Output shape:
+      {
+        "AAPL": {"last": 228.12, "bid": 228.10, "ask": 228.13, "time_utc": "…"},
+        ...
+      }
+
+    Implementation notes:
+    - Uses a provided `per_symbol_fetch(sym)` if given; otherwise tries
+      `fetch_etrade_quote(sym)` from this module.
+    - Parses multiple E*TRADE shapes robustly (All/ExtendedHourQuoteDetail/etc).
+    """
+    if not symbols:
+        return {}
+
+    # Prefer a direct per-symbol fetch helper if caller injects one
+    if per_symbol_fetch and callable(per_symbol_fetch):
+        fetch_fn = per_symbol_fetch
+    else:
+        # Use an existing function in this module if present
+        try:
+            fetch_fn = globals().get("fetch_etrade_quote")
+            if not callable(fetch_fn):
+                raise AttributeError("fetch_etrade_quote missing")
+        except Exception as e:
+            raise AttributeError(
+                "quotes(): no valid quote fetch function available; "
+                "ensure fetch_etrade_quote(sym) exists in etrade_service.py"
+            ) from e
+
+    out = {}
+    for sym in symbols:
+        try:
+            raw = fetch_fn(sym)
+            norm = _extract_price_fields(raw or {}, use_extended=use_extended)
+            out[sym] = norm or {"last": None, "bid": None, "ask": None, "time_utc": None}
+        except Exception:
+            # Never explode the caller; provide a null record so the guard can log/skips
+            out[sym] = {"last": None, "bid": None, "ask": None, "time_utc": None}
+    return out
+# --- END: public quotes() shim for sell_guard ----------------------------------
+
 def transactions_as_trades(days: int = 3) -> list[dict]:
     """
     /transactions -> simple trade rows with cost basis & P&L when available.
@@ -1628,43 +1736,78 @@ def get_positions():
         return []  # be tolerant, return empty positions on bad payloads
     return j
 
-def preview_equity_order(aid, symbol, qty, price, price_type="MARKET", action="BUY"):
-    """
-    Build & POST a preview order payload.
-    - MARKET:     no limitPrice/stopPrice
-    - LIMIT:      limitPrice = price
-    - STOP:       stopPrice  = price  (stop-market)
-    """
-    pt = str(price_type or "").upper()
-    act = str(action or "").upper()
+# make sure you have at top of file:
+# import time
 
-    order = {
-        "orderTerm": "GOOD_FOR_DAY",
-        "priceType": pt,                 # "MARKET" | "LIMIT" | "STOP" ...
-        "marketSession": "REGULAR",
+def preview_equity_order(
+    account_id_key: str,
+    symbol: str,
+    qty: int,
+    price: float | None,
+    *,
+    action: str = "BUY",
+    price_type: str = "LIMIT",
+    order_term: str = "GOOD_FOR_DAY",
+    market_session: str = "REGULAR",
+    stop_price: float | None = None,
+    offset_type: str | None = None,
+    offset_value: float | None = None,
+    client_order_id: str | None = None,
+) -> dict:
+    """
+    Builds a PreviewOrderRequest for E*TRADE equities.
+
+    RULES:
+      - MARKET:     no limitPrice/stopPrice
+      - LIMIT:      limitPrice = price
+      - STOP:       stopPrice  = (stop_price or price)  <-- important fix
+      - STOP_LIMIT: limitPrice = price, stopPrice = stop_price (both required)
+      - TRAILING_*: set offsetType/offsetValue
+    """
+    action = (action or "BUY").upper()
+    pt = (price_type or ("LIMIT" if price is not None else "MARKET")).upper()
+
+    # --- IMPORTANT: map legacy callers that pass STOP trigger as "price"
+    if pt in {"STOP", "STOP_MARKET"} and stop_price is None and price is not None:
+        stop_price = float(price)
+        price = None  # ensure we don't accidentally send limitPrice for STOP
+
+    order: dict = {
+        "allOrNone": False,
+        "priceType": pt,
+        "orderTerm": order_term,
+        "marketSession": market_session,
         "Instrument": [{
-            "Product": {"securityType": "EQ", "symbol": symbol},
-            "orderAction": act,
+            "Product": {"securityType": "EQ", "symbol": _normalize_symbol(symbol)},
+            "orderAction": action,
             "quantityType": "QUANTITY",
-            "quantity": int(qty),
+            "quantity": str(int(qty)),
         }],
     }
 
-    # >>> IMPORTANT PART <<<
-    if pt == "LIMIT":
-        order["limitPrice"] = float(price)
-    elif pt in ("STOP", "STOP_MARKET"):
-        order["stopPrice"] = float(price)
-    # (If you later support STOP_LIMIT, you’ll need *both* stopPrice and limitPrice.)
+    # Prices
+    if pt in {"LIMIT", "STOP_LIMIT"} and price is not None:
+        order["limitPrice"] = f"{float(price):.2f}"
+    if pt in {"STOP", "STOP_MARKET", "STOP_LIMIT"}:
+        if stop_price is None:
+            raise ValueError("stop_price required for STOP/STOP_LIMIT orders")
+        order["stopPrice"] = f"{float(stop_price):.2f}"
+
+    # Trailing stop fields
+    if pt in {"TRAILING_STOP_PRCT", "TRAILING_STOP_CNST"}:
+        if offset_value is None:
+            raise ValueError("offset_value required for trailing stops")
+        order["offsetType"]  = offset_type or pt
+        order["offsetValue"] = float(offset_value)
 
     body = {
-        "orderType": "EQ",
-        "clientOrderId": None,   # optional
-        "Order": [order]
+        "PreviewOrderRequest": {
+            "orderType": "EQ",
+            "clientOrderId": client_order_id or f"live-{int(time.time()*1000)}",
+            "Order": [order],
+        }
     }
-
-    # POST to preview endpoint (whatever your `_epost` helper expects)
-    return _epost(f"/accounts/{aid}/orders/preview.json", body)
+    return _epost(f"/accounts/{account_id_key}/orders/preview.json", body)
 
 def place_equity_order(preview_resp: dict, qty: int | None = None) -> dict:
     aid = _primary_account_id()
