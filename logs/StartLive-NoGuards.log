@@ -6887,3 +6887,3100 @@ period=6mo) (Yahoo error = "No data found, symbol may be delisted")')
 Windows PowerShell transcript end
 End time: 20250911160504
 **********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250916092004
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
+Process ID: 13876
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/16/2025 09:20:04 START Start Live (NO GUARDS) ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+Env GUARDRAILS_ENABLED=false
+Env LIVE_SAFE_MODE=false
+Env GR_AUTO_SELLER=0
+Env LIVE_ARMED=1
+**********************
+Windows PowerShell transcript start
+Start time: 20250917092003
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
+Process ID: 25180
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/17/2025 09:20:03 START Start Live (NO GUARDS) ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+Env GUARDRAILS_ENABLED=false
+Env LIVE_SAFE_MODE=false
+Env GR_AUTO_SELLER=0
+Env LIVE_ARMED=1
+**********************
+Windows PowerShell transcript start
+Start time: 20250918092004
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
+Process ID: 27364
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/18/2025 09:20:04 START Start Live (NO GUARDS) ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+Env GUARDRAILS_ENABLED=false
+Env LIVE_SAFE_MODE=false
+Env GR_AUTO_SELLER=0
+Env LIVE_ARMED=1
+ice data found  (period=1d)')
+2025-09-18 13:26:30,026 INFO live: [LIVE] progress: 485/503 scanned (1.1/s) skipped=0 candidate
+s=2 ETA≈16s
+2025-09-18 13:26:40,688 INFO live: [LIVE] progress: 498/503 scanned (1.1/s) skipped=0 candidate
+s=2 ETA≈4s
+2025-09-18 13:26:44,691 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=2 (447.2s)
+2025-09-18 13:26:44,692 INFO live: [LIVE] top candidates: BBY@74.84(6), CAG@18.78(6)
+2025-09-18 13:26:44,697 WARNING live: [GR] TEMP OVERRIDE: ignoring guardrail ('bought today' /
+'open position') for this run
+2025-09-18 13:26:44,697 INFO live: [LIVE] considering BBY    px=74.84 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 13:26:44,697 INFO live: [LIVE] Skip BBY: qty < 1
+2025-09-18 13:26:44,698 INFO live: [LIVE] considering CAG    px=18.78 afford_qty=3 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=3
+2025-09-18 13:26:44,698 INFO services.broker: [LIVE] BUY request for CAG x3 @18.78
+2025-09-18 13:26:44,886 INFO services.broker: [LIVE] resizing by broker funds CAG: q 3→0 (fresh
+_pp=5.16, px=18.7800)
+2025-09-18 13:26:44,887 INFO live: [LIVE] skip CAG: INSUFFICIENT_FUNDS
+2025-09-18 13:26:44,890 INFO live: [LIVE] ranked selection found no purchasable candidates (all
+ gated)
+2025-09-18 13:26:48,005 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 13:26:48,116 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 13:26:58,898 INFO live: [LIVE] progress: 13/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈411s
+2025-09-18 13:27:09,583 INFO live: [LIVE] progress: 26/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈396s
+2025-09-18 13:27:16,824 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:27:16,824 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 13:27:16,834 WARNING sim: No data for ANSS; skipping
+2025-09-18 13:27:19,941 INFO live: [LIVE] progress: 40/503 scanned (1.3/s) skipped=0 candidates
+=0 ETA≈370s
+2025-09-18 13:27:30,473 INFO live: [LIVE] progress: 53/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈361s
+2025-09-18 13:27:40,893 INFO live: [LIVE] progress: 64/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈363s
+2025-09-18 13:27:50,937 INFO live: [LIVE] progress: 76/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈354s
+2025-09-18 13:28:01,458 INFO live: [LIVE] progress: 89/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈342s
+2025-09-18 13:28:12,270 INFO live: [LIVE] progress: 102/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈331s
+2025-09-18 13:28:23,172 INFO live: [LIVE] progress: 115/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈321s
+2025-09-18 13:28:33,641 INFO live: [LIVE] progress: 127/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈313s
+2025-09-18 13:28:43,837 INFO live: [LIVE] progress: 139/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈303s
+2025-09-18 13:28:53,924 INFO live: [LIVE] progress: 151/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈294s
+2025-09-18 13:29:04,262 INFO live: [LIVE] progress: 163/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈284s
+2025-09-18 13:29:14,618 INFO live: [LIVE] progress: 174/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈277s
+2025-09-18 13:29:25,265 INFO live: [LIVE] progress: 186/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈268s
+2025-09-18 13:29:35,912 INFO live: [LIVE] progress: 199/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈257s
+2025-09-18 13:29:46,013 INFO live: [LIVE] progress: 211/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈246s
+2025-09-18 13:29:56,218 INFO live: [LIVE] progress: 224/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈234s
+2025-09-18 13:29:59,307 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:29:59,307 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 13:29:59,314 WARNING sim: No data for HES; skipping
+2025-09-18 13:30:06,445 INFO live: [LIVE] progress: 237/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈223s
+2025-09-18 13:30:17,159 ERROR services.data_fetch: [ERROR] Yahoo download HUBB timed out after
+10s
+2025-09-18 13:30:37,161 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:30:37,162 ERROR yfinance: ['HUBB']: Timeout('Failed to perform, curl: (28) Connec
+tion timed out after 30009 milliseconds. See https://curl.se/libcurl/c/libcurl-errors.html firs
+t for more details.')
+2025-09-18 13:30:37,168 WARNING sim: No data for HUBB; skipping
+2025-09-18 13:30:37,168 INFO live: [LIVE] progress: 239/503 scanned (1.0/s) skipped=0 candidate
+s=0 ETA≈253s
+2025-09-18 13:30:47,667 INFO live: [LIVE] progress: 253/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈237s
+2025-09-18 13:30:58,433 INFO live: [LIVE] progress: 266/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈223s
+2025-09-18 13:31:00,389 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:31:00,389 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 13:31:00,399 WARNING sim: No data for JNPR; skipping
+2025-09-18 13:31:08,899 INFO live: [LIVE] progress: 280/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈208s
+2025-09-18 13:31:19,282 INFO live: [LIVE] progress: 293/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈194s
+2025-09-18 13:31:29,903 INFO live: [LIVE] progress: 308/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈178s
+2025-09-18 13:31:40,148 INFO live: [LIVE] progress: 321/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈166s
+2025-09-18 13:31:50,274 INFO live: [LIVE] progress: 333/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈154s
+2025-09-18 13:32:00,972 INFO live: [LIVE] progress: 346/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈142s
+2025-09-18 13:32:06,657 INFO live: [LIVE] ➕➕ candidate OMC    px=76.63 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 13:32:11,176 INFO live: [LIVE] progress: 360/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈128s
+2025-09-18 13:32:13,559 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:32:13,559 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 13:32:13,565 WARNING sim: No data for PARA; skipping
+2025-09-18 13:32:21,362 INFO live: [LIVE] progress: 374/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈115s
+2025-09-18 13:32:31,570 INFO live: [LIVE] progress: 388/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈102s
+2025-09-18 13:32:41,578 INFO live: [LIVE] progress: 400/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈91s
+2025-09-18 13:32:51,884 INFO live: [LIVE] progress: 414/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈78s
+2025-09-18 13:33:06,297 INFO live: [LIVE] progress: 428/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈66s
+2025-09-18 13:33:16,571 INFO live: [LIVE] progress: 438/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈58s
+2025-09-18 13:33:27,273 INFO live: [LIVE] progress: 452/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈45s
+2025-09-18 13:33:38,071 INFO live: [LIVE] progress: 467/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈32s
+2025-09-18 13:33:48,627 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:33:48,627 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 13:33:48,643 INFO live: [LIVE] progress: 481/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈19s
+2025-09-18 13:33:51,117 INFO live: [LIVE] ➕➕ candidate WBD    px=18.31 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 13:33:58,958 INFO live: [LIVE] progress: 494/503 scanned (1.1/s) skipped=0 candidate
+s=2 ETA≈8s
+2025-09-18 13:34:05,979 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=2 (438.0s)
+2025-09-18 13:34:05,979 INFO live: [LIVE] top candidates: OMC@76.63(6), WBD@18.31(6)
+2025-09-18 13:34:05,988 WARNING live: [GR] TEMP OVERRIDE: ignoring guardrail ('bought today' /
+'open position') for this run
+2025-09-18 13:34:05,989 INFO live: [LIVE] considering OMC    px=76.63 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 13:34:05,989 INFO live: [LIVE] Skip OMC: qty < 1
+2025-09-18 13:34:05,989 INFO live: [LIVE] considering WBD    px=18.31 afford_qty=3 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=3
+2025-09-18 13:34:05,989 INFO services.broker: [LIVE] BUY request for WBD x3 @18.3
+2025-09-18 13:34:06,236 INFO services.broker: [LIVE] resizing by broker funds WBD: q 3→0 (fresh
+_pp=5.16, px=18.3000)
+2025-09-18 13:34:06,236 INFO live: [LIVE] skip WBD: INSUFFICIENT_FUNDS
+2025-09-18 13:34:06,240 INFO live: [LIVE] ranked selection found no purchasable candidates (all
+ gated)
+2025-09-18 13:34:09,277 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 13:34:09,385 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 13:34:19,668 INFO live: [LIVE] progress: 12/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈425s
+2025-09-18 13:34:29,947 INFO live: [LIVE] progress: 24/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈413s
+2025-09-18 13:34:40,228 INFO live: [LIVE] progress: 35/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈414s
+2025-09-18 13:34:40,438 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:34:40,438 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 13:34:40,447 WARNING sim: No data for ANSS; skipping
+2025-09-18 13:34:45,709 INFO live: [LIVE] ➕➕ candidate APTV   px=84.75 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 13:34:51,151 INFO live: [LIVE] progress: 48/503 scanned (1.1/s) skipped=0 candidates
+=1 ETA≈397s
+2025-09-18 13:35:01,619 INFO live: [LIVE] progress: 61/503 scanned (1.2/s) skipped=0 candidates
+=1 ETA≈379s
+2025-09-18 13:35:12,236 INFO live: [LIVE] progress: 73/503 scanned (1.2/s) skipped=0 candidates
+=1 ETA≈371s
+2025-09-18 13:35:22,599 INFO live: [LIVE] progress: 86/503 scanned (1.2/s) skipped=0 candidates
+=1 ETA≈356s
+2025-09-18 13:35:32,940 INFO live: [LIVE] progress: 99/503 scanned (1.2/s) skipped=0 candidates
+=1 ETA≈341s
+2025-09-18 13:35:43,527 INFO live: [LIVE] progress: 112/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈329s
+2025-09-18 13:35:53,546 INFO live: [LIVE] progress: 123/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈322s
+2025-09-18 13:36:03,757 INFO live: [LIVE] progress: 138/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈303s
+2025-09-18 13:36:14,225 INFO live: [LIVE] progress: 151/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈291s
+2025-09-18 13:36:24,526 INFO live: [LIVE] progress: 161/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈287s
+2025-09-18 13:36:34,684 INFO live: [LIVE] progress: 174/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈275s
+2025-09-18 13:36:45,398 INFO live: [LIVE] progress: 188/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈262s
+2025-09-18 13:36:55,893 INFO live: [LIVE] progress: 200/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈252s
+2025-09-18 13:37:06,241 INFO live: [LIVE] progress: 212/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈243s
+2025-09-18 13:37:16,532 INFO live: [LIVE] progress: 224/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈233s
+2025-09-18 13:37:19,902 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:37:19,902 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 13:37:19,907 WARNING sim: No data for HES; skipping
+2025-09-18 13:37:26,708 INFO live: [LIVE] progress: 237/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈222s
+2025-09-18 13:37:37,124 INFO live: [LIVE] progress: 250/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈210s
+2025-09-18 13:37:47,200 INFO live: [LIVE] progress: 263/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈199s
+2025-09-18 13:37:50,867 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:37:50,867 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 13:37:50,875 WARNING sim: No data for JNPR; skipping
+2025-09-18 13:37:57,958 INFO live: [LIVE] progress: 274/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈191s
+2025-09-18 13:38:08,169 INFO live: [LIVE] progress: 285/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈183s
+2025-09-18 13:38:18,671 INFO live: [LIVE] progress: 299/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈170s
+2025-09-18 13:38:29,069 INFO live: [LIVE] progress: 314/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈156s
+2025-09-18 13:38:39,542 INFO live: [LIVE] progress: 327/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈145s
+2025-09-18 13:38:49,656 INFO live: [LIVE] progress: 340/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈134s
+2025-09-18 13:39:00,271 INFO live: [LIVE] progress: 353/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈124s
+2025-09-18 13:39:07,198 INFO live: [LIVE] ➕➕ candidate PKG    px=214.03 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 13:39:09,119 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:39:09,119 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 13:39:09,124 WARNING sim: No data for PARA; skipping
+2025-09-18 13:39:10,858 INFO live: [LIVE] progress: 365/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈114s
+2025-09-18 13:39:21,066 INFO live: [LIVE] progress: 377/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈104s
+2025-09-18 13:39:31,984 INFO live: [LIVE] progress: 390/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈94s
+2025-09-18 13:39:39,980 INFO live: [LIVE] ➕➕ candidate RVTY   px=87.80 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 13:39:42,583 INFO live: [LIVE] progress: 403/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈83s
+2025-09-18 13:39:53,041 INFO live: [LIVE] progress: 416/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈72s
+2025-09-18 13:40:03,196 INFO live: [LIVE] progress: 430/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈60s
+2025-09-18 13:40:13,478 INFO live: [LIVE] progress: 444/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈48s
+2025-09-18 13:40:24,166 INFO live: [LIVE] progress: 459/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈36s
+2025-09-18 13:40:34,856 INFO live: [LIVE] progress: 474/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈24s
+2025-09-18 13:40:39,216 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:40:39,216 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 13:40:45,708 INFO live: [LIVE] progress: 490/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈11s
+2025-09-18 13:40:55,213 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=3 (405.9s)
+2025-09-18 13:40:55,214 INFO live: [LIVE] top candidates: PKG@214.03(6), RVTY@87.80(6), APTV@84
+.75(6)
+2025-09-18 13:40:55,218 WARNING live: [GR] TEMP OVERRIDE: ignoring guardrail ('bought today' /
+'open position') for this run
+2025-09-18 13:40:55,219 INFO live: [LIVE] considering PKG    px=214.03 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 13:40:55,219 INFO live: [LIVE] Skip PKG: qty < 1
+2025-09-18 13:40:55,219 INFO live: [LIVE] considering RVTY   px=87.80 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 13:40:55,220 INFO live: [LIVE] Skip RVTY: qty < 1
+2025-09-18 13:40:55,220 INFO live: [LIVE] considering APTV   px=84.75 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 13:40:55,220 INFO live: [LIVE] Skip APTV: qty < 1
+2025-09-18 13:40:55,220 INFO live: [LIVE] ranked selection found no purchasable candidates (all
+ gated)
+2025-09-18 13:40:58,279 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 13:40:58,501 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 13:41:06,709 INFO live: [LIVE] ➕➕ candidate APD    px=292.32 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 13:41:09,106 INFO live: [LIVE] progress: 14/503 scanned (1.3/s) skipped=0 candidates
+=1 ETA≈378s
+2025-09-18 13:41:19,478 INFO live: [LIVE] progress: 28/503 scanned (1.3/s) skipped=0 candidates
+=1 ETA≈360s
+2025-09-18 13:41:24,584 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:41:24,585 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 13:41:24,599 WARNING sim: No data for ANSS; skipping
+2025-09-18 13:41:30,183 INFO live: [LIVE] progress: 44/503 scanned (1.4/s) skipped=0 candidates
+=1 ETA≈333s
+2025-09-18 13:41:40,497 INFO live: [LIVE] progress: 59/503 scanned (1.4/s) skipped=0 candidates
+=1 ETA≈318s
+2025-09-18 13:41:50,793 INFO live: [LIVE] progress: 73/503 scanned (1.4/s) skipped=0 candidates
+=1 ETA≈309s
+2025-09-18 13:42:01,074 INFO live: [LIVE] progress: 86/503 scanned (1.4/s) skipped=0 candidates
+=1 ETA≈304s
+2025-09-18 13:42:11,732 INFO live: [LIVE] progress: 101/503 scanned (1.4/s) skipped=0 candidate
+s=1 ETA≈292s
+2025-09-18 13:42:21,940 INFO live: [LIVE] progress: 114/503 scanned (1.4/s) skipped=0 candidate
+s=1 ETA≈285s
+2025-09-18 13:42:32,336 INFO live: [LIVE] progress: 128/503 scanned (1.4/s) skipped=0 candidate
+s=1 ETA≈276s
+2025-09-18 13:42:41,048 INFO live: [LIVE] ➕➕ candidate DAY    px=68.97 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 13:42:42,408 INFO live: [LIVE] progress: 141/503 scanned (1.4/s) skipped=0 candidate
+s=2 ETA≈267s
+2025-09-18 13:42:52,936 INFO live: [LIVE] progress: 155/503 scanned (1.4/s) skipped=0 candidate
+s=2 ETA≈257s
+2025-09-18 13:43:03,753 INFO live: [LIVE] progress: 170/503 scanned (1.4/s) skipped=0 candidate
+s=2 ETA≈246s
+2025-09-18 13:43:13,772 INFO live: [LIVE] progress: 185/503 scanned (1.4/s) skipped=0 candidate
+s=2 ETA≈233s
+2025-09-18 13:43:24,524 INFO live: [LIVE] progress: 199/503 scanned (1.4/s) skipped=0 candidate
+s=2 ETA≈223s
+2025-09-18 13:43:24,525 INFO live: [LIVE] ➕➕ candidate F      px=11.73 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 13:43:35,074 INFO live: [LIVE] progress: 214/503 scanned (1.4/s) skipped=0 candidate
+s=3 ETA≈212s
+2025-09-18 13:43:45,290 INFO live: [LIVE] progress: 228/503 scanned (1.4/s) skipped=0 candidate
+s=3 ETA≈201s
+2025-09-18 13:43:45,449 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:43:45,450 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 13:43:45,457 WARNING sim: No data for HES; skipping
+2025-09-18 13:43:58,318 INFO live: [LIVE] progress: 240/503 scanned (1.3/s) skipped=0 candidate
+s=3 ETA≈197s
+2025-09-18 13:44:00,159 INFO live: [LIVE] ➕➕ candidate HII    px=275.15 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 13:44:08,903 INFO live: [LIVE] progress: 253/503 scanned (1.3/s) skipped=0 candidate
+s=4 ETA≈188s
+2025-09-18 13:44:19,650 INFO live: [LIVE] progress: 266/503 scanned (1.3/s) skipped=0 candidate
+s=4 ETA≈179s
+2025-09-18 13:44:21,773 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:44:21,773 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 13:44:21,785 WARNING sim: No data for JNPR; skipping
+2025-09-18 13:44:30,017 INFO live: [LIVE] progress: 278/503 scanned (1.3/s) skipped=0 candidate
+s=4 ETA≈171s
+2025-09-18 13:44:38,016 INFO live: [LIVE] ➕➕ candidate LDOS   px=186.90 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 13:44:40,686 INFO live: [LIVE] progress: 289/503 scanned (1.3/s) skipped=0 candidate
+s=5 ETA≈165s
+2025-09-18 13:44:51,164 INFO live: [LIVE] progress: 302/503 scanned (1.3/s) skipped=0 candidate
+s=5 ETA≈155s
+2025-09-18 13:45:01,697 INFO live: [LIVE] progress: 316/503 scanned (1.3/s) skipped=0 candidate
+s=5 ETA≈144s
+2025-09-18 13:45:12,017 INFO live: [LIVE] progress: 328/503 scanned (1.3/s) skipped=0 candidate
+s=5 ETA≈135s
+2025-09-18 13:45:22,181 INFO live: [LIVE] progress: 341/503 scanned (1.3/s) skipped=0 candidate
+s=5 ETA≈125s
+2025-09-18 13:45:33,030 INFO live: [LIVE] progress: 354/503 scanned (1.3/s) skipped=0 candidate
+s=5 ETA≈116s
+2025-09-18 13:45:33,031 INFO live: [LIVE] ➕➕ candidate OMC    px=76.69 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 13:45:38,017 INFO live: [LIVE] ➕➕ candidate PKG    px=214.31 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 13:45:40,211 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:45:40,212 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 13:45:40,223 WARNING sim: No data for PARA; skipping
+2025-09-18 13:45:43,287 INFO live: [LIVE] progress: 367/503 scanned (1.3/s) skipped=0 candidate
+s=7 ETA≈106s
+2025-09-18 13:45:53,496 INFO live: [LIVE] progress: 379/503 scanned (1.3/s) skipped=0 candidate
+s=7 ETA≈97s
+2025-09-18 13:46:04,397 INFO live: [LIVE] progress: 392/503 scanned (1.3/s) skipped=0 candidate
+s=7 ETA≈87s
+2025-09-18 13:46:14,764 INFO live: [LIVE] progress: 404/503 scanned (1.3/s) skipped=0 candidate
+s=7 ETA≈78s
+2025-09-18 13:46:25,098 INFO live: [LIVE] progress: 417/503 scanned (1.3/s) skipped=0 candidate
+s=7 ETA≈67s
+2025-09-18 13:46:35,921 INFO live: [LIVE] progress: 429/503 scanned (1.3/s) skipped=0 candidate
+s=7 ETA≈58s
+2025-09-18 13:46:46,523 INFO live: [LIVE] progress: 442/503 scanned (1.3/s) skipped=0 candidate
+s=7 ETA≈48s
+2025-09-18 13:46:56,944 INFO live: [LIVE] progress: 456/503 scanned (1.3/s) skipped=0 candidate
+s=7 ETA≈37s
+2025-09-18 13:47:03,757 INFO live: [LIVE] ➕➕ candidate UHS    px=187.96 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 13:47:07,536 INFO live: [LIVE] progress: 469/503 scanned (1.3/s) skipped=0 candidate
+s=8 ETA≈27s
+2025-09-18 13:47:16,566 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:47:16,566 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 13:47:17,998 INFO live: [LIVE] progress: 483/503 scanned (1.3/s) skipped=0 candidate
+s=8 ETA≈16s
+2025-09-18 13:47:28,072 INFO live: [LIVE] progress: 495/503 scanned (1.3/s) skipped=0 candidate
+s=8 ETA≈6s
+2025-09-18 13:47:34,337 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=8 (396.1s)
+2025-09-18 13:47:34,337 INFO live: [LIVE] top candidates: APD@292.32(6), HII@275.15(6), PKG@214
+.31(6), UHS@187.96(6), LDOS@186.90(6) …
+2025-09-18 13:47:34,343 WARNING live: [GR] TEMP OVERRIDE: ignoring guardrail ('bought today' /
+'open position') for this run
+2025-09-18 13:47:34,343 INFO live: [LIVE] considering APD    px=292.32 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 13:47:34,343 INFO live: [LIVE] Skip APD: qty < 1
+2025-09-18 13:47:34,344 INFO live: [LIVE] considering HII    px=275.15 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 13:47:34,344 INFO live: [LIVE] Skip HII: qty < 1
+2025-09-18 13:47:34,344 INFO live: [LIVE] considering PKG    px=214.31 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 13:47:34,344 INFO live: [LIVE] Skip PKG: qty < 1
+2025-09-18 13:47:34,344 INFO live: [LIVE] considering UHS    px=187.96 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 13:47:34,345 INFO live: [LIVE] Skip UHS: qty < 1
+2025-09-18 13:47:34,345 INFO live: [LIVE] considering LDOS   px=186.90 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 13:47:34,345 INFO live: [LIVE] Skip LDOS: qty < 1
+2025-09-18 13:47:34,345 INFO live: [LIVE] considering OMC    px=76.69 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 13:47:34,345 INFO live: [LIVE] Skip OMC: qty < 1
+2025-09-18 13:47:34,345 INFO live: [LIVE] considering DAY    px=68.97 afford_qty=1 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=1
+2025-09-18 13:47:34,345 INFO services.broker: [LIVE] BUY request for DAY x1 @68.96
+2025-09-18 13:47:34,553 INFO services.broker: [LIVE] resizing by broker funds DAY: q 1→0 (fresh
+_pp=5.16, px=68.9600)
+2025-09-18 13:47:34,554 INFO live: [LIVE] skip DAY: INSUFFICIENT_FUNDS
+2025-09-18 13:47:34,557 INFO live: [LIVE] considering F      px=11.73 afford_qty=5 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=5
+2025-09-18 13:47:34,558 INFO services.broker: [LIVE] BUY request for F x5 @11.73
+2025-09-18 13:47:34,558 INFO services.broker: [LIVE] resizing by broker funds F: q 5→0 (fresh_p
+p=5.16, px=11.7300)
+2025-09-18 13:47:34,558 INFO live: [LIVE] skip F: INSUFFICIENT_FUNDS
+2025-09-18 13:47:34,559 INFO live: [LIVE] ranked selection found no purchasable candidates (all
+ gated)
+2025-09-18 13:47:37,599 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 13:47:37,718 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 13:47:48,106 INFO live: [LIVE] progress: 15/503 scanned (1.4/s) skipped=0 candidates
+=0 ETA≈342s
+2025-09-18 13:47:58,743 INFO live: [LIVE] progress: 29/503 scanned (1.4/s) skipped=0 candidates
+=0 ETA≈346s
+2025-09-18 13:48:02,987 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:48:02,987 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 13:48:02,993 WARNING sim: No data for ANSS; skipping
+2025-09-18 13:48:09,215 INFO live: [LIVE] progress: 45/503 scanned (1.4/s) skipped=0 candidates
+=0 ETA≈322s
+2025-09-18 13:48:19,935 INFO live: [LIVE] progress: 59/503 scanned (1.4/s) skipped=0 candidates
+=0 ETA≈319s
+2025-09-18 13:48:30,440 INFO live: [LIVE] progress: 73/503 scanned (1.4/s) skipped=0 candidates
+=0 ETA≈311s
+2025-09-18 13:48:40,867 INFO live: [LIVE] progress: 85/503 scanned (1.3/s) skipped=0 candidates
+=0 ETA≈311s
+2025-09-18 13:48:50,988 INFO live: [LIVE] progress: 98/503 scanned (1.3/s) skipped=0 candidates
+=0 ETA≈303s
+2025-09-18 13:49:01,188 INFO live: [LIVE] progress: 111/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈295s
+2025-09-18 13:49:11,297 INFO live: [LIVE] progress: 123/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈289s
+2025-09-18 13:49:21,828 INFO live: [LIVE] progress: 134/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈287s
+2025-09-18 13:49:31,874 INFO live: [LIVE] progress: 145/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈282s
+2025-09-18 13:49:42,635 INFO live: [LIVE] progress: 158/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈273s
+2025-09-18 13:49:52,912 INFO live: [LIVE] progress: 168/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈270s
+2025-09-18 13:50:03,234 INFO live: [LIVE] progress: 177/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈268s
+2025-09-18 13:50:13,499 INFO live: [LIVE] progress: 188/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈261s
+2025-09-18 13:50:23,807 INFO live: [LIVE] progress: 200/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈252s
+2025-09-18 13:50:34,399 INFO live: [LIVE] progress: 213/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈241s
+2025-09-18 13:50:44,913 INFO live: [LIVE] progress: 225/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈231s
+2025-09-18 13:50:47,544 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:50:47,544 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 13:50:47,550 WARNING sim: No data for HES; skipping
+2025-09-18 13:50:55,092 INFO live: [LIVE] progress: 238/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈220s
+2025-09-18 13:51:05,213 INFO live: [LIVE] progress: 251/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈208s
+2025-09-18 13:51:15,581 INFO live: [LIVE] progress: 265/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈196s
+2025-09-18 13:51:18,267 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:51:18,267 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 13:51:18,273 WARNING sim: No data for JNPR; skipping
+2025-09-18 13:51:26,272 INFO live: [LIVE] progress: 278/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈185s
+2025-09-18 13:51:36,584 INFO live: [LIVE] progress: 291/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈174s
+2025-09-18 13:51:46,865 INFO live: [LIVE] progress: 304/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈163s
+2025-09-18 13:51:57,183 INFO live: [LIVE] progress: 318/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈151s
+2025-09-18 13:52:07,582 INFO live: [LIVE] progress: 331/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈140s
+2025-09-18 13:52:17,782 INFO live: [LIVE] progress: 344/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈130s
+2025-09-18 13:52:28,128 INFO live: [LIVE] progress: 357/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈119s
+2025-09-18 13:52:31,974 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:52:31,974 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 13:52:31,981 WARNING sim: No data for PARA; skipping
+2025-09-18 13:52:38,710 INFO live: [LIVE] progress: 372/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈106s
+2025-09-18 13:52:49,010 INFO live: [LIVE] progress: 387/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈93s
+2025-09-18 13:52:59,053 INFO live: [LIVE] progress: 400/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈83s
+2025-09-18 13:53:09,073 INFO live: [LIVE] progress: 412/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈73s
+2025-09-18 13:53:20,072 INFO live: [LIVE] progress: 426/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈62s
+2025-09-18 13:53:30,496 INFO live: [LIVE] progress: 435/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈55s
+2025-09-18 13:53:40,682 INFO live: [LIVE] progress: 447/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈45s
+2025-09-18 13:53:50,946 INFO live: [LIVE] progress: 461/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈34s
+2025-09-18 13:54:01,500 INFO live: [LIVE] progress: 476/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈22s
+2025-09-18 13:54:05,070 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:54:05,071 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 13:54:11,628 INFO live: [LIVE] progress: 490/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈10s
+2025-09-18 13:54:20,905 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=0 (403.3s)
+2025-09-18 13:54:20,906 INFO live: [LIVE] no candidates this round
+2025-09-18 13:54:23,955 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 13:54:24,171 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 13:54:26,419 INFO live: [LIVE] ➕➕ candidate ABT    px=133.94 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 13:54:34,003 INFO live: [LIVE] progress: 14/503 scanned (1.4/s) skipped=0 candidates
+=1 ETA≈351s
+2025-09-18 13:54:44,139 INFO live: [LIVE] progress: 27/503 scanned (1.3/s) skipped=0 candidates
+=1 ETA≈356s
+2025-09-18 13:54:50,214 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:54:50,215 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 13:54:50,223 WARNING sim: No data for ANSS; skipping
+2025-09-18 13:54:52,216 INFO live: [LIVE] ➕➕ candidate AON    px=356.40 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 13:54:54,662 INFO live: [LIVE] progress: 40/503 scanned (1.3/s) skipped=0 candidates
+=2 ETA≈355s
+2025-09-18 13:55:05,027 INFO live: [LIVE] progress: 54/503 scanned (1.3/s) skipped=0 candidates
+=2 ETA≈342s
+2025-09-18 13:55:15,649 INFO live: [LIVE] progress: 67/503 scanned (1.3/s) skipped=0 candidates
+=2 ETA≈336s
+2025-09-18 13:55:25,733 INFO live: [LIVE] progress: 79/503 scanned (1.3/s) skipped=0 candidates
+=2 ETA≈332s
+2025-09-18 13:55:36,250 INFO live: [LIVE] progress: 92/503 scanned (1.3/s) skipped=0 candidates
+=2 ETA≈323s
+2025-09-18 13:55:46,627 INFO live: [LIVE] progress: 105/503 scanned (1.3/s) skipped=0 candidate
+s=2 ETA≈313s
+2025-09-18 13:55:57,367 INFO live: [LIVE] progress: 118/503 scanned (1.3/s) skipped=0 candidate
+s=2 ETA≈305s
+2025-09-18 13:56:07,883 INFO live: [LIVE] progress: 130/503 scanned (1.3/s) skipped=0 candidate
+s=2 ETA≈298s
+2025-09-18 13:56:18,506 INFO live: [LIVE] progress: 142/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈291s
+2025-09-18 13:56:28,967 INFO live: [LIVE] progress: 154/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈283s
+2025-09-18 13:56:39,278 INFO live: [LIVE] progress: 166/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈275s
+2025-09-18 13:56:49,797 INFO live: [LIVE] progress: 177/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈269s
+2025-09-18 13:57:00,542 INFO live: [LIVE] progress: 190/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈258s
+2025-09-18 13:57:11,214 INFO live: [LIVE] progress: 203/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈247s
+2025-09-18 13:57:21,324 INFO live: [LIVE] progress: 216/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈236s
+2025-09-18 13:57:30,467 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:57:30,467 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 13:57:30,476 WARNING sim: No data for HES; skipping
+2025-09-18 13:57:31,904 INFO live: [LIVE] progress: 231/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈221s
+2025-09-18 13:57:42,563 INFO live: [LIVE] progress: 246/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈207s
+2025-09-18 13:57:52,905 INFO live: [LIVE] progress: 258/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈198s
+2025-09-18 13:58:01,765 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:58:01,765 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 13:58:01,773 WARNING sim: No data for JNPR; skipping
+2025-09-18 13:58:03,420 INFO live: [LIVE] progress: 270/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈189s
+2025-09-18 13:58:13,425 INFO live: [LIVE] progress: 281/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈181s
+2025-09-18 13:58:23,899 INFO live: [LIVE] progress: 292/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈173s
+2025-09-18 13:58:34,043 INFO live: [LIVE] progress: 303/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈165s
+2025-09-18 13:58:44,408 INFO live: [LIVE] progress: 315/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈155s
+2025-09-18 13:58:55,189 INFO live: [LIVE] progress: 326/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈147s
+2025-09-18 13:59:06,018 INFO live: [LIVE] progress: 338/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈138s
+2025-09-18 13:59:16,460 INFO live: [LIVE] progress: 350/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈128s
+2025-09-18 13:59:28,020 INFO live: [LIVE] progress: 362/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈118s
+2025-09-18 13:59:28,265 ERROR yfinance:
+1 Failed download:
+2025-09-18 13:59:28,266 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 13:59:28,272 WARNING sim: No data for PARA; skipping
+2025-09-18 13:59:38,348 INFO live: [LIVE] progress: 374/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈108s
+2025-09-18 13:59:48,678 INFO live: [LIVE] progress: 386/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈98s
+2025-09-18 13:59:58,932 INFO live: [LIVE] progress: 398/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈88s
+2025-09-18 14:00:09,455 INFO live: [LIVE] progress: 411/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈77s
+2025-09-18 14:00:20,093 INFO live: [LIVE] progress: 425/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈65s
+2025-09-18 14:00:30,730 INFO live: [LIVE] progress: 438/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈54s
+2025-09-18 14:00:41,175 INFO live: [LIVE] progress: 452/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈43s
+2025-09-18 14:00:51,708 ERROR services.data_fetch: [ERROR] Yahoo download TFC timed out after 1
+0s
+2025-09-18 14:00:51,777 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:00:51,777 ERROR yfinance: ['TFC']: Timeout('Failed to perform, curl: (28) Operati
+on timed out after 10009 milliseconds with 0 bytes received. See https://curl.se/libcurl/c/libc
+url-errors.html first for more details.')
+2025-09-18 14:00:51,796 INFO live: [LIVE] progress: 453/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈43s
+2025-09-18 14:01:02,189 INFO live: [LIVE] progress: 465/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈33s
+2025-09-18 14:01:12,198 INFO live: [LIVE] progress: 477/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈22s
+2025-09-18 14:01:15,292 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:01:15,292 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 14:01:22,299 INFO live: [LIVE] progress: 488/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈13s
+2025-09-18 14:01:32,391 INFO live: [LIVE] progress: 501/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈2s
+2025-09-18 14:01:33,880 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=2 (429.9s)
+2025-09-18 14:01:33,880 INFO live: [LIVE] top candidates: AON@356.40(6), ABT@133.94(6)
+2025-09-18 14:01:33,885 WARNING live: [GR] TEMP OVERRIDE: ignoring guardrail ('bought today' /
+'open position') for this run
+2025-09-18 14:01:33,885 INFO live: [LIVE] considering AON    px=356.40 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:01:33,886 INFO live: [LIVE] Skip AON: qty < 1
+2025-09-18 14:01:33,886 INFO live: [LIVE] considering ABT    px=133.94 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:01:33,886 INFO live: [LIVE] Skip ABT: qty < 1
+2025-09-18 14:01:33,886 INFO live: [LIVE] ranked selection found no purchasable candidates (all
+ gated)
+2025-09-18 14:01:36,953 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 14:01:37,175 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 14:01:47,092 INFO live: [LIVE] progress: 13/503 scanned (1.3/s) skipped=0 candidates
+=0 ETA≈382s
+2025-09-18 14:01:59,144 INFO live: [LIVE] progress: 26/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈407s
+2025-09-18 14:02:08,367 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:02:08,368 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 14:02:08,376 WARNING sim: No data for ANSS; skipping
+2025-09-18 14:02:09,918 INFO live: [LIVE] progress: 38/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈403s
+2025-09-18 14:02:20,441 INFO live: [LIVE] progress: 50/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈394s
+2025-09-18 14:02:30,535 INFO live: [LIVE] progress: 61/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈388s
+2025-09-18 14:02:41,105 INFO live: [LIVE] progress: 73/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈378s
+2025-09-18 14:02:51,503 INFO live: [LIVE] progress: 86/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈361s
+2025-09-18 14:03:01,921 INFO live: [LIVE] progress: 99/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈347s
+2025-09-18 14:03:12,328 INFO live: [LIVE] progress: 112/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈333s
+2025-09-18 14:03:23,147 INFO live: [LIVE] progress: 126/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈318s
+2025-09-18 14:03:33,657 INFO live: [LIVE] progress: 138/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈309s
+2025-09-18 14:03:44,330 INFO live: [LIVE] progress: 150/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈300s
+2025-09-18 14:03:54,997 INFO live: [LIVE] progress: 163/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈288s
+2025-09-18 14:04:05,600 INFO live: [LIVE] progress: 172/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈286s
+2025-09-18 14:04:15,989 INFO live: [LIVE] progress: 184/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈276s
+2025-09-18 14:04:26,920 INFO live: [LIVE] progress: 196/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈266s
+2025-09-18 14:04:37,427 INFO live: [LIVE] progress: 208/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈256s
+2025-09-18 14:04:47,541 INFO live: [LIVE] progress: 220/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈245s
+2025-09-18 14:04:54,234 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:04:54,234 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 14:04:54,241 WARNING sim: No data for HES; skipping
+2025-09-18 14:04:57,670 INFO live: [LIVE] progress: 233/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈233s
+2025-09-18 14:05:09,377 INFO live: [LIVE] progress: 243/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈227s
+2025-09-18 14:05:19,390 INFO live: [LIVE] progress: 253/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈220s
+2025-09-18 14:05:29,649 INFO live: [LIVE] progress: 265/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈209s
+2025-09-18 14:05:32,475 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:05:32,475 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 14:05:32,491 WARNING sim: No data for JNPR; skipping
+2025-09-18 14:05:39,806 INFO live: [LIVE] progress: 276/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈200s
+2025-09-18 14:05:49,846 INFO live: [LIVE] progress: 288/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈189s
+2025-09-18 14:05:59,885 INFO live: [LIVE] progress: 298/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈181s
+2025-09-18 14:06:10,077 INFO live: [LIVE] progress: 309/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈171s
+2025-09-18 14:06:20,269 INFO live: [LIVE] progress: 321/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈161s
+2025-09-18 14:06:30,273 INFO live: [LIVE] progress: 332/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈151s
+2025-09-18 14:06:40,849 INFO live: [LIVE] progress: 342/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈143s
+2025-09-18 14:06:50,920 INFO live: [LIVE] progress: 354/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈132s
+2025-09-18 14:06:57,778 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:06:57,778 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 14:06:57,784 WARNING sim: No data for PARA; skipping
+2025-09-18 14:07:01,333 INFO live: [LIVE] progress: 367/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈120s
+2025-09-18 14:07:11,588 INFO live: [LIVE] progress: 378/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈111s
+2025-09-18 14:07:21,981 INFO live: [LIVE] progress: 389/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈101s
+2025-09-18 14:07:27,213 INFO live: [LIVE] ➕➕ candidate REG    px=70.42 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:07:32,102 INFO live: [LIVE] progress: 401/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈90s
+2025-09-18 14:07:42,600 INFO live: [LIVE] progress: 414/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈79s
+2025-09-18 14:07:53,409 INFO live: [LIVE] progress: 424/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈70s
+2025-09-18 14:08:03,858 INFO live: [LIVE] progress: 437/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈58s
+2025-09-18 14:08:06,346 INFO live: [LIVE] ➕➕ candidate TER    px=118.01 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:08:14,403 INFO live: [LIVE] progress: 449/503 scanned (1.1/s) skipped=0 candidate
+s=2 ETA≈48s
+2025-09-18 14:08:24,643 INFO live: [LIVE] progress: 462/503 scanned (1.1/s) skipped=0 candidate
+s=2 ETA≈36s
+2025-09-18 14:08:34,700 INFO live: [LIVE] progress: 474/503 scanned (1.1/s) skipped=0 candidate
+s=2 ETA≈26s
+2025-09-18 14:08:34,701 INFO live: [LIVE] ➕➕ candidate VICI   px=32.20 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:08:39,574 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:08:39,575 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 14:08:44,800 INFO live: [LIVE] progress: 488/503 scanned (1.1/s) skipped=0 candidate
+s=3 ETA≈13s
+2025-09-18 14:08:55,261 INFO live: [LIVE] progress: 503/503 scanned (1.1/s) skipped=0 candidate
+s=3 ETA≈0s
+2025-09-18 14:08:55,261 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=3 (438.3s)
+2025-09-18 14:08:55,263 INFO live: [LIVE] top candidates: TER@118.01(6), REG@70.42(6), VICI@32.
+20(6)
+2025-09-18 14:08:55,267 WARNING live: [GR] TEMP OVERRIDE: ignoring guardrail ('bought today' /
+'open position') for this run
+2025-09-18 14:08:55,267 INFO live: [LIVE] considering TER    px=118.01 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:08:55,267 INFO live: [LIVE] Skip TER: qty < 1
+2025-09-18 14:08:55,267 INFO live: [LIVE] considering REG    px=70.42 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:08:55,267 INFO live: [LIVE] Skip REG: qty < 1
+2025-09-18 14:08:55,267 INFO live: [LIVE] considering VICI   px=32.20 afford_qty=2 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=2
+2025-09-18 14:08:55,268 INFO services.broker: [LIVE] BUY request for VICI x2 @32.2
+2025-09-18 14:08:55,478 INFO services.broker: [LIVE] resizing by broker funds VICI: q 2→0 (fres
+h_pp=5.16, px=32.2000)
+2025-09-18 14:08:55,478 INFO live: [LIVE] skip VICI: INSUFFICIENT_FUNDS
+2025-09-18 14:08:55,481 INFO live: [LIVE] ranked selection found no purchasable candidates (all
+ gated)
+2025-09-18 14:08:58,521 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 14:08:58,657 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 14:09:08,891 INFO live: [LIVE] progress: 14/503 scanned (1.4/s) skipped=0 candidates
+=0 ETA≈362s
+2025-09-18 14:09:19,537 INFO live: [LIVE] progress: 29/503 scanned (1.4/s) skipped=0 candidates
+=0 ETA≈344s
+2025-09-18 14:09:24,341 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:09:24,342 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 14:09:24,349 WARNING sim: No data for ANSS; skipping
+2025-09-18 14:09:30,292 INFO live: [LIVE] progress: 43/503 scanned (1.4/s) skipped=0 candidates
+=0 ETA≈340s
+2025-09-18 14:09:40,366 INFO live: [LIVE] progress: 55/503 scanned (1.3/s) skipped=0 candidates
+=0 ETA≈341s
+2025-09-18 14:09:50,616 INFO live: [LIVE] progress: 68/503 scanned (1.3/s) skipped=0 candidates
+=0 ETA≈333s
+2025-09-18 14:10:01,011 INFO live: [LIVE] progress: 81/503 scanned (1.3/s) skipped=0 candidates
+=0 ETA≈326s
+2025-09-18 14:10:11,286 INFO live: [LIVE] progress: 93/503 scanned (1.3/s) skipped=0 candidates
+=0 ETA≈321s
+2025-09-18 14:10:21,764 INFO live: [LIVE] progress: 105/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈316s
+2025-09-18 14:10:31,842 INFO live: [LIVE] progress: 117/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈308s
+2025-09-18 14:10:42,514 INFO live: [LIVE] progress: 129/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈302s
+2025-09-18 14:10:53,149 INFO live: [LIVE] progress: 142/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈291s
+2025-09-18 14:11:03,287 INFO live: [LIVE] progress: 154/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈283s
+2025-09-18 14:11:13,585 INFO live: [LIVE] progress: 166/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈274s
+2025-09-18 14:11:23,723 INFO live: [LIVE] progress: 178/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈265s
+2025-09-18 14:11:34,186 INFO live: [LIVE] progress: 192/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈252s
+2025-09-18 14:11:44,678 INFO live: [LIVE] progress: 206/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈240s
+2025-09-18 14:11:54,867 INFO live: [LIVE] progress: 219/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈229s
+2025-09-18 14:12:02,335 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:12:02,336 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 14:12:02,343 WARNING sim: No data for HES; skipping
+2025-09-18 14:12:05,042 INFO live: [LIVE] progress: 232/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈218s
+2025-09-18 14:12:16,795 INFO live: [LIVE] progress: 245/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈209s
+2025-09-18 14:12:27,180 INFO live: [LIVE] progress: 258/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈198s
+2025-09-18 14:12:36,274 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:12:36,275 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 14:12:36,281 WARNING sim: No data for JNPR; skipping
+2025-09-18 14:12:37,910 INFO live: [LIVE] progress: 270/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈189s
+2025-09-18 14:12:48,085 INFO live: [LIVE] progress: 283/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈178s
+2025-09-18 14:12:58,670 INFO live: [LIVE] progress: 295/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈169s
+2025-09-18 14:13:09,008 INFO live: [LIVE] progress: 306/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈161s
+2025-09-18 14:13:19,709 INFO live: [LIVE] progress: 319/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈151s
+2025-09-18 14:13:30,170 INFO live: [LIVE] progress: 333/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈139s
+2025-09-18 14:13:41,311 INFO live: [LIVE] progress: 346/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈128s
+2025-09-18 14:13:51,860 INFO live: [LIVE] progress: 358/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈119s
+2025-09-18 14:13:55,196 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:13:55,196 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 14:13:55,201 WARNING sim: No data for PARA; skipping
+2025-09-18 14:14:02,370 INFO live: [LIVE] progress: 373/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈106s
+2025-09-18 14:14:12,794 INFO live: [LIVE] progress: 388/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈93s
+2025-09-18 14:14:23,457 INFO live: [LIVE] progress: 403/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈81s
+2025-09-18 14:14:33,644 INFO live: [LIVE] progress: 417/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈69s
+2025-09-18 14:14:44,280 INFO live: [LIVE] progress: 432/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈57s
+2025-09-18 14:14:54,797 INFO live: [LIVE] progress: 448/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈44s
+2025-09-18 14:15:04,816 INFO live: [LIVE] progress: 462/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈33s
+2025-09-18 14:15:17,886 INFO live: [LIVE] progress: 476/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈22s
+2025-09-18 14:15:22,255 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:15:22,256 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 14:15:28,526 INFO live: [LIVE] progress: 490/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈10s
+2025-09-18 14:15:38,901 INFO live: [LIVE] progress: 502/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈1s
+2025-09-18 14:15:39,754 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=0 (401.2s)
+2025-09-18 14:15:39,754 INFO live: [LIVE] no candidates this round
+2025-09-18 14:15:42,804 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 14:15:42,994 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 14:15:53,521 INFO live: [LIVE] progress: 13/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈404s
+2025-09-18 14:16:03,815 INFO live: [LIVE] progress: 24/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈419s
+2025-09-18 14:16:11,331 INFO live: [LIVE] ➕➕ candidate AMGN   px=275.64 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:16:13,154 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:16:13,154 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 14:16:13,160 WARNING sim: No data for ANSS; skipping
+2025-09-18 14:16:13,988 INFO live: [LIVE] progress: 37/503 scanned (1.2/s) skipped=0 candidates
+=1 ETA≈393s
+2025-09-18 14:16:24,310 INFO live: [LIVE] progress: 48/503 scanned (1.2/s) skipped=0 candidates
+=1 ETA≈393s
+2025-09-18 14:16:34,610 INFO live: [LIVE] progress: 61/503 scanned (1.2/s) skipped=0 candidates
+=1 ETA≈375s
+2025-09-18 14:16:45,178 INFO live: [LIVE] progress: 75/503 scanned (1.2/s) skipped=0 candidates
+=1 ETA≈356s
+2025-09-18 14:16:55,638 INFO live: [LIVE] progress: 89/503 scanned (1.2/s) skipped=0 candidates
+=1 ETA≈339s
+2025-09-18 14:17:06,213 INFO live: [LIVE] progress: 103/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈324s
+2025-09-18 14:17:11,387 INFO live: [LIVE] ➕➕ candidate CLX    px=125.07 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:17:16,380 INFO live: [LIVE] progress: 117/503 scanned (1.3/s) skipped=0 candidate
+s=2 ETA≈309s
+2025-09-18 14:17:26,512 INFO live: [LIVE] progress: 130/503 scanned (1.3/s) skipped=0 candidate
+s=2 ETA≈298s
+2025-09-18 14:17:37,010 INFO live: [LIVE] progress: 143/503 scanned (1.3/s) skipped=0 candidate
+s=2 ETA≈288s
+2025-09-18 14:17:47,876 INFO live: [LIVE] progress: 155/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈281s
+2025-09-18 14:17:58,554 INFO live: [LIVE] progress: 168/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈271s
+2025-09-18 14:18:08,728 INFO live: [LIVE] progress: 179/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈264s
+2025-09-18 14:18:18,957 INFO live: [LIVE] progress: 190/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈257s
+2025-09-18 14:18:29,754 INFO live: [LIVE] progress: 202/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈249s
+2025-09-18 14:18:39,914 INFO live: [LIVE] progress: 213/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈241s
+2025-09-18 14:18:50,694 INFO live: [LIVE] progress: 225/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈232s
+2025-09-18 14:18:53,863 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:18:53,863 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 14:18:53,869 WARNING sim: No data for HES; skipping
+2025-09-18 14:19:01,287 INFO live: [LIVE] progress: 237/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈223s
+2025-09-18 14:19:11,369 INFO live: [LIVE] progress: 246/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈218s
+2025-09-18 14:19:21,760 INFO live: [LIVE] progress: 257/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈210s
+2025-09-18 14:19:31,411 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:19:31,412 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 14:19:31,420 WARNING sim: No data for JNPR; skipping
+2025-09-18 14:19:32,031 INFO live: [LIVE] progress: 269/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈199s
+2025-09-18 14:19:32,778 INFO live: [LIVE] ➕➕ candidate KVUE   px=18.38 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:19:42,523 INFO live: [LIVE] progress: 281/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈189s
+2025-09-18 14:19:53,152 INFO live: [LIVE] progress: 295/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈177s
+2025-09-18 14:20:03,397 INFO live: [LIVE] progress: 309/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈164s
+2025-09-18 14:20:14,238 INFO live: [LIVE] progress: 319/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈157s
+2025-09-18 14:20:25,301 INFO live: [LIVE] progress: 333/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈144s
+2025-09-18 14:20:35,854 INFO live: [LIVE] progress: 343/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈137s
+2025-09-18 14:20:46,725 INFO live: [LIVE] progress: 357/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈124s
+2025-09-18 14:20:51,293 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:20:51,293 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 14:20:51,298 WARNING sim: No data for PARA; skipping
+2025-09-18 14:20:56,849 INFO live: [LIVE] progress: 370/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈113s
+2025-09-18 14:21:07,187 INFO live: [LIVE] progress: 382/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈103s
+2025-09-18 14:21:17,422 INFO live: [LIVE] progress: 395/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈91s
+2025-09-18 14:21:28,132 INFO live: [LIVE] progress: 409/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈79s
+2025-09-18 14:21:38,868 INFO live: [LIVE] progress: 424/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈66s
+2025-09-18 14:21:49,175 INFO live: [LIVE] progress: 438/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈54s
+2025-09-18 14:21:59,442 INFO live: [LIVE] progress: 452/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈42s
+2025-09-18 14:22:10,106 INFO live: [LIVE] progress: 467/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈30s
+2025-09-18 14:22:20,284 INFO live: [LIVE] progress: 478/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈21s
+2025-09-18 14:22:22,480 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:22:22,480 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 14:22:30,310 INFO live: [LIVE] progress: 488/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈13s
+2025-09-18 14:22:40,321 INFO live: [LIVE] progress: 500/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈3s
+2025-09-18 14:22:42,605 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=3 (419.8s)
+2025-09-18 14:22:42,606 INFO live: [LIVE] top candidates: AMGN@275.64(6), CLX@125.07(6), KVUE@1
+8.38(6)
+2025-09-18 14:22:42,610 WARNING live: [GR] TEMP OVERRIDE: ignoring guardrail ('bought today' /
+'open position') for this run
+2025-09-18 14:22:42,611 INFO live: [LIVE] considering AMGN   px=275.64 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:22:42,611 INFO live: [LIVE] Skip AMGN: qty < 1
+2025-09-18 14:22:42,611 INFO live: [LIVE] considering CLX    px=125.07 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:22:42,611 INFO live: [LIVE] Skip CLX: qty < 1
+2025-09-18 14:22:42,611 INFO live: [LIVE] considering KVUE   px=18.38 afford_qty=3 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=3
+2025-09-18 14:22:42,612 INFO services.broker: [LIVE] BUY request for KVUE x3 @18.37
+2025-09-18 14:22:42,858 INFO services.broker: [LIVE] resizing by broker funds KVUE: q 3→0 (fres
+h_pp=5.16, px=18.3700)
+2025-09-18 14:22:42,858 INFO live: [LIVE] skip KVUE: INSUFFICIENT_FUNDS
+2025-09-18 14:22:42,860 INFO live: [LIVE] ranked selection found no purchasable candidates (all
+ gated)
+2025-09-18 14:22:45,904 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 14:22:46,022 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 14:22:55,909 INFO live: [LIVE] progress: 11/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈447s
+2025-09-18 14:23:06,245 INFO live: [LIVE] progress: 23/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈424s
+2025-09-18 14:23:16,316 INFO live: [LIVE] progress: 35/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈407s
+2025-09-18 14:23:16,526 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:23:16,527 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 14:23:16,539 WARNING sim: No data for ANSS; skipping
+2025-09-18 14:23:27,081 INFO live: [LIVE] progress: 49/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈382s
+2025-09-18 14:23:37,378 INFO live: [LIVE] progress: 63/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈359s
+2025-09-18 14:23:47,794 INFO live: [LIVE] progress: 77/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈342s
+2025-09-18 14:23:58,494 INFO live: [LIVE] progress: 92/503 scanned (1.3/s) skipped=0 candidates
+=0 ETA≈324s
+2025-09-18 14:24:09,016 INFO live: [LIVE] progress: 106/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈311s
+2025-09-18 14:24:19,177 INFO live: [LIVE] progress: 119/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈301s
+2025-09-18 14:24:29,710 INFO live: [LIVE] progress: 131/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈295s
+2025-09-18 14:24:39,715 INFO live: [LIVE] progress: 142/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈289s
+2025-09-18 14:24:49,830 INFO live: [LIVE] progress: 153/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈283s
+2025-09-18 14:25:00,186 INFO live: [LIVE] progress: 164/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈278s
+2025-09-18 14:25:00,186 INFO live: [LIVE] ➕➕ candidate EW     px=74.44 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:25:10,778 INFO live: [LIVE] progress: 174/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈274s
+2025-09-18 14:25:20,983 INFO live: [LIVE] progress: 187/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈262s
+2025-09-18 14:25:31,572 INFO live: [LIVE] progress: 199/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈253s
+2025-09-18 14:25:42,154 INFO live: [LIVE] progress: 212/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈242s
+2025-09-18 14:25:52,374 INFO live: [LIVE] progress: 225/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈230s
+2025-09-18 14:25:54,537 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:25:54,538 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 14:25:54,543 WARNING sim: No data for HES; skipping
+2025-09-18 14:26:02,999 INFO live: [LIVE] progress: 241/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈214s
+2025-09-18 14:26:13,257 INFO live: [LIVE] progress: 254/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈203s
+2025-09-18 14:26:23,414 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:26:23,414 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 14:26:23,421 WARNING sim: No data for JNPR; skipping
+2025-09-18 14:26:23,421 INFO live: [LIVE] progress: 268/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈191s
+2025-09-18 14:26:33,859 INFO live: [LIVE] progress: 283/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈177s
+2025-09-18 14:26:44,297 INFO live: [LIVE] progress: 297/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈165s
+2025-09-18 14:26:55,102 INFO live: [LIVE] progress: 311/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈154s
+2025-09-18 14:27:05,711 INFO live: [LIVE] progress: 325/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈142s
+2025-09-18 14:27:16,137 INFO live: [LIVE] progress: 339/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈131s
+2025-09-18 14:27:26,528 INFO live: [LIVE] progress: 354/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈118s
+2025-09-18 14:27:32,177 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:27:32,177 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 14:27:32,187 WARNING sim: No data for PARA; skipping
+2025-09-18 14:27:36,722 INFO live: [LIVE] progress: 369/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈106s
+2025-09-18 14:27:46,786 INFO live: [LIVE] progress: 383/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈94s
+2025-09-18 14:27:57,018 INFO live: [LIVE] progress: 397/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈83s
+2025-09-18 14:28:07,676 INFO live: [LIVE] progress: 410/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈73s
+2025-09-18 14:28:18,199 INFO live: [LIVE] progress: 424/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈62s
+2025-09-18 14:28:28,336 INFO live: [LIVE] progress: 437/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈52s
+2025-09-18 14:28:38,554 INFO live: [LIVE] progress: 451/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈41s
+2025-09-18 14:28:51,150 INFO live: [LIVE] progress: 467/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈28s
+2025-09-18 14:29:00,781 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:29:00,781 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 14:29:01,510 INFO live: [LIVE] progress: 482/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈16s
+2025-09-18 14:29:11,527 INFO live: [LIVE] progress: 495/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈6s
+2025-09-18 14:29:17,292 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=1 (391.4s)
+2025-09-18 14:29:17,293 INFO live: [LIVE] top candidates: EW@74.44(6)
+2025-09-18 14:29:17,302 WARNING live: [GR] TEMP OVERRIDE: ignoring guardrail ('bought today' /
+'open position') for this run
+2025-09-18 14:29:17,302 INFO live: [LIVE] considering EW     px=74.44 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:29:17,302 INFO live: [LIVE] Skip EW: qty < 1
+2025-09-18 14:29:17,302 INFO live: [LIVE] ranked selection found no purchasable candidates (all
+ gated)
+2025-09-18 14:29:20,342 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 14:29:20,550 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 14:29:30,792 INFO live: [LIVE] progress: 14/503 scanned (1.3/s) skipped=0 candidates
+=0 ETA≈365s
+2025-09-18 14:29:41,080 INFO live: [LIVE] progress: 28/503 scanned (1.4/s) skipped=0 candidates
+=0 ETA≈352s
+2025-09-18 14:29:46,559 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:29:46,560 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 14:29:46,565 WARNING sim: No data for ANSS; skipping
+2025-09-18 14:29:52,873 INFO live: [LIVE] progress: 43/503 scanned (1.3/s) skipped=0 candidates
+=0 ETA≈348s
+2025-09-18 14:30:03,464 INFO live: [LIVE] progress: 59/503 scanned (1.4/s) skipped=0 candidates
+=0 ETA≈325s
+2025-09-18 14:30:13,994 INFO live: [LIVE] progress: 72/503 scanned (1.3/s) skipped=0 candidates
+=0 ETA≈321s
+2025-09-18 14:30:24,024 INFO live: [LIVE] progress: 87/503 scanned (1.4/s) skipped=0 candidates
+=0 ETA≈305s
+2025-09-18 14:30:34,338 INFO live: [LIVE] progress: 101/503 scanned (1.4/s) skipped=0 candidate
+s=0 ETA≈295s
+2025-09-18 14:30:44,661 INFO live: [LIVE] progress: 115/503 scanned (1.4/s) skipped=0 candidate
+s=0 ETA≈284s
+2025-09-18 14:30:55,314 INFO live: [LIVE] progress: 129/503 scanned (1.4/s) skipped=0 candidate
+s=0 ETA≈275s
+2025-09-18 14:31:05,318 INFO live: [LIVE] progress: 141/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈270s
+2025-09-18 14:31:16,015 INFO live: [LIVE] progress: 155/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈260s
+2025-09-18 14:31:20,770 INFO live: [LIVE] ➕➕ candidate EBAY   px=89.98 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:31:26,709 INFO live: [LIVE] progress: 169/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈250s
+2025-09-18 14:31:37,021 INFO live: [LIVE] progress: 183/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈239s
+2025-09-18 14:31:47,484 INFO live: [LIVE] progress: 196/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈230s
+2025-09-18 14:31:57,519 INFO live: [LIVE] progress: 207/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈225s
+2025-09-18 14:32:07,969 INFO live: [LIVE] progress: 219/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈217s
+2025-09-18 14:32:17,099 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:32:17,100 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 14:32:17,111 WARNING sim: No data for HES; skipping
+2025-09-18 14:32:18,920 INFO live: [LIVE] progress: 231/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈210s
+2025-09-18 14:32:29,758 INFO live: [LIVE] progress: 243/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈203s
+2025-09-18 14:32:40,041 INFO live: [LIVE] progress: 253/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈197s
+2025-09-18 14:32:50,097 INFO live: [LIVE] progress: 265/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈188s
+2025-09-18 14:32:52,497 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:32:52,497 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 14:32:52,504 WARNING sim: No data for JNPR; skipping
+2025-09-18 14:33:00,300 INFO live: [LIVE] progress: 278/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈178s
+2025-09-18 14:33:10,631 INFO live: [LIVE] progress: 291/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈168s
+2025-09-18 14:33:21,055 INFO live: [LIVE] progress: 306/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈155s
+2025-09-18 14:33:31,436 INFO live: [LIVE] progress: 320/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈144s
+2025-09-18 14:33:31,436 INFO live: [LIVE] ➕➕ candidate MRNA   px=25.69 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:33:41,605 INFO live: [LIVE] progress: 333/503 scanned (1.3/s) skipped=0 candidate
+s=2 ETA≈133s
+2025-09-18 14:33:51,812 INFO live: [LIVE] progress: 348/503 scanned (1.3/s) skipped=0 candidate
+s=2 ETA≈121s
+2025-09-18 14:34:02,315 INFO live: [LIVE] progress: 361/503 scanned (1.3/s) skipped=0 candidate
+s=2 ETA≈111s
+2025-09-18 14:34:03,227 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:34:03,228 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 14:34:03,235 WARNING sim: No data for PARA; skipping
+2025-09-18 14:34:12,905 INFO live: [LIVE] progress: 374/503 scanned (1.3/s) skipped=0 candidate
+s=2 ETA≈101s
+2025-09-18 14:34:16,553 INFO live: [LIVE] ➕➕ candidate PFG    px=81.75 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:34:23,059 INFO live: [LIVE] progress: 388/503 scanned (1.3/s) skipped=0 candidate
+s=3 ETA≈90s
+2025-09-18 14:34:33,433 INFO live: [LIVE] progress: 401/503 scanned (1.3/s) skipped=0 candidate
+s=3 ETA≈80s
+2025-09-18 14:34:43,718 INFO live: [LIVE] progress: 413/503 scanned (1.3/s) skipped=0 candidate
+s=3 ETA≈70s
+2025-09-18 14:34:54,277 INFO live: [LIVE] progress: 425/503 scanned (1.3/s) skipped=0 candidate
+s=3 ETA≈61s
+2025-09-18 14:35:04,513 INFO live: [LIVE] progress: 436/503 scanned (1.3/s) skipped=0 candidate
+s=3 ETA≈53s
+2025-09-18 14:35:14,787 INFO live: [LIVE] progress: 447/503 scanned (1.3/s) skipped=0 candidate
+s=3 ETA≈44s
+2025-09-18 14:35:25,625 INFO live: [LIVE] progress: 459/503 scanned (1.3/s) skipped=0 candidate
+s=3 ETA≈35s
+2025-09-18 14:35:35,921 INFO live: [LIVE] progress: 467/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈29s
+2025-09-18 14:35:45,991 INFO live: [LIVE] progress: 478/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈20s
+2025-09-18 14:35:48,375 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:35:48,376 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 14:35:56,227 INFO live: [LIVE] progress: 490/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈11s
+2025-09-18 14:36:06,841 INFO live: [LIVE] progress: 503/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈0s
+2025-09-18 14:36:06,841 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=3 (406.5s)
+2025-09-18 14:36:06,844 INFO live: [LIVE] top candidates: EBAY@89.98(6), PFG@81.75(6), MRNA@25.
+69(6)
+2025-09-18 14:36:06,846 WARNING live: [GR] TEMP OVERRIDE: ignoring guardrail ('bought today' /
+'open position') for this run
+2025-09-18 14:36:06,847 INFO live: [LIVE] considering EBAY   px=89.98 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:36:06,847 INFO live: [LIVE] Skip EBAY: qty < 1
+2025-09-18 14:36:06,847 INFO live: [LIVE] considering PFG    px=81.75 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:36:06,847 INFO live: [LIVE] Skip PFG: qty < 1
+2025-09-18 14:36:06,847 INFO live: [LIVE] considering MRNA   px=25.69 afford_qty=2 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=2
+2025-09-18 14:36:06,847 INFO services.broker: [LIVE] BUY request for MRNA x2 @25.69
+2025-09-18 14:36:06,963 ERROR services.broker: GET https://api.etrade.com/v1/accounts/kW8LbkuGi
+sPCK9Ey7C8iWA/balance.json -> 400
+{'Error': {'message': 'Number of requests exceeded the rate limit set'}}
+2025-09-18 14:36:06,963 WARNING services.broker: [LIVE] fresh funds read failed: 400: {'Error':
+ {'message': 'Number of requests exceeded the rate limit set'}}
+2025-09-18 14:36:06,966 INFO services.broker: [LIVE] resizing by broker funds MRNA: q 2→0 (fres
+h_pp=5.16, px=25.6900)
+2025-09-18 14:36:06,966 INFO live: [LIVE] skip MRNA: INSUFFICIENT_FUNDS
+2025-09-18 14:36:06,967 INFO live: [LIVE] ranked selection found no purchasable candidates (all
+ gated)
+2025-09-18 14:36:10,009 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 14:36:10,134 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 14:36:20,526 INFO live: [LIVE] progress: 11/503 scanned (1.0/s) skipped=0 candidates
+=0 ETA≈470s
+2025-09-18 14:36:30,940 INFO live: [LIVE] progress: 23/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈437s
+2025-09-18 14:36:41,040 INFO live: [LIVE] progress: 35/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈415s
+2025-09-18 14:36:41,253 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:36:41,253 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 14:36:41,257 WARNING sim: No data for ANSS; skipping
+2025-09-18 14:36:51,166 INFO live: [LIVE] progress: 51/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈365s
+2025-09-18 14:37:01,485 INFO live: [LIVE] progress: 63/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈360s
+2025-09-18 14:37:11,935 INFO live: [LIVE] progress: 78/503 scanned (1.3/s) skipped=0 candidates
+=0 ETA≈337s
+2025-09-18 14:37:22,327 INFO live: [LIVE] progress: 91/503 scanned (1.3/s) skipped=0 candidates
+=0 ETA≈327s
+2025-09-18 14:37:32,842 INFO live: [LIVE] progress: 103/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈322s
+2025-09-18 14:37:43,205 INFO live: [LIVE] progress: 118/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈304s
+2025-09-18 14:37:53,238 INFO live: [LIVE] progress: 131/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈293s
+2025-09-18 14:38:03,414 INFO live: [LIVE] progress: 143/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈285s
+2025-09-18 14:38:13,592 INFO live: [LIVE] progress: 155/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈277s
+2025-09-18 14:38:23,594 INFO live: [LIVE] progress: 167/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈269s
+2025-09-18 14:38:34,335 INFO live: [LIVE] progress: 179/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈261s
+2025-09-18 14:38:44,448 INFO live: [LIVE] progress: 191/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈252s
+2025-09-18 14:38:54,701 INFO live: [LIVE] progress: 203/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈243s
+2025-09-18 14:39:04,926 INFO live: [LIVE] progress: 215/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈234s
+2025-09-18 14:39:16,039 INFO live: [LIVE] progress: 227/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈226s
+2025-09-18 14:39:17,021 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:39:17,021 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 14:39:17,026 WARNING sim: No data for HES; skipping
+2025-09-18 14:39:26,785 INFO live: [LIVE] progress: 240/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈216s
+2025-09-18 14:39:36,904 INFO live: [LIVE] progress: 252/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈206s
+2025-09-18 14:39:47,680 INFO live: [LIVE] progress: 264/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈197s
+2025-09-18 14:39:55,218 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:39:55,218 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 14:39:55,227 WARNING sim: No data for JNPR; skipping
+2025-09-18 14:39:57,998 INFO live: [LIVE] progress: 271/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈195s
+2025-09-18 14:40:08,418 INFO live: [LIVE] progress: 281/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈188s
+2025-09-18 14:40:18,619 INFO live: [LIVE] progress: 293/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈178s
+2025-09-18 14:40:28,693 INFO live: [LIVE] progress: 304/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈169s
+2025-09-18 14:40:39,050 INFO live: [LIVE] progress: 315/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈161s
+2025-09-18 14:40:49,064 INFO live: [LIVE] progress: 327/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈150s
+2025-09-18 14:40:59,080 INFO live: [LIVE] progress: 340/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈139s
+2025-09-18 14:41:09,542 INFO live: [LIVE] progress: 355/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈125s
+2025-09-18 14:41:14,571 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:41:14,571 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 14:41:14,584 WARNING sim: No data for PARA; skipping
+2025-09-18 14:41:20,237 INFO live: [LIVE] progress: 371/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈110s
+2025-09-18 14:41:30,519 INFO live: [LIVE] progress: 386/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈97s
+2025-09-18 14:41:41,214 INFO live: [LIVE] progress: 401/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈84s
+2025-09-18 14:41:51,306 INFO live: [LIVE] progress: 415/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈72s
+2025-09-18 14:42:02,027 INFO live: [LIVE] progress: 430/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈60s
+2025-09-18 14:42:12,435 INFO live: [LIVE] progress: 443/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈49s
+2025-09-18 14:42:23,172 INFO live: [LIVE] progress: 456/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈38s
+2025-09-18 14:42:33,375 INFO live: [LIVE] progress: 469/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈28s
+2025-09-18 14:42:42,657 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:42:42,658 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 14:42:43,400 INFO live: [LIVE] progress: 482/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈17s
+2025-09-18 14:42:53,951 INFO live: [LIVE] progress: 492/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈9s
+2025-09-18 14:43:01,736 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=0 (411.7s)
+2025-09-18 14:43:01,737 INFO live: [LIVE] no candidates this round
+2025-09-18 14:43:04,800 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 14:43:05,021 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 14:43:15,329 INFO live: [LIVE] progress: 14/503 scanned (1.3/s) skipped=0 candidates
+=0 ETA≈368s
+2025-09-18 14:43:25,927 INFO live: [LIVE] progress: 29/503 scanned (1.4/s) skipped=0 candidates
+=0 ETA≈345s
+2025-09-18 14:43:31,145 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:43:31,145 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 14:43:31,159 WARNING sim: No data for ANSS; skipping
+2025-09-18 14:43:36,202 INFO live: [LIVE] progress: 43/503 scanned (1.4/s) skipped=0 candidates
+=0 ETA≈336s
+2025-09-18 14:43:46,497 INFO live: [LIVE] progress: 58/503 scanned (1.4/s) skipped=0 candidates
+=0 ETA≈320s
+2025-09-18 14:43:56,731 INFO live: [LIVE] progress: 71/503 scanned (1.4/s) skipped=0 candidates
+=0 ETA≈316s
+2025-09-18 14:44:07,398 INFO live: [LIVE] progress: 84/503 scanned (1.3/s) skipped=0 candidates
+=0 ETA≈312s
+2025-09-18 14:44:17,737 INFO live: [LIVE] progress: 96/503 scanned (1.3/s) skipped=0 candidates
+=0 ETA≈309s
+2025-09-18 14:44:28,309 INFO live: [LIVE] progress: 109/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈302s
+2025-09-18 14:44:38,520 INFO live: [LIVE] progress: 121/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈296s
+2025-09-18 14:44:49,089 INFO live: [LIVE] progress: 133/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈290s
+2025-09-18 14:44:50,907 INFO live: [LIVE] ➕➕ candidate CVS    px=73.97 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:44:59,535 INFO live: [LIVE] progress: 145/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈283s
+2025-09-18 14:45:09,597 INFO live: [LIVE] progress: 157/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈275s
+2025-09-18 14:45:20,414 INFO live: [LIVE] progress: 168/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈270s
+2025-09-18 14:45:30,606 INFO live: [LIVE] progress: 180/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈262s
+2025-09-18 14:45:40,762 INFO live: [LIVE] progress: 191/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈255s
+2025-09-18 14:45:51,512 INFO live: [LIVE] progress: 204/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈244s
+2025-09-18 14:46:01,913 INFO live: [LIVE] progress: 217/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈233s
+2025-09-18 14:46:11,263 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:46:11,264 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 14:46:11,271 WARNING sim: No data for HES; skipping
+2025-09-18 14:46:12,063 INFO live: [LIVE] progress: 230/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈222s
+2025-09-18 14:46:22,755 INFO live: [LIVE] progress: 243/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈212s
+2025-09-18 14:46:33,068 INFO live: [LIVE] progress: 255/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈203s
+2025-09-18 14:46:44,086 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:46:44,086 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 14:46:44,095 WARNING sim: No data for JNPR; skipping
+2025-09-18 14:46:44,095 INFO live: [LIVE] progress: 268/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈192s
+2025-09-18 14:46:54,812 INFO live: [LIVE] progress: 282/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈180s
+2025-09-18 14:47:05,034 INFO live: [LIVE] progress: 295/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈169s
+2025-09-18 14:47:15,283 INFO live: [LIVE] progress: 305/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈163s
+2025-09-18 14:47:25,508 INFO live: [LIVE] progress: 316/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈154s
+2025-09-18 14:47:35,896 INFO live: [LIVE] progress: 329/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈143s
+2025-09-18 14:47:46,575 INFO live: [LIVE] progress: 343/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈131s
+2025-09-18 14:47:57,280 INFO live: [LIVE] progress: 357/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈120s
+2025-09-18 14:48:01,919 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:48:01,919 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 14:48:01,927 WARNING sim: No data for PARA; skipping
+2025-09-18 14:48:07,649 INFO live: [LIVE] progress: 370/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈109s
+2025-09-18 14:48:11,782 INFO live: [LIVE] ➕➕ candidate PNC    px=205.40 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:48:18,437 INFO live: [LIVE] progress: 384/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈97s
+2025-09-18 14:48:28,977 INFO live: [LIVE] progress: 397/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈87s
+2025-09-18 14:48:38,995 INFO live: [LIVE] progress: 409/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈77s
+2025-09-18 14:48:49,757 INFO live: [LIVE] progress: 422/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈66s
+2025-09-18 14:49:00,176 INFO live: [LIVE] progress: 436/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈55s
+2025-09-18 14:49:11,038 INFO live: [LIVE] progress: 450/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈43s
+2025-09-18 14:49:21,314 INFO live: [LIVE] progress: 464/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈32s
+2025-09-18 14:49:31,833 INFO live: [LIVE] progress: 478/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈20s
+2025-09-18 14:49:34,001 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:49:34,001 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 14:49:41,063 INFO live: [LIVE] ➕➕ candidate WFC    px=82.97 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:49:42,468 INFO live: [LIVE] progress: 490/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈11s
+2025-09-18 14:49:48,242 INFO live: [LIVE] ➕➕ candidate WYNN   px=127.04 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:49:52,656 INFO live: [LIVE] progress: 503/503 scanned (1.2/s) skipped=0 candidate
+s=4 ETA≈0s
+2025-09-18 14:49:52,657 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=4 (407.9s)
+2025-09-18 14:49:52,658 INFO live: [LIVE] top candidates: PNC@205.40(6), WYNN@127.04(6), WFC@82
+.97(6), CVS@73.97(6)
+2025-09-18 14:49:52,661 WARNING live: [GR] TEMP OVERRIDE: ignoring guardrail ('bought today' /
+'open position') for this run
+2025-09-18 14:49:52,661 INFO live: [LIVE] considering PNC    px=205.40 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:49:52,661 INFO live: [LIVE] Skip PNC: qty < 1
+2025-09-18 14:49:52,661 INFO live: [LIVE] considering WYNN   px=127.04 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:49:52,661 INFO live: [LIVE] Skip WYNN: qty < 1
+2025-09-18 14:49:52,662 INFO live: [LIVE] considering WFC    px=82.97 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:49:52,662 INFO live: [LIVE] Skip WFC: qty < 1
+2025-09-18 14:49:52,662 INFO live: [LIVE] considering CVS    px=73.97 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:49:52,662 INFO live: [LIVE] Skip CVS: qty < 1
+2025-09-18 14:49:52,662 INFO live: [LIVE] ranked selection found no purchasable candidates (all
+ gated)
+2025-09-18 14:49:55,707 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 14:49:55,895 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 14:50:06,374 INFO live: [LIVE] progress: 11/503 scanned (1.0/s) skipped=0 candidates
+=0 ETA≈477s
+2025-09-18 14:50:16,693 INFO live: [LIVE] progress: 22/503 scanned (1.0/s) skipped=0 candidates
+=0 ETA≈459s
+2025-09-18 14:50:26,771 INFO live: [LIVE] progress: 35/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈415s
+2025-09-18 14:50:27,917 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:50:27,917 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 14:50:27,924 WARNING sim: No data for ANSS; skipping
+2025-09-18 14:50:36,805 INFO live: [LIVE] progress: 47/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈399s
+2025-09-18 14:50:47,306 INFO live: [LIVE] progress: 61/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈374s
+2025-09-18 14:50:57,811 INFO live: [LIVE] progress: 73/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈366s
+2025-09-18 14:51:08,745 INFO live: [LIVE] progress: 86/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈354s
+2025-09-18 14:51:19,381 INFO live: [LIVE] progress: 99/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈341s
+2025-09-18 14:51:29,479 INFO live: [LIVE] progress: 111/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈331s
+2025-09-18 14:51:39,928 INFO live: [LIVE] progress: 123/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈322s
+2025-09-18 14:51:50,891 INFO live: [LIVE] progress: 136/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈311s
+2025-09-18 14:52:01,315 INFO live: [LIVE] progress: 149/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈298s
+2025-09-18 14:52:11,602 INFO live: [LIVE] progress: 163/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈283s
+2025-09-18 14:52:21,729 INFO live: [LIVE] progress: 175/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈274s
+2025-09-18 14:52:32,410 INFO live: [LIVE] progress: 187/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈265s
+2025-09-18 14:52:38,462 INFO live: [LIVE] ➕➕ candidate FITB   px=46.33 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:52:43,615 INFO live: [LIVE] progress: 200/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈254s
+2025-09-18 14:52:54,543 INFO live: [LIVE] progress: 214/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈242s
+2025-09-18 14:53:05,238 INFO live: [LIVE] progress: 228/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈229s
+2025-09-18 14:53:05,489 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:53:05,489 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 14:53:05,496 WARNING sim: No data for HES; skipping
+2025-09-18 14:53:14,602 INFO live: [LIVE] ➕➕ candidate HBAN   px=17.84 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:53:15,284 INFO live: [LIVE] progress: 242/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈215s
+2025-09-18 14:53:18,786 INFO live: [LIVE] ➕➕ candidate INCY   px=86.03 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:53:25,404 INFO live: [LIVE] progress: 256/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈202s
+2025-09-18 14:53:35,064 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:53:35,065 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 14:53:35,072 WARNING sim: No data for JNPR; skipping
+2025-09-18 14:53:36,118 INFO live: [LIVE] progress: 269/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈192s
+2025-09-18 14:53:38,555 INFO live: [LIVE] ➕➕ candidate KEY    px=19.06 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:53:39,521 INFO live: [LIVE] ➕➕ candidate KEYS   px=177.50 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:53:40,263 INFO live: [LIVE] ➕➕ candidate KMB    px=126.39 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:53:46,340 INFO live: [LIVE] progress: 282/503 scanned (1.2/s) skipped=0 candidate
+s=6 ETA≈181s
+2025-09-18 14:53:48,543 INFO live: [LIVE] ➕➕ candidate LVS    px=53.02 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:53:56,363 INFO live: [LIVE] progress: 295/503 scanned (1.2/s) skipped=0 candidate
+s=7 ETA≈170s
+2025-09-18 14:54:01,637 INFO live: [LIVE] ➕➕ candidate MAR    px=263.99 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:54:07,614 INFO live: [LIVE] progress: 308/503 scanned (1.2/s) skipped=0 candidate
+s=8 ETA≈159s
+2025-09-18 14:54:11,537 INFO live: [LIVE] ➕➕ candidate MET    px=79.46 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:54:17,149 INFO live: [LIVE] ➕➕ candidate MAA    px=140.65 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:54:17,836 INFO live: [LIVE] progress: 320/503 scanned (1.2/s) skipped=0 candidate
+s=10 ETA≈150s
+2025-09-18 14:54:28,192 INFO live: [LIVE] progress: 333/503 scanned (1.2/s) skipped=0 candidate
+s=10 ETA≈139s
+2025-09-18 14:54:35,961 INFO live: [LIVE] ➕➕ candidate NTRS   px=132.34 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:54:38,214 INFO live: [LIVE] progress: 346/503 scanned (1.2/s) skipped=0 candidate
+s=11 ETA≈128s
+2025-09-18 14:54:48,854 INFO live: [LIVE] progress: 360/503 scanned (1.2/s) skipped=0 candidate
+s=11 ETA≈116s
+2025-09-18 14:54:50,745 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:54:50,746 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 14:54:50,752 WARNING sim: No data for PARA; skipping
+2025-09-18 14:54:59,551 INFO live: [LIVE] progress: 374/503 scanned (1.2/s) skipped=0 candidate
+s=11 ETA≈105s
+2025-09-18 14:55:00,384 INFO live: [LIVE] ➕➕ candidate PNC    px=205.67 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:55:08,488 INFO live: [LIVE] ➕➕ candidate PTC    px=206.25 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:55:09,982 INFO live: [LIVE] progress: 387/503 scanned (1.2/s) skipped=0 candidate
+s=13 ETA≈94s
+2025-09-18 14:55:20,498 INFO live: [LIVE] progress: 401/503 scanned (1.2/s) skipped=0 candidate
+s=13 ETA≈83s
+2025-09-18 14:55:20,498 INFO live: [LIVE] ➕➕ candidate ROK    px=349.19 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:55:31,107 INFO live: [LIVE] progress: 415/503 scanned (1.2/s) skipped=0 candidate
+s=14 ETA≈71s
+2025-09-18 14:55:33,416 INFO live: [LIVE] ➕➕ candidate SNA    px=340.56 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:55:41,792 INFO live: [LIVE] progress: 429/503 scanned (1.2/s) skipped=0 candidate
+s=15 ETA≈60s
+2025-09-18 14:55:51,962 INFO live: [LIVE] progress: 442/503 scanned (1.2/s) skipped=0 candidate
+s=15 ETA≈49s
+2025-09-18 14:56:02,692 INFO live: [LIVE] progress: 454/503 scanned (1.2/s) skipped=0 candidate
+s=15 ETA≈40s
+2025-09-18 14:56:13,294 INFO live: [LIVE] progress: 465/503 scanned (1.2/s) skipped=0 candidate
+s=15 ETA≈31s
+2025-09-18 14:56:23,711 INFO live: [LIVE] progress: 476/503 scanned (1.2/s) skipped=0 candidate
+s=15 ETA≈22s
+2025-09-18 14:56:27,833 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:56:27,833 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 14:56:34,460 INFO live: [LIVE] progress: 488/503 scanned (1.2/s) skipped=0 candidate
+s=15 ETA≈12s
+2025-09-18 14:56:44,581 INFO live: [LIVE] progress: 500/503 scanned (1.2/s) skipped=0 candidate
+s=15 ETA≈2s
+2025-09-18 14:56:48,124 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=15 (412.4s)
+
+2025-09-18 14:56:48,124 INFO live: [LIVE] top candidates: ROK@349.19(6), SNA@340.56(6), MAR@263
+.99(6), PTC@206.25(6), PNC@205.67(6) …
+2025-09-18 14:56:48,129 WARNING live: [GR] TEMP OVERRIDE: ignoring guardrail ('bought today' /
+'open position') for this run
+2025-09-18 14:56:48,129 INFO live: [LIVE] considering ROK    px=349.19 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:56:48,130 INFO live: [LIVE] Skip ROK: qty < 1
+2025-09-18 14:56:48,130 INFO live: [LIVE] considering SNA    px=340.56 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:56:48,130 INFO live: [LIVE] Skip SNA: qty < 1
+2025-09-18 14:56:48,130 INFO live: [LIVE] considering MAR    px=263.99 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:56:48,131 INFO live: [LIVE] Skip MAR: qty < 1
+2025-09-18 14:56:48,131 INFO live: [LIVE] considering PTC    px=206.25 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:56:48,132 INFO live: [LIVE] Skip PTC: qty < 1
+2025-09-18 14:56:48,132 INFO live: [LIVE] considering PNC    px=205.67 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:56:48,132 INFO live: [LIVE] Skip PNC: qty < 1
+2025-09-18 14:56:48,132 INFO live: [LIVE] considering KEYS   px=177.50 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:56:48,133 INFO live: [LIVE] Skip KEYS: qty < 1
+2025-09-18 14:56:48,133 INFO live: [LIVE] considering MAA    px=140.65 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:56:48,133 INFO live: [LIVE] Skip MAA: qty < 1
+2025-09-18 14:56:48,133 INFO live: [LIVE] considering NTRS   px=132.34 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:56:48,133 INFO live: [LIVE] Skip NTRS: qty < 1
+2025-09-18 14:56:48,133 INFO live: [LIVE] considering KMB    px=126.39 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:56:48,134 INFO live: [LIVE] Skip KMB: qty < 1
+2025-09-18 14:56:48,134 INFO live: [LIVE] considering INCY   px=86.03 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:56:48,134 INFO live: [LIVE] Skip INCY: qty < 1
+2025-09-18 14:56:48,134 INFO live: [LIVE] considering MET    px=79.46 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 14:56:48,134 INFO live: [LIVE] Skip MET: qty < 1
+2025-09-18 14:56:48,135 INFO live: [LIVE] considering LVS    px=53.02 afford_qty=1 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=1
+2025-09-18 14:56:48,135 INFO services.broker: [LIVE] BUY request for LVS x1 @53.01
+2025-09-18 14:56:48,374 INFO services.broker: [LIVE] resizing by broker funds LVS: q 1→0 (fresh
+_pp=5.16, px=53.0100)
+2025-09-18 14:56:48,374 INFO live: [LIVE] skip LVS: INSUFFICIENT_FUNDS
+2025-09-18 14:56:48,377 INFO live: [LIVE] considering FITB   px=46.33 afford_qty=1 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=1
+2025-09-18 14:56:48,378 INFO services.broker: [LIVE] BUY request for FITB x1 @46.32
+2025-09-18 14:56:48,378 INFO services.broker: [LIVE] resizing by broker funds FITB: q 1→0 (fres
+h_pp=5.16, px=46.3200)
+2025-09-18 14:56:48,378 INFO live: [LIVE] skip FITB: INSUFFICIENT_FUNDS
+2025-09-18 14:56:48,378 INFO live: [LIVE] considering KEY    px=19.06 afford_qty=3 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=3
+2025-09-18 14:56:48,379 INFO services.broker: [LIVE] BUY request for KEY x3 @19.05
+2025-09-18 14:56:48,379 INFO services.broker: [LIVE] resizing by broker funds KEY: q 3→0 (fresh
+_pp=5.16, px=19.0500)
+2025-09-18 14:56:48,380 INFO live: [LIVE] skip KEY: INSUFFICIENT_FUNDS
+2025-09-18 14:56:48,380 INFO live: [LIVE] considering HBAN   px=17.84 afford_qty=3 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=3
+2025-09-18 14:56:48,380 INFO services.broker: [LIVE] BUY request for HBAN x3 @17.83
+2025-09-18 14:56:48,380 INFO services.broker: [LIVE] resizing by broker funds HBAN: q 3→0 (fres
+h_pp=5.16, px=17.8300)
+2025-09-18 14:56:48,381 INFO live: [LIVE] skip HBAN: INSUFFICIENT_FUNDS
+2025-09-18 14:56:48,381 INFO live: [LIVE] ranked selection found no purchasable candidates (all
+ gated)
+2025-09-18 14:56:51,444 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 14:56:51,563 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 14:57:02,216 INFO live: [LIVE] progress: 12/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈441s
+2025-09-18 14:57:13,018 INFO live: [LIVE] progress: 25/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈412s
+2025-09-18 14:57:22,879 ERROR yfinance:
+1 Failed download:
+2025-09-18 14:57:22,879 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 14:57:22,887 WARNING sim: No data for ANSS; skipping
+2025-09-18 14:57:23,668 INFO live: [LIVE] progress: 37/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈406s
+2025-09-18 14:57:34,539 INFO live: [LIVE] progress: 50/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈390s
+2025-09-18 14:57:44,857 INFO live: [LIVE] progress: 62/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈380s
+2025-09-18 14:57:55,471 INFO live: [LIVE] progress: 74/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈371s
+2025-09-18 14:58:04,687 INFO live: [LIVE] ➕➕ candidate CAH    px=150.04 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:58:05,492 INFO live: [LIVE] progress: 86/503 scanned (1.2/s) skipped=0 candidates
+=1 ETA≈359s
+2025-09-18 14:58:08,991 INFO live: [LIVE] ➕➕ candidate CBRE   px=166.22 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:58:15,694 INFO live: [LIVE] progress: 100/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈340s
+2025-09-18 14:58:26,556 INFO live: [LIVE] progress: 114/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈325s
+2025-09-18 14:58:36,718 INFO live: [LIVE] progress: 127/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈312s
+2025-09-18 14:58:46,937 INFO live: [LIVE] progress: 141/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈297s
+2025-09-18 14:58:57,329 INFO live: [LIVE] progress: 155/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈283s
+2025-09-18 14:59:07,515 INFO live: [LIVE] progress: 168/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈271s
+2025-09-18 14:59:17,821 INFO live: [LIVE] progress: 180/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈263s
+2025-09-18 14:59:20,334 INFO live: [LIVE] ➕➕ candidate EXE    px=99.41 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:59:28,457 INFO live: [LIVE] progress: 193/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈252s
+2025-09-18 14:59:38,567 INFO live: [LIVE] progress: 202/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈249s
+2025-09-18 14:59:49,275 INFO live: [LIVE] progress: 213/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈242s
+2025-09-18 14:59:57,257 INFO live: [LIVE] ➕➕ candidate GS     px=804.30 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 14:59:59,700 INFO live: [LIVE] progress: 224/503 scanned (1.2/s) skipped=0 candidate
+s=4 ETA≈234s
+2025-09-18 15:00:03,105 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:00:03,106 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 15:00:03,122 WARNING sim: No data for HES; skipping
+2025-09-18 15:00:10,519 INFO live: [LIVE] progress: 237/503 scanned (1.2/s) skipped=0 candidate
+s=4 ETA≈223s
+2025-09-18 15:00:20,811 INFO live: [LIVE] progress: 249/503 scanned (1.2/s) skipped=0 candidate
+s=4 ETA≈214s
+2025-09-18 15:00:31,163 INFO live: [LIVE] progress: 259/503 scanned (1.2/s) skipped=0 candidate
+s=4 ETA≈207s
+2025-09-18 15:00:39,597 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:00:39,597 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 15:00:39,603 WARNING sim: No data for JNPR; skipping
+2025-09-18 15:00:41,824 INFO live: [LIVE] progress: 271/503 scanned (1.2/s) skipped=0 candidate
+s=4 ETA≈197s
+2025-09-18 15:00:52,161 INFO live: [LIVE] progress: 281/503 scanned (1.2/s) skipped=0 candidate
+s=4 ETA≈190s
+2025-09-18 15:01:02,947 INFO live: [LIVE] progress: 294/503 scanned (1.2/s) skipped=0 candidate
+s=4 ETA≈179s
+2025-09-18 15:01:13,286 INFO live: [LIVE] progress: 304/503 scanned (1.2/s) skipped=0 candidate
+s=4 ETA≈171s
+2025-09-18 15:01:23,960 INFO live: [LIVE] progress: 316/503 scanned (1.2/s) skipped=0 candidate
+s=4 ETA≈161s
+2025-09-18 15:01:33,976 INFO live: [LIVE] progress: 327/503 scanned (1.2/s) skipped=0 candidate
+s=4 ETA≈152s
+2025-09-18 15:01:44,214 INFO live: [LIVE] progress: 339/503 scanned (1.2/s) skipped=0 candidate
+s=4 ETA≈142s
+2025-09-18 15:01:54,951 INFO live: [LIVE] progress: 352/503 scanned (1.2/s) skipped=0 candidate
+s=4 ETA≈130s
+2025-09-18 15:02:02,958 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:02:02,958 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 15:02:02,967 WARNING sim: No data for PARA; skipping
+2025-09-18 15:02:05,603 INFO live: [LIVE] progress: 366/503 scanned (1.2/s) skipped=0 candidate
+s=4 ETA≈118s
+2025-09-18 15:02:16,129 INFO live: [LIVE] progress: 378/503 scanned (1.2/s) skipped=0 candidate
+s=4 ETA≈107s
+2025-09-18 15:02:19,770 INFO live: [LIVE] ➕➕ candidate PRU    px=104.28 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:02:26,278 INFO live: [LIVE] progress: 391/503 scanned (1.2/s) skipped=0 candidate
+s=5 ETA≈96s
+2025-09-18 15:02:31,337 INFO live: [LIVE] ➕➕ candidate RF     px=27.38 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:02:36,343 INFO live: [LIVE] progress: 403/503 scanned (1.2/s) skipped=0 candidate
+s=6 ETA≈86s
+2025-09-18 15:02:47,046 INFO live: [LIVE] progress: 415/503 scanned (1.2/s) skipped=0 candidate
+s=6 ETA≈75s
+2025-09-18 15:02:57,651 INFO live: [LIVE] progress: 425/503 scanned (1.2/s) skipped=0 candidate
+s=6 ETA≈67s
+2025-09-18 15:03:08,246 INFO live: [LIVE] progress: 437/503 scanned (1.2/s) skipped=0 candidate
+s=6 ETA≈57s
+2025-09-18 15:03:18,365 INFO live: [LIVE] progress: 448/503 scanned (1.2/s) skipped=0 candidate
+s=6 ETA≈48s
+2025-09-18 15:03:22,325 INFO live: [LIVE] ➕➕ candidate TFC    px=46.09 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:03:24,901 INFO live: [LIVE] ➕➕ candidate USB    px=50.23 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:03:29,129 INFO live: [LIVE] progress: 461/503 scanned (1.2/s) skipped=0 candidate
+s=8 ETA≈36s
+2025-09-18 15:03:39,795 INFO live: [LIVE] progress: 473/503 scanned (1.2/s) skipped=0 candidate
+s=8 ETA≈26s
+2025-09-18 15:03:39,796 INFO live: [LIVE] ➕➕ candidate VTRS   px=9.76 signals=ADX ≥ 20, MACD ��
+, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:03:46,848 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:03:46,848 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 15:03:50,242 INFO live: [LIVE] progress: 485/503 scanned (1.2/s) skipped=0 candidate
+s=9 ETA≈16s
+2025-09-18 15:03:52,569 INFO live: [LIVE] ➕➕ candidate WFC    px=83.16 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:03:59,170 INFO live: [LIVE] ➕➕ candidate WYNN   px=127.70 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:04:00,687 INFO live: [LIVE] progress: 499/503 scanned (1.2/s) skipped=0 candidate
+s=11 ETA≈3s
+2025-09-18 15:04:02,510 INFO live: [LIVE] ➕➕ candidate ZBRA   px=323.68 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:04:04,210 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=12 (432.8s)
+
+2025-09-18 15:04:04,210 INFO live: [LIVE] top candidates: GS@804.30(6), ZBRA@323.68(6), CBRE@16
+6.22(6), CAH@150.04(6), WYNN@127.70(6) …
+2025-09-18 15:04:04,218 WARNING live: [GR] TEMP OVERRIDE: ignoring guardrail ('bought today' /
+'open position') for this run
+2025-09-18 15:04:04,218 INFO live: [LIVE] considering GS     px=804.30 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:04:04,219 INFO live: [LIVE] Skip GS: qty < 1
+2025-09-18 15:04:04,219 INFO live: [LIVE] considering ZBRA   px=323.68 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:04:04,219 INFO live: [LIVE] Skip ZBRA: qty < 1
+2025-09-18 15:04:04,219 INFO live: [LIVE] considering CBRE   px=166.22 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:04:04,219 INFO live: [LIVE] Skip CBRE: qty < 1
+2025-09-18 15:04:04,219 INFO live: [LIVE] considering CAH    px=150.04 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:04:04,219 INFO live: [LIVE] Skip CAH: qty < 1
+2025-09-18 15:04:04,220 INFO live: [LIVE] considering WYNN   px=127.70 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:04:04,220 INFO live: [LIVE] Skip WYNN: qty < 1
+2025-09-18 15:04:04,220 INFO live: [LIVE] considering PRU    px=104.28 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:04:04,220 INFO live: [LIVE] Skip PRU: qty < 1
+2025-09-18 15:04:04,220 INFO live: [LIVE] considering EXE    px=99.41 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:04:04,220 INFO live: [LIVE] Skip EXE: qty < 1
+2025-09-18 15:04:04,220 INFO live: [LIVE] considering WFC    px=83.16 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:04:04,221 INFO live: [LIVE] Skip WFC: qty < 1
+2025-09-18 15:04:04,221 INFO live: [LIVE] considering USB    px=50.23 afford_qty=1 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=1
+2025-09-18 15:04:04,221 INFO services.broker: [LIVE] BUY request for USB x1 @50.23
+2025-09-18 15:04:04,413 INFO services.broker: [LIVE] resizing by broker funds USB: q 1→0 (fresh
+_pp=5.16, px=50.2300)
+2025-09-18 15:04:04,413 INFO live: [LIVE] skip USB: INSUFFICIENT_FUNDS
+2025-09-18 15:04:04,415 INFO live: [LIVE] considering TFC    px=46.09 afford_qty=1 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=1
+2025-09-18 15:04:04,416 INFO services.broker: [LIVE] BUY request for TFC x1 @46.09
+2025-09-18 15:04:04,416 INFO services.broker: [LIVE] resizing by broker funds TFC: q 1→0 (fresh
+_pp=5.16, px=46.0900)
+2025-09-18 15:04:04,416 INFO live: [LIVE] skip TFC: INSUFFICIENT_FUNDS
+2025-09-18 15:04:04,416 INFO live: [LIVE] considering RF     px=27.38 afford_qty=2 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=2
+2025-09-18 15:04:04,416 INFO services.broker: [LIVE] BUY request for RF x2 @27.37
+2025-09-18 15:04:04,416 INFO services.broker: [LIVE] resizing by broker funds RF: q 2→0 (fresh_
+pp=5.16, px=27.3700)
+2025-09-18 15:04:04,416 INFO live: [LIVE] skip RF: INSUFFICIENT_FUNDS
+2025-09-18 15:04:04,417 INFO live: [LIVE] considering VTRS   px=9.76 afford_qty=7 settled=74.86
+ bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=7
+2025-09-18 15:04:04,417 INFO services.broker: [LIVE] BUY request for VTRS x7 @9.75
+2025-09-18 15:04:04,417 INFO services.broker: [LIVE] resizing by broker funds VTRS: q 7→0 (fres
+h_pp=5.16, px=9.7500)
+2025-09-18 15:04:04,417 INFO live: [LIVE] skip VTRS: INSUFFICIENT_FUNDS
+2025-09-18 15:04:04,417 INFO live: [LIVE] ranked selection found no purchasable candidates (all
+ gated)
+2025-09-18 15:04:07,465 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 15:04:07,569 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 15:04:17,585 INFO live: [LIVE] progress: 11/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈453s
+2025-09-18 15:04:19,497 INFO live: [LIVE] ➕➕ candidate AKAM   px=76.92 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:04:27,715 INFO live: [LIVE] progress: 21/503 scanned (1.0/s) skipped=0 candidates
+=1 ETA≈465s
+2025-09-18 15:04:38,425 INFO live: [LIVE] progress: 32/503 scanned (1.0/s) skipped=0 candidates
+=1 ETA≈456s
+2025-09-18 15:04:42,927 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:04:42,928 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 15:04:42,947 WARNING sim: No data for ANSS; skipping
+2025-09-18 15:04:44,519 INFO live: [LIVE] ➕➕ candidate APA    px=23.91 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:04:48,917 INFO live: [LIVE] progress: 43/503 scanned (1.0/s) skipped=0 candidates
+=2 ETA≈443s
+2025-09-18 15:04:50,760 INFO live: [LIVE] ➕➕ candidate ANET   px=146.17 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:04:52,482 INFO live: [LIVE] ➕➕ candidate AIZ    px=210.33 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:04:59,071 INFO live: [LIVE] progress: 55/503 scanned (1.1/s) skipped=0 candidates
+=4 ETA≈420s
+2025-09-18 15:04:59,947 INFO live: [LIVE] ➕➕ candidate BKR    px=47.19 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:05:05,805 INFO live: [LIVE] ➕➕ candidate BBY    px=74.36 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:05:09,386 INFO live: [LIVE] progress: 66/503 scanned (1.1/s) skipped=0 candidates
+=6 ETA≈410s
+2025-09-18 15:05:19,828 INFO live: [LIVE] progress: 79/503 scanned (1.1/s) skipped=0 candidates
+=6 ETA≈388s
+2025-09-18 15:05:30,506 INFO live: [LIVE] progress: 93/503 scanned (1.1/s) skipped=0 candidates
+=6 ETA≈366s
+2025-09-18 15:05:41,072 INFO live: [LIVE] progress: 107/503 scanned (1.1/s) skipped=0 candidate
+s=6 ETA≈346s
+2025-09-18 15:05:51,663 INFO live: [LIVE] progress: 122/503 scanned (1.2/s) skipped=0 candidate
+s=6 ETA≈325s
+2025-09-18 15:06:01,896 INFO live: [LIVE] progress: 135/503 scanned (1.2/s) skipped=0 candidate
+s=6 ETA≈312s
+2025-09-18 15:06:12,213 INFO live: [LIVE] progress: 148/503 scanned (1.2/s) skipped=0 candidate
+s=6 ETA≈299s
+2025-09-18 15:06:22,682 INFO live: [LIVE] progress: 160/503 scanned (1.2/s) skipped=0 candidate
+s=6 ETA≈290s
+2025-09-18 15:06:33,756 INFO live: [LIVE] progress: 173/503 scanned (1.2/s) skipped=0 candidate
+s=6 ETA≈279s
+2025-09-18 15:06:39,352 INFO live: [LIVE] ➕➕ candidate EG     px=335.79 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:06:44,197 INFO live: [LIVE] progress: 185/503 scanned (1.2/s) skipped=0 candidate
+s=7 ETA≈269s
+2025-09-18 15:06:46,034 INFO live: [LIVE] ➕➕ candidate XOM    px=114.28 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:06:54,452 INFO live: [LIVE] progress: 197/503 scanned (1.2/s) skipped=0 candidate
+s=8 ETA≈259s
+2025-09-18 15:07:05,076 INFO live: [LIVE] progress: 210/503 scanned (1.2/s) skipped=0 candidate
+s=8 ETA≈248s
+2025-09-18 15:07:12,499 INFO live: [LIVE] ➕➕ candidate GL     px=144.04 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:07:16,018 INFO live: [LIVE] progress: 223/503 scanned (1.2/s) skipped=0 candidate
+s=9 ETA≈237s
+2025-09-18 15:07:19,824 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:07:19,825 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 15:07:19,830 WARNING sim: No data for HES; skipping
+2025-09-18 15:07:26,629 INFO live: [LIVE] progress: 237/503 scanned (1.2/s) skipped=0 candidate
+s=9 ETA≈224s
+2025-09-18 15:07:36,817 INFO live: [LIVE] progress: 250/503 scanned (1.2/s) skipped=0 candidate
+s=9 ETA≈212s
+2025-09-18 15:07:46,933 INFO live: [LIVE] progress: 263/503 scanned (1.2/s) skipped=0 candidate
+s=9 ETA≈200s
+2025-09-18 15:07:51,053 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:07:51,053 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 15:07:51,066 WARNING sim: No data for JNPR; skipping
+2025-09-18 15:07:57,527 INFO live: [LIVE] progress: 277/503 scanned (1.2/s) skipped=0 candidate
+s=9 ETA≈188s
+2025-09-18 15:08:07,922 INFO live: [LIVE] progress: 291/503 scanned (1.2/s) skipped=0 candidate
+s=9 ETA≈175s
+2025-09-18 15:08:18,681 INFO live: [LIVE] progress: 305/503 scanned (1.2/s) skipped=0 candidate
+s=9 ETA≈163s
+2025-09-18 15:08:28,978 INFO live: [LIVE] progress: 317/503 scanned (1.2/s) skipped=0 candidate
+s=9 ETA≈153s
+2025-09-18 15:08:39,717 INFO live: [LIVE] progress: 329/503 scanned (1.2/s) skipped=0 candidate
+s=9 ETA≈144s
+2025-09-18 15:08:50,331 INFO live: [LIVE] progress: 341/503 scanned (1.2/s) skipped=0 candidate
+s=9 ETA≈134s
+2025-09-18 15:09:00,621 INFO live: [LIVE] progress: 353/503 scanned (1.2/s) skipped=0 candidate
+s=9 ETA≈125s
+2025-09-18 15:09:07,993 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:09:07,993 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 15:09:08,001 WARNING sim: No data for PARA; skipping
+2025-09-18 15:09:10,666 INFO live: [LIVE] progress: 366/503 scanned (1.2/s) skipped=0 candidate
+s=9 ETA≈113s
+2025-09-18 15:09:20,854 INFO live: [LIVE] progress: 379/503 scanned (1.2/s) skipped=0 candidate
+s=9 ETA≈103s
+2025-09-18 15:09:28,295 INFO live: [LIVE] ➕➕ candidate PWR    px=391.69 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:09:31,543 INFO live: [LIVE] progress: 392/503 scanned (1.2/s) skipped=0 candidate
+s=10 ETA≈92s
+2025-09-18 15:09:42,113 INFO live: [LIVE] progress: 404/503 scanned (1.2/s) skipped=0 candidate
+s=10 ETA≈82s
+2025-09-18 15:09:52,849 INFO live: [LIVE] progress: 416/503 scanned (1.2/s) skipped=0 candidate
+s=10 ETA≈72s
+2025-09-18 15:10:03,027 INFO live: [LIVE] progress: 427/503 scanned (1.2/s) skipped=0 candidate
+s=10 ETA≈63s
+2025-09-18 15:10:13,377 INFO live: [LIVE] progress: 438/503 scanned (1.2/s) skipped=0 candidate
+s=10 ETA≈54s
+2025-09-18 15:10:24,074 INFO live: [LIVE] progress: 450/503 scanned (1.2/s) skipped=0 candidate
+s=10 ETA≈44s
+2025-09-18 15:10:34,478 INFO live: [LIVE] progress: 461/503 scanned (1.2/s) skipped=0 candidate
+s=10 ETA≈35s
+2025-09-18 15:10:44,869 INFO live: [LIVE] progress: 473/503 scanned (1.2/s) skipped=0 candidate
+s=10 ETA≈25s
+2025-09-18 15:10:50,933 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:10:50,934 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 15:10:55,409 INFO live: [LIVE] progress: 486/503 scanned (1.2/s) skipped=0 candidate
+s=10 ETA≈14s
+2025-09-18 15:11:05,784 INFO live: [LIVE] progress: 499/503 scanned (1.2/s) skipped=0 candidate
+s=10 ETA≈3s
+2025-09-18 15:11:09,142 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=10 (421.7s)
+
+2025-09-18 15:11:09,142 INFO live: [LIVE] top candidates: PWR@391.69(6), EG@335.79(6), AIZ@210.
+33(6), ANET@146.17(6), GL@144.04(6) …
+2025-09-18 15:11:09,148 WARNING live: [GR] TEMP OVERRIDE: ignoring guardrail ('bought today' /
+'open position') for this run
+2025-09-18 15:11:09,148 INFO live: [LIVE] considering PWR    px=391.69 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:11:09,149 INFO live: [LIVE] Skip PWR: qty < 1
+2025-09-18 15:11:09,149 INFO live: [LIVE] considering EG     px=335.79 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:11:09,149 INFO live: [LIVE] Skip EG: qty < 1
+2025-09-18 15:11:09,149 INFO live: [LIVE] considering AIZ    px=210.33 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:11:09,150 INFO live: [LIVE] Skip AIZ: qty < 1
+2025-09-18 15:11:09,150 INFO live: [LIVE] considering ANET   px=146.17 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:11:09,150 INFO live: [LIVE] Skip ANET: qty < 1
+2025-09-18 15:11:09,151 INFO live: [LIVE] considering GL     px=144.04 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:11:09,151 INFO live: [LIVE] Skip GL: qty < 1
+2025-09-18 15:11:09,151 INFO live: [LIVE] considering XOM    px=114.28 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:11:09,151 INFO live: [LIVE] Skip XOM: qty < 1
+2025-09-18 15:11:09,152 INFO live: [LIVE] considering AKAM   px=76.92 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:11:09,152 INFO live: [LIVE] Skip AKAM: qty < 1
+2025-09-18 15:11:09,152 INFO live: [LIVE] considering BBY    px=74.36 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:11:09,152 INFO live: [LIVE] Skip BBY: qty < 1
+2025-09-18 15:11:09,153 INFO live: [LIVE] considering BKR    px=47.19 afford_qty=1 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=1
+2025-09-18 15:11:09,153 INFO services.broker: [LIVE] BUY request for BKR x1 @47.19
+2025-09-18 15:11:09,354 INFO services.broker: [LIVE] resizing by broker funds BKR: q 1→0 (fresh
+_pp=5.16, px=47.1900)
+2025-09-18 15:11:09,355 INFO live: [LIVE] skip BKR: INSUFFICIENT_FUNDS
+2025-09-18 15:11:09,362 INFO live: [LIVE] considering APA    px=23.91 afford_qty=2 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=2
+2025-09-18 15:11:09,362 INFO services.broker: [LIVE] BUY request for APA x2 @23.91
+2025-09-18 15:11:09,363 INFO services.broker: [LIVE] resizing by broker funds APA: q 2→0 (fresh
+_pp=5.16, px=23.9100)
+2025-09-18 15:11:09,365 INFO live: [LIVE] skip APA: INSUFFICIENT_FUNDS
+2025-09-18 15:11:09,365 INFO live: [LIVE] ranked selection found no purchasable candidates (all
+ gated)
+2025-09-18 15:11:12,414 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 15:11:12,518 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 15:11:22,689 INFO live: [LIVE] progress: 13/503 scanned (1.3/s) skipped=0 candidates
+=0 ETA≈387s
+2025-09-18 15:11:32,861 INFO live: [LIVE] progress: 25/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈391s
+2025-09-18 15:11:42,271 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:11:42,272 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 15:11:42,278 WARNING sim: No data for ANSS; skipping
+2025-09-18 15:11:43,062 INFO live: [LIVE] progress: 37/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈386s
+2025-09-18 15:11:53,430 INFO live: [LIVE] progress: 50/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈372s
+2025-09-18 15:12:03,859 INFO live: [LIVE] progress: 63/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈359s
+2025-09-18 15:12:09,387 INFO live: [LIVE] ➕➕ candidate BSX    px=98.42 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:12:14,117 INFO live: [LIVE] progress: 76/503 scanned (1.2/s) skipped=0 candidates
+=1 ETA≈347s
+2025-09-18 15:12:24,806 INFO live: [LIVE] progress: 89/503 scanned (1.2/s) skipped=0 candidates
+=1 ETA≈337s
+2025-09-18 15:12:35,417 INFO live: [LIVE] progress: 100/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈335s
+2025-09-18 15:12:46,140 INFO live: [LIVE] progress: 113/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈323s
+2025-09-18 15:12:56,531 INFO live: [LIVE] progress: 126/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈312s
+2025-09-18 15:13:06,897 INFO live: [LIVE] progress: 137/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈306s
+2025-09-18 15:13:18,528 INFO live: [LIVE] progress: 148/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈303s
+2025-09-18 15:13:29,325 INFO live: [LIVE] progress: 161/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈291s
+2025-09-18 15:13:40,094 INFO live: [LIVE] progress: 174/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈279s
+2025-09-18 15:13:50,532 INFO live: [LIVE] progress: 187/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈267s
+2025-09-18 15:14:00,570 INFO live: [LIVE] progress: 199/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈257s
+2025-09-18 15:14:11,225 INFO live: [LIVE] progress: 212/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈245s
+2025-09-18 15:14:22,438 INFO live: [LIVE] progress: 224/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈237s
+2025-09-18 15:14:26,213 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:14:26,214 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 15:14:26,227 WARNING sim: No data for HES; skipping
+2025-09-18 15:14:33,096 INFO live: [LIVE] progress: 237/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈225s
+2025-09-18 15:14:43,852 INFO live: [LIVE] progress: 248/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈217s
+2025-09-18 15:14:54,144 INFO live: [LIVE] progress: 261/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈206s
+2025-09-18 15:15:00,821 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:15:00,821 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 15:15:00,830 WARNING sim: No data for JNPR; skipping
+2025-09-18 15:15:04,335 INFO live: [LIVE] progress: 272/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈197s
+2025-09-18 15:15:14,440 INFO live: [LIVE] progress: 283/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈188s
+2025-09-18 15:15:24,687 INFO live: [LIVE] progress: 295/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈178s
+2025-09-18 15:15:35,059 INFO live: [LIVE] progress: 307/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈168s
+2025-09-18 15:15:45,345 INFO live: [LIVE] progress: 319/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈157s
+2025-09-18 15:15:55,642 INFO live: [LIVE] progress: 332/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈146s
+2025-09-18 15:16:06,367 INFO live: [LIVE] progress: 343/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈137s
+2025-09-18 15:16:17,065 INFO live: [LIVE] progress: 356/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈126s
+2025-09-18 15:16:22,314 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:16:22,314 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 15:16:22,328 WARNING sim: No data for PARA; skipping
+2025-09-18 15:16:28,785 INFO live: [LIVE] progress: 369/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈115s
+2025-09-18 15:16:39,392 INFO live: [LIVE] progress: 375/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈112s
+2025-09-18 15:16:50,173 INFO live: [LIVE] progress: 386/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈102s
+2025-09-18 15:17:00,871 INFO live: [LIVE] progress: 399/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈91s
+2025-09-18 15:17:11,092 INFO live: [LIVE] progress: 411/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈80s
+2025-09-18 15:17:22,444 INFO live: [LIVE] progress: 422/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈71s
+2025-09-18 15:17:33,054 INFO live: [LIVE] progress: 435/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈60s
+2025-09-18 15:17:43,853 INFO live: [LIVE] progress: 447/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈49s
+2025-09-18 15:17:54,250 INFO live: [LIVE] progress: 460/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈38s
+2025-09-18 15:18:04,941 INFO live: [LIVE] progress: 473/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈26s
+2025-09-18 15:18:11,134 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:18:11,135 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 15:18:15,378 INFO live: [LIVE] progress: 486/503 scanned (1.1/s) skipped=0 candidate
+s=1 ETA≈15s
+2025-09-18 15:18:25,950 INFO live: [LIVE] progress: 499/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈3s
+2025-09-18 15:18:29,599 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=1 (437.2s)
+2025-09-18 15:18:29,599 INFO live: [LIVE] top candidates: BSX@98.42(6)
+2025-09-18 15:18:29,610 WARNING live: [GR] TEMP OVERRIDE: ignoring guardrail ('bought today' /
+'open position') for this run
+2025-09-18 15:18:29,611 INFO live: [LIVE] considering BSX    px=98.42 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:18:29,611 INFO live: [LIVE] Skip BSX: qty < 1
+2025-09-18 15:18:29,612 INFO live: [LIVE] ranked selection found no purchasable candidates (all
+ gated)
+2025-09-18 15:18:32,674 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 15:18:32,878 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 15:18:43,859 INFO live: [LIVE] progress: 10/503 scanned (0.9/s) skipped=0 candidates
+=0 ETA≈551s
+2025-09-18 15:18:54,190 INFO live: [LIVE] progress: 23/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈449s
+2025-09-18 15:19:04,380 INFO live: [LIVE] progress: 34/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈437s
+2025-09-18 15:19:06,569 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:19:06,569 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 15:19:06,578 WARNING sim: No data for ANSS; skipping
+2025-09-18 15:19:15,069 INFO live: [LIVE] progress: 46/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈421s
+2025-09-18 15:19:25,313 INFO live: [LIVE] progress: 58/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈404s
+2025-09-18 15:19:35,938 INFO live: [LIVE] progress: 72/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈379s
+2025-09-18 15:19:46,612 INFO live: [LIVE] progress: 84/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈369s
+2025-09-18 15:19:57,137 INFO live: [LIVE] progress: 98/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈349s
+2025-09-18 15:20:07,453 INFO live: [LIVE] progress: 111/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈335s
+2025-09-18 15:20:17,679 INFO live: [LIVE] progress: 124/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈321s
+2025-09-18 15:20:28,376 INFO live: [LIVE] progress: 138/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈306s
+2025-09-18 15:20:38,835 INFO live: [LIVE] progress: 152/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈291s
+2025-09-18 15:20:49,363 INFO live: [LIVE] progress: 166/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈277s
+2025-09-18 15:20:59,380 INFO live: [LIVE] progress: 180/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈263s
+2025-09-18 15:21:09,439 INFO live: [LIVE] progress: 193/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈252s
+2025-09-18 15:21:20,314 INFO live: [LIVE] progress: 206/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈242s
+2025-09-18 15:21:30,953 INFO live: [LIVE] progress: 218/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈233s
+2025-09-18 15:21:39,706 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:21:39,706 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 15:21:39,714 WARNING sim: No data for HES; skipping
+2025-09-18 15:21:41,105 INFO live: [LIVE] progress: 230/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈224s
+2025-09-18 15:21:51,740 INFO live: [LIVE] progress: 243/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈213s
+2025-09-18 15:22:01,964 INFO live: [LIVE] progress: 255/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈204s
+2025-09-18 15:22:12,692 INFO live: [LIVE] progress: 267/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈194s
+2025-09-18 15:22:14,098 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:22:14,099 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 15:22:14,105 WARNING sim: No data for JNPR; skipping
+2025-09-18 15:22:22,735 INFO live: [LIVE] progress: 278/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈186s
+2025-09-18 15:22:33,324 INFO live: [LIVE] progress: 290/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈177s
+2025-09-18 15:22:43,878 INFO live: [LIVE] progress: 302/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈167s
+2025-09-18 15:22:54,293 INFO live: [LIVE] progress: 314/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈157s
+2025-09-18 15:23:04,416 INFO live: [LIVE] progress: 326/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈148s
+2025-09-18 15:23:14,622 INFO live: [LIVE] progress: 338/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈138s
+2025-09-18 15:23:25,023 INFO live: [LIVE] progress: 349/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈129s
+2025-09-18 15:23:35,912 INFO live: [LIVE] progress: 361/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈119s
+2025-09-18 15:23:36,939 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:23:36,939 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 15:23:36,950 WARNING sim: No data for PARA; skipping
+2025-09-18 15:23:44,985 INFO live: [LIVE] ➕➕ candidate PM     px=162.81 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:23:46,042 INFO live: [LIVE] progress: 373/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈109s
+2025-09-18 15:23:56,505 INFO live: [LIVE] progress: 384/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈100s
+2025-09-18 15:24:07,035 INFO live: [LIVE] progress: 393/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈94s
+2025-09-18 15:24:17,401 INFO live: [LIVE] progress: 404/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈84s
+2025-09-18 15:24:28,248 INFO live: [LIVE] progress: 414/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈76s
+2025-09-18 15:24:38,394 INFO live: [LIVE] progress: 426/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈66s
+2025-09-18 15:24:48,595 INFO live: [LIVE] progress: 436/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈58s
+2025-09-18 15:24:58,978 INFO live: [LIVE] progress: 448/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈47s
+2025-09-18 15:25:09,631 INFO live: [LIVE] progress: 461/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈36s
+2025-09-18 15:25:20,139 INFO live: [LIVE] progress: 474/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈25s
+2025-09-18 15:25:25,862 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:25:25,862 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 15:25:30,700 INFO live: [LIVE] progress: 487/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈14s
+2025-09-18 15:25:41,404 INFO live: [LIVE] progress: 502/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈1s
+2025-09-18 15:25:42,248 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=1 (429.6s)
+2025-09-18 15:25:42,249 INFO live: [LIVE] top candidates: PM@162.81(6)
+2025-09-18 15:25:42,254 WARNING live: [GR] TEMP OVERRIDE: ignoring guardrail ('bought today' /
+'open position') for this run
+2025-09-18 15:25:42,254 INFO live: [LIVE] considering PM     px=162.81 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:25:42,254 INFO live: [LIVE] Skip PM: qty < 1
+2025-09-18 15:25:42,255 INFO live: [LIVE] ranked selection found no purchasable candidates (all
+ gated)
+2025-09-18 15:25:45,303 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 15:25:45,535 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 15:25:55,679 INFO live: [LIVE] progress: 15/503 scanned (1.4/s) skipped=0 candidates
+=0 ETA≈338s
+2025-09-18 15:26:06,363 INFO live: [LIVE] progress: 29/503 scanned (1.4/s) skipped=0 candidates
+=0 ETA≈344s
+2025-09-18 15:26:12,224 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:26:12,224 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 15:26:12,239 WARNING sim: No data for ANSS; skipping
+2025-09-18 15:26:17,222 INFO live: [LIVE] progress: 42/503 scanned (1.3/s) skipped=0 candidates
+=0 ETA≈350s
+2025-09-18 15:26:27,697 INFO live: [LIVE] progress: 52/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈368s
+2025-09-18 15:26:38,305 INFO live: [LIVE] progress: 64/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈364s
+2025-09-18 15:26:48,619 INFO live: [LIVE] progress: 76/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈356s
+2025-09-18 15:26:59,444 INFO live: [LIVE] progress: 88/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈350s
+2025-09-18 15:27:09,594 INFO live: [LIVE] progress: 99/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈344s
+2025-09-18 15:27:19,718 INFO live: [LIVE] progress: 111/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈333s
+2025-09-18 15:27:30,299 INFO live: [LIVE] progress: 123/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈324s
+2025-09-18 15:27:40,951 INFO live: [LIVE] progress: 136/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈312s
+2025-09-18 15:27:50,572 INFO live: [LIVE] ➕➕ candidate DLTR   px=98.18 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:27:51,608 INFO live: [LIVE] progress: 150/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈297s
+2025-09-18 15:28:01,665 INFO live: [LIVE] progress: 163/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈284s
+2025-09-18 15:28:12,170 INFO live: [LIVE] progress: 178/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈268s
+2025-09-18 15:28:22,490 INFO live: [LIVE] progress: 191/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈257s
+2025-09-18 15:28:32,878 INFO live: [LIVE] progress: 203/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈248s
+2025-09-18 15:28:42,934 INFO live: [LIVE] progress: 215/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈238s
+2025-09-18 15:28:53,722 INFO live: [LIVE] progress: 228/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈227s
+2025-09-18 15:28:53,903 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:28:53,904 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 15:28:53,913 WARNING sim: No data for HES; skipping
+2025-09-18 15:29:03,970 INFO live: [LIVE] progress: 239/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈219s
+2025-09-18 15:29:14,377 INFO live: [LIVE] progress: 252/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈208s
+2025-09-18 15:29:24,388 INFO live: [LIVE] progress: 264/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈198s
+2025-09-18 15:29:28,554 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:29:28,555 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 15:29:28,561 WARNING sim: No data for JNPR; skipping
+2025-09-18 15:29:34,548 INFO live: [LIVE] progress: 275/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈190s
+2025-09-18 15:29:45,040 INFO live: [LIVE] progress: 287/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈180s
+2025-09-18 15:29:55,752 INFO live: [LIVE] progress: 300/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈169s
+2025-09-18 15:30:06,414 INFO live: [LIVE] progress: 312/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈160s
+2025-09-18 15:30:16,738 INFO live: [LIVE] progress: 324/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈150s
+2025-09-18 15:30:26,826 INFO live: [LIVE] progress: 331/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈146s
+2025-09-18 15:30:37,060 INFO live: [LIVE] progress: 342/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈137s
+2025-09-18 15:30:47,292 INFO live: [LIVE] progress: 354/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈127s
+2025-09-18 15:30:54,687 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:30:54,687 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 15:30:54,694 WARNING sim: No data for PARA; skipping
+2025-09-18 15:30:58,029 INFO live: [LIVE] progress: 367/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈116s
+2025-09-18 15:31:08,505 INFO live: [LIVE] progress: 379/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈106s
+2025-09-18 15:31:18,934 INFO live: [LIVE] progress: 391/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈96s
+2025-09-18 15:31:29,427 INFO live: [LIVE] progress: 404/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈84s
+2025-09-18 15:31:39,879 INFO live: [LIVE] progress: 417/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈73s
+2025-09-18 15:31:50,093 INFO live: [LIVE] progress: 429/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈63s
+2025-09-18 15:32:00,321 INFO live: [LIVE] progress: 442/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈52s
+2025-09-18 15:32:10,382 INFO live: [LIVE] progress: 454/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈42s
+2025-09-18 15:32:20,586 INFO live: [LIVE] progress: 467/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈30s
+2025-09-18 15:32:30,813 INFO live: [LIVE] progress: 480/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈19s
+2025-09-18 15:32:31,362 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:32:31,364 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 15:32:41,162 INFO live: [LIVE] progress: 494/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈8s
+2025-09-18 15:32:48,612 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=1 (423.3s)
+2025-09-18 15:32:48,612 INFO live: [LIVE] top candidates: DLTR@98.18(6)
+2025-09-18 15:32:48,618 WARNING live: [GR] TEMP OVERRIDE: ignoring guardrail ('bought today' /
+'open position') for this run
+2025-09-18 15:32:48,618 INFO live: [LIVE] considering DLTR   px=98.18 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:32:48,618 INFO live: [LIVE] Skip DLTR: qty < 1
+2025-09-18 15:32:48,618 INFO live: [LIVE] ranked selection found no purchasable candidates (all
+ gated)
+2025-09-18 15:32:51,685 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 15:32:51,927 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 15:33:01,852 INFO live: [LIVE] progress: 10/503 scanned (1.0/s) skipped=0 candidates
+=0 ETA≈501s
+2025-09-18 15:33:12,638 INFO live: [LIVE] progress: 23/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈437s
+2025-09-18 15:33:25,108 INFO live: [LIVE] progress: 35/503 scanned (1.0/s) skipped=0 candidates
+=0 ETA≈447s
+2025-09-18 15:33:26,287 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:33:26,287 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 15:33:26,296 WARNING sim: No data for ANSS; skipping
+2025-09-18 15:33:35,129 INFO live: [LIVE] progress: 47/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈422s
+2025-09-18 15:33:45,874 INFO live: [LIVE] progress: 60/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈400s
+2025-09-18 15:33:55,950 INFO live: [LIVE] progress: 72/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈385s
+2025-09-18 15:34:07,684 INFO live: [LIVE] progress: 86/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈369s
+2025-09-18 15:34:17,870 INFO live: [LIVE] progress: 99/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈352s
+2025-09-18 15:34:28,126 INFO live: [LIVE] progress: 112/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈337s
+2025-09-18 15:34:38,305 INFO live: [LIVE] progress: 127/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈316s
+2025-09-18 15:34:48,311 INFO live: [LIVE] progress: 140/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈302s
+2025-09-18 15:34:58,760 INFO live: [LIVE] progress: 153/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈291s
+2025-09-18 15:35:08,956 INFO live: [LIVE] progress: 167/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈276s
+2025-09-18 15:35:19,667 INFO live: [LIVE] progress: 182/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈261s
+2025-09-18 15:35:30,182 INFO live: [LIVE] progress: 196/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈248s
+2025-09-18 15:35:40,850 INFO live: [LIVE] progress: 211/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈234s
+2025-09-18 15:35:51,808 INFO live: [LIVE] progress: 226/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈221s
+2025-09-18 15:35:53,483 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:35:53,485 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 15:35:53,493 WARNING sim: No data for HES; skipping
+2025-09-18 15:36:01,854 INFO live: [LIVE] progress: 241/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈207s
+2025-09-18 15:36:12,544 INFO live: [LIVE] progress: 256/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈194s
+2025-09-18 15:36:21,785 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:36:21,786 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 15:36:21,794 WARNING sim: No data for JNPR; skipping
+2025-09-18 15:36:22,575 INFO live: [LIVE] progress: 269/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈183s
+2025-09-18 15:36:32,941 INFO live: [LIVE] progress: 281/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈175s
+2025-09-18 15:36:43,316 INFO live: [LIVE] progress: 295/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈163s
+2025-09-18 15:36:54,479 INFO live: [LIVE] progress: 307/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈155s
+2025-09-18 15:37:04,557 INFO live: [LIVE] progress: 321/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈143s
+2025-09-18 15:37:15,019 INFO live: [LIVE] progress: 334/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈133s
+2025-09-18 15:37:25,226 INFO live: [LIVE] progress: 346/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈124s
+2025-09-18 15:37:35,669 INFO live: [LIVE] progress: 360/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈113s
+2025-09-18 15:37:37,310 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:37:37,311 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 15:37:37,322 WARNING sim: No data for PARA; skipping
+2025-09-18 15:37:45,935 INFO live: [LIVE] progress: 375/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈100s
+2025-09-18 15:37:56,036 INFO live: [LIVE] progress: 387/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈91s
+2025-09-18 15:38:06,085 INFO live: [LIVE] progress: 399/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈82s
+2025-09-18 15:38:16,641 INFO live: [LIVE] progress: 413/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈71s
+2025-09-18 15:38:26,782 INFO live: [LIVE] progress: 427/503 scanned (1.3/s) skipped=0 candidate
+s=0 ETA≈60s
+2025-09-18 15:38:36,074 INFO live: [LIVE] ➕➕ candidate TER    px=119.31 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:38:36,846 INFO live: [LIVE] progress: 441/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈49s
+2025-09-18 15:38:47,409 INFO live: [LIVE] progress: 455/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈38s
+2025-09-18 15:38:57,549 INFO live: [LIVE] progress: 468/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈27s
+2025-09-18 15:39:07,833 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:39:07,833 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 15:39:07,852 INFO live: [LIVE] progress: 481/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈17s
+2025-09-18 15:39:17,942 INFO live: [LIVE] progress: 494/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈7s
+2025-09-18 15:39:25,471 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=1 (393.8s)
+2025-09-18 15:39:25,472 INFO live: [LIVE] top candidates: TER@119.31(6)
+2025-09-18 15:39:25,477 WARNING live: [GR] TEMP OVERRIDE: ignoring guardrail ('bought today' /
+'open position') for this run
+2025-09-18 15:39:25,477 INFO live: [LIVE] considering TER    px=119.31 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:39:25,477 INFO live: [LIVE] Skip TER: qty < 1
+2025-09-18 15:39:25,477 INFO live: [LIVE] ranked selection found no purchasable candidates (all
+ gated)
+2025-09-18 15:39:28,518 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 15:39:28,705 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 15:39:42,110 ERROR services.data_fetch: [ERROR] Yahoo download ACN timed out after 1
+0s
+2025-09-18 15:39:42,209 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:39:42,210 ERROR yfinance: ['ACN']: Timeout('Failed to perform, curl: (28) Connect
+ion timed out after 10011 milliseconds. See https://curl.se/libcurl/c/libcurl-errors.html first
+ for more details.')
+2025-09-18 15:39:42,215 WARNING sim: No data for ACN; skipping
+2025-09-18 15:39:42,216 INFO live: [LIVE] progress: 5/503 scanned (0.4/s) skipped=0 candidates=
+0 ETA≈1364s
+2025-09-18 15:39:52,483 INFO live: [LIVE] progress: 20/503 scanned (0.8/s) skipped=0 candidates
+=0 ETA≈579s
+2025-09-18 15:40:02,645 INFO live: [LIVE] progress: 32/503 scanned (0.9/s) skipped=0 candidates
+=0 ETA≈502s
+2025-09-18 15:40:07,974 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:40:07,974 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 15:40:07,984 WARNING sim: No data for ANSS; skipping
+2025-09-18 15:40:17,883 INFO live: [LIVE] progress: 42/503 scanned (0.9/s) skipped=0 candidates
+=0 ETA≈542s
+2025-09-18 15:40:28,118 INFO live: [LIVE] progress: 56/503 scanned (0.9/s) skipped=0 candidates
+=0 ETA≈476s
+2025-09-18 15:40:38,623 INFO live: [LIVE] progress: 70/503 scanned (1.0/s) skipped=0 candidates
+=0 ETA≈434s
+2025-09-18 15:40:49,266 INFO live: [LIVE] progress: 84/503 scanned (1.0/s) skipped=0 candidates
+=0 ETA≈403s
+2025-09-18 15:40:59,914 INFO live: [LIVE] progress: 98/503 scanned (1.1/s) skipped=0 candidates
+=0 ETA≈378s
+2025-09-18 15:41:10,045 INFO live: [LIVE] progress: 110/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈363s
+2025-09-18 15:41:20,733 INFO live: [LIVE] progress: 122/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈350s
+2025-09-18 15:41:31,507 INFO live: [LIVE] progress: 133/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈342s
+2025-09-18 15:41:42,300 INFO live: [LIVE] progress: 145/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈330s
+2025-09-18 15:41:52,801 INFO live: [LIVE] progress: 157/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈318s
+2025-09-18 15:42:02,989 INFO live: [LIVE] progress: 170/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈303s
+2025-09-18 15:42:13,537 INFO live: [LIVE] progress: 183/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈289s
+2025-09-18 15:42:23,972 INFO live: [LIVE] progress: 195/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈277s
+2025-09-18 15:42:34,286 INFO live: [LIVE] progress: 208/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈263s
+2025-09-18 15:42:44,454 INFO live: [LIVE] progress: 222/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈248s
+2025-09-18 15:42:49,500 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:42:49,500 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 15:42:49,506 WARNING sim: No data for HES; skipping
+2025-09-18 15:42:54,987 INFO live: [LIVE] progress: 235/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈235s
+2025-09-18 15:43:05,114 INFO live: [LIVE] progress: 247/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈224s
+2025-09-18 15:43:16,049 INFO live: [LIVE] progress: 259/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈214s
+2025-09-18 15:43:24,535 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:43:24,535 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 15:43:24,544 WARNING sim: No data for JNPR; skipping
+2025-09-18 15:43:26,546 INFO live: [LIVE] progress: 270/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈205s
+2025-09-18 15:43:36,628 INFO live: [LIVE] progress: 281/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈196s
+2025-09-18 15:43:46,656 INFO live: [LIVE] progress: 292/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈187s
+2025-09-18 15:43:56,736 INFO live: [LIVE] progress: 304/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈176s
+2025-09-18 15:44:07,259 INFO live: [LIVE] progress: 317/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈164s
+2025-09-18 15:44:17,541 INFO live: [LIVE] progress: 329/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈153s
+2025-09-18 15:44:27,682 INFO live: [LIVE] progress: 341/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈142s
+2025-09-18 15:44:38,392 INFO live: [LIVE] progress: 354/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈130s
+2025-09-18 15:44:45,294 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:44:45,295 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 15:44:45,301 WARNING sim: No data for PARA; skipping
+2025-09-18 15:44:49,024 INFO live: [LIVE] progress: 368/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈118s
+2025-09-18 15:44:59,612 INFO live: [LIVE] progress: 382/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈105s
+2025-09-18 15:45:10,012 INFO live: [LIVE] progress: 395/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈93s
+2025-09-18 15:45:20,021 INFO live: [LIVE] progress: 407/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈83s
+2025-09-18 15:45:30,451 INFO live: [LIVE] progress: 418/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈74s
+2025-09-18 15:45:41,316 INFO live: [LIVE] progress: 430/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈63s
+2025-09-18 15:45:51,919 INFO live: [LIVE] progress: 442/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈53s
+2025-09-18 15:46:02,089 INFO live: [LIVE] progress: 454/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈42s
+2025-09-18 15:46:13,047 INFO live: [LIVE] progress: 467/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈31s
+2025-09-18 15:46:23,528 INFO live: [LIVE] progress: 479/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈21s
+2025-09-18 15:46:28,605 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:46:28,606 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 15:46:33,703 INFO live: [LIVE] progress: 484/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈17s
+2025-09-18 15:46:43,738 INFO live: [LIVE] progress: 496/503 scanned (1.1/s) skipped=0 candidate
+s=0 ETA≈6s
+2025-09-18 15:46:49,866 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=0 (441.3s)
+2025-09-18 15:46:49,866 INFO live: [LIVE] no candidates this round
+2025-09-18 15:46:52,911 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 15:46:53,103 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 15:47:03,497 INFO live: [LIVE] progress: 13/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈399s
+2025-09-18 15:47:14,518 INFO live: [LIVE] progress: 26/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈396s
+2025-09-18 15:47:23,641 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:47:23,641 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 15:47:23,650 WARNING sim: No data for ANSS; skipping
+2025-09-18 15:47:25,149 INFO live: [LIVE] progress: 38/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈394s
+2025-09-18 15:47:35,602 INFO live: [LIVE] progress: 50/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈387s
+2025-09-18 15:47:45,667 INFO live: [LIVE] progress: 63/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈368s
+2025-09-18 15:47:56,123 INFO live: [LIVE] progress: 75/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈361s
+2025-09-18 15:48:06,886 INFO live: [LIVE] progress: 89/503 scanned (1.2/s) skipped=0 candidates
+=0 ETA≈344s
+2025-09-18 15:48:17,504 INFO live: [LIVE] progress: 103/503 scanned (1.2/s) skipped=0 candidate
+s=0 ETA≈329s
+2025-09-18 15:48:20,293 INFO live: [LIVE] ➕➕ candidate CSCO   px=68.66 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:48:28,057 INFO live: [LIVE] progress: 118/503 scanned (1.2/s) skipped=0 candidate
+s=1 ETA≈310s
+2025-09-18 15:48:38,111 INFO live: [LIVE] progress: 132/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈296s
+2025-09-18 15:48:48,359 INFO live: [LIVE] progress: 146/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈282s
+2025-09-18 15:48:58,829 INFO live: [LIVE] progress: 160/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈270s
+2025-09-18 15:49:09,205 INFO live: [LIVE] progress: 172/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈262s
+2025-09-18 15:49:19,391 INFO live: [LIVE] progress: 185/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈252s
+2025-09-18 15:49:29,428 INFO live: [LIVE] progress: 197/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈243s
+2025-09-18 15:49:39,839 INFO live: [LIVE] progress: 211/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈231s
+2025-09-18 15:49:50,560 INFO live: [LIVE] progress: 224/503 scanned (1.3/s) skipped=0 candidate
+s=1 ETA≈221s
+2025-09-18 15:49:50,560 INFO live: [LIVE] ➕➕ candidate HAS    px=74.93 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:49:53,926 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:49:53,926 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 15:49:53,933 WARNING sim: No data for HES; skipping
+2025-09-18 15:50:01,307 INFO live: [LIVE] progress: 238/503 scanned (1.3/s) skipped=0 candidate
+s=2 ETA≈210s
+2025-09-18 15:50:11,836 INFO live: [LIVE] progress: 250/503 scanned (1.3/s) skipped=0 candidate
+s=2 ETA≈201s
+2025-09-18 15:50:22,312 INFO live: [LIVE] progress: 260/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈196s
+2025-09-18 15:50:29,895 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:50:29,896 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 15:50:29,907 WARNING sim: No data for JNPR; skipping
+2025-09-18 15:50:32,814 INFO live: [LIVE] progress: 271/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈188s
+2025-09-18 15:50:43,261 INFO live: [LIVE] progress: 283/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈179s
+2025-09-18 15:50:53,399 INFO live: [LIVE] progress: 294/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈171s
+2025-09-18 15:51:03,537 INFO live: [LIVE] progress: 306/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈161s
+2025-09-18 15:51:13,815 INFO live: [LIVE] progress: 316/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈154s
+2025-09-18 15:51:24,076 INFO live: [LIVE] progress: 328/503 scanned (1.2/s) skipped=0 candidate
+s=2 ETA≈145s
+2025-09-18 15:51:26,541 INFO live: [LIVE] ➕➕ candidate MSCI   px=557.40 signals=ADX ≥ 20, MACD
+��, RSI ��, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20
+2025-09-18 15:51:34,775 INFO live: [LIVE] progress: 339/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈136s
+2025-09-18 15:51:45,423 INFO live: [LIVE] progress: 350/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈128s
+2025-09-18 15:51:55,986 INFO live: [LIVE] progress: 362/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈118s
+2025-09-18 15:51:56,170 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:51:56,170 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 15:51:56,177 WARNING sim: No data for PARA; skipping
+2025-09-18 15:52:06,691 INFO live: [LIVE] progress: 377/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈105s
+2025-09-18 15:52:17,117 INFO live: [LIVE] progress: 388/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈96s
+2025-09-18 15:52:27,853 INFO live: [LIVE] progress: 400/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈86s
+2025-09-18 15:52:37,980 INFO live: [LIVE] progress: 412/503 scanned (1.2/s) skipped=0 candidate
+s=3 ETA≈76s
+2025-09-18 15:52:42,928 INFO live: [LIVE] ➕➕ candidate SNA    px=341.03 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:52:48,242 INFO live: [LIVE] progress: 424/503 scanned (1.2/s) skipped=0 candidate
+s=4 ETA≈66s
+2025-09-18 15:52:50,555 INFO live: [LIVE] ➕➕ candidate SYK    px=377.51 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:52:58,827 INFO live: [LIVE] progress: 437/503 scanned (1.2/s) skipped=0 candidate
+s=5 ETA≈55s
+2025-09-18 15:52:58,827 INFO live: [LIVE] ➕➕ candidate TGT    px=89.43 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:53:09,118 INFO live: [LIVE] progress: 451/503 scanned (1.2/s) skipped=0 candidate
+s=6 ETA≈43s
+2025-09-18 15:53:19,223 INFO live: [LIVE] progress: 465/503 scanned (1.2/s) skipped=0 candidate
+s=6 ETA≈32s
+2025-09-18 15:53:29,465 INFO live: [LIVE] progress: 479/503 scanned (1.2/s) skipped=0 candidate
+s=6 ETA≈20s
+2025-09-18 15:53:30,085 INFO live: [LIVE] ➕➕ candidate WAB    px=190.64 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:53:32,065 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:53:32,065 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 15:53:35,016 INFO live: [LIVE] ➕➕ candidate WM     px=216.39 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:53:38,520 INFO live: [LIVE] ➕➕ candidate WST    px=255.61 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:53:39,872 INFO live: [LIVE] progress: 492/503 scanned (1.2/s) skipped=0 candidate
+s=9 ETA≈9s
+2025-09-18 15:53:40,589 INFO live: [LIVE] ➕➕ candidate WSM    px=199.44 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:53:49,945 INFO live: [LIVE] progress: 503/503 scanned (1.2/s) skipped=0 candidate
+s=10 ETA≈0s
+2025-09-18 15:53:49,946 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=10 (417.0s)
+
+2025-09-18 15:53:49,948 INFO live: [LIVE] top candidates: MSCI@557.40(6), SYK@377.51(6), SNA@34
+1.03(6), WST@255.61(6), WM@216.39(6) …
+2025-09-18 15:53:49,951 WARNING live: [GR] TEMP OVERRIDE: ignoring guardrail ('bought today' /
+'open position') for this run
+2025-09-18 15:53:49,951 INFO live: [LIVE] considering MSCI   px=557.40 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:53:49,951 INFO live: [LIVE] Skip MSCI: qty < 1
+2025-09-18 15:53:49,952 INFO live: [LIVE] considering SYK    px=377.51 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:53:49,952 INFO live: [LIVE] Skip SYK: qty < 1
+2025-09-18 15:53:49,952 INFO live: [LIVE] considering SNA    px=341.03 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:53:49,952 INFO live: [LIVE] Skip SNA: qty < 1
+2025-09-18 15:53:49,953 INFO live: [LIVE] considering WST    px=255.61 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:53:49,953 INFO live: [LIVE] Skip WST: qty < 1
+2025-09-18 15:53:49,953 INFO live: [LIVE] considering WM     px=216.39 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:53:49,953 INFO live: [LIVE] Skip WM: qty < 1
+2025-09-18 15:53:49,953 INFO live: [LIVE] considering WSM    px=199.44 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:53:49,954 INFO live: [LIVE] Skip WSM: qty < 1
+2025-09-18 15:53:49,954 INFO live: [LIVE] considering WAB    px=190.64 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:53:49,954 INFO live: [LIVE] Skip WAB: qty < 1
+2025-09-18 15:53:49,954 INFO live: [LIVE] considering TGT    px=89.43 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:53:49,954 INFO live: [LIVE] Skip TGT: qty < 1
+2025-09-18 15:53:49,955 INFO live: [LIVE] considering HAS    px=74.93 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 15:53:49,955 INFO live: [LIVE] Skip HAS: qty < 1
+2025-09-18 15:53:49,955 INFO live: [LIVE] considering CSCO   px=68.66 afford_qty=1 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=1
+2025-09-18 15:53:49,956 INFO services.broker: [LIVE] BUY request for CSCO x1 @68.65
+2025-09-18 15:53:50,199 INFO services.broker: [LIVE] resizing by broker funds CSCO: q 1→0 (fres
+h_pp=5.16, px=68.6500)
+2025-09-18 15:53:50,199 INFO live: [LIVE] skip CSCO: INSUFFICIENT_FUNDS
+2025-09-18 15:53:50,201 INFO live: [LIVE] ranked selection found no purchasable candidates (all
+ gated)
+2025-09-18 15:53:53,294 INFO live: [LIVE] �� Starting scan loop iteration
+2025-09-18 15:53:53,420 INFO live: [LIVE] funds: settled=$74.86, bp=$5.73 (using=settled)
+2025-09-18 15:54:03,950 INFO live: [LIVE] progress: 10/503 scanned (0.9/s) skipped=0 candidates
+=0 ETA≈525s
+2025-09-18 15:54:05,463 INFO live: [LIVE] ➕➕ candidate ABNB   px=125.59 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:54:14,661 INFO live: [LIVE] progress: 23/503 scanned (1.1/s) skipped=0 candidates
+=1 ETA≈446s
+2025-09-18 15:54:22,699 INFO live: [LIVE] ➕➕ candidate AMGN   px=276.29 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:54:25,450 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:54:25,451 ERROR yfinance: ['ANSS']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 15:54:25,456 WARNING sim: No data for ANSS; skipping
+2025-09-18 15:54:25,457 INFO live: [LIVE] progress: 36/503 scanned (1.1/s) skipped=0 candidates
+=2 ETA≈417s
+2025-09-18 15:54:35,515 INFO live: [LIVE] progress: 49/503 scanned (1.2/s) skipped=0 candidates
+=2 ETA≈391s
+2025-09-18 15:54:45,793 INFO live: [LIVE] progress: 63/503 scanned (1.2/s) skipped=0 candidates
+=2 ETA≈367s
+2025-09-18 15:54:49,875 INFO live: [LIVE] ➕➕ candidate BA     px=215.87 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:54:56,395 INFO live: [LIVE] progress: 77/503 scanned (1.2/s) skipped=0 candidates
+=3 ETA≈349s
+2025-09-18 15:55:02,892 INFO live: [LIVE] ➕➕ candidate KMX    px=60.13 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:55:07,155 INFO live: [LIVE] progress: 92/503 scanned (1.2/s) skipped=0 candidates
+=4 ETA≈330s
+2025-09-18 15:55:17,364 INFO live: [LIVE] progress: 106/503 scanned (1.3/s) skipped=0 candidate
+s=4 ETA≈315s
+2025-09-18 15:55:27,909 INFO live: [LIVE] progress: 119/503 scanned (1.3/s) skipped=0 candidate
+s=4 ETA≈305s
+2025-09-18 15:55:37,934 INFO live: [LIVE] progress: 133/503 scanned (1.3/s) skipped=0 candidate
+s=4 ETA≈291s
+2025-09-18 15:55:39,418 INFO live: [LIVE] ➕➕ candidate CVS    px=74.28 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:55:48,046 INFO live: [LIVE] progress: 147/503 scanned (1.3/s) skipped=0 candidate
+s=5 ETA≈278s
+2025-09-18 15:55:58,496 INFO live: [LIVE] progress: 159/503 scanned (1.3/s) skipped=0 candidate
+s=5 ETA≈271s
+2025-09-18 15:56:09,225 INFO live: [LIVE] progress: 172/503 scanned (1.3/s) skipped=0 candidate
+s=5 ETA≈262s
+2025-09-18 15:56:19,380 INFO live: [LIVE] progress: 183/503 scanned (1.3/s) skipped=0 candidate
+s=5 ETA≈255s
+2025-09-18 15:56:30,056 INFO live: [LIVE] progress: 195/503 scanned (1.2/s) skipped=0 candidate
+s=5 ETA≈248s
+2025-09-18 15:56:40,183 INFO live: [LIVE] progress: 205/503 scanned (1.2/s) skipped=0 candidate
+s=5 ETA≈243s
+2025-09-18 15:56:50,362 INFO live: [LIVE] progress: 218/503 scanned (1.2/s) skipped=0 candidate
+s=5 ETA≈231s
+2025-09-18 15:56:57,836 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:56:57,836 ERROR yfinance: ['HES']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=23d)')
+2025-09-18 15:56:57,844 WARNING sim: No data for HES; skipping
+2025-09-18 15:57:02,921 INFO live: [LIVE] progress: 233/503 scanned (1.2/s) skipped=0 candidate
+s=5 ETA≈220s
+2025-09-18 15:57:05,925 INFO live: [LIVE] ➕➕ candidate HWM    px=192.16 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:57:12,943 INFO live: [LIVE] progress: 246/503 scanned (1.2/s) skipped=0 candidate
+s=6 ETA≈209s
+2025-09-18 15:57:22,961 INFO live: [LIVE] progress: 257/503 scanned (1.2/s) skipped=0 candidate
+s=6 ETA≈201s
+2025-09-18 15:57:32,091 INFO live: [LIVE] ➕➕ candidate JPM    px=313.43 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:57:33,132 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:57:33,133 ERROR yfinance: ['JNPR']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d) (Yahoo error = "No data found, symbol may be delisted")')
+2025-09-18 15:57:33,145 WARNING sim: No data for JNPR; skipping
+2025-09-18 15:57:33,145 INFO live: [LIVE] progress: 268/503 scanned (1.2/s) skipped=0 candidate
+s=7 ETA≈193s
+2025-09-18 15:57:43,935 INFO live: [LIVE] progress: 283/503 scanned (1.2/s) skipped=0 candidate
+s=7 ETA≈179s
+2025-09-18 15:57:54,658 INFO live: [LIVE] progress: 297/503 scanned (1.2/s) skipped=0 candidate
+s=7 ETA≈167s
+2025-09-18 15:58:01,425 INFO live: [LIVE] ➕➕ candidate MTCH   px=38.55 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:58:05,366 INFO live: [LIVE] progress: 311/503 scanned (1.2/s) skipped=0 candidate
+s=8 ETA≈156s
+2025-09-18 15:58:15,722 INFO live: [LIVE] progress: 324/503 scanned (1.2/s) skipped=0 candidate
+s=8 ETA≈145s
+2025-09-18 15:58:25,913 INFO live: [LIVE] progress: 334/503 scanned (1.2/s) skipped=0 candidate
+s=8 ETA≈138s
+2025-09-18 15:58:36,582 INFO live: [LIVE] progress: 348/503 scanned (1.2/s) skipped=0 candidate
+s=8 ETA≈126s
+2025-09-18 15:58:47,152 INFO live: [LIVE] progress: 361/503 scanned (1.2/s) skipped=0 candidate
+s=8 ETA≈116s
+2025-09-18 15:58:48,091 ERROR yfinance:
+1 Failed download:
+2025-09-18 15:58:48,092 ERROR yfinance: ['PARA']: YFPricesMissingError('possibly delisted; no p
+rice data found  (period=23d)')
+2025-09-18 15:58:48,102 WARNING sim: No data for PARA; skipping
+2025-09-18 15:58:57,762 INFO live: [LIVE] progress: 375/503 scanned (1.2/s) skipped=0 candidate
+s=8 ETA≈104s
+2025-09-18 15:59:08,381 INFO live: [LIVE] progress: 388/503 scanned (1.2/s) skipped=0 candidate
+s=8 ETA≈93s
+2025-09-18 15:59:09,045 INFO live: [LIVE] ➕➕ candidate QCOM   px=168.16 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:59:18,947 INFO live: [LIVE] progress: 402/503 scanned (1.2/s) skipped=0 candidate
+s=9 ETA≈82s
+2025-09-18 15:59:28,510 INFO live: [LIVE] ➕➕ candidate SPG    px=180.37 signals=ADX ≥ 20, MACD
+��, BB breakout, RSI ��, Price > SMA50, Price > SMA20
+2025-09-18 15:59:29,100 INFO live: [LIVE] progress: 415/503 scanned (1.2/s) skipped=0 candidate
+s=10 ETA≈71s
+2025-09-18 15:59:39,294 INFO live: [LIVE] progress: 429/503 scanned (1.2/s) skipped=0 candidate
+s=10 ETA≈60s
+2025-09-18 15:59:49,343 INFO live: [LIVE] progress: 442/503 scanned (1.2/s) skipped=0 candidate
+s=10 ETA≈49s
+2025-09-18 15:59:59,593 INFO live: [LIVE] progress: 454/503 scanned (1.2/s) skipped=0 candidate
+s=10 ETA≈40s
+2025-09-18 16:00:10,134 INFO live: [LIVE] progress: 466/503 scanned (1.2/s) skipped=0 candidate
+s=10 ETA≈30s
+2025-09-18 16:00:21,662 INFO live: [LIVE] progress: 478/503 scanned (1.2/s) skipped=0 candidate
+s=10 ETA≈20s
+2025-09-18 16:00:24,139 ERROR yfinance:
+1 Failed download:
+2025-09-18 16:00:24,139 ERROR yfinance: ['WBA']: YFPricesMissingError('possibly delisted; no pr
+ice data found  (period=1d)')
+2025-09-18 16:00:31,711 INFO live: [LIVE] progress: 490/503 scanned (1.2/s) skipped=0 candidate
+s=10 ETA≈11s
+2025-09-18 16:00:42,236 INFO live: [LIVE] progress: 503/503 scanned (1.2/s) skipped=0 candidate
+s=10 ETA≈0s
+2025-09-18 16:00:42,236 INFO live: [LIVE] summary: scanned=503 skipped=0 candidates=10 (408.9s)
+
+2025-09-18 16:00:42,239 INFO live: [LIVE] top candidates: JPM@313.43(6), AMGN@276.29(6), BA@215
+.87(6), HWM@192.16(6), SPG@180.37(6) …
+2025-09-18 16:00:42,243 WARNING live: [GR] TEMP OVERRIDE: ignoring guardrail ('bought today' /
+'open position') for this run
+2025-09-18 16:00:42,244 INFO live: [LIVE] considering JPM    px=313.43 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 16:00:42,244 INFO live: [LIVE] Skip JPM: qty < 1
+2025-09-18 16:00:42,244 INFO live: [LIVE] considering AMGN   px=276.29 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 16:00:42,244 INFO live: [LIVE] Skip AMGN: qty < 1
+2025-09-18 16:00:42,244 INFO live: [LIVE] considering BA     px=215.87 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 16:00:42,244 INFO live: [LIVE] Skip BA: qty < 1
+2025-09-18 16:00:42,244 INFO live: [LIVE] considering HWM    px=192.16 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 16:00:42,244 INFO live: [LIVE] Skip HWM: qty < 1
+2025-09-18 16:00:42,245 INFO live: [LIVE] considering SPG    px=180.37 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 16:00:42,245 INFO live: [LIVE] Skip SPG: qty < 1
+2025-09-18 16:00:42,245 INFO live: [LIVE] considering QCOM   px=168.16 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 16:00:42,245 INFO live: [LIVE] Skip QCOM: qty < 1
+2025-09-18 16:00:42,245 INFO live: [LIVE] considering ABNB   px=125.59 afford_qty=0 settled=74.
+86 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 16:00:42,245 INFO live: [LIVE] Skip ABNB: qty < 1
+2025-09-18 16:00:42,245 INFO live: [LIVE] considering CVS    px=74.28 afford_qty=0 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=0
+2025-09-18 16:00:42,245 INFO live: [LIVE] Skip CVS: qty < 1
+2025-09-18 16:00:42,246 INFO live: [LIVE] considering KMX    px=60.13 afford_qty=1 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=1
+2025-09-18 16:00:42,246 INFO services.broker: [LIVE] BUY request for KMX x1 @60.13
+2025-09-18 16:00:42,524 INFO services.broker: [LIVE] resizing by broker funds KMX: q 1→0 (fresh
+_pp=5.16, px=60.1300)
+2025-09-18 16:00:42,524 INFO live: [LIVE] skip KMX: INSUFFICIENT_FUNDS
+2025-09-18 16:00:42,526 INFO live: [LIVE] considering MTCH   px=38.55 afford_qty=1 settled=74.8
+6 bp=5.73 max_per_trade=100.0 safe_cap=N/A -> qty=1
+2025-09-18 16:00:42,526 INFO services.broker: [LIVE] BUY request for MTCH x1 @38.55
+2025-09-18 16:00:42,526 INFO services.broker: [LIVE] resizing by broker funds MTCH: q 1→0 (fres
+h_pp=5.16, px=38.5500)
+2025-09-18 16:00:42,526 INFO live: [LIVE] skip MTCH: INSUFFICIENT_FUNDS
+2025-09-18 16:00:42,526 INFO live: [LIVE] ranked selection found no purchasable candidates (all
+ gated)
+2025-09-18 16:00:45,601 INFO live: [LIVE] Market closed — sleeping 62954.4s
+=== 09/18/2025 16:05:05 END Start Live (NO GUARDS) ===
+**********************
+Windows PowerShell transcript end
+End time: 20250918160505
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250919092003
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
+Process ID: 8820
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/19/2025 09:20:03 START Start Live (NO GUARDS) ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+Env GUARDRAILS_ENABLED=false
+Env LIVE_SAFE_MODE=false
+Env GR_AUTO_SELLER=0
+Env LIVE_ARMED=1

@@ -1,24 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
 import os
-import sys
-import time
-import json
-import math
 import logging
+import logging.handlers  # keep this here too
+import json
+import time
+import math
+import sys
+import random
+import logging.handlers
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
-import json, os
-
-def _load_cfg(base_dir=r"C:\TradeAlerts"):
-    candidates = ["sell_guard_settings.json", "live_settings.json"]
-    for name in candidates:
-        p = os.path.join(base_dir, name)
-        if os.path.exists(p):
-            with open(p, "r", encoding="utf-8") as f:
-                return json.load(f) or {}, p
-    return {}, None
+from env_alias_shim import ensure_env_aliases
+ensure_env_aliases()
 
 # ---------------------------------------
 # Logging
@@ -29,25 +23,160 @@ if not LOG.handlers:
     h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     LOG.addHandler(h)
 LOG.setLevel(logging.INFO)
-# after: LOG = logging.getLogger("sell-guard")
-import logging.handlers
-from pathlib import Path
-log_dir = Path(r"C:\TradeAlerts\logs"); log_dir.mkdir(parents=True, exist_ok=True)
+
+log_dir = Path(r"C:\TradeAlerts\logs")
+log_dir.mkdir(parents=True, exist_ok=True)
 if not any(isinstance(h, logging.FileHandler) for h in LOG.handlers):
-    fh = logging.handlers.RotatingFileHandler(log_dir / "sell_guard.log",
-                                              maxBytes=10_000_000, backupCount=7, encoding="utf-8")
+    fh = logging.handlers.RotatingFileHandler(
+        log_dir / "sell_guard.log",
+        maxBytes=10_000_000,
+        backupCount=7,
+        encoding="utf-8"
+    )
     fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     LOG.addHandler(fh)
+
 # optional while we tune:
 LOG.setLevel(logging.DEBUG)
+# ---- WRITE-ONLY CIRCUIT + SELL QUEUE ---------------------------------------
+from datetime import datetime, timedelta
+from typing import Callable, Optional, Any, List
+
+class CircuitOpen(Exception): pass
+
+class _WriteCircuit:
+    def __init__(self, base=90, cap=600):
+        self.base = base
+        self.cap = cap
+        self.fail_count = 0
+        self.open_until: Optional[datetime] = None
+        self.last_reason = ""
+
+    def seconds_left(self) -> int:
+        if not self.open_until: return 0
+        return max(0, int((self.open_until - datetime.utcnow()).total_seconds()))
+
+    def is_open(self) -> bool:
+        return self.seconds_left() > 0
+
+    def open(self, reason: str):
+        self.fail_count += 1
+        dur = min(self.cap, int(self.base * (1.6 ** (self.fail_count - 1))))
+        dur = max(dur, 60)
+        self.open_until = datetime.utcnow() + timedelta(seconds=dur)
+        self.last_reason = reason
+        logging.warning("E*TRADE circuit OPEN for %ss due to %s", dur, reason)
+
+    def close(self):
+        if self.is_open():
+            logging.info("E*TRADE circuit CLOSED")
+        self.fail_count = 0
+        self.open_until = None
+        self.last_reason = ""
+
+    def half_open_ok(self) -> bool:
+        return self.is_open() and self.seconds_left() <= 10
+
+WRITE_CB = _WriteCircuit()
+
+def _is_server_side(e: Exception) -> tuple[bool, str]:
+    status = getattr(getattr(e, "response", None), "status_code", None)
+    body = getattr(getattr(e, "response", None), "text", "") or ""
+    code = ""
+    try:
+        if body.strip().startswith("{"):
+            code = str(json.loads(body).get("code", ""))
+        elif "code" in body:
+            import re
+            m = re.search(r"code[\"=\s:]+(\d+)", body)
+            code = m.group(1) if m else ""
+    except Exception:
+        pass
+    if status and int(status) >= 500:
+        return True, f"{status}/code{code or '?'}"
+    if code == "100":
+        return True, f"{status or 'NA'}/code100"
+    return False, f"{status or 'NA'}/code{code or '?'}"
+
+def write_call(fn: Callable[[], Any]) -> Any:
+    if WRITE_CB.is_open():
+        if WRITE_CB.half_open_ok():
+            logging.info("E*TRADE circuit HALF-OPEN: probing with one write call…")
+        else:
+            raise CircuitOpen(f"circuit open, {WRITE_CB.seconds_left()}s left")
+    try:
+        result = fn()
+        WRITE_CB.close()
+        return result
+    except Exception as e:
+        server_side, reason = _is_server_side(e)
+        if server_side:
+            WRITE_CB.open(reason or "server error")
+        raise
+
+class PendingSell:
+    __slots__ = ("symbol","qty","side","limit_px","creator","created_at")
+    def __init__(self, symbol:str, qty:int, side:str, limit_px:Optional[float], creator:str):
+        from datetime import datetime
+        self.symbol = symbol; self.qty = qty; self.side = side
+        self.limit_px = limit_px; self.creator = creator
+        self.created_at = datetime.utcnow()
+
+PENDING_SELLS: List[PendingSell] = []
+
+def enqueue_sell(symbol:str, qty:int, side:str, limit_px:Optional[float], why:str):
+    PENDING_SELLS.append(PendingSell(symbol, qty, side, limit_px, creator=why))
+    LOG.error("%s SELL queued (%s) – will retry when circuit closes", symbol, why)
+
+# ---------------------------------------
+# Credentials env alias shim (use your existing names)
+# ---------------------------------------
+def _strip_quotes(v: str) -> str:
+    v = v.strip()
+    if (v.startswith("'") and v.endswith("'")) or (v.startswith('"') and v.endswith('"')):
+        return v[1:-1]
+    return v
+
+def _ensure_env_aliases():
+    alias_map = {
+        # target                     # fallbacks (in order)
+        "ETRADE_CONSUMER_KEY":   ["ETRADE_API_KEY", "CONSUMER_KEY"],
+        "ETRADE_CONSUMER_SECRET":["ETRADE_API_SECRET", "CONSUMER_SECRET"],
+        "ETRADE_OAUTH_TOKEN":    ["OAUTH_TOKEN"],
+        "ETRADE_OAUTH_SECRET":   ["OAUTH_TOKEN_SECRET"],
+        # Optional: if you’ve set an ACCOUNT_ID_KEY yourself
+        "ETRADE_ACCOUNT_ID_KEY": ["ACCOUNT_ID_KEY"],
+    }
+    set_any = False
+    for target, sources in alias_map.items():
+        if not os.environ.get(target):
+            for s in sources:
+                val = os.environ.get(s)
+                if val:
+                    os.environ[target] = _strip_quotes(val)
+                    set_any = True
+                    break
+    if set_any:
+        logging.getLogger("sell-guard").info("Applied env alias shim for trading credentials")
+
+# Load .env first so aliases have something to map from
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
+# Map your existing env names (CONSUMER_KEY / ETRADE_API_KEY, etc.) to what the code expects
+_ensure_env_aliases()
 
 # ---------------------------------------
 # E*TRADE service wrapper
 # ---------------------------------------
 try:
-    from services import etrade_service as et
+    from services import etrade_service as et  # preferred (package layout)
 except Exception:
-    import etrade_service as et  # fallback to local
+    import etrade_service as et  # fallback to local module
+
 
 # ---------------------------------------
 # Config
@@ -75,27 +204,27 @@ _DEFAULTS = {
 # ——— at top ———
 import requests
 from requests.adapters import HTTPAdapter, Retry
-_ATTEMPTS_CSV = r"C:\TradeAlerts\logs\sell_attempts.csv"
-
-def log_attempt(symbol, action, px_type, qty, px, status, details=""):
-    import csv, os, datetime as dt
-    os.makedirs(os.path.dirname(_ATTEMPTS_CSV), exist_ok=True)
-    new = not os.path.exists(_ATTEMPTS_CSV)
-    with open(_ATTEMPTS_CSV, "a", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        if new:
-            w.writerow(["time_et","symbol","action","type","qty","price","status","details"])
-        w.writerow([dt.datetime.now(tz=None).strftime("%Y-%m-%d %H:%M:%S"),
-                    symbol, action, px_type, qty, f"{px:.4f}" if px is not None else "",
-                    status, details[:200]])
-
-DEFAULT_CONNECT_TIMEOUT = 5
-DEFAULT_READ_TIMEOUT    = 10
-DEFAULT_TIMEOUT         = (DEFAULT_CONNECT_TIMEOUT, DEFAULT_READ_TIMEOUT)
-HEARTBEAT_SECS = 30
-_last_beat = 0
-_aid_for_logs = "?"
-
+# KEEP THIS version (already in your file, later down)
+def drain_pending_sells(place_fn):
+    if not PENDING_SELLS:
+        return
+    keep = []
+    for ps in PENDING_SELLS:
+        try:
+            write_call(lambda: place_fn(ps.symbol, ps.qty, ps.side, ps.limit_px))
+            LOG.info("%s SELL placed from queue", ps.symbol)          # <-- LOG.*
+        except CircuitOpen:
+            time.sleep(0.4 + random.random()*0.4)
+            keep.append(ps)
+        except Exception as e:
+            s = str(e).lower()
+            if ("'code': 100" in s) or ('"code": 100' in s) or ("service is not currently available" in s):
+                LOG.warning("%s queued SELL: venue unavailable (code100). Keeping in queue.", ps.symbol)  # <-- LOG.*
+                keep.append(ps)
+            else:
+                LOG.error("%s queued SELL failed permanently: %r", ps.symbol, e)
+    PENDING_SELLS.clear()
+    PENDING_SELLS.extend(keep)
 def heartbeat(now: int, aid: str | None = None):
     global _last_beat, _aid_for_logs
     if aid:
@@ -128,53 +257,46 @@ def _post(url, data=None, json=None, headers=None, timeout=DEFAULT_TIMEOUT):
     resp = _SESSION.post(url, data=data, json=json, headers=headers, timeout=timeout)
     resp.raise_for_status()
     return resp
-
 def _load_cfg(base_dir=r"C:\TradeAlerts"):
     candidates = ["sell_guard_settings.json", "sell_guard.settings.json", "live_settings.json"]
     for name in candidates:
         p = os.path.join(base_dir, name)
         if os.path.exists(p):
             with open(p, "r", encoding="utf-8") as f:
-                return json.load(f) or {}, p
+                data = json.load(f) or {}
+                if isinstance(data, dict):
+                    data = data.get("sell_guard", data.get("scalp", data))
+                return data, p
     return {}, None
 
-    def _flatten(obj):
-        # accept either plain dict, or nested under "sell_guard" or "scalp"
-        if isinstance(obj, dict):
-            if "sell_guard" in obj and isinstance(obj["sell_guard"], dict):
-                return obj["sell_guard"]
-            if "scalp" in obj and isinstance(obj["scalp"], dict):
-                return obj["scalp"]
-        return obj
-
-    try:
-        if path.exists():
-            data = json.loads(path.read_text(encoding="utf-8") or "{}")
-            data = _flatten(data)
-            if isinstance(data, dict):
-                cfg.update(data)
-            src = str(path.name)
-    except Exception as e:
-        LOG.warning("settings load failed from %s: %s (using defaults)", path, e)
-
-    # environment overrides (optional)
-    for k in list(cfg.keys()):
-        envk = f"SELL_GUARD_{k}".upper()
-        if envk in os.environ:
-            v = os.environ[envk]
-            try:
-                cfg[k] = json.loads(v)
-            except Exception:
-                cfg[k] = v
-
-    return cfg, src
-
+# Load config once at import
 _CFG, _CFG_PATH = _load_cfg(r"C:\TradeAlerts")
 LOG.info("config source: %s", _CFG_PATH or "<defaults>")
+# After: _CFG, _CFG_PATH = _load_cfg(...)
+WRITE_CB.base = int(_CFG.get("circuit_open_seconds", 90))
 
 # ---------------------------------------
 # Helpers
 # ---------------------------------------
+# --- helper near your other error helpers ---
+TRANSIENT_HTTP = {500, 502, 503, 504}
+TRANSIENT_ETRADE_CODES = {100}  # service not available
+def is_code100(err: Exception | str) -> bool:
+    s = str(err).lower()
+    return ('"code": 100' in s) or ("'code': 100" in s) or ("service is not currently available" in s)
+_last_code100_notice = 0
+def maybe_banner_code100():
+    global _last_code100_notice
+    now = time.time()
+    if now - _last_code100_notice > 60:
+        LOG.warning("Broker venue unavailable (code100). Orders will be queued until circuit closes.")
+        _last_code100_notice = now
+
+def _is_transient(err):
+    try:
+        return (getattr(err, "http_status", None) in TRANSIENT_HTTP) or (getattr(err, "code", None) in TRANSIENT_ETRADE_CODES)
+    except Exception:
+        return False
 
 def _session_label():
     # simple label: REG vs EXT depending on wall clock (does not query market-hours API)
@@ -238,42 +360,11 @@ def _extract_order_id(resp):
         pass
     return "?"
 
-def _strict_stop_for_sell(entry, bid, last, stop_bps, cushion=0.02):
-    """
-    Compute a STOP price that:
-      - respects configured bps from entry (base stop),
-      - ALSO respects E*TRADE's rule: stop must be at least $0.01 below bid
-        (we give an extra $0.01 cushion to avoid equality rejections),
-      - and rounds to $0.01 ticks.
-    Returns (stop_px, base_px) or (None, base_px) if we can't compute a valid stop.
-    """
-    try:
-        base_px = round(float(entry) * _bps_to_mult(-abs(stop_bps)), 2)
-    except Exception:
-        return None, None
 
-    refs = [x for x in (bid, last) if x is not None]
-    if refs:
-        ref_min = min(refs)
-        # broker needs strictly < bid by >= $0.01; we use $0.02 to avoid 2084 edge cases
-        max_allowed = round(ref_min - float(cushion), 2)
-        stop_px = round(min(base_px, max_allowed), 2)
-        if stop_px <= 0:
-            return None, base_px
-        return stop_px, base_px
-    # fallback: no bid/last available, use base from entry (may still be preview-rejected)
-    return base_px, base_px
-
-import math, random, time
 
 # Small utils
 def _round_down_to_tick(px: float, tick: float = 0.01) -> float:
     return math.floor((px + 1e-9) / tick) * tick
-
-def _is_code100(err: Exception) -> bool:
-    # Robustly sniff E*TRADE "service not available" errors
-    msg = str(err)
-    return ("'code': 100" in msg) or ('"code": 100' in msg)
 
 def _is_2084(err: Exception) -> bool:
     # Robustly sniff "stop must be ≥ $0.01 below bid" validation errors
@@ -288,93 +379,7 @@ def _sleep_backoff(try_idx: int) -> float:
     time.sleep(delay)
     return delay
 
-def preview_then_place_limit_sell(s: str, qty: int, limit_px: float, max_tries: int = 4):
-    """
-    Preview + place a LIMIT sell. On E*TRADE 500/code100, retry with jittered backoff.
-    Leaves other errors to the caller.
-    """
-    placed = None
-    for attempt in range(1, max_tries + 1):
-        try:
-            prv = et.preview_equity_order(
-                s,
-                action="SELL",
-                price_type="LIMIT",
-                limit_price=float(limit_px),
-                qty=int(qty),
-            )
-            placed = et.place_equity_order(prv, qty=int(qty))
-            return placed  # success
-        except Exception as e:
-            if _is_code100(e):
-                delay = _sleep_backoff(attempt)
-                LOG.warning("%s SELL place 500/code100 (try %d/%d), backing off %.1fs", s, attempt, max_tries, delay)
-                continue
-            # Bubble up anything else (validation, etc.)
-            raise
-    # If we fall out, escalate as the caller currently does (circuit logic, market fallback, etc.)
-    return placed
 
-def preview_then_place_stop_sell(s: str, qty: int, bid: float, tick: float = 0.01, max_tries: int = 4):
-    """
-    Arm a hard STOP sell below bid.
-    To avoid 2084 race, start ≥2 ticks under bid; if 2084 fires, step one more tick lower and retry.
-    Also retries 500/code100 with jittered backoff.
-    """
-    # Start at 2 ticks under bid (gives cushion for micro-moves between preview and place)
-    ticks_under = 2
-    placed = None
-
-    for attempt in range(1, max_tries + 1):
-        # Compute stop with current cushion, snapped to tick
-        stop_px = _round_down_to_tick(float(bid) - ticks_under * tick, tick)
-        # Safety: guarantee at least 1 tick below bid
-        # --- replace the STOP preview/place try/except with this ---
-        try:
-            placed = place_stop_market_sell(aid, s, free, stop_px)
-            LOG.info("%s ARM HARD STOP placed -> %s", s, placed)
-            continue
-        except Exception as e:
-            if _is_2084(e):
-                adj = float(f"{stop_px - 0.01:.2f}")
-                try:
-                    placed = place_stop_market_sell(aid, s, free, adj)
-                    LOG.info("%s ARM HARD STOP placed (after 2084 adjust) -> %s", s, placed)
-                    continue
-                except Exception as e2:
-                    LOG.error("%s STOP retry-after-2084 failed: %s", s, e2)
-            # last-ditch MARKET only if configured
-            if "SELL_STOP" in market_fb_for or "TIMEOUT" in market_fb_for:
-                try:
-                    LOG.warning("%s STOP MARKET fallback", s)
-                    placed = preview_then_place_market_sell(aid, s, free)
-                    LOG.info("%s STOP MARKET placed -> %s", s, placed)
-                    continue
-                except Exception as e2:
-                    if _reason_is_code100(e2):
-                        open_place_circuit(int(_CFG.get("circuit_open_seconds", 180)))
-                    LOG.error("%s STOP MARKET fallback failed: %s", s, e2)
-                    return placed  # success
-                except Exception as e:
-                    if _is_2084(e):
-                        # Bid likely ticked up between preview/place or validation rounded differently.
-                        # Step one *more* tick lower and retry.
-                        ticks_under += 1
-                        LOG.warning("%s STOP validation 2084 at stop=%.2f (bid=%.2f). Nudging one more tick lower (ticks_under=%d) and retrying.",
-                                    s, float(stop_px), float(bid), ticks_under)
-                        continue
-                    if _is_code100(e):
-                        delay = _sleep_backoff(attempt)
-                        LOG.warning("%s STOP place 500/code100 (try %d/%d), backing off %.1fs", s, attempt, max_tries, delay)
-                        continue
-                    # Unknown/other error: bubble up so caller can apply its fallback policy
-                    raise
-
-            return placed
-
-def _reason_is_code100(e: Exception) -> bool:
-    s = str(e)
-    return ("'code': 100" in s) or ("service is not currently available" in s)
 def preview_then_place_market_sell(aid, symbol, qty: int):
     """
     Preview + place a plain MARKET sell.
@@ -427,35 +432,18 @@ def _api_symbol(sym: str) -> str:
 # Circuits
 # ---------------------------------------
 _quote_circuit_until = 0.0     # seconds epoch
-_place_circuit_until = 0.0
 
 def quote_circuit_open() -> bool:
     return time.time() < _quote_circuit_until
-
-def place_circuit_open() -> bool:
-    return time.time() < _place_circuit_until
 
 def open_quote_circuit(seconds: int):
     global _quote_circuit_until
     _quote_circuit_until = time.time() + seconds
     LOG.warning("quote REST 500; circuit opened for %ds", seconds)
-
-def open_place_circuit(seconds: int):
-    global _place_circuit_until
-    _place_circuit_until = time.time() + seconds
-    LOG.warning("E*TRADE circuit OPEN for %ds due to repeated 500/code100", seconds)
-
-# ---------------------------------------
+#---------------------------------------
 # E*TRADE ops (preview/place) wrappers
 # ---------------------------------------
-
-def preview_then_place_limit_sell(aid, symbol, qty, limit_px,
-                                  retries=None, base_delay=2.0):
-    """
-    Preview LIMIT then place. On the first 500/code100:
-    - open the place circuit (configurable seconds)
-    - raise immediately (caller will stop for this tick)
-    """
+def preview_then_place_limit_sell(aid, symbol, qty, limit_px, retries=None, base_delay=2.0):
     if retries is None:
         retries = int(_CFG.get("max_place_attempts", 1))
 
@@ -469,16 +457,12 @@ def preview_then_place_limit_sell(aid, symbol, qty, limit_px,
             return placed
         except Exception as e:
             last_exc = e
-            if _reason_is_code100(e):
-                open_place_circuit(int(_CFG.get("circuit_open_seconds", 180)))
-                raise        # stop trying right now; tick will be skipped upstream
-            if _reason_is_1037(e):
-                raise        # real constraint, don’t retry
-            raise           # non-retriable validation/etc.
-
+            if _reason_is_code100(e) or _reason_is_1037(e):
+                # Let write_call handle breakers; 1037 = real constraint; both re-raise.
+                raise
+            raise
     if last_exc:
         raise last_exc
-
 def place_stop_market_sell(aid, symbol, qty, stop_px):
     """
     Arm STOP (market) SELL. E*TRADE STOP preview requires stopPrice in the body.
@@ -573,39 +557,6 @@ def fetch_quotes(symbols, detail="INTRADAY"):
 
     return out
 
-    # Try to dig common shapes
-    def _dig(node):
-        # Accept a lot of shapes defensively
-        if node is None:
-            return
-        if isinstance(node, dict):
-            # E*TRADE responses sometimes nest quotes under 'quoteResponse'/'QuoteData' etc.
-            for k in ("QuoteResponse", "QuoteData", "quoteResponse", "Quotes", "quotes", "Quote"):
-                if k in node:
-                    _dig(node[k])
-            # single quote?
-            sym = (node.get("symbol") or node.get("Product", {}).get("symbol"))
-            last = (node.get("lastTrade") or node.get("lastPrice") or node.get("last"))
-            bid = node.get("bid")
-            ask = node.get("ask")
-            if sym and (last is not None or bid is not None or ask is not None):
-                # denormalize back (BF/B -> BF.B for our map)
-                sym_norm = sym.replace("BF/B", "BF.B")
-                out[sym_norm] = {
-                    "last": float(last) if last is not None else None,
-                    "bid": float(bid) if bid is not None else None,
-                    "ask": float(ask) if ask is not None else None,
-                }
-            # dig children
-            for v in node.values():
-                _dig(v)
-        elif isinstance(node, list):
-            for v in node:
-                _dig(v)
-
-    _dig(data)
-    return out
-
 # ---------------------------------------
 # Positions / symbols
 # ---------------------------------------
@@ -615,8 +566,6 @@ def _safe_float(x):
         return float(x)
     except Exception:
         return None
-
-import math
 
 def _penny_floor(x: float) -> float:
     return math.floor(float(x) * 100.0) / 100.0
@@ -697,14 +646,9 @@ def _reason_is_code100(err: Exception) -> bool:
     s = str(err).lower()
     return (" code': 100" in s) or ('"code": 100' in s) or ("service is not currently available" in s)
 
-# After any code-100 from place.json:
-_circuit_until = time.time() + 60  # already doing this
-# Add: set a flag to skip all place() attempts while circuit is open
-
 def list_symbols_from_positions(aid, blocklist):
     import inspect
     syms, tried = [], []
-    # include your real getter names first
     candidates = ("get_positions", "positions", "portfolio", "list_positions", "holdings", "portfolio_positions")
 
     def _dig(n):
@@ -728,7 +672,6 @@ def list_symbols_from_positions(aid, blocklist):
             continue
         tried.append(attr)
         try:
-            # call with aid if the fn accepts a parameter; else no args
             params = inspect.signature(fn).parameters
             data = fn(aid) if len(params) >= 1 else fn()
             _dig(data)
@@ -738,7 +681,6 @@ def list_symbols_from_positions(aid, blocklist):
         except Exception as e:
             LOG.warning("positions via %s failed: %s", attr, e)
 
-    # unique + blocklist filter
     uniq, seen = [], set()
     for s in syms:
         if s in seen or (blocklist and s in blocklist):
@@ -748,11 +690,6 @@ def list_symbols_from_positions(aid, blocklist):
 
     if not uniq:
         LOG.warning("No symbols found from positions; SELL GUARD will idle. Tried: %s", ",".join(tried) or "none")
-    return uniq
-
-    if not uniq and tried:
-        LOG.info("No symbols discovered (tried: %s)", ",".join(tried))
-
     return uniq
 def _debug_glimpse_position(aid, symbol):
     try:
@@ -802,24 +739,6 @@ try:
     from zoneinfo import ZoneInfo
 except Exception:
     ZoneInfo = None  # fallback handled below
-
-def _now_et():
-    try:
-        if ZoneInfo:
-            return datetime.now(tz=ZoneInfo("America/New_York"))
-    except Exception:
-        pass
-    # crude fallback if zoneinfo not available
-    return datetime.now()
-
-def _is_us_trading_day(dt):
-    # Mon–Fri only; (holiday calendar omitted for simplicity)
-    return dt.weekday() < 5
-# --- ET time + Regular Trading Hours helpers ---------------------------------
-try:
-    from zoneinfo import ZoneInfo
-except Exception:
-    ZoneInfo = None
 
 def _now_et():
     try:
@@ -1159,13 +1078,6 @@ def main():
         start = time.time()
         heartbeat(int(time.time()))
 
-        # Circuit: skip whole tick if placing is down hard
-        if place_circuit_open():
-            left = int(_place_circuit_until - time.time())
-            LOG.info("E*TRADE unstable; skipping tick (circuit open, %ds left)", max(0, left))
-            time.sleep(poll_s)
-            continue
-
         # SYMBOLS from positions
         syms = list_symbols_from_positions(aid, blocklist)
         if syms and (time.time() - last_syms_log > 5.0):
@@ -1265,34 +1177,46 @@ def main():
                     LOG.debug("%s stop calc: entry=%s bid=%s last=%s base=%.2f -> stop=%.2f",
                               s, entry, bid, last, base_px or float('nan'), stop_px)
                     try:
-                        placed = place_stop_market_sell(aid, s, free, stop_px)
+                        placed = write_call(lambda: place_stop_market_sell(aid, s, free, stop_px))
                         LOG.info("%s ARM HARD STOP placed -> %s", s, placed)
                         continue
                     except Exception as e:
                         if _is_2084(e):
-                            refs = [x for x in (bid, last) if x is not None]
-                            if refs:
-                                adj = round(min(refs) - 0.03, 2)  # push a little further below
-                                if adj > 0 and adj < stop_px:
-                                    try:
-                                        LOG.warning("%s STOP 2084 -> adjusting stop from %.2f to %.2f and retrying once",
-                                                    s, stop_px, adj)
-                                        placed = place_stop_market_sell(aid, s, free, adj)
-                                        LOG.info("%s ARM HARD STOP placed (after 2084 adjust) -> %s", s, placed)
-                                        continue
-                                    except Exception as e2:
-                                        LOG.error("%s STOP retry-after-2084 failed: %s", s, e2)
+                            for buf in (0.03, 0.04):
+                                q = et.get_quote(s, detailFlag="ALL")
+                                bid2 = (q.get("All") or {}).get("bid") or q.get("bid")
+                                if bid2:
+                                    adj = round(float(bid2) - buf, 2)
+                                    if adj > 0:
+                                        try:
+                                            LOG.warning("%s STOP 2084 -> adjust to %.2f (buf=%.2f) & retry", s, adj, buf)
+                                            placed = write_call(lambda: place_stop_market_sell(aid, s, free, adj))
+                                            LOG.info("%s ARM HARD STOP placed (after 2084 adjust buf=%.2f) -> %s", s, buf, placed)
+                                            break
+                                        except Exception as e2:
+                                            if not _is_2084(e2):
+                                                raise
+                            else:
+                                LOG.error("%s STOP failed after 2x 2084 adjusts", s)
+                        # (fallback path continues below)
                         # Last-ditch MARKET only if configured
                         if "SELL_STOP" in market_fb_for or "TIMEOUT" in market_fb_for:
-                            try:
-                                LOG.warning("%s STOP MARKET fallback", s)
-                                placed = preview_then_place_market_sell(aid, s, free)
-                                LOG.info("%s STOP MARKET placed -> %s", s, placed)
-                                continue
-                            except Exception as e2:
-                                if _reason_is_code100(e2):
-                                    open_place_circuit(int(_CFG.get("circuit_open_seconds", 180)))
-                                LOG.error("%s STOP MARKET fallback failed: %s", s, e2)
+                            if WRITE_CB.is_open():
+                                enqueue_sell(s, free, "SELL", None, why="circuit open; skip STOP MARKET fallback")
+                                LOG.info("%s SELL deferred: circuit open; skipping STOP-MARKET fallback", s)
+                            else:
+                                try:
+                                    LOG.warning("%s STOP MARKET fallback", s)
+                                    placed = write_call(lambda: preview_then_place_market_sell(aid, s, free))
+                                    LOG.info("%s STOP MARKET placed -> %s", s, placed)
+                                    continue
+                                except CircuitOpen as ce:
+                                    enqueue_sell(s, free, "SELL", None, why=f"STOP MARKET fallback: {ce}")
+                                except Exception as e2:
+                                    if is_code100(e2):
+                                        enqueue_sell(s, free, "SELL", None, why="code100 during STOP MARKET fallback")
+                                    else:
+                                        LOG.error("%s STOP MARKET fallback failed: %s", s, e2)
 
 
             # ---------------------------
@@ -1304,18 +1228,31 @@ def main():
                 else:
                     why = "TP" if (do_tp and not do_timeout) else ("TIMEOUT" if do_timeout and not do_tp else "TP+TIMEOUT")
                     try:
-                        placed = preview_then_place_limit_sell(aid, s, free, lim)  # circuit-aware
-                        LOG.info("%s %s SELL placed -> %s", s, why, placed)
+                        placed = write_call(lambda: preview_then_place_limit_sell(aid, s, free, lim))
+                        LOG.info("%s %s LIMIT placed -> %s", s, why, placed)
+                    # inside the SELL TARGET exception block
+                    except CircuitOpen as ce:
+                        enqueue_sell(s, free, "SELL", lim, why=str(ce))
                     except Exception as e:
-                        if _reason_is_code100(e):
-                            LOG.error("%s SELL place failed (E*TRADE 500/100) – circuit open; skipping until it closes", s)
-                            # no MARKET fallback for SELL_TARGET during transport 500s
-                        else:
-                            LOG.error("%s SELL_TARGET failed (non-500/code100): %s", s, e)
+                        if is_code100(e):
+                            maybe_banner_code100()
+                            enqueue_sell(s, free, "SELL", lim, why="code100 during place")
+                            LOG.warning("%s SELL queued (code100 during place)", s)
+                            continue
 
         # pacing
         elapsed   = time.time() - start
         sleep_for = max(0.0, poll_s - elapsed)
+        # Try to flush queued sells (fires as soon as circuit closes)
+        drain_pending_sells(lambda sym, qty, side, px:
+            et.place_equity_order(
+                et.preview_equity_order(aid, _api_symbol(sym), int(qty), px,
+                                        price_type=("LIMIT" if px is not None else "MARKET"),
+                                        action=side),
+                qty=int(qty)
+            )
+        )
+
         if sleep_for > 0:
             time.sleep(sleep_for)
 

@@ -833,3 +833,92 @@ Killing python(cmdline) PID 91396
 Killing powershell(cmdline) PID 66320
 Killing powershell(cmdline) PID 131440
 Killing powershell(cmdline) PID 131616
+**********************
+Windows PowerShell transcript start
+Start time: 20250916134044
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 36696
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/16/2025 13:40:44 STOP ALL (fixed live) ===
+Killing sell_guard.pid PID 38724
+PS>TerminatingError(Stop-Process): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find a process with the process identifier 38724."
+taskkill tree for sell_guard.pid 38724 issued.
+Killing powershell(cmdline) PID 36696
+**********************
+Windows PowerShell transcript start
+Start time: 20250916160503
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 18620
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/16/2025 16:05:04 STOP ALL (fixed live) ===
+Killing powershell(cmdline) PID 18620
+**********************
+Windows PowerShell transcript start
+Start time: 20250917160503
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 35040
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/17/2025 16:05:03 STOP ALL (fixed live) ===
+Killing sell_guard.pid PID 16276
+Killing powershell(cmdline) PID 24120
+Killing powershell(cmdline) PID 35040
+**********************
+Windows PowerShell transcript start
+Start time: 20250918160503
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 31136
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/18/2025 16:05:03 STOP ALL (fixed live) ===
+Killing sell_guard.pid PID 36224
+Killing python(cmdline) PID 37636
+Killing powershell(cmdline) PID 27364
+Killing powershell(cmdline) PID 11156
+Killing powershell(cmdline) PID 31136
