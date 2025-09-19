@@ -63,6 +63,56 @@
   .kpi-realized .rline > :nth-child(2){ min-width: 5.5rem; } /* $ amount column */
   .kpi-realized .rline > :nth-child(3){ min-width: 3.5rem; } /* % column */
 </style>
+<style>
+  .pos { color:#137333; }  /* green */
+  .neg { color:#b3261e; }  /* red */
+</style>
+<script>
+function colorize(el, val){
+  if (!el) return;
+  const v = Number(val||0);
+  el.classList.toggle('pos', v > 0);
+  el.classList.toggle('neg', v < 0);
+}
+function fmtUsd(n){ return Number(n||0).toLocaleString(undefined,{style:'currency',currency:'USD',maximumFractionDigits:2}); }
+function fmtPct(n){ return `${Number(n||0).toFixed(2)}%`; }
+</script>
+<script>
+function updateDetailPanels(data){
+  const m  = data?.metrics || {};
+  const rb = m.realized_buckets || {};
+
+  const paint = (idV, v, idP, p) => {
+    const vEl = document.getElementById(idV);
+    const pEl = document.getElementById(idP);
+    if (vEl) vEl.textContent = fmtUsd(Number(v||0));
+    if (pEl) pEl.textContent = fmtPct(Number(p||0));
+    // colorization by P&L
+    colorize(vEl, v);
+    colorize(pEl, v); // color % by the same sign as P&L dollars
+  };
+
+  paint('kpi-r-week',     rb.week?.pnl,      'kpi-r-week-pct',     rb.week?.pct);
+  paint('kpi-r-lastweek', rb.last_week?.pnl, 'kpi-r-lastweek-pct', rb.last_week?.pct);
+  paint('kpi-r-month',    rb.month?.pnl,     'kpi-r-month-pct',    rb.month?.pct);
+  paint('kpi-r-all',      rb.all?.pnl,       'kpi-r-all-pct',      rb.all?.pct);
+}
+</script>
+<style>
+  .pos { color:#137333; }  /* green */
+  .neg { color:#b3261e; }  /* red */
+  .kpi-realized .rline{
+    display:grid;
+    grid-template-columns: 1fr max-content max-content;
+    gap:.5rem 1rem;
+    align-items:baseline;
+  }
+  .kpi-realized .rline > :nth-child(2),
+  .kpi-realized .rline > :nth-child(3){
+    text-align:right;
+    font-variant-numeric: tabular-nums;
+  }
+</style>
 
 <div class="container">
   <div class="d-flex justify-content-between align-items-start mb-4" style="min-height:54px; position:relative;">
@@ -73,6 +123,7 @@
   <span class="label">Day trades (PDT, last 5 days)</span>
   <span id="dt_pdt5" class="num">—</span>
 </div>
+  <a href="{{ url_for('live_export_csv') }}" class="btn btn-sm btn-outline-light ms-2">⬇ Export Trades</a>
 	</div>
 
     <!-- Center: title (no badge) -->
@@ -146,22 +197,28 @@
             <div class="small">W / M / All</div>
           </div>
 
-			<div class="kpi-realized mt-2">
+			<div class="kpi-realized">
 			  <div class="rline">
-				<span class="small">Week</span>
-				<span id="kpi-r-week" class="fw-semibold"></span>
-				<span id="kpi-r-week-pct" class="small"></span>
+				<div>Current Week</div>
+				<div id="kpi-r-week" class="fw-semibold text-end"></div>
+				<div id="kpi-r-week-pct" class="text-end"></div>
 			  </div>
-			  <div class="rline mt-1">
-				<span class="small">Month</span>
-				<span id="kpi-r-month" class="fw-semibold"></span>
-				<span id="kpi-r-month-pct" class="small"></span>
+			  <div class="rline">
+				<div>Last Week</div>
+				<div id="kpi-r-lastweek" class="fw-semibold text-end"></div>
+				<div id="kpi-r-lastweek-pct" class="text-end"></div>
 			  </div>
-			  <div class="rline mt-1">
-				<span class="small">All</span>
-				<span id="kpi-r-all" class="fw-semibold"></span>
-				<span id="kpi-r-all-pct" class="small"></span>
+			  <div class="rline">
+				<div>Month</div>
+				<div id="kpi-r-month" class="fw-semibold text-end"></div>
+				<div id="kpi-r-month-pct" class="text-end"></div>
 			  </div>
+			  <div class="rline">
+				<div>All</div>
+				<div id="kpi-r-all" class="fw-semibold text-end"></div>
+				<div id="kpi-r-all-pct" class="text-end"></div>
+			  </div>
+			</div>
 			</div>
           </div>
         </div>
@@ -282,6 +339,31 @@ function updateDetailPanels(data){
   set('#pl-upct',  fmtPct(Number(m.unrealized_pnl_pct || 0)));
   set('#pl-r',     fmtUsd(Number(m.realized_pnl || 0)));
   set('#pl-rpct',  fmtPct(Number(m.realized_pnl_pct || 0)));
+
+	// PDT counter
+	const pdt = Number(d?.metrics?.daytrades_pdt5 || 0);
+	const elPdt = document.querySelector('#dt_pdt5');
+	if (elPdt) {
+	  elPdt.textContent = `${pdt} in last 5 trading days`;
+	  elPdt.classList.remove('pos','neg');
+	  if (pdt >= 3) elPdt.classList.add('neg');
+	}
+
+	// Realized buckets card (Week / Month / All)
+	const rb = d?.metrics?.realized_buckets;
+	if (rb) {
+	  const fmtUsd = n => (Number(n) >= 0 ? `$${Number(n).toFixed(2)}` : `-$${Math.abs(Number(n)).toFixed(2)}`);
+	  const fmtPct = n => `${Number(n).toFixed(2)}%`;
+	  const paint = (idV, v, idP, p) => {
+		const vEl = document.getElementById(idV);
+		const pEl = document.getElementById(idP);
+		if (vEl) vEl.textContent = fmtUsd(v);
+		if (pEl) pEl.textContent = fmtPct(p);
+	  };
+	  paint('kpi-r-week',  rb.week?.pnl ?? 0,  'kpi-r-week-pct',  rb.week?.pct ?? 0);
+	  paint('kpi-r-month', rb.month?.pnl ?? 0, 'kpi-r-month-pct', rb.month?.pct ?? 0);
+	  paint('kpi-r-all',   rb.all?.pnl ?? 0,   'kpi-r-all-pct',   rb.all?.pct ?? 0);
+	}
 
   // Sign colors
   const wires = [

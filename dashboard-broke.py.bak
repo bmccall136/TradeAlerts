@@ -22,7 +22,6 @@ from services.simulation_service import load_simulation_settings
 from dataclasses import asdict
 from pathlib import Path
 NEED_AUTH_FLAG = Path("need_oauth.flag")
-from services.trade_source import load_trades_merged
 
 import os
 import json
@@ -630,6 +629,34 @@ from datetime import datetime, timezone
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 _TZ_ET = ZoneInfo("America/New_York")
+def _dedupe_trades(rows):
+    seen, out = set(), []
+    for t in rows or []:
+        uid = (str(t.get("uid") or "").strip()
+               or "|".join([str(t.get("time_ms") or t.get("time") or ""),
+                            str(t.get("symbol") or "").upper(),
+                            str(t.get("action") or t.get("side") or ""),
+                            str(t.get("qty") or 0),
+                            f'{float(t.get("price") or 0):.2f}']))
+        if uid in seen: 
+            continue
+        seen.add(uid)
+        out.append(t)
+    return out
+
+def _trade_ms(t):
+    try:
+        if t.get("time_ms"): return int(t["time_ms"])
+    except Exception:
+        pass
+    s = str(t.get("time") or "").strip()
+    if s and "T" not in s and " " in s: s = s.replace(" ", "T") + "Z"
+    try:
+        if s.endswith("Z"): s = s[:-1] + "+00:00"
+        import datetime as _dt
+        return int(_dt.datetime.fromisoformat(s).timestamp() * 1000)
+    except Exception:
+        return 0
 
 def _to_ts(x) -> int:
     """Epoch ms from epoch s/ms or ISO/ET 'YYYY-MM-DD HH:MM:SS'."""
@@ -649,6 +676,73 @@ def _to_ts(x) -> int:
             return int(datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=_TZ_ET).timestamp() * 1000)
         except Exception:
             return 0
+from datetime import date, datetime, timezone, timedelta
+from flask import request
+
+def _lookback_days_from_request() -> int:
+    """Compute days of history to pull based on ?start=YYYY-MM-DD or ?days=."""
+    s = (request.args.get("start") or "").strip()
+    if s:
+        try:
+            d0 = datetime.strptime(s, "%Y-%m-%d").date()
+            return max(1, (date.today() - d0).days + 1)
+        except Exception:
+            pass
+    try:
+        return max(1, int(request.args.get("days") or 30))
+    except Exception:
+        return 30
+def _pdt_last5_from_trades(rows):
+    """Count day-trades in the last 5 distinct trade days (BUY+SELL same day)."""
+    from datetime import datetime
+    by = {}  # (YYYY-MM-DD, SYM) -> {'B':qty, 'S':qty}
+    for t in rows or []:
+        sym  = str(t.get("symbol", "")).upper()
+        side = str(t.get("action") or t.get("side") or "").upper()
+        qty  = int(t.get("qty") or 0)
+        if t.get("time_ms"):
+            d = datetime.utcfromtimestamp(int(t["time_ms"])/1000.0).date().isoformat()
+        else:
+            d = str(t.get("time") or t.get("time_et") or "")[:10]
+        if not (sym and d and side in ("BUY","SELL") and qty > 0):
+            continue
+        rec = by.get((d, sym), {'B':0,'S':0})
+        if side == "BUY":  rec['B'] += qty
+        if side == "SELL": rec['S'] += qty
+        by[(d, sym)] = rec
+
+    days = sorted({d for (d, _s) in by.keys()})[-5:]
+    total = 0
+    for d in days:
+        for (day, _sym), rec in by.items():
+            if day == d and rec['B'] > 0 and rec['S'] > 0:
+                total += 1
+    return int(total)
+
+def _merge_dedupe_trades(a_rows, b_rows):
+    """Merge two trade lists and keep the newest duplicate (uid if present)."""
+    def key(t):
+        uid = (t.get("uid") or "").strip()
+        if uid:
+            return uid
+        d   = (str(t.get("time") or "")[:10])  # YYYY-MM-DD
+        sym = (t.get("symbol") or "").upper()
+        side= (t.get("action") or t.get("side") or "")
+        qty = int(t.get("qty") or 0)
+        px  = float(t.get("price") or 0.0)
+        paid= float(t.get("price_paid") or t.get("avg_price") or 0.0)
+        return f"{d}|{sym}|{side}|{qty}|{px:.2f}|{paid:.2f}"
+
+    best = {}
+    for t in (a_rows or []) + (b_rows or []):
+        k = key(t)
+        cur = best.get(k)
+        tm  = float(t.get("time_ms") or 0.0)
+        if (cur is None) or (tm >= float(cur.get("time_ms") or 0.0)):
+            best[k] = t
+    out = list(best.values())
+    out.sort(key=lambda x: float(x.get("time_ms") or 0.0), reverse=True)
+    return out
 
 def _to_dt_local(x):
     """ET datetime from any of the time fields we emit."""
@@ -2931,26 +3025,22 @@ def live_status():
         open_since: dict = {}
         holdings:   list = []
         # ---------------- Query params -----------------
-        start_iso = (request.args.get("start") or "").strip()
-        days = request.args.get("days", type=int)
+        start_s = (request.args.get("start") or "").strip()     # e.g. '2025-08-22'
         debug_level = int((request.args.get("debug") or 0))
-        cutoff_ms = None   # <- add this line so the payload can reference it safely
-
-        # ---------------- Trades (single unified source) -----------------
-        try:
-            from services.trade_source import load_trades_merged
-            trades_rows = load_trades_merged(days=days, start_iso=start_iso, max_count=800)
-        except Exception:
-            if log:
-                log.exception("[LIVE] trades merged failed")
-            trades_rows = []
-
-        # NOTE:
-        #   - Do NOT recompute 'days' here (no 'start_s' / 'req_days').
-        #   - Do NOT call transactions_as_trades() or recent_executions_as_trades() anymore.
-        #   - All date math happens inside trade_source.load_trades_merged().
-
-
+        # If caller provided "days", use it; otherwise compute from start if present.
+        req_days = request.args.get("days")
+        if req_days is not None:
+            days = max(1, min(int(req_days), 365))
+        else:
+            if start_s:
+                try:
+                    start_dt = _dt.datetime.strptime(start_s, "%Y-%m-%d").date()
+                    today_et = _dt.datetime.now(tz=_ET).date()
+                    days = max(1, min((today_et - start_dt).days + 1, 365))
+                except Exception:
+                    days = 7
+            else:
+               days = 7
         # ---------------- Helpers ----------------------
         def _num(x):
             """Best-effort float, else None."""
@@ -3135,6 +3225,73 @@ def live_status():
 
             visit(payload or {})
             return out
+        from datetime import datetime, timedelta, date
+        from zoneinfo import ZoneInfo
+
+        _ET = ZoneInfo("America/New_York")
+
+        def _et_date_from_trade(t) -> date | None:
+            """Return ET calendar date for a trade row (prefers time_ms, falls back to 'time')."""
+            try:
+                if t.get("time_ms") is not None:
+                    return datetime.fromtimestamp(int(t["time_ms"]) / 1000, _ET).date()
+                s = (t.get("time") or "").strip().replace("T", " ")
+                if len(s) >= 19:
+                    # interpret as ET wall time
+                    return datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=_ET).date()
+            except Exception:
+                pass
+            return None
+
+        def _last_5_trading_days(today: date | None = None) -> list[date]:
+            """Collect 5 most recent Mon–Fri dates ending today (ignores market holidays)."""
+            d = (today or datetime.now(_ET).date())
+            days = []
+            while len(days) < 5:
+                if d.weekday() < 5:  # 0=Mon … 4=Fri
+                    days.append(d)
+                d -= timedelta(days=1)
+            return list(reversed(days))
+
+        def _count_day_trades_last5(trades: list[dict]) -> int:
+            """Count symbols that had both a buy and a sell on the same ET date within the last 5 trading days."""
+            window = set(_last_5_trading_days())
+            day_sym = {}  # (date, sym) -> {'B': qty, 'S': qty}
+            for t in trades or []:
+                dt = _et_date_from_trade(t)
+                if dt is None or dt not in window:
+                    continue
+                side = str(t.get("action") or t.get("side") or "").upper()
+                sym  = str(t.get("symbol") or "").upper()
+                qty  = int(t.get("qty") or 0)
+                if not sym or side not in ("BUY","SELL") or qty <= 0:
+                    continue
+                key = (dt, sym)
+                rec = day_sym.get(key, {'B':0, 'S':0})
+                if side == "BUY":  rec['B'] += qty
+                else:              rec['S'] += qty
+                day_sym[key] = rec
+
+            total = 0
+            for (dt, sym), rec in day_sym.items():
+                if rec['B'] > 0 and rec['S'] > 0:
+                    total += 1
+            return total
+
+        def _sum_realized_between(trades: list[dict], start_d: date, end_d: date) -> float:
+            """Sum realized P&L (field 'pl') for SELL rows in ET date range inclusive."""
+            s = 0.0
+            for t in trades or []:
+                if str(t.get("action") or t.get("side") or "").upper() != "SELL":
+                    continue
+                dt = _et_date_from_trade(t)
+                if dt is None or dt < start_d or dt > end_d:
+                    continue
+                try:
+                    s += float(t.get("pl") or 0.0)
+                except Exception:
+                    pass
+            return round(s, 2)
 
         def _collect_holdings(raw_positions):
             """Extract [{'symbol','qty','price_paid'}] from E*TRADE positions blob."""
@@ -3200,13 +3357,12 @@ def live_status():
                 ts_ms = _to_ms_for_compare(t.get("time_ms"))
                 t_date = _dt.datetime.fromtimestamp(ts_ms / 1000.0, tz=_ET).date() if ts_ms else today_et
                 sym = (t.get("symbol") or "").upper()
-                side = (t.get("action") or t.get("side") or "").upper()
+                side = (t.get("action") or "").upper()
                 qty = int(_safe_float(t.get("qty")))
                 px = _to_f(t.get("price"))
 
                 if not sym or qty <= 0 or (px or 0) <= 0:
-                    enriched.append({**t})
-                    continue
+                    enriched.append({**t});  continue
 
                 lots.setdefault(sym, [])
 
@@ -3216,8 +3372,7 @@ def live_status():
                     continue
 
                 if side != "SELL":
-                    enriched.append({**t})
-                    continue
+                    enriched.append({**t});  continue
 
                 # SELL: consume FIFO; track if all matched lots are same-day
                 remain = qty
@@ -3252,10 +3407,46 @@ def live_status():
                 enriched.append({**t, "price_paid": avg_basis, "pl": pnl, "pl_pct": pnl_pct})
 
             enriched.sort(key=lambda r: _to_ms_for_compare(r.get("time_ms")), reverse=True)
-
             realized_pct = (realized_val / realized_basis * 100.0) if realized_basis > 0 else 0.0
+            from flask import current_app
 
-            # PDT stats (last 5 trading days)
+            def live_status():
+                # ... your existing account/quotes logic ...
+
+                # Build the trades list FIRST (this is the same list you return in JSON)
+                trades = transactions_as_trades( ... )  # <- your existing call
+                current_app.logger.info("[LIVE] transactions_as_trades -> %d", len(trades))
+
+                # NOW compute realized buckets from those trades
+                try:
+                    realized_buckets = realized_buckets_from_trades(trades)
+                except Exception:
+                    current_app.logger.exception("realized_buckets summarize failed")
+                    realized_buckets = {"week":{"pnl":0,"pct":0},
+                                        "month":{"pnl":0,"pct":0},
+                                        "all":{"pnl":0,"pct":0}}
+
+                metrics = {
+                    "cash_balance": cash_balance,
+                    "positions_value": positions_value,
+                    "total_value": total_value,
+                    "unrealized_pnl": unrealized_pnl,
+                    "unrealized_pnl_pct": unrealized_pnl_pct,
+                    "realized_pnl": realized_pnl,
+                    "realized_pnl_pct": realized_pnl_pct,
+                    "daytrades_pdt5": daytrades_pdt5,
+                    "realized_buckets": realized_buckets,  # <-- add here
+                }
+
+                return jsonify({
+                    "ok": True,
+                    "account": account_payload,
+                    "metrics": metrics,
+                    "holdings": holdings_payload,
+                    "trades": trades,
+                    "_debug": debug_info,
+                })
+            # aggregate last 9 trading days from the dates present
             by_date = {}
             for d in daytrades:
                 k = d["date"].isoformat()
@@ -3264,17 +3455,19 @@ def live_status():
                 if (d["pl"] or 0) > 0:
                     rec["profitable"] += 1
 
+            # PDT: count ALL day trades (win or loss) in the last 5 trading days
             pdt_dates = sorted({d["date"] for d in daytrades}, reverse=True)[:5]
             pdt_total = 0
             pdt_map = {}
-            for dt_ in pdt_dates:
-                k = dt_.isoformat()
+            for dt in pdt_dates:
+                k = dt.isoformat()
                 c = by_date.get(k, {"count": 0})
                 pdt_map[k] = {"count": c["count"]}
                 pdt_total += c["count"]
 
-            daytrade_stats = {"pdt5": {"dates": pdt_map, "total": pdt_total}}
+            daytrade_stats = { "pdt5": { "dates": pdt_map, "total": pdt_total } }
             return enriched, round(realized_val, 2), round(realized_pct, 2), daytrade_stats
+
 
         # --------------- Account (E*TRADE real-time) ---------------
         from services import broker as _broker
@@ -3479,84 +3672,52 @@ def live_status():
             "month": {"pnl": 0.0, "pct": 0.0},
             "all": {"pnl": 0.0, "pct": 0.0},
         }
-        # --------------- Trades (from merged source) ---------------
-        IGNORE = {s.strip().upper() for s in (os.getenv("LIVE_IGNORE_SYMBOLS") or "GEVO").split(",") if s.strip()}
-        mapped = []
 
-        for t in trades_rows or []:
-            sym = (t.get("symbol") or "").upper()
-            if not sym or sym in IGNORE:
-                continue
-
-            side = (t.get("side") or t.get("action") or "").upper()
-            if side.startswith("BUY"):
-                side = "BUY"
-            elif side.startswith("SELL"):
-                side = "SELL"
-
-            qty = int(_safe_float(t.get("qty")))
-            px = _to_f(t.get("price"))
-
-            ts_ms = _to_ms_for_compare(t.get("time_ms") or t.get("time"))
-            mapped.append({
-                "time": _fmt_et(ts_ms),
-                "time_ms": ts_ms,
-                "time_utc": t.get("time") or "",
-                "symbol": sym,
-                "action": side,
-                "qty": qty,
-                "price": px,
-                "amount": _to_f(t.get("amount")),
-                "price_paid": _to_f(t.get("price_paid") or t.get("pricePaid")),
-                "pl": _to_f(t.get("pl")),
-                "pl_pct": _to_f(t.get("pl_pct")),
-            })
-
-        # newest -> oldest
-        mapped.sort(key=lambda r: _to_ms_for_compare(r.get("time_ms")), reverse=True)
-
-        # FIFO enrich + PDT stats + today's realized
-        enriched_trades, realized_today_val, realized_today_pct, daytrade_stats = _fifo_enrich_and_daytrades(mapped)
-
-        # Optional: compute realized_buckets (week/last_week/month/all) if you have a helper
+        # --------------- Trades ------------------------
+        # Prefer transactions (has BUY/SELL + amounts). Fallback to executions only if truly needed.
+        trades_src = []
         try:
-            realized_buckets = realized_buckets_from_trades(enriched_trades)
-        except Exception:
-            realized_buckets = {
-                "week": {"pnl": 0.0, "pct": 0.0},
-                "month": {"pnl": 0.0, "pct": 0.0},
-                "all": {"pnl": 0.0, "pct": 0.0},
-            }
+            if hasattr(et, "transactions_as_trades"):
+                trades_src = et.transactions_as_trades(days) or []
+                _log("info", "[LIVE] transactions_as_trades -> %d", len(trades_src))
+        except Exception as e:
+            _log("warning", "[LIVE] transactions_as_trades failed: %s", e)
+            trades_src = []
+
+        if not trades_src:
+            try:
+                count = min(max(days * 16, 50), 1000)
+                trades_src = et.recent_executions_as_trades(count) or []
+                _log("info", "[LIVE] recent_executions_as_trades -> %d", len(trades_src))
+            except Exception as e:
+                _log("warning", "[LIVE] executions fallback failed: %s", e)
+                trades_src = []
 
         # Dedup + normalize trade rows
         IGNORE = {s.strip().upper() for s in (os.getenv("LIVE_IGNORE_SYMBOLS") or "GEVO").split(",") if s.strip()}
         seen, mapped = set(), []
-        seen, mapped = set(), []
-        for t in (trades_rows or []):
+        for t in trades_src or []:
             sym = (t.get("symbol") or "").upper()
             if sym in IGNORE:
                 continue
-            side = (t.get("side") or t.get("action") or "").upper()
-            if side.startswith("BUY"):
-               side = "BUY"
-            elif side.startswith("SELL"):
-                side = "SELL"
+            side = (t.get("action") or "").upper()
             qty = int(_safe_float(t.get("qty")))
             px = _to_f(t.get("price"))
- 
-            # Timestamp: prefer time_ms; else fall back to time/time_utc
-            ts_ms = _to_ms_for_compare(t.get("time_ms") or t.get("time") or t.get("time_utc"))
+
+            # Timestamp source for dedupe: prefer time_utc, else time/time_et
+            ts_key = t.get("time_utc") or t.get("time") or t.get("time_et")
+            ts_ms = _to_ms_for_compare(ts_key)
             minute_bucket = int(ts_ms / 60000) if ts_ms else 0
             key = (minute_bucket, sym, side, qty, round(px or 0.0, 2))
             if key in seen:
                 continue
             seen.add(key)
- 
+
             mapped.append(
                 {
                     "time": _fmt_et(ts_ms),          # ET display
                     "time_ms": ts_ms,               # for sorting / filtering
-                    "time_utc": t.get("time") or t.get("time_utc") or "",
+                    "time_utc": t.get("time_utc") or "",
                     "symbol": sym,
                     "action": side,
                     "qty": qty,
@@ -3569,7 +3730,16 @@ def live_status():
                 }
             )
 
-
+        # Enforce lower bound if start is provided (midnight ET)
+        cutoff_ms = None
+        if start_s:
+            try:
+                start_dt = _dt.datetime.strptime(start_s, "%Y-%m-%d").date()
+                cutoff = _dt.datetime.combine(start_dt, _dt.time(0, 0), tzinfo=_ET).astimezone(_dt.timezone.utc)
+                cutoff_ms = int(cutoff.timestamp() * 1000)
+                mapped = [t for t in mapped if _to_ms_for_compare(t.get("time_ms")) >= cutoff_ms]
+            except Exception as e:
+                _log("warning", "[LIVE] start filter failed for %s: %s", start_s, e)
         def _open_since_map(trades):
             """
             Build {SYM: earliest_open_lot_time_ms} from FIFO across BUY/SELL trades.
@@ -3730,6 +3900,108 @@ def live_status():
                     out[s] = opened_et
 
             return out
+        def _safe_num(x, default=0.0):
+            try:
+                n = float(x)
+                return default if (n != n) else n  # NaN -> default
+            except Exception:
+                return default
+
+        def _trade_dt_utc(t):
+            """Return a datetime (UTC) for a trade dict with time_ms or time."""
+            from datetime import datetime, timezone
+            ms = t.get("time_ms")
+            if ms:
+                try:
+                    return datetime.fromtimestamp(int(ms) / 1000.0, tz=timezone.utc)
+                except Exception:
+                    pass
+            s = str(t.get("time") or "")
+            # tolerate "YYYY-MM-DD HH:MM:SS" or ISO
+            if s and "T" not in s and " " in s:
+                s = s.replace(" ", "T") + "Z"
+            try:
+                # py3.11 handles 'Z' with replace
+                if s.endswith("Z"):
+                    s = s[:-1] + "+00:00"
+                return datetime.fromisoformat(s)
+            except Exception:
+                return None
+
+        def _pdt_last5_from_trades(rows):
+            """Count symbols with both a BUY and SELL on the same day, across the last 5 distinct trade days."""
+            from datetime import datetime
+            by = {}  # (YYYY-MM-DD, SYM) -> {'B':qty, 'S':qty}
+            for t in rows or []:
+                sym  = str(t.get("symbol", "")).upper()
+                side = str(t.get("action") or t.get("side") or "").upper()
+                qty  = int(t.get("qty") or 0)
+                if not (sym and side in ("BUY", "SELL") and qty > 0):
+                    continue
+                if t.get("time_ms"):
+                    day = datetime.utcfromtimestamp(int(t["time_ms"]) / 1000.0).date().isoformat()
+                else:
+                    day = str(t.get("time") or "")[:10]
+                if not day:
+                    continue
+                rec = by.get((day, sym), {"B": 0, "S": 0})
+                if side == "BUY":  rec["B"] += qty
+                if side == "SELL": rec["S"] += qty
+                by[(day, sym)] = rec
+
+            days = sorted({d for (d, _) in by.keys()})[-5:]  # last 5 trade days
+            total = 0
+            for d in days:
+                for (day, _sym), rec in by.items():
+                    if day == d and rec["B"] > 0 and rec["S"] > 0:
+                        total += 1
+            return int(total)
+
+        def _realized_buckets(trades, equity_baseline=0.0):
+            """
+            Sum realized P&L from SELL rows:
+              - week: last 7*calendar* days (rolling)
+              - month: current calendar month
+              - all: all data
+            pct is relative to equity_baseline (fallback to abs(all) to avoid divide-by-zero).
+            """
+            from datetime import datetime, timezone, timedelta
+            if equity_baseline is None:
+                equity_baseline = 0.0
+            now = datetime.now(timezone.utc)
+            start_week  = now - timedelta(days=6)
+            start_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+            wk = 0.0
+            mo = 0.0
+            al = 0.0
+
+            for t in trades or []:
+                side = str(t.get("action") or t.get("side") or "").upper()
+                if side != "SELL":
+                    continue  # only sells realize
+                pl = _safe_num(t.get("pl"), 0.0)
+                dt = _trade_dt_utc(t)
+                if dt is None:
+                    al += pl
+                    continue
+                al += pl
+                if dt >= start_week:
+                    wk += pl
+                if dt >= start_month:
+                    mo += pl
+
+            def pct(v, base):
+                b = _safe_num(base, 0.0)
+                if b == 0:
+                    b = max(abs(_safe_num(al, 0.0)), 1.0)
+                return 100.0 * _safe_num(v, 0.0) / b
+
+            return {
+                "week":  {"pnl": round(wk, 2), "pct": round(pct(wk, equity_baseline), 2)},
+                "month": {"pnl": round(mo, 2), "pct": round(pct(mo, equity_baseline), 2)},
+                "all":   {"pnl": round(al, 2), "pct": round(pct(al, equity_baseline), 2)},
+            }
 
         opened_map = _infer_open_times(holdings, trades_enriched)
         for h in holdings:
@@ -3771,6 +4043,8 @@ def live_status():
         }
         if debug_level:
             payload["_debug"] = {
+                "start": start_s or None,
+                "cutoff_ms": cutoff_ms,
                 "requested": syms,
                 "qmap_keys": sorted(list(qmap.keys())),
                 "positions_value": positions_value,
@@ -3785,6 +4059,23 @@ def live_status():
             or bool(holdings)
             or bool(qmap)
         )
+        # ---- enrich metrics with PDT + realized buckets ----
+        trades_for_metrics = payload.get("trades") if isinstance(payload, dict) else locals().get("trades") or []
+        metrics = payload.get("metrics") if isinstance(payload, dict) else locals().get("metrics") or {}
+
+        equity_baseline = (
+            metrics.get("total_value")
+            or account.get("equity_value")
+            or account.get("net_account_value")
+            or 0.0
+        )
+
+        metrics["daytrades_pdt5"]  = _pdt_last5_from_trades(trades_for_metrics)
+        metrics["realized_buckets"] = _realized_buckets(trades_for_metrics, equity_baseline)
+
+        # ensure we put metrics back into the payload structure you return
+        if isinstance(payload, dict):
+            payload["metrics"] = metrics
 
         return payload
 
@@ -3826,6 +4117,39 @@ def live_quotes():
             singles[s] = {"error": str(e)}
     out["singles"] = singles
     return out
+@app.route("/live/export.csv")
+def live_export_csv():
+    """Export recent executions as a trades CSV (robust even if transactions API is down)."""
+    from flask import Response, request
+    import csv, io
+    try:
+        # how many to pull (default 200)
+        n = int(request.args.get("n") or 200)
+    except Exception:
+        n = 200
+
+    try:
+        from services.etrade_service import recent_executions_as_trades
+        rows = recent_executions_as_trades(n) or []
+    except Exception as e:
+        current_app.logger.warning("[LIVE] export trades fallback: %s", e)
+        rows = []
+
+    # columns we know we can produce from recent_executions_as_trades
+    cols = ["time", "time_ms", "symbol", "action", "qty", "price", "price_paid", "pl", "pl_pct", "uid"]
+
+    buf = io.StringIO(newline="")
+    w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+    w.writeheader()
+    for r in rows:
+        w.writerow(r or {})
+    data = buf.getvalue().encode("utf-8-sig")  # Excel-friendly
+
+    return Response(
+        data,
+        mimetype="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="trades.csv"'},
+    )
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

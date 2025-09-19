@@ -2389,3 +2389,225 @@ Recorded PID 40092 -> C:\TradeAlerts\pids\sell_guard.pid
 Windows PowerShell transcript end
 End time: 20250911160502
 **********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250916092127
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Sell-Guard.ps1
+Process ID: 15152
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/16/2025 09:21:27 START Sell Guard (PID-backed) ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+Launching: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe -u .\sell_guard.py (same window)
+Recorded PID 38724 -> C:\TradeAlerts\pids\sell_guard.pid
+**********************
+Windows PowerShell transcript start
+Start time: 20250917092504
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Sell-Guard.ps1
+Process ID: 24120
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/17/2025 09:25:04 START Sell Guard (PID-backed) ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+Launching: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe -u .\sell_guard.py (same window)
+Recorded PID 16276 -> C:\TradeAlerts\pids\sell_guard.pid
+=== 09/17/2025 16:05:04 END Sell Guard ===
+**********************
+Windows PowerShell transcript end
+End time: 20250917160504
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250918010622
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Sell-Guard.ps1
+Process ID: 25616
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/18/2025 01:06:22 START Sell Guard (PID-backed) ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+Launching: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe -u .\sell_guard.py (same window)
+Recorded PID 13700 -> C:\TradeAlerts\pids\sell_guard.pid
+Wait-Process : Cannot find a process with the process identifier 13700.
+At C:\TradeAlerts\Start-Sell-Guard.ps1:73 char:3
++   Wait-Process -Id $p.Id
++   ~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (13700:Int32) [Wait-Process], ProcessCommandException
+    + FullyQualifiedErrorId : NoProcessFoundForGivenId,Microsoft.PowerShell.Commands.WaitProcessCommand
+Wait-Process : Cannot find a process with the process identifier 13700.
+At C:\TradeAlerts\Start-Sell-Guard.ps1:73 char:3
++   Wait-Process -Id $p.Id
++   ~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (13700:Int32) [Wait-Process], ProcessCommandException
+    + FullyQualifiedErrorId : NoProcessFoundForGivenId,Microsoft.PowerShell.Commands.WaitProcessCommand
+
+=== 09/18/2025 01:06:22 END Sell Guard ===
+**********************
+Windows PowerShell transcript end
+End time: 20250918010622
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250918032123
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Sell-Guard.ps1
+Process ID: 35532
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/18/2025 03:21:23 START Sell Guard (PID-backed) ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+Launching: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe -u .\sell_guard.py (same window)
+Recorded PID 30200 -> C:\TradeAlerts\pids\sell_guard.pid
+=== 09/18/2025 03:21:24 END Sell Guard ===
+**********************
+Windows PowerShell transcript end
+End time: 20250918032124
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250918033736
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Sell-Guard.ps1
+Process ID: 34572
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/18/2025 03:37:36 START Sell Guard (PID-backed) ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+Launching: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe -u .\sell_guard.py (same window)
+Recorded PID 12772 -> C:\TradeAlerts\pids\sell_guard.pid
+=== 09/18/2025 03:37:37 END Sell Guard ===
+**********************
+Windows PowerShell transcript end
+End time: 20250918033737
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250918034851
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Sell-Guard.ps1
+Process ID: 38704
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/18/2025 03:48:51 START Sell Guard (PID-backed) ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+Launching: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe -u .\sell_guard.py (same window)
+Recorded PID 35564 -> C:\TradeAlerts\pids\sell_guard.pid
+**********************
+Windows PowerShell transcript start
+Start time: 20250918092503
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Sell-Guard.ps1
+Process ID: 11156
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/18/2025 09:25:03 START Sell Guard (PID-backed) ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+Launching: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe -u .\sell_guard.py (same window)
+Recorded PID 36224 -> C:\TradeAlerts\pids\sell_guard.pid
+=== 09/18/2025 16:05:04 END Sell Guard ===
+**********************
+Windows PowerShell transcript end
+End time: 20250918160504
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20250919092503
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Sell-Guard.ps1
+Process ID: 32824
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/19/2025 09:25:03 START Sell Guard (PID-backed) ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+Launching: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe -u .\sell_guard.py (same window)
+Recorded PID 21756 -> C:\TradeAlerts\pids\sell_guard.pid

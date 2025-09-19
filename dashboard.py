@@ -22,6 +22,7 @@ from services.simulation_service import load_simulation_settings
 from dataclasses import asdict
 from pathlib import Path
 NEED_AUTH_FLAG = Path("need_oauth.flag")
+from services.trade_source import load_trades_merged
 
 import os
 import json
@@ -2930,22 +2931,26 @@ def live_status():
         open_since: dict = {}
         holdings:   list = []
         # ---------------- Query params -----------------
-        start_s = (request.args.get("start") or "").strip()     # e.g. '2025-08-22'
+        start_iso   = (request.args.get("start") or "").strip()
+        days        = request.args.get("days", type=int)
         debug_level = int((request.args.get("debug") or 0))
-        # If caller provided "days", use it; otherwise compute from start if present.
-        req_days = request.args.get("days")
-        if req_days is not None:
-            days = max(1, min(int(req_days), 365))
-        else:
-            if start_s:
-                try:
-                    start_dt = _dt.datetime.strptime(start_s, "%Y-%m-%d").date()
-                    today_et = _dt.datetime.now(tz=_ET).date()
-                    days = max(1, min((today_et - start_dt).days + 1, 365))
-                except Exception:
-                    days = 7
-            else:
-               days = 7
+        max_count   = int(request.args.get("max") or 5000)   # <- NEW
+
+        # ---------------- Trades (single unified source) -----------------
+        try:
+            from services.trade_source import load_trades_merged
+            trades_rows = load_trades_merged(days=days, start_iso=start_iso, max_count=max_count)
+        except Exception:
+            if log:
+                log.exception("[LIVE] trades merged failed")
+            trades_rows = []
+
+        # NOTE:
+        #   - Do NOT recompute 'days' here (no 'start_s' / 'req_days').
+        #   - Do NOT call transactions_as_trades() or recent_executions_as_trades() anymore.
+        #   - All date math happens inside trade_source.load_trades_merged().
+
+
         # ---------------- Helpers ----------------------
         def _num(x):
             """Best-effort float, else None."""
@@ -3195,12 +3200,13 @@ def live_status():
                 ts_ms = _to_ms_for_compare(t.get("time_ms"))
                 t_date = _dt.datetime.fromtimestamp(ts_ms / 1000.0, tz=_ET).date() if ts_ms else today_et
                 sym = (t.get("symbol") or "").upper()
-                side = (t.get("action") or "").upper()
+                side = (t.get("action") or t.get("side") or "").upper()
                 qty = int(_safe_float(t.get("qty")))
                 px = _to_f(t.get("price"))
 
                 if not sym or qty <= 0 or (px or 0) <= 0:
-                    enriched.append({**t});  continue
+                    enriched.append({**t})
+                    continue
 
                 lots.setdefault(sym, [])
 
@@ -3210,7 +3216,8 @@ def live_status():
                     continue
 
                 if side != "SELL":
-                    enriched.append({**t});  continue
+                    enriched.append({**t})
+                    continue
 
                 # SELL: consume FIFO; track if all matched lots are same-day
                 remain = qty
@@ -3245,46 +3252,10 @@ def live_status():
                 enriched.append({**t, "price_paid": avg_basis, "pl": pnl, "pl_pct": pnl_pct})
 
             enriched.sort(key=lambda r: _to_ms_for_compare(r.get("time_ms")), reverse=True)
+
             realized_pct = (realized_val / realized_basis * 100.0) if realized_basis > 0 else 0.0
-            from flask import current_app
 
-            def live_status():
-                # ... your existing account/quotes logic ...
-
-                # Build the trades list FIRST (this is the same list you return in JSON)
-                trades = transactions_as_trades( ... )  # <- your existing call
-                current_app.logger.info("[LIVE] transactions_as_trades -> %d", len(trades))
-
-                # NOW compute realized buckets from those trades
-                try:
-                    realized_buckets = realized_buckets_from_trades(trades)
-                except Exception:
-                    current_app.logger.exception("realized_buckets summarize failed")
-                    realized_buckets = {"week":{"pnl":0,"pct":0},
-                                        "month":{"pnl":0,"pct":0},
-                                        "all":{"pnl":0,"pct":0}}
-
-                metrics = {
-                    "cash_balance": cash_balance,
-                    "positions_value": positions_value,
-                    "total_value": total_value,
-                    "unrealized_pnl": unrealized_pnl,
-                    "unrealized_pnl_pct": unrealized_pnl_pct,
-                    "realized_pnl": realized_pnl,
-                    "realized_pnl_pct": realized_pnl_pct,
-                    "daytrades_pdt5": daytrades_pdt5,
-                    "realized_buckets": realized_buckets,  # <-- add here
-                }
-
-                return jsonify({
-                    "ok": True,
-                    "account": account_payload,
-                    "metrics": metrics,
-                    "holdings": holdings_payload,
-                    "trades": trades,
-                    "_debug": debug_info,
-                })
-            # aggregate last 9 trading days from the dates present
+            # PDT stats (last 5 trading days)
             by_date = {}
             for d in daytrades:
                 k = d["date"].isoformat()
@@ -3293,19 +3264,17 @@ def live_status():
                 if (d["pl"] or 0) > 0:
                     rec["profitable"] += 1
 
-            # PDT: count ALL day trades (win or loss) in the last 5 trading days
             pdt_dates = sorted({d["date"] for d in daytrades}, reverse=True)[:5]
             pdt_total = 0
             pdt_map = {}
-            for dt in pdt_dates:
-                k = dt.isoformat()
+            for dt_ in pdt_dates:
+                k = dt_.isoformat()
                 c = by_date.get(k, {"count": 0})
                 pdt_map[k] = {"count": c["count"]}
                 pdt_total += c["count"]
 
-            daytrade_stats = { "pdt5": { "dates": pdt_map, "total": pdt_total } }
+            daytrade_stats = {"pdt5": {"dates": pdt_map, "total": pdt_total}}
             return enriched, round(realized_val, 2), round(realized_pct, 2), daytrade_stats
-
 
         # --------------- Account (E*TRADE real-time) ---------------
         from services import broker as _broker
@@ -3510,52 +3479,84 @@ def live_status():
             "month": {"pnl": 0.0, "pct": 0.0},
             "all": {"pnl": 0.0, "pct": 0.0},
         }
+        # --------------- Trades (from merged source) ---------------
+        IGNORE = {s.strip().upper() for s in (os.getenv("LIVE_IGNORE_SYMBOLS") or "GEVO").split(",") if s.strip()}
+        mapped = []
 
-        # --------------- Trades ------------------------
-        # Prefer transactions (has BUY/SELL + amounts). Fallback to executions only if truly needed.
-        trades_src = []
+        for t in trades_rows or []:
+            sym = (t.get("symbol") or "").upper()
+            if not sym or sym in IGNORE:
+                continue
+
+            side = (t.get("side") or t.get("action") or "").upper()
+            if side.startswith("BUY"):
+                side = "BUY"
+            elif side.startswith("SELL"):
+                side = "SELL"
+
+            qty = int(_safe_float(t.get("qty")))
+            px = _to_f(t.get("price"))
+
+            ts_ms = _to_ms_for_compare(t.get("time_ms") or t.get("time"))
+            mapped.append({
+                "time": _fmt_et(ts_ms),
+                "time_ms": ts_ms,
+                "time_utc": t.get("time") or "",
+                "symbol": sym,
+                "action": side,
+                "qty": qty,
+                "price": px,
+                "amount": _to_f(t.get("amount")),
+                "price_paid": _to_f(t.get("price_paid") or t.get("pricePaid")),
+                "pl": _to_f(t.get("pl")),
+                "pl_pct": _to_f(t.get("pl_pct")),
+            })
+
+        # newest -> oldest
+        mapped.sort(key=lambda r: _to_ms_for_compare(r.get("time_ms")), reverse=True)
+
+        # FIFO enrich + PDT stats + today's realized
+        enriched_trades, realized_today_val, realized_today_pct, daytrade_stats = _fifo_enrich_and_daytrades(mapped)
+
+        # Optional: compute realized_buckets (week/last_week/month/all) if you have a helper
         try:
-            if hasattr(et, "transactions_as_trades"):
-                trades_src = et.transactions_as_trades(days) or []
-                _log("info", "[LIVE] transactions_as_trades -> %d", len(trades_src))
-        except Exception as e:
-            _log("warning", "[LIVE] transactions_as_trades failed: %s", e)
-            trades_src = []
-
-        if not trades_src:
-            try:
-                count = min(max(days * 16, 50), 1000)
-                trades_src = et.recent_executions_as_trades(count) or []
-                _log("info", "[LIVE] recent_executions_as_trades -> %d", len(trades_src))
-            except Exception as e:
-                _log("warning", "[LIVE] executions fallback failed: %s", e)
-                trades_src = []
+            realized_buckets = realized_buckets_from_trades(enriched_trades)
+        except Exception:
+            realized_buckets = {
+                "week": {"pnl": 0.0, "pct": 0.0},
+                "month": {"pnl": 0.0, "pct": 0.0},
+                "all": {"pnl": 0.0, "pct": 0.0},
+            }
 
         # Dedup + normalize trade rows
         IGNORE = {s.strip().upper() for s in (os.getenv("LIVE_IGNORE_SYMBOLS") or "GEVO").split(",") if s.strip()}
         seen, mapped = set(), []
-        for t in trades_src or []:
+        seen, mapped = set(), []
+        for t in (trades_rows or []):
             sym = (t.get("symbol") or "").upper()
             if sym in IGNORE:
                 continue
-            side = (t.get("action") or "").upper()
+            side = (t.get("side") or t.get("action") or "").upper()
+            if side.startswith("BUY"):
+               side = "BUY"
+            elif side.startswith("SELL"):
+                side = "SELL"
             qty = int(_safe_float(t.get("qty")))
             px = _to_f(t.get("price"))
-
-            # Timestamp source for dedupe: prefer time_utc, else time/time_et
-            ts_key = t.get("time_utc") or t.get("time") or t.get("time_et")
-            ts_ms = _to_ms_for_compare(ts_key)
+ 
+            # Timestamp: prefer time_ms; else fall back to time/time_utc
+            ts_ms = _to_ms_for_compare(t.get("time_ms") or t.get("time") or t.get("time_utc"))
             minute_bucket = int(ts_ms / 60000) if ts_ms else 0
             key = (minute_bucket, sym, side, qty, round(px or 0.0, 2))
             if key in seen:
                 continue
             seen.add(key)
-
+ 
             mapped.append(
                 {
                     "time": _fmt_et(ts_ms),          # ET display
                     "time_ms": ts_ms,               # for sorting / filtering
-                    "time_utc": t.get("time_utc") or "",
+                    "time_utc": t.get("time") or t.get("time_utc") or "",
                     "symbol": sym,
                     "action": side,
                     "qty": qty,
@@ -3568,16 +3569,7 @@ def live_status():
                 }
             )
 
-        # Enforce lower bound if start is provided (midnight ET)
-        cutoff_ms = None
-        if start_s:
-            try:
-                start_dt = _dt.datetime.strptime(start_s, "%Y-%m-%d").date()
-                cutoff = _dt.datetime.combine(start_dt, _dt.time(0, 0), tzinfo=_ET).astimezone(_dt.timezone.utc)
-                cutoff_ms = int(cutoff.timestamp() * 1000)
-                mapped = [t for t in mapped if _to_ms_for_compare(t.get("time_ms")) >= cutoff_ms]
-            except Exception as e:
-                _log("warning", "[LIVE] start filter failed for %s: %s", start_s, e)
+
         def _open_since_map(trades):
             """
             Build {SYM: earliest_open_lot_time_ms} from FIFO across BUY/SELL trades.
@@ -3779,8 +3771,6 @@ def live_status():
         }
         if debug_level:
             payload["_debug"] = {
-                "start": start_s or None,
-                "cutoff_ms": cutoff_ms,
                 "requested": syms,
                 "qmap_keys": sorted(list(qmap.keys())),
                 "positions_value": positions_value,

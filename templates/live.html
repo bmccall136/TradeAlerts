@@ -137,39 +137,43 @@
       </div>
     </div>
 
-    <!-- Realized P&L buckets (right) -->
-    <div class="col-12 col-md-4">
-      <div class="card bg-dark border-0 shadow-sm h-100">
-        <div class="card-body kpi-card">
-          <div class="d-flex justify-content-between align-items-center">
-            <div class="text-uppercase small">Realized P&amp;L</div>
-            <div class="small">W / M / All</div>
-          </div>
+<!-- Realized P&L buckets (right) -->
+<div class="col-12 col-md-4">
+  <div class="card bg-dark border-0 shadow-sm h-100">
+    <div class="card-body kpi-card">
+      <div class="d-flex justify-content-between align-items-center">
+        <div class="text-uppercase small">Realized P&amp;L</div>
+        <div class="small">W / LW / M / All</div>
+      </div>
 
-			<div class="kpi-realized mt-2">
-			  <div class="rline">
-				<span class="small">Week</span>
-				<span id="kpi-r-week" class="fw-semibold"></span>
-				<span id="kpi-r-week-pct" class="small"></span>
-			  </div>
-			  <div class="rline mt-1">
-				<span class="small">Month</span>
-				<span id="kpi-r-month" class="fw-semibold"></span>
-				<span id="kpi-r-month-pct" class="small"></span>
-			  </div>
-			  <div class="rline mt-1">
-				<span class="small">All</span>
-				<span id="kpi-r-all" class="fw-semibold"></span>
-				<span id="kpi-r-all-pct" class="small"></span>
-			  </div>
-			</div>
-          </div>
+      <div class="kpi-realized mt-2">
+        <div class="rline">
+          <span class="small">Week</span>
+          <span id="kpi-r-week" class="fw-semibold"></span>
+          <span id="kpi-r-week-pct" class="small"></span>
+        </div>
+
+        <div class="rline mt-1">
+          <span class="small">Last Week</span>
+          <span id="kpi-r-lastweek" class="fw-semibold"></span>
+          <span id="kpi-r-lastweek-pct" class="small"></span>
+        </div>
+
+        <div class="rline mt-1">
+          <span class="small">Month</span>
+          <span id="kpi-r-month" class="fw-semibold"></span>
+          <span id="kpi-r-month-pct" class="small"></span>
+        </div>
+
+        <div class="rline mt-1">
+          <span class="small">All</span>
+          <span id="kpi-r-all" class="fw-semibold"></span>
+          <span id="kpi-r-all-pct" class="small"></span>
         </div>
       </div>
     </div>
   </div>
 </div>
-<!-- END: Header KPI Row -->
 
 <!-- END: Summary Detail Row -->
 <!-- END: Header KPI Row -->
@@ -342,21 +346,29 @@ function updateHeaderKPIs(data) {
     pctEl.className = `small ${signClass(m.unrealized_pnl_pct)}`;
   }
 
-  // Realized buckets (right)
-  const rb = m.realized_buckets || {week:{pnl:0,pct:0}, month:{pnl:0,pct:0}, all:{pnl:0,pct:0}};
-  const wires = [
-    ["kpi-r-week", rb.week?.pnl], ["kpi-r-week-pct", rb.week?.pct],
-    ["kpi-r-month", rb.month?.pnl], ["kpi-r-month-pct", rb.month?.pct],
-    ["kpi-r-all", rb.all?.pnl], ["kpi-r-all-pct", rb.all?.pct],
-  ];
-  for (let i=0; i<wires.length; i+=2) {
-    const [idVal, val] = wires[i];
-    const [idPct, pct] = wires[i+1];
-    const valEl = document.getElementById(idVal);
-    const pctEl2 = document.getElementById(idPct);
-    if (valEl) { valEl.textContent = fmtUsd(Number(val||0)); valEl.className = `fw-semibold ${signClass(val)}`; }
-    if (pctEl2){ pctEl2.textContent = fmtPct(Number(pct||0)); pctEl2.className = `small ${signClass(pct)}`; }
-  }
+// Realized buckets (right)
+const rb = m.realized_buckets || {
+  week:       {pnl:0, pct:0},
+  last_week:  {pnl:0, pct:0},
+  month:      {pnl:0, pct:0},
+  all:        {pnl:0, pct:0},
+};
+
+const wires = [
+  ["kpi-r-week",      rb.week?.pnl],       ["kpi-r-week-pct",      rb.week?.pct],
+  ["kpi-r-lastweek",  rb.last_week?.pnl],  ["kpi-r-lastweek-pct",  rb.last_week?.pct],
+  ["kpi-r-month",     rb.month?.pnl],      ["kpi-r-month-pct",     rb.month?.pct],
+  ["kpi-r-all",       rb.all?.pnl],        ["kpi-r-all-pct",       rb.all?.pct],
+];
+
+for (let i = 0; i < wires.length; i += 2) {
+  const [idVal, val] = wires[i];
+  const [idPct, pct] = wires[i + 1];
+  const valEl = document.getElementById(idVal);
+  const pctEl = document.getElementById(idPct);
+  if (valEl) { valEl.textContent = fmtUsd(Number(val || 0)); valEl.className = `fw-semibold ${signClass(val)}`; }
+  if (pctEl) { pctEl.textContent = fmtPct(Number(pct || 0)); pctEl.className = `small ${signClass(pct)}`; }
+}
 }
 
 // ---------- main refresh ----------

@@ -1,0 +1,153 @@
+﻿timestamp,symbol,price,ADX,ATR_val,ATR_pct,SuperTracker_osc,SuperTracker_sig,ADX_req,MACD_up,Super_up,VWAP_plus,BB_breakout,RSI_overbought,Vol_spike,ATR_ge,ATRpct_ge,Range_ge,Gap_ge,Price_gt_SMA,signals
+2025-09-16 09:30:09,ADBE,351.70,speed_scan,6/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:30:21,ALB,81.53,speed_scan,14/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:30:40,AMCR,8.32,speed_scan,24/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:30:56,AMGN,275.64,speed_scan,33/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:31:04,APA,23.14,speed_scan,38/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:32:34,BF-B,27.47,speed_scan,75/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:32:58,CARR,61.61,speed_scan,88/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:33:54,COIN,330.65,speed_scan,115/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Gap % ≥ 1.5, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,1,0
+2025-09-16 09:34:17,CSX,32.74,speed_scan,133/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:34:27,DELL,128.47,speed_scan,142/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:34:42,DOW,24.83,speed_scan,154/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:35:21,EL,88.05,speed_scan,178/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:35:47,FDX,229.43,speed_scan,193/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:36:46,HSY,192.31,speed_scan,228/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Gap % ≥ 1.5, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,1,0
+2025-09-16 09:36:54,HON,213.22,speed_scan,234/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:36:59,HPQ,28.06,speed_scan,238/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:37:25,IQV,188.29,speed_scan,259/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:37:51,KLAC,1000.00,speed_scan,278/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:37:55,KR,67.66,speed_scan,280/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:37:57,LHX,283.36,speed_scan,281/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:38:00,LRCX,119.82,speed_scan,283/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:38:15,LKQ,32.03,speed_scan,292/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:38:26,MPC,182.39,speed_scan,299/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:38:39,MCK,707.00,speed_scan,309/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:38:57,MAA,141.61,speed_scan,319/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:38:58,MRNA,24.48,speed_scan,320/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Gap % ≥ 1.5, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,1,0
+2025-09-16 09:39:29,NSC,279.93,speed_scan,342/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:39:37,NUE,143.43,speed_scan,347/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:39:43,ORLY,106.91,speed_scan,351/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:39:48,ON,49.02,speed_scan,355/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:39:50,ORCL,317.06,speed_scan,357/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Gap % ≥ 1.5, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,1,0
+2025-09-16 09:40:09,PFE,24.09,speed_scan,370/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:40:58,RVTY,84.61,speed_scan,400/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:41:29,SBUX,84.06,speed_scan,423/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:42:05,TDG,1294.64,speed_scan,450/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 09:42:17,UDR,37.97,speed_scan,458/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:42:20,UNP,218.20,speed_scan,460/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:42:22,UPS,84.57,speed_scan,462/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:43:32,ADBE,355.09,speed_scan,6/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:44:10,AMGN,276.61,speed_scan,33/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:44:15,APA,23.15,speed_scan,38/503,"ADX ≥ 20, MACD 🚀, RSI 📈, Gap % ≥ 1.5, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,0,0,1,0
+2025-09-16 09:44:47,BIIB,144.67,speed_scan,64/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:44:58,BF-B,27.53,speed_scan,75/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:45:41,CHD,91.65,speed_scan,103/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:45:54,CLX,123.90,speed_scan,110/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:46:10,COP,93.75,speed_scan,119/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 09:48:55,HSY,190.42,speed_scan,228/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 09:51:04,MRNA,24.46,speed_scan,320/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 09:52:04,ORCL,315.54,speed_scan,357/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 09:53:48,STLD,137.03,speed_scan,425/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 09:54:13,TSLA,417.61,speed_scan,441/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,1,0,0,0
+2025-09-16 09:58:53,DOW,24.62,speed_scan,154/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:02:43,MRNA,24.57,speed_scan,320/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:03:27,ON,49.30,speed_scan,355/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:04:22,RTX,159.19,speed_scan,393/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 10:05:03,STLD,137.54,speed_scan,425/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:05:21,TSLA,418.73,speed_scan,441/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:05:30,TDG,1298.95,speed_scan,450/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:07:32,APA,23.46,speed_scan,38/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:09:39,DAY,69.09,speed_scan,139/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 10:14:02,NOC,583.80,speed_scan,344/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:17:54,APA,23.71,speed_scan,38/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,1,0,0,0
+2025-09-16 10:19:08,CVX,159.31,speed_scan,100/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 10:19:38,COP,94.31,speed_scan,119/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 10:19:55,CRWD,443.32,speed_scan,131/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:22:34,INTC,25.17,speed_scan,250/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:23:51,MCHP,64.07,speed_scan,316/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:24:42,ON,49.53,speed_scan,355/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:26:11,SNPS,424.44,speed_scan,430/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:28:16,APA,23.92,speed_scan,38/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:30:24,DOW,24.71,speed_scan,154/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:32:03,INTC,25.18,speed_scan,250/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:33:44,NFLX,1206.56,speed_scan,334/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:34:16,ON,49.80,speed_scan,355/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:34:26,PLTR,170.44,speed_scan,361/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 10:36:00,TSLA,418.42,speed_scan,441/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:37:24,ABT,133.21,speed_scan,3/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 10:38:07,APA,24.01,speed_scan,38/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:39:56,CRWD,443.61,speed_scan,131/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:40:27,DOW,24.79,speed_scan,154/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:40:46,ENPH,39.15,speed_scan,168/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:46:27,TSLA,418.31,speed_scan,441/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:51:08,ENPH,39.28,speed_scan,168/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:54:42,NFLX,1208.32,speed_scan,334/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 10:56:55,TSLA,419.85,speed_scan,441/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 11:04:16,MTD,1267.69,speed_scan,314/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,1,0,0,0
+2025-09-16 11:04:45,NWS,32.82,speed_scan,337/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 11:08:47,APO,139.62,speed_scan,39/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 11:09:10,BKR,47.06,speed_scan,56/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 11:09:37,BRO,91.44,speed_scan,74/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 11:12:18,FTNT,80.62,speed_scan,200/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 11:14:29,MTD,1267.69,speed_scan,314/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 11:16:51,TPL,932.85,speed_scan,443/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 11:23:56,MTD,1267.69,speed_scan,314/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 11:26:15,TPL,935.67,speed_scan,443/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 11:27:57,AMZN,235.84,speed_scan,23/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 11:36:12,TPL,934.00,speed_scan,443/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 11:46:02,TPL,934.00,speed_scan,443/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 11:49:37,COP,94.94,speed_scan,119/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 11:52:07,INCY,83.78,speed_scan,247/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 11:52:13,IP,45.80,speed_scan,253/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 11:52:29,K,79.35,speed_scan,269/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 11:55:57,TPL,939.40,speed_scan,443/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,1,0,0,0
+2025-09-16 11:59:40,DAY,69.07,speed_scan,139/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 11:59:56,DHI,170.62,speed_scan,155/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 12:02:05,LII,552.70,speed_scan,288/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 12:02:32,MTD,1269.71,speed_scan,314/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 12:04:24,SWK,78.12,speed_scan,422/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 12:04:51,TPL,939.40,speed_scan,443/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,1,0,0,0
+2025-09-16 12:04:54,TMO,480.57,speed_scan,445/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 12:05:53,WAT,303.12,speed_scan,486/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 12:09:10,DECK,117.62,speed_scan,140/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 12:09:52,EXE,96.51,speed_scan,183/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 12:12:17,MTD,1271.28,speed_scan,314/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 12:12:53,NVR,8228.63,speed_scan,349/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, ATR % ≥ 0.5%, Price > SMA20",1,1,0,1,0,1,1,1,0,0,1,0,0,0
+2025-09-16 12:14:31,TPL,939.40,speed_scan,443/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 12:15:02,UHS,189.81,speed_scan,465/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 12:16:59,BKR,47.16,speed_scan,56/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 12:21:34,LLY,766.16,speed_scan,289/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 12:22:02,MTD,1271.28,speed_scan,314/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 12:24:39,TPL,944.00,speed_scan,443/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 12:27:39,C,99.95,speed_scan,108/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 12:31:52,MTD,1271.28,speed_scan,314/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 12:34:30,TPL,944.14,speed_scan,443/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 12:41:35,MKTX,184.17,speed_scan,300/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 12:50:21,JPM,309.20,speed_scan,267/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 12:52:11,NVR,8227.67,speed_scan,349/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 12:53:34,LUV,31.22,speed_scan,421/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 12:53:59,TXT,83.55,speed_scan,444/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 12:54:10,TSN,54.23,speed_scan,455/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 12:54:16,UAL,103.45,speed_scan,461/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 12:54:54,WFC,81.19,speed_scan,488/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 12:55:11,ZBRA,319.50,speed_scan,501/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 12:55:29,AKAM,76.38,speed_scan,13/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 13:00:05,HII,274.13,speed_scan,242/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 13:00:56,LW,57.67,speed_scan,284/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 13:01:53,MCO,507.71,speed_scan,327/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 13:02:19,NVR,8245.02,speed_scan,349/503,"ADX ≥ 20, MACD 🚀, RSI 📈, ATR % ≥ 0.5%, Price > SMA50, Price > SMA20",1,1,0,1,0,0,0,1,0,0,1,0,0,0
+2025-09-16 13:18:00,AMT,194.18,speed_scan,29/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 13:18:32,BAC,50.83,speed_scan,58/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 13:19:01,COF,224.94,speed_scan,84/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 13:29:09,DOW,24.57,speed_scan,154/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 13:30:08,GPC,139.79,speed_scan,216/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 13:33:52,TMO,482.25,speed_scan,445/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 13:36:38,C,100.22,speed_scan,108/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 13:38:16,GRMN,235.86,speed_scan,206/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 13:38:32,HAL,22.48,speed_scan,222/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 13:38:52,HBAN,17.39,speed_scan,241/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 13:39:05,ISRG,434.04,speed_scan,256/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 13:39:06,IVZ,22.09,speed_scan,257/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 13:39:48,MAR,267.87,speed_scan,301/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
+2025-09-16 13:39:52,MA,584.92,speed_scan,305/503,"ADX ≥ 20, MACD 🚀, BB breakout, RSI 📈, Price > SMA50, Price > SMA20",1,1,0,1,0,1,1,1,0,0,0,0,0,0
