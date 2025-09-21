@@ -241,28 +241,102 @@ class LiveBroker:
     def account_id_key(self) -> str:
         return self._account_id_key
 
-    def __init__(self, mode: str = "LIVE") -> None:
-        self.mode = (mode or "LIVE").upper()
-        self.name = "E*TRADE"
-        self._et = ETradeService()
+    # services/broker.py  (inside class LiveBroker)
+    # --- add this inside class LiveBroker ---------------------------------
 
-        # Resolve account id key from env or first account
-        self._account_id_key = (
-            os.getenv("ETRADE_ACCOUNT_ID_KEY") or self._et.first_account_id_key()
-        )
-        if not self._account_id_key:
-            raise RuntimeError(
-                "Unable to resolve ETRADE_ACCOUNT_ID_KEY; check env or /accounts/list."
-            )
+    def get_account(self, path: str, params: dict | None = None) -> dict:
+        """
+        Public wrapper used by the dashboard. Accepts either a short path
+        like '/balance.json' or a full '/accounts/<key>/balance.json'.
+        Routes to the resilient _get_account which refreshes accountIdKey
+        on code 100 and retries 5xx with backoff.
+        """
+        params = params or {}
+        norm = path or ""
+        if isinstance(norm, str) and norm.startswith("/accounts/"):
+            parts = norm.split("/", 3)  # ["", "accounts", "<aid>", "rest..."]
+            if len(parts) >= 4:
+                norm = "/" + parts[3]
+        return self._get_account(norm, params)
 
-        # Caches / TTLs
-        self._pp_cache = {"ts": 0.0, "pp": None}  # purchasing power cache
-        self._pp_ttl   = float(os.getenv("LIVE_FUNDS_TTL_SEC", "15"))
-        self._last_bp: Optional[float] = None
-        self._bp_ts: float = 0.0
-        self._bp_ttl = int(os.getenv("LIVE_BP_TTL_SECONDS", "45"))
+    def _refresh_account_id_key(self) -> bool:
+        """Refresh self._account_id_key from /v1/accounts/list.json."""
+        try:
+            data = self._et.list_accounts()
+        except Exception as e:
+            log.exception("[LIVE] failed to refresh accountIdKey: %s", e)
+            return False
 
-    # Most conservative “what can I buy right now?”
+        alr = (data.get("AccountListResponse") or {})
+        acs = (alr.get("Accounts") or {}).get("Account") or []
+        if isinstance(acs, dict):
+            acs = [acs]
+        if not acs:
+            return False
+
+        # Prefer brokerage; else first
+        new_key = None
+        for a in acs:
+            if str(a.get("accountMode") or "").upper() == "BROKERAGE":
+                new_key = a.get("accountIdKey") or a.get("accountId"); break
+        if not new_key:
+            a0 = acs[0]
+            new_key = a0.get("accountIdKey") or a0.get("accountId")
+
+        if new_key and new_key != getattr(self, "_account_id_key", None):
+            log.warning("[LIVE] accountIdKey changed %s -> %s",
+                        getattr(self, "_account_id_key", None), new_key)
+            self._account_id_key = new_key
+            return True
+        return bool(new_key)
+
+    def _get_account(self, path: str, params: dict | None = None) -> dict:
+        """
+        Safe wrapper for GET /v1/accounts/{accountIdKey}{path}
+        - Lazy-fetch key if missing
+        - Refresh on 400 code 100
+        - Retry 5xx with jittered backoff
+        Returns {} on hard failure.
+        """
+        import time, random
+        params = dict(params or {})
+
+        # Lazy resolve key if empty
+        if not getattr(self, "_account_id_key", ""):
+            if not self._refresh_account_id_key():
+                log.error("[LIVE] no accountIdKey and refresh failed; returning {} for %s", path)
+                return {}
+
+        attempts = 0
+        while True:
+            attempts += 1
+            try:
+                # NEW (bypasses any instance-level monkey patch)
+                return ETradeService._get(self._et, f"/accounts/{self._account_id_key}{path}", params=params)
+            except ETradeHTTPError as e:
+                status  = getattr(e, "status_code", None)
+                payload = getattr(e, "payload", {}) or {}
+                err     = (payload.get("Error") or {})
+                code    = err.get("code")
+                msg     = (err.get("message") or "").lower()
+
+                # stale/wrong key
+                if status and 400 <= status < 500 and code == 100 and "belong to user" in msg:
+                    log.warning("[LIVE] code 100 on %s; refreshing accountIdKey", path)
+                    if self._refresh_account_id_key():
+                        continue
+                    log.error("[LIVE] could not refresh accountIdKey; returning {}")
+                    return {}
+
+                # transient hiccup: retry up to 3 times
+                if status and status >= 500 and attempts <= 3:
+                    delay = 0.4 * (2 ** (attempts - 1)) + random.uniform(0, 0.25)
+                    log.warning("[LIVE] %s on %s; retry %d in %.2fs", status, path, attempts, delay)
+                    time.sleep(delay)
+                    continue
+
+                log.error("[LIVE] _get_account failed %s %s -> returning {}", status, path)
+                return {}
     def _fresh_funds(self) -> float | None:
         now = time.time()
         if self._pp_cache["pp"] is not None and (now - self._pp_cache["ts"]) < self._pp_ttl:
@@ -273,25 +347,93 @@ class LiveBroker:
             comp = br.get("Computed", {}) or {}
             cash = br.get("Cash", {}) or {}
 
-            # pick the most conservative first
-            for v in (
-                comp.get("cashAvailableForWithdrawal"),
-                comp.get("cashAvailableForInvestment"),
-                comp.get("settledCashForInvestment"),
-                comp.get("cashBuyingPower"),
-                comp.get("marginBuyingPower"),
-                cash.get("moneyMktBalance"),
-                comp.get("netCash"),
+            # Most conservative & E*TRADE-consistent order
+            for k in (
+                "cashAvailableForWithdrawal",
+                "cashAvailableForInvestment",
+                "settledCashForInvestment",
+                "cashBuyingPower",
+                "marginBuyingPower",
             ):
+                v = comp.get(k)
                 if isinstance(v, (int, float)):
                     self._pp_cache.update(ts=now, pp=float(v))
                     return self._pp_cache["pp"]
 
-            self._pp_cache.update(ts=now, pp=None)
-            return None
+            v = cash.get("settledCash")
+            self._pp_cache.update(ts=now, pp=(float(v) if isinstance(v, (int, float)) else None))
+            return self._pp_cache["pp"]
         except Exception as e:
             log.warning("[LIVE] fresh funds read failed: %s", e)
             return self._pp_cache["pp"]
+
+    def get_account_summary(self) -> Dict[str, Any]:
+        try:
+            br   = (self._et.get_balances(self._account_id_key, realtime=True)
+                    .get("BalanceResponse", {}))
+            comp = br.get("Computed", {}) or {}
+            cash = br.get("Cash", {}) or {}
+            rtv  = comp.get("RealTimeValues", {}) or {}
+
+            # opportunistic cache refresh
+            for k in ("cashAvailableForWithdrawal","cashAvailableForInvestment",
+                      "cashBuyingPower","marginBuyingPower"):
+                v = comp.get(k)
+                if isinstance(v, (int, float)):
+                    self._last_bp = float(v); self._bp_ts = time.time(); break
+
+            return {
+                "Computed": comp,
+                "Cash": cash,
+                "RealTimeValues": rtv,
+                # handy UI rollups
+                "ui": {
+                    "buying_power": next(
+                        (float(comp[k]) for k in (
+                            "cashAvailableForWithdrawal",
+                            "cashAvailableForInvestment",
+                            "settledCashForInvestment",
+                            "cashBuyingPower",
+                            "marginBuyingPower",
+                        ) if isinstance(comp.get(k), (int, float))), None),
+                    "available_to_trade": comp.get("cashAvailableForInvestment"),
+                    "available_to_withdraw": comp.get("cashAvailableForWithdrawal")
+                                              or comp.get("totalAvailableForWithdrawal"),
+                    "settled_cash": comp.get("settledCashForInvestment") or cash.get("settledCash"),
+                    "nav": rtv.get("totalAccountValue")
+                            or ((comp.get("netCash") or 0) + (rtv.get("netMv") or 0)),
+                    "positions_value": rtv.get("netMv"),
+                },
+            }
+        except Exception as e:
+            log.exception("[LIVE] account summary error: %s", e)
+            return {}
+
+    def __init__(self, mode: str = "LIVE") -> None:
+        self.mode = (mode or "LIVE").upper()
+        self.name = "E*TRADE"
+        self._et = ETradeService()
+
+        # Try env first, then API, but never hard-fail here
+        env_key = (os.getenv("ETRADE_ACCOUNT_ID_KEY")
+                   or os.getenv("ETRADE_ACCOUNT_KEY")
+                   or None)
+        api_key = None
+        try:
+            api_key = self._et.first_account_id_key()
+        except Exception as e:
+            log.warning("[LIVE] first_account_id_key failed at init: %s", e)
+
+        self._account_id_key = env_key or api_key or ""  # may be empty; lazy-refresh later
+        if not self._account_id_key:
+            log.warning("[LIVE] starting without accountIdKey; will lazy-refresh on first account call")
+
+        # Caches / TTLs
+        self._pp_cache = {"ts": 0.0, "pp": None}
+        self._pp_ttl   = float(os.getenv("LIVE_FUNDS_TTL_SEC", "15"))
+        self._last_bp: Optional[float] = None
+        self._bp_ts: float = 0.0
+        self._bp_ttl = int(os.getenv("LIVE_BP_TTL_SECONDS", "45"))
 
     def get_buying_power(self, fresh: bool = False) -> Optional[float]:
         if (not fresh) and (self._last_bp is not None) and (time.time() - self._bp_ts < self._bp_ttl):
@@ -319,23 +461,6 @@ class LiveBroker:
             log.warning("[LIVE] balances failed: %s; using cached BP if available", e)
             return self._last_bp
         return None
-
-
-    def get_account_summary(self) -> Dict[str, Any]:
-        try:
-            raw = self._et.get_balances(self._account_id_key) or {}
-            br  = raw.get("BalanceResponse", {}) or raw
-            comp = br.get("Computed") or {}
-            cash = br.get("Cash") or {}
-            for k in ("cashBuyingPower","marginBuyingPower","netCash"):
-                v = comp.get(k)
-                if isinstance(v, (int, float)):
-                    self._last_bp = float(v); self._bp_ts = time.time()
-                    break
-            return {"Computed": comp, "Cash": cash}
-        except Exception as e:
-            log.exception("[LIVE] account summary error: %s", e)
-            return {}
 
     # Public wrappers
     def buy(self, symbol: str, quantity: int, price: float | None = None, **kw):

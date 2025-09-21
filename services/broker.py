@@ -241,8 +241,99 @@ class LiveBroker:
     def account_id_key(self) -> str:
         return self._account_id_key
 
-# services/broker.py  (inside class LiveBroker)
+    # services/broker.py  (inside class LiveBroker)
+    # --- add this inside class LiveBroker ---------------------------------
 
+    def get_account(self, path: str, params: dict | None = None) -> dict:
+        """
+        Public wrapper used by the dashboard. Accepts either a short path
+        like '/balance.json' or a full '/accounts/<key>/balance.json'.
+        Routes to the resilient _get_account which refreshes accountIdKey
+        on code 100 and retries 5xx with backoff.
+        """
+        params = params or {}
+        norm = path or ""
+        if isinstance(norm, str) and norm.startswith("/accounts/"):
+            parts = norm.split("/", 3)  # ["", "accounts", "<aid>", "rest..."]
+            if len(parts) >= 4:
+                norm = "/" + parts[3]
+        return self._get_account(norm, params)
+
+    def _refresh_account_id_key(self) -> bool:
+        """Refresh self._account_id_key from /v1/accounts/list.json."""
+        try:
+            data = self._et.list_accounts()
+        except Exception as e:
+            log.exception("[LIVE] failed to refresh accountIdKey: %s", e)
+            return False
+
+        alr = (data.get("AccountListResponse") or {})
+        acs = (alr.get("Accounts") or {}).get("Account") or []
+        if isinstance(acs, dict):
+            acs = [acs]
+        if not acs:
+            return False
+
+        # Prefer brokerage; else first
+        new_key = None
+        for a in acs:
+            if str(a.get("accountMode") or "").upper() == "BROKERAGE":
+                new_key = a.get("accountIdKey") or a.get("accountId"); break
+        if not new_key:
+            a0 = acs[0]
+            new_key = a0.get("accountIdKey") or a0.get("accountId")
+
+        if new_key and new_key != getattr(self, "_account_id_key", None):
+            log.warning("[LIVE] accountIdKey changed %s -> %s",
+                        getattr(self, "_account_id_key", None), new_key)
+            self._account_id_key = new_key
+            return True
+        return bool(new_key)
+
+    def _get_account(self, path: str, params: dict | None = None) -> dict:
+        params = dict(params or {})
+        norm = str(path or "")
+
+        # these endpoints are NOT account-scoped
+        if norm.startswith("/accounts/list.json") or norm.startswith("/market/") or norm.startswith("/v1/market/"):
+            return self._et._get(norm, params)
+
+        # Lazy resolve key if empty
+        if not getattr(self, "_account_id_key", ""):
+            if not self._refresh_account_id_key():
+                log.error("[LIVE] no accountIdKey and refresh failed; returning {} for %s", path)
+                return {}
+
+        attempts = 0
+        while True:
+            attempts += 1
+            try:
+                # NEW (bypasses any instance-level monkey patch)
+                return ETradeService._get(self._et, f"/accounts/{self._account_id_key}{path}", params=params)
+            except ETradeHTTPError as e:
+                status  = getattr(e, "status_code", None)
+                payload = getattr(e, "payload", {}) or {}
+                err     = (payload.get("Error") or {})
+                code    = err.get("code")
+                msg     = (err.get("message") or "").lower()
+
+                # stale/wrong key
+                if status and 400 <= status < 500 and code == 100 and "belong to user" in msg:
+                    log.warning("[LIVE] code 100 on %s; refreshing accountIdKey", path)
+                    if self._refresh_account_id_key():
+                        continue
+                    log.error("[LIVE] could not refresh accountIdKey; returning {}")
+                    return {}
+
+                # transient hiccup: retry up to 3 times
+                if status and status >= 500 and attempts <= 3:
+                    delay = 0.4 * (2 ** (attempts - 1)) + random.uniform(0, 0.25)
+                    log.warning("[LIVE] %s on %s; retry %d in %.2fs", status, path, attempts, delay)
+                    time.sleep(delay)
+                    continue
+
+                log.error("[LIVE] _get_account failed %s %s -> returning {}", status, path)
+                return {}
     def _fresh_funds(self) -> float | None:
         now = time.time()
         if self._pp_cache["pp"] is not None and (now - self._pp_cache["ts"]) < self._pp_ttl:
@@ -320,17 +411,22 @@ class LiveBroker:
         self.name = "E*TRADE"
         self._et = ETradeService()
 
-        # Resolve account id key from env or first account
-        self._account_id_key = (
-            os.getenv("ETRADE_ACCOUNT_ID_KEY") or self._et.first_account_id_key()
-        )
+        # Try env first, then API, but never hard-fail here
+        env_key = (os.getenv("ETRADE_ACCOUNT_ID_KEY")
+                   or os.getenv("ETRADE_ACCOUNT_KEY")
+                   or None)
+        api_key = None
+        try:
+            api_key = self._et.first_account_id_key()
+        except Exception as e:
+            log.warning("[LIVE] first_account_id_key failed at init: %s", e)
+
+        self._account_id_key = env_key or api_key or ""  # may be empty; lazy-refresh later
         if not self._account_id_key:
-            raise RuntimeError(
-                "Unable to resolve ETRADE_ACCOUNT_ID_KEY; check env or /accounts/list."
-            )
+            log.warning("[LIVE] starting without accountIdKey; will lazy-refresh on first account call")
 
         # Caches / TTLs
-        self._pp_cache = {"ts": 0.0, "pp": None}  # purchasing power cache
+        self._pp_cache = {"ts": 0.0, "pp": None}
         self._pp_ttl   = float(os.getenv("LIVE_FUNDS_TTL_SEC", "15"))
         self._last_bp: Optional[float] = None
         self._bp_ts: float = 0.0

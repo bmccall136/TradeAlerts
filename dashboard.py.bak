@@ -2853,6 +2853,35 @@ def live_view():
             # Fallback through broker shim
             from services.broker import get_broker
             b = get_broker("LIVE")
+            try:
+                fresh = b._et.first_account_id_key()
+                if fresh and fresh != getattr(b, "_account_id_key", None):
+                    log.warning("[LIVE] setting accountIdKey -> %s", fresh)
+                    b._account_id_key = fresh
+            except Exception as e:
+                log.warning("[LIVE] could not pre-refresh account id key: %s", e)
+
+            # Route raw b._et._get(...) calls through the broker's resilient account getter
+            _original_et_get = b._et._get
+
+            def _shimmed_get(path: str, params=None):
+                params = params or {}
+                norm = path or ""
+                if isinstance(norm, str) and norm.startswith("/accounts/"):
+                    parts = norm.split("/", 3)
+                    if len(parts) >= 4:
+                        norm = "/" + parts[3]
+                # always prefer the resilient path
+                if hasattr(b, "get_account"):
+                    return b.get_account(norm, params)
+                # fallback (shouldn't happen once you've added get_account)
+                aid = getattr(b, "_account_id_key", None) or getattr(b, "account_id_key", None)
+                if not norm.startswith("/accounts/"):
+                    norm = f"/accounts/{aid}{norm}"
+                return _original_et_get(norm, params)
+
+            b._et._get = _shimmed_get
+
             quotes = b._et.get_quotes_batch(symbols) or {}
 
         def _lookup(qu: dict, sym: str):

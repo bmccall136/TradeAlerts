@@ -2853,6 +2853,50 @@ def live_view():
             # Fallback through broker shim
             from services.broker import get_broker
             b = get_broker("LIVE")
+            try:
+                fresh = b._et.first_account_id_key()
+                if fresh and fresh != getattr(b, "_account_id_key", None):
+                    log.warning("[LIVE] setting accountIdKey -> %s", fresh)
+                    b._account_id_key = fresh
+            except Exception as e:
+                log.warning("[LIVE] could not pre-refresh account id key: %s", e)
+
+            # capture original
+            _original_et_get = b._et._get
+
+            def _shimmed_get(path: str, params=None):
+                params = params or {}
+                norm = str(path or "")
+
+                # --- never account-scope these ---
+                if (
+                    norm.startswith("/accounts/list.json") or
+                    norm.startswith("/market/") or norm.startswith("/v1/market/") or
+                    norm.startswith("/oauth/")
+                ):
+                    return _original_et_get(norm, params)
+
+                # If caller already passed a fully-scoped accounts path, just pass through
+                if norm.startswith("/accounts/"):
+                    return _original_et_get(norm, params)
+
+                # Account-scoped endpoints we DO want to prefix
+                needs_scope = (
+                    norm in ("/balance.json", "/portfolio.json", "/orders.json", "/transactions.json")
+                    or norm.startswith("/balance") or norm.startswith("/portfolio")
+                    or norm.startswith("/orders") or norm.startswith("/transactions")
+                )
+
+                if needs_scope:
+                    aid = getattr(b, "_account_id_key", None) or getattr(b, "account_id_key", None)
+                    return _original_et_get(f"/accounts/{aid}{norm}", params)
+
+                # default: pass through unmodified
+                return _original_et_get(norm, params)
+
+            # Install the shim
+            b._et._get = _shimmed_get
+
             quotes = b._et.get_quotes_batch(symbols) or {}
 
         def _lookup(qu: dict, sym: str):

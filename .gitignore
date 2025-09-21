@@ -1,2 +1,5 @@
 alerts_clean.db
 __pycache__/
+.env
+etrade_tokens.json
+logs/
