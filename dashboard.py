@@ -367,6 +367,49 @@ def _safe_float(x):
     except: return 0.0
 
 _TZ_ET = zoneinfo.ZoneInfo("America/New_York")
+# at top of dashboard.py (or wherever you configure logging)
+import os, logging
+from logging import Formatter
+from pathlib import Path
+
+LOG_DIR = Path("C:/TradeAlerts/logs")
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE = str(LOG_DIR / "dashboard.log")
+
+def _setup_logging():
+    logger = logging.getLogger()            # root (or use current_app.logger)
+    logger.setLevel(logging.INFO)
+
+    # don't add duplicate handlers if already configured
+    if any(getattr(h, "_is_tradealerts", False) for h in logger.handlers):
+        return
+
+    # Prefer concurrent handler on Windows to avoid WinError 32
+    handler = None
+    if os.name == "nt":
+        try:
+            from concurrent_log_handler import ConcurrentRotatingFileHandler
+            handler = ConcurrentRotatingFileHandler(
+                LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8"
+            )
+        except Exception:
+            from logging.handlers import RotatingFileHandler
+            handler = RotatingFileHandler(
+                LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8", delay=True
+            )
+    else:
+        from logging.handlers import RotatingFileHandler
+        handler = RotatingFileHandler(
+            LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8", delay=True
+        )
+
+    handler.setFormatter(Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    handler._is_tradealerts = True          # our guard flag
+    logger.addHandler(handler)
+
+# Guard so we don’t configure in the reloader parent AND the child
+if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not os.environ.get("FLASK_DEBUG"):
+    _setup_logging()
 
 def _to_dt_local(t):
     """Accepts epoch ms or 'YYYY-MM-DD HH:MM:SS' -> ET-aware datetime (or None)."""
