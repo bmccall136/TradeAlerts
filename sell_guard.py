@@ -13,6 +13,8 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from env_alias_shim import ensure_env_aliases
 ensure_env_aliases()
+# Timeouts: (connect, read) in seconds
+DEFAULT_TIMEOUT = (3.05, 10.0)
 
 # ---------------------------------------
 # Logging
@@ -36,8 +38,20 @@ if not any(isinstance(h, logging.FileHandler) for h in LOG.handlers):
     fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     LOG.addHandler(fh)
 
-# optional while we tune:
-LOG.setLevel(logging.DEBUG)
+import logging, sys
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s sell-guard: %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+    force=True,   # <- wipes any previously attached handlers
+)
+LOG = logging.getLogger("sell-guard")
+LOG.propagate = False
+
+# (Optional for back-compat if older code still uses `log`)
+log = LOG
+
 # ---- WRITE-ONLY CIRCUIT + SELL QUEUE ---------------------------------------
 from datetime import datetime, timedelta
 from typing import Callable, Optional, Any, List
@@ -200,6 +214,18 @@ _DEFAULTS = {
     "normalize_tick": 0.01,
     "market_fallback_for": ["SELL_STOP", "TIMEOUT"]
 }
+import time
+from datetime import datetime, timezone
+
+try:
+    from zoneinfo import ZoneInfo
+    ET = ZoneInfo("America/New_York")
+except Exception:
+    ET = timezone.utc  # fallback
+
+# --- Heartbeat config/state ---
+HEARTBEAT_SECS = 30  # how often to log a 'loop alive' heartbeat
+_last_beat_monotonic: float | None = None
 
 # ——— at top ———
 import requests
@@ -225,14 +251,30 @@ def drain_pending_sells(place_fn):
                 LOG.error("%s queued SELL failed permanently: %r", ps.symbol, e)
     PENDING_SELLS.clear()
     PENDING_SELLS.extend(keep)
-def heartbeat(now: int, aid: str | None = None):
-    global _last_beat, _aid_for_logs
-    if aid:
-        _aid_for_logs = aid
-    if now - _last_beat >= HEARTBEAT_SECS:
-        LOG.info("⏱ heartbeat: loop alive (account=%s)", _aid_for_logs)
-        _last_beat = now
+def heartbeat(now: datetime | None = None, account_id: str | None = None, logger=None):
+    """
+    Emits a 'loop alive' message at most once every HEARTBEAT_SECS.
+    Uses time.monotonic() for robustness against wall-clock jumps.
+    You can optionally pass 'account_id' for richer logs.
+    """
+    global _last_beat_monotonic
+    t = time.monotonic()
 
+    # first beat ever
+    if _last_beat_monotonic is None:
+        _last_beat_monotonic = t
+        if logger:
+            logger.info("⏱ heartbeat: loop alive (account=%s)", account_id or "?")
+        else:
+            print(f"⏱ heartbeat: loop alive (account={account_id or '?'})")
+        return
+
+    if (t - _last_beat_monotonic) >= HEARTBEAT_SECS:
+        _last_beat_monotonic = t
+        if logger:
+            logger.info("⏱ heartbeat: loop alive (account=%s)", account_id or "?")
+        else:
+            print(f"⏱ heartbeat: loop alive (account={account_id or '?'})")
 def _mk_session():
     s = requests.Session()
     # robust retries for transient 5xx
@@ -1076,7 +1118,11 @@ def main():
 
     while True:
         start = time.time()
-        heartbeat(int(time.time()))
+        heartbeat(
+            now=datetime.now(tz=ET),
+            account_id=(acct.get("account_id") if 'acct' in locals() else None),
+            logger=LOG
+        )
 
         # SYMBOLS from positions
         syms = list_symbols_from_positions(aid, blocklist)

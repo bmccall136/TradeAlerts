@@ -45,6 +45,59 @@ from functools import wraps
 from flask import jsonify, Response, current_app
 import json  # make sure this is available inside the route
 import re
+# --- Flask app ---
+from flask import Flask
+import os, sys, logging
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
+app = Flask(__name__)
+
+def setup_logging(app: Flask) -> None:
+    # Guard: configure once, only in the reloader child when debug=True
+    if getattr(app, "_logging_configured", False):
+        return
+    if app.debug and os.environ.get("WERKZEUG_RUN_MAIN") != "true":
+        return
+
+    logdir = Path(r"C:\TradeAlerts\logs")
+    logdir.mkdir(parents=True, exist_ok=True)
+
+    fmt = logging.Formatter("%(asctime)s %(levelname)-5s %(name)s: %(message)s")
+
+    # App logger -> file (rotate) + console
+    app.logger.handlers.clear()
+    app.logger.setLevel(logging.INFO)
+
+    try:
+        # Safer rotation on Windows if available:
+        from concurrent_log_handler import ConcurrentRotatingFileHandler as RFH
+    except Exception:
+        from logging.handlers import RotatingFileHandler as RFH
+
+    fh = RFH(logdir / "dashboard.log",
+             maxBytes=10_000_000, backupCount=7,
+             encoding="utf-8", delay=True)  # delay=True: don't hold the file open
+    fh.setFormatter(fmt)
+    app.logger.addHandler(fh)
+
+    sh = logging.StreamHandler(sys.stdout)
+    sh.setFormatter(fmt)
+    app.logger.addHandler(sh)
+
+    # Quiet Werkzeug (avoid double writes & rotations)
+    wz = logging.getLogger("werkzeug")
+    wz.handlers.clear()
+    wz.setLevel(logging.WARNING)
+
+    # Optional: quiet noisy libs
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("requests").setLevel(logging.WARNING)
+
+    app._logging_configured = True
+
+# CALL IT ONCE, RIGHT AFTER app IS CREATED:
+setup_logging(app)
 
 def parse_max_qty_from_msg(msg: str):
     m = re.search(r'maximum allowable quantity was estimated to be\s+(\d+)', msg or "", re.I)
@@ -367,49 +420,6 @@ def _safe_float(x):
     except: return 0.0
 
 _TZ_ET = zoneinfo.ZoneInfo("America/New_York")
-# at top of dashboard.py (or wherever you configure logging)
-import os, logging
-from logging import Formatter
-from pathlib import Path
-
-LOG_DIR = Path("C:/TradeAlerts/logs")
-LOG_DIR.mkdir(parents=True, exist_ok=True)
-LOG_FILE = str(LOG_DIR / "dashboard.log")
-
-def _setup_logging():
-    logger = logging.getLogger()            # root (or use current_app.logger)
-    logger.setLevel(logging.INFO)
-
-    # don't add duplicate handlers if already configured
-    if any(getattr(h, "_is_tradealerts", False) for h in logger.handlers):
-        return
-
-    # Prefer concurrent handler on Windows to avoid WinError 32
-    handler = None
-    if os.name == "nt":
-        try:
-            from concurrent_log_handler import ConcurrentRotatingFileHandler
-            handler = ConcurrentRotatingFileHandler(
-                LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8"
-            )
-        except Exception:
-            from logging.handlers import RotatingFileHandler
-            handler = RotatingFileHandler(
-                LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8", delay=True
-            )
-    else:
-        from logging.handlers import RotatingFileHandler
-        handler = RotatingFileHandler(
-            LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8", delay=True
-        )
-
-    handler.setFormatter(Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
-    handler._is_tradealerts = True          # our guard flag
-    logger.addHandler(handler)
-
-# Guard so we don’t configure in the reloader parent AND the child
-if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not os.environ.get("FLASK_DEBUG"):
-    _setup_logging()
 
 def _to_dt_local(t):
     """Accepts epoch ms or 'YYYY-MM-DD HH:MM:SS' -> ET-aware datetime (or None)."""
@@ -544,48 +554,6 @@ REQUEST_TOKEN_URL = "https://api.etrade.com/oauth/request_token"
 ACCESS_TOKEN_URL  = "https://api.etrade.com/oauth/access_token"
 AUTHORIZE_URL     = "https://us.etrade.com/e/t/etws/authorize"
 
-
-# ─── Logging configuration ───────────────────────────────────
-logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s %(levelname)-5s %(name)s: %(message)s'
-)
-
-# ─── Flask app setup ─────────────────────────────────────────
-app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET', 'supersecret')
-# ---- logging: console + rotating file ----
-import sys, logging, logging.handlers
-from pathlib import Path
-
-def _setup_logging_and_wrappers(app):
-    log_dir = Path(r"C:\TradeAlerts\logs"); log_dir.mkdir(parents=True, exist_ok=True)
-    fmt = logging.Formatter("%(asctime)s %(levelname)-5s %(name)s: %(message)s")
-
-    # app logger
-    app.logger.setLevel(logging.INFO)
-    if not any(isinstance(h, logging.StreamHandler) for h in app.logger.handlers):
-        sh = logging.StreamHandler(sys.stdout); sh.setFormatter(fmt); app.logger.addHandler(sh)
-    if not any(isinstance(h, logging.FileHandler) for h in app.logger.handlers):
-        fh = logging.handlers.RotatingFileHandler(log_dir / "dashboard.log",
-                                                  maxBytes=10_000_000, backupCount=7, encoding="utf-8")
-        fh.setFormatter(fmt); app.logger.addHandler(fh)
-
-    # werkzeug (http access) → same file
-    wz = logging.getLogger("werkzeug"); wz.setLevel(logging.INFO)
-    if not any(isinstance(h, logging.FileHandler) for h in wz.handlers):
-        wz.addHandler(fh)
-
-    # root too (so library INFO/ERROR surface)
-    root = logging.getLogger(); root.setLevel(logging.INFO)
-    if not any(isinstance(h, logging.FileHandler) for h in root.handlers):
-        root.addHandler(fh)
-
-    # turn on the E*TRADE quote call wrapper so calls are visible in logs
-    _etrade_log_wrap()
-
-_setup_logging_and_wrappers(app)
 
 from pathlib import Path
 FLAG = Path("need_oauth.flag")
@@ -979,18 +947,9 @@ def _sum_realized_from_trades(trades, since_str=REALIZED_SINCE):
             pass
     return round(tot, 2)
 
-def _get(path: str, params=None):
-    r = requests.get(BASE_URL + path, params=params or {}, auth=_oauth1(), headers={"Accept":"application/json"})
-    r.raise_for_status()
-    return r
-
-def _http_get(path: str, params: dict | None = None) -> dict:
-    base = "https://api.etrade.com"
-    r = requests.get(base + path, params=params or {}, auth=_oauth1())
-    if r.status_code in (401,403):
-        raise RuntimeError(f"E*TRADE auth error {r.status_code}: {r.text}")
-    r.raise_for_status()
-    return r.json()
+def _get(path: str, params=None) -> dict:
+    # path like "/portfolio.json"
+    return b.get_account(path if path.startswith("/") else "/" + path.lstrip(), params or {}) or {}
 
 def fetch_etrade_quote(symbol: str):
     j = _get(f"/v1/market/quote/{symbol}.json").json()
@@ -1003,21 +962,6 @@ def fetch_etrade_quote(symbol: str):
         return float(last)
     except Exception:
         return j
-
-def _primary_account_id():
-    j = _get("/v1/accounts/list.json").json()
-    accts = j.get("AccountListResponse",{}).get("Accounts",{}).get("Account",[])
-    if isinstance(accts, dict): accts = [accts]
-    if not accts: raise RuntimeError("No E*TRADE accounts returned")
-    return accts[0].get("accountIdKey") or accts[0].get("accountId")
-
-def get_account_summary():
-    aid = _primary_account_id()
-    return _get(f"/v1/accounts/{aid}/balance.json", params={"instType":"BROKERAGE"}).json()
-
-def get_positions():
-    aid = _primary_account_id()
-    return _get(f"/v1/accounts/{aid}/portfolio.json", params={"instType":"BROKERAGE"}).json()
 
 @app.route("/debug/oauth")
 def debug_oauth():
@@ -2812,6 +2756,16 @@ def _build_holdings_from_positions(positions):
     cost_basis = sum((r["price_paid"] or 0.0) * (r["qty"] or 0) for r in rows)
     positions_value = round(sum(r["value"] for r in rows), 2)
     return rows, unrealized, cost_basis, positions_value
+    _acct = acct if isinstance(acct, dict) else {}
+    comp  = _acct.get("Computed") or {}
+    cash  = _acct.get("Cash") or {}
+    rtv   = _acct.get("RealTimeValues") or comp.get("RealTimeValues") or {}
+
+    nav = _first_num(
+        rtv.get("totalAccountValue"),
+        comp.get("totalAccountValue"),
+        comp.get("accountTotal"),
+    )
 
 def _normalize_account(raw: dict) -> dict:
     src  = (raw or {}).get("BalanceResponse") or (raw or {})
@@ -2907,40 +2861,30 @@ def live_view():
             # capture original
             _original_et_get = b._et._get
 
-            def _shimmed_get(path: str, params=None):
+            def _shimmed_get(path, params=None):
                 params = params or {}
                 norm = str(path or "")
 
-                # --- never account-scope these ---
-                if (
-                    norm.startswith("/accounts/list.json") or
-                    norm.startswith("/market/") or norm.startswith("/v1/market/") or
-                    norm.startswith("/oauth/")
-                ):
-                    return _original_et_get(norm, params)
-
-                # If caller already passed a fully-scoped accounts path, just pass through
+                # strip any "/accounts/<id>/" prefix coming in
                 if norm.startswith("/accounts/"):
+                    parts = norm.split("/", 3)
+                    if len(parts) >= 4:
+                        norm = "/" + parts[3]
+
+                # never prefix these:
+                if norm == "/accounts/list.json" or norm.startswith("/oauth/") or norm.startswith("/market/"):
                     return _original_et_get(norm, params)
 
-                # Account-scoped endpoints we DO want to prefix
-                needs_scope = (
-                    norm in ("/balance.json", "/portfolio.json", "/orders.json", "/transactions.json")
-                    or norm.startswith("/balance") or norm.startswith("/portfolio")
-                    or norm.startswith("/orders") or norm.startswith("/transactions")
-                )
-
-                if needs_scope:
-                    aid = getattr(b, "_account_id_key", None) or getattr(b, "account_id_key", None)
+                aid = getattr(b, "_account_id_key", None) or getattr(b, "account_id_key", None)
+                if aid:
                     return _original_et_get(f"/accounts/{aid}{norm}", params)
-
-                # default: pass through unmodified
                 return _original_et_get(norm, params)
 
-            # Install the shim
             b._et._get = _shimmed_get
-
             quotes = b._et.get_quotes_batch(symbols) or {}
+            qmap = broker.get_quotes_batch(syms)
+            current_app.logger.info("[LIVE] qmap keys: %s", sorted(list(qmap.keys())))
+
 
         def _lookup(qu: dict, sym: str):
             # handle BF-B vs BF.B, etc.
@@ -3006,8 +2950,6 @@ def live_status():
         except Exception:
             _ET = _dt.timezone(_dt.timedelta(hours=-5))  # crude ET fallback
 
-        # ---------------- Logger helper ----------------
-        log = getattr(current_app, "logger", None)
 
         def _log(level, msg, *args):
             try:
@@ -3362,20 +3304,10 @@ def live_status():
 
             daytrade_stats = {"pdt5": {"dates": pdt_map, "total": pdt_total}}
             return enriched, round(realized_val, 2), round(realized_pct, 2), daytrade_stats
+        # ------------------- Account + Positions + Quotes (robust) -------------------
 
-        # --------------- Account (E*TRADE real-time) ---------------
         from services import broker as _broker
-        b = _broker.get_broker('LIVE')
-
-        raw = b._et._get(
-            f"/accounts/{b.account_id_key}/balance.json",
-            params={"instType": "BROKERAGE", "realTimeNAV": "true"}
-        ) or {}
-
-        br   = (raw.get("BalanceResponse") or raw) or {}
-        comp = (br.get("Computed") or {})
-        cash = (br.get("Cash") or {})
-        rtv  = (comp.get("RealTimeValues") or {})
+        b = _broker.get_broker("LIVE")
 
         def _first_num(*vals):
             for v in vals:
@@ -3385,63 +3317,184 @@ def live_status():
                 except Exception:
                     pass
             return None
+        def _build_positions_table(holdings, qmap, inv):
+            """
+            Returns (rows, unrealized, cost_basis, positions_value).
+            Populates last/prev_close via qmap when not present on holdings.
+            """
+            rows = []
+            qmap = qmap or {}
 
-        nav         = _first_num(rtv.get("totalAccountValue"), comp.get("totalAccountValue"), comp.get("accountTotal"))
-        bp          = _first_num(comp.get("marginBuyingPower"), comp.get("cashBuyingPower"), b._fresh_funds())
-        avail_wd    = _first_num(comp.get("totalAvailableForWithdrawal"), comp.get("cashAvailableForWithdrawal"))
-        settled_cash= _first_num(comp.get("netCash"), comp.get("cashBalance"), cash.get("moneyMktBalance"))
+            def _f(x):
+                try:
+                    return float(x or 0)
+                except Exception:
+                    return 0.0
 
-        account = {
-            "account_id":   br.get("accountId"),
-            "account_type": br.get("accountType") or br.get("accountMode"),
-            "buying_power": bp,
-            "available_to_withdraw": avail_wd,
-            "equity_value": nav,          # drives the UI “Equity Value”
-            "settled_cash": settled_cash, # used by the fallback later
-        }
+            def _first_num(*vals):
+                for v in vals:
+                    try:
+                        if v is not None:
+                            return float(v)
+                    except Exception:
+                        pass
+                return None
+
+            unrealized = 0.0
+            cost_basis = 0.0
+            positions_value = 0.0
+
+            for pos in holdings or []:
+                sym = (pos.get("symbol") or "").upper()
+                qty = int(_f(pos.get("qty")))
+                avg = _f(pos.get("price_paid")) or None
+
+                q = (qmap.get(sym) or {})
+                last = _first_num(
+                    pos.get("last_price"),
+                    q.get("last"),
+                    q.get("lastTrade"),
+                    q.get("close"),
+                    q.get("previous_close"),  # some feeds reuse this as "last" when market closed
+                    q.get("previousClose"),
+                )
+                prev_close = _first_num(q.get("previous_close"), q.get("previousClose"))
+
+                # Value
+                value = round((last or 0.0) * qty, 2) if (last is not None and qty) else None
+
+                # Totals (vs. cost basis)
+                total_pl = ((last - avg) * qty) if (last is not None and avg and qty) else None
+                total_pl_pct = (((last - avg) / avg) * 100.0) if (last is not None and avg) else None
+
+                # Day (vs. previous close)
+                day_pl = ((last - prev_close) * qty) if (last is not None and prev_close is not None and qty) else None
+                day_pl_pct = (((last - prev_close) / prev_close) * 100.0) if (last is not None and prev_close not in (None, 0)) else None
+
+                # Legacy “change/percent” (kept so nothing else breaks)
+                change = (last - avg) if (last is not None and avg) else 0.0
+                change_pct = ((change / avg) * 100.0) if avg else 0.0
+
+                rows.append({
+                    "symbol": sym,
+                    "qty": qty,
+                    "opened_et": pos.get("opened_et") or pos.get("open_time"),
+                    "last_price": round(last, 4) if last is not None else None,
+                    "price_paid": round(avg, 4) if avg is not None else None,
+
+                    # ✅ what the Holdings table shows
+                    "day_pl": round(day_pl, 2) if day_pl is not None else None,
+                    "day_pl_pct": round(day_pl_pct, 2) if day_pl_pct is not None else None,
+                    "total_pl": round(total_pl, 2) if total_pl is not None else None,
+                    "total_pl_pct": round(total_pl_pct, 2) if total_pl_pct is not None else None,
+
+                    # keep existing fields
+                    "change": round(change, 4) if avg is not None else 0.0,
+                    "change_pct": change_pct,
+                    "value": value,
+                })
+
+                if total_pl is not None:
+                    unrealized += total_pl
+                if avg is not None and qty:
+                    cost_basis += (avg * qty)
+                if value is not None:
+                    positions_value += value
+
+            return rows, round(unrealized, 2), round(cost_basis, 2), round(positions_value, 2)
+
+            # Totals
+            total_pl = ((last - avg) * qty) if (last is not None and avg and qty) else None
+            total_pl_pct = ((last - avg) / avg * 100.0) if (last is not None and avg) else None
+
+            # Day (vs previous close)
+            day_pl = ((last - prev_close) * qty) if (last is not None and prev_close is not None and qty) else None
+            day_pl_pct = ((last - prev_close) / prev_close * 100.0) if (last is not None and prev_close not in (None, 0)) else None
+
+            # Keep your existing change fields too (optional)
+            change = (last - avg) if (last is not None and avg) else 0.0
+
+            rows.append({
+                "symbol": sym,
+                "qty": qty,
+                "last_price": round(last, 4) if last is not None else None,
+                "last": round(last, 4) if last is not None else None,   # alias for template
+                "price_paid": round(avg, 4) if avg else None,
+
+                # what the template expects for holdings P&L:
+                "day_pl": round(day_pl, 2) if day_pl is not None else None,
+                "day_pl_pct": round(day_pl_pct, 2) if day_pl_pct is not None else None,
+                "total_pl": round(total_pl, 2) if total_pl is not None else None,
+                "total_pl_pct": round(total_pl_pct, 2) if total_pl_pct is not None else None,
+
+                # keep prior names so nothing else breaks
+                "change": round(change, 4) if avg else 0.0,
+                "change_pct": (change / avg * 100.0) if avg else 0.0,
+
+                "value": round(last * qty, 2) if (last is not None and qty) else None,
+            })
+
+            unrealized = round(sum(f(r.get("total_gain")) for r in rows), 2)
+            cost_basis = round(sum(f(r.get("price_paid")) * f(r.get("qty")) for r in rows), 2)
+            positions_value = round(sum(f(r.get("value")) for r in rows), 2)
+            return rows, unrealized, cost_basis, positions_value
 
 
         # --------------- Positions / Holdings ----------
+        holdings = []
+        inv = {}
+
+        def _as_list(x):
+            if x is None:
+                return []
+            if isinstance(x, list):
+                return x
+            return [x]
+
         try:
-            raw_positions = et.get_positions() or []
+            pf = b.get_account("/portfolio.json", {"instType": "BROKERAGE"}) or {}
         except Exception as e:
             _log("warning", "[LIVE] positions failed: %s", e)
-            raw_positions = []
+            pf = {}
 
-        holdings = _collect_holdings(raw_positions)
+        # If the shim (or requests) gave us a top-level list, unwrap it.
+        if isinstance(pf, list):
+            pf = (pf[0] if pf else {}) or {}
 
-        # --- Fallback: ensure a row exists for each long inventory symbol (e.g., WBD) ---
         try:
-            inv = et.long_qty_map() or {}
+            # PortfolioResponse → AccountPortfolio (list|dict) → Position (list|dict)
+            pr  = (pf.get("PortfolioResponse") or pf.get("portfolioResponse") or {})  # be case tolerant
+            aps = _as_list(pr.get("AccountPortfolio") or pr.get("accountPortfolio"))
+            raw_positions = []
+            for ap in aps:
+                raw_positions.extend(_as_list(ap.get("Position") or ap.get("position")))
+
+            # Build long-qty map for “ensure a row exists…” logic
+            for pos in raw_positions:
+                prod = pos.get("Product") or {}
+                sym  = prod.get("symbol") or pos.get("symbol")
+                qty  = (pos.get("quantity") or pos.get("longQty") or pos.get("longQuantity"))
+                if sym and isinstance(qty, (int, float)):
+                    inv[sym] = float(qty)
+
+            holdings = _collect_holdings(raw_positions)
+
         except Exception as e:
-            _log("warning", "[LIVE] long_qty_map failed: %s", e)
-            inv = {}
+            _log("warning", "[LIVE] positions parse error: %s", e)
+            holdings, inv = [], {}
 
-        by_sym = {(h.get("symbol") or "").upper(): {**h}
-                  for h in (holdings or []) if h.get("symbol")}
-        for sym, qty in (inv or {}).items():
-            s = (sym or "").upper()
-            if not s:
-                continue
-            if s in by_sym:
-                try:
-                    by_sym[s]["qty"] = float(qty)
-                except Exception:
-                    pass
-            else:
-                try:
-                    by_sym[s] = {"symbol": s, "qty": float(qty), "price_paid": None}
-                except Exception:
-                    by_sym[s] = {"symbol": s, "qty": 0.0, "price_paid": None}
+        # ---- Quotes setup (must exist before _merge_quotes) ----
+        qmap: dict[str, dict] = {}
 
-        holdings = list(by_sym.values())
-        # ---- next line in your file should be the Quotes section header ----
-        # --------------- Quotes (E*TRADE only) ---------
-        syms = [h["symbol"] for h in holdings if h.get("symbol")]
-        qmap = {}
-        quotes_dbg = [] if debug_level else None
+        _debug_quotes = False
+        try:
+            from flask import request as _rq
+            _debug_quotes = ((_rq.args.get("debug") or "").strip().lower() in ("1","true","yes","on"))
+        except Exception:
+            pass
+        quotes_dbg = [] if _debug_quotes else None
 
-        def _merge_quotes(raw, tag):
+        def _merge_quotes(raw, tag: str):
             if quotes_dbg is not None:
                 def _glimpse(obj):
                     try:
@@ -3454,11 +3507,19 @@ def live_status():
                     except Exception:
                         return "<glimpse-failed>"
                 quotes_dbg.append({"tag": tag, "glimpse": _glimpse(raw)})
+
             parsed = _dig_etrade_quotes_to_map(raw) or {}
             if parsed:
                 qmap.update(parsed)
                 return True
             return False
+
+        # ---- Build the symbol request set from holdings + inv ----
+        syms = sorted({
+            *(str(r.get("symbol") or r.get("sym") or "").upper() for r in (holdings or []) if (r.get("symbol") or r.get("sym"))),
+            *inv.keys(),
+        })
+        syms = [s for s in syms if s]  # drop empties
 
         if syms:
             _log("info", "[LIVE] requesting quotes for %s", syms)
@@ -3468,104 +3529,118 @@ def live_status():
                     _merge_quotes(raw, "multi")
             except Exception as e:
                 _log("warning", "[LIVE] get_quotes error: %s", e)
-
-            missing = [s for s in syms if s.upper() not in qmap]
-            if missing and hasattr(et, "get_quote"):
-                for s in missing:
+                # try per-symbol as a fallback
+                for s in syms:
                     try:
                         raw = et.get_quote(s, detailFlag="ALL")
-                        if not _merge_quotes(raw, f"one:{s}"):
-                            # last-chance single parse
-                            try:
-                                qd = (raw.get("QuoteResponse") or {}).get("QuoteData") or []
-                                if isinstance(qd, dict):
-                                    qd = [qd]
-                                if qd:
-                                    allb = (qd[0].get("All") or {})
-                                    last = _to_f(allb.get("lastTrade") or allb.get("lastPrice"))
-                                    prev = _to_f(allb.get("previousClose") or allb.get("priorClose"))
-                                    if last is not None:
-                                        qmap[s.upper()] = {"last": last, "prev": prev}
-                            except Exception:
-                                pass
-                    except Exception as e:
-                        _log("warning", "[LIVE] get_quote(%s) failed: %s", s, e)
+                        _merge_quotes(raw, f"single:{s}")
+                    except Exception as ee:
+                        _log("warning", "[LIVE] get_quote(%s) error: %s", s, ee)
 
-            for h in holdings:
-                s    = (h.get("symbol") or "").upper()
-                qty  = _safe_float(h.get("qty"))             # numeric or 0.0
-                paid = _to_f(h.get("price_paid"))            # may be None
-
-                # quotes pulled earlier into qmap
-                q    = qmap.get(s, {})
-                last = _to_f(q.get("last"))
-                prev = _to_f(q.get("prev"))
-
-                # --- Opened (ET) (guarded) ---
-                ots = open_since.get(s)
-                if ots:
-                    try:
-                        h["open_time_ms"] = int(_safe_float(ots))
-                    except Exception:
-                        pass
-                    h["open_time"] = _fmt_et(ots) or ""
-
-                # --- Last/Value ---
-                if last is not None and last > 0:
-                    h["last_price"] = round(last, 2)
-                    if qty is not None:
-                        h["value"] = round(qty * last, 2)
-
-                # --- Day P&L ---
-                if (
-                    last is not None and prev is not None and
-                    prev > 0 and qty is not None
-                ):
-                    day_pl = (last - prev) * qty
-                    h["day_pl"] = round(day_pl, 2)
-                    try:
-                        h["day_pl_pct"] = round((last / prev - 1.0) * 100.0, 2)
-                    except Exception:
-                        pass
-
-                # --- Total P&L (vs price_paid) ---
-                if (
-                    last is not None and last > 0 and
-                    paid is not None and paid > 0 and
-                    qty is not None
-                ):
-                    tot_pl = (last - paid) * qty
-                    h["total_pl"] = round(tot_pl, 2)
-                    try:
-                        h["total_pl_pct"] = round((last / paid - 1.0) * 100.0, 2)
-                    except Exception:
-                        pass
-
+        # ---- Account balances/meta (do not shadow `acct`) ----
+        acct_raw = {}
         try:
-            # Hide partial rows if we couldn't populate last/value
-            for h in holdings:
-                if not (h.get("last_price") and h.get("value") is not None):
-                    h.pop("last_price", None)
-                    h.pop("value", None)
+            # realtime when available; tolerate either casing of params
+            acct_raw = b.get_account("/balance.json", {"instType": "BROKERAGE", "realtime": "true"}) or {}
         except Exception as e:
-            _log("warning", "[LIVE] holdings enrichment failed: %s", e)        # --------------- Rollups -----------------------
+            _log("warning", "[LIVE] balance fetch failed: %s", e)
+
+        src  = (acct_raw.get("BalanceResponse") or acct_raw) or {}
+        comp = src.get("Computed") or {}
+        cash_blk = src.get("Cash") or {}
+        rtv  = src.get("RealTimeValues") or comp.get("RealTimeValues") or {}
+
+        nav = _first_num(
+            rtv.get("totalAccountValue"),
+            comp.get("totalAccountValue"),
+            comp.get("accountTotal"),
+        )
+        bp           = _first_num(comp.get("marginBuyingPower"), comp.get("cashBuyingPower"), getattr(b, "_fresh_funds", lambda: None)())
+        avail_wd     = _first_num(comp.get("totalAvailableForWithdrawal"), comp.get("cashAvailableForWithdrawal"))
+        settled_cash = _first_num(comp.get("netCash"), comp.get("cashBalance"), cash_blk.get("moneyMktBalance"))
+
+        # ---- Account list for id/type (br) ----
+        br = {}
+        try:
+            lst = b.get_account("/accounts/list.json") or {}
+            # tolerate structure variations
+            ar = (lst.get("AccountsResponse") or lst).get("AccountList") or (lst.get("AccountsResponse") or lst).get("Accounts") or {}
+            accs = ar.get("Account") or []
+            if isinstance(accs, dict):
+                accs = [accs]
+            br = accs[0] if accs else {}
+        except Exception as e:
+            _log("warning", "[LIVE] accounts list failed: %s", e)
+
+        account = {
+            "account_id":   br.get("accountId") or br.get("accountIdKey") or br.get("accountIdValue"),
+            "account_key":  getattr(b, "_account_id_key", None),
+            "account_type": br.get("accountType") or br.get("accountMode"),
+            "buying_power": bp or 0,
+            "available_to_withdraw": avail_wd or 0,
+            "equity_value": nav or 0,
+            "settled_cash": settled_cash or 0,
+        }
+        # ---- Metrics scaffold (must exist before we assign to it) ----
+        metrics = {
+            "cash_balance": float(account.get("settled_cash") or 0.0),
+            "positions_value": 0.0,
+            "total_value": 0.0,
+            "unrealized_pnl": 0.0,
+            "unrealized_pnl_pct": 0.0,
+            "realized_pnl": 0.0,
+            "realized_pnl_pct": 0.0,
+            "daytrades_pdt5": {"total": 0, "dates": {}},
+            "realized_buckets": {
+                "week":  {"pnl": 0.0, "pct": 0.0},
+                "month": {"pnl": 0.0, "pct": 0.0},
+                "all":   {"pnl": 0.0, "pct": 0.0},
+            },
+        }
+        # ---- Rollups from holdings (safe even if holdings is empty) ----
         positions_value = round(sum(_safe_float(h.get("value")) for h in holdings), 2)
+
         cost_basis_sum = round(
             sum(_safe_float(h.get("price_paid")) * _safe_float(h.get("qty")) for h in holdings),
             2,
         )
+
         unrealized = round(
-            sum((_safe_float(h.get("last_price")) - _safe_float(h.get("price_paid"))) * _safe_float(h.get("qty")) for h in holdings),
+            sum(
+                (_safe_float(h.get("last_price")) - _safe_float(h.get("price_paid")))
+                * _safe_float(h.get("qty"))
+                for h in holdings
+            ),
             2,
         )
+
         upct = round((unrealized / cost_basis_sum * 100.0), 2) if cost_basis_sum else 0.0
 
-        # Seed; we compute for real after trades are built/enriched.
-        realized_buckets = {
-            "week": {"pnl": 0.0, "pct": 0.0},
-            "month": {"pnl": 0.0, "pct": 0.0},
-            "all": {"pnl": 0.0, "pct": 0.0},
-        }
+        # ---- Compute metrics from current rows / qmap fallback ----
+        rows, unrealized, cost_basis, positions_value = _build_positions_table(holdings, qmap, inv)  # your existing helper
+
+        metrics["positions_value"] = positions_value
+        if not metrics.get("cash_balance"):
+            metrics["cash_balance"] = account["settled_cash"] or 0
+        metrics["total_value"] = round((metrics["cash_balance"] or 0) + (metrics["positions_value"] or 0), 2)
+        metrics["unrealized_pnl"] = unrealized
+        metrics["unrealized_pnl_pct"] = (round((unrealized / cost_basis) * 100, 2) if cost_basis else 0)
+
+        # ---- Debug fill-ins if you have a _debug dict ----
+        try:
+            _debug = _debug  # keep existing if present
+        except NameError:
+            _debug = {}
+        _debug.update({
+            "qmap_keys": sorted(list(qmap.keys())),
+            "requested": syms,
+            "cost_basis_sum": cost_basis,
+            "positions_value": positions_value,
+        })
+
+        # Expose for your final response assembly:
+        holdings = rows
+
         # --------------- Trades (from merged source) ---------------
         IGNORE = {s.strip().upper() for s in (os.getenv("LIVE_IGNORE_SYMBOLS") or "GEVO").split(",") if s.strip()}
         mapped = []
@@ -3916,4 +3991,4 @@ def live_quotes():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True, use_reloader=True)
+    app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)

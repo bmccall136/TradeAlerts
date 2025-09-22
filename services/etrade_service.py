@@ -418,14 +418,20 @@ def get_quote(symbol: str, detailFlag: str | None = None) -> dict:
         return _get_quote(sym) or {}
     except Exception:
         return {}
-def get_quotes(symbols, detailFlag: str | None = None, **_kwargs) -> dict:
-    if isinstance(symbols, str):
-        syms = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+# --- E*TRADE quotes: batch fetch ---
+def get_quotes(symbols, detailFlag: str | None = None, **kwargs) -> dict:
+    # symbols can be str or a collection
+    if isinstance(symbols, (list, tuple, set)):
+        csv = ",".join(s.strip().upper() for s in symbols if s)
     else:
-        syms = [str(s).strip().upper() for s in symbols if str(s).strip()]
-    if not syms:
-        return {}
-    return _get_quote(",".join(syms), detailFlag=detailFlag) or {}
+        csv = str(symbols).strip().upper()
+
+    path = f"/v1/market/quote/{csv}.json"  # <-- important: symbols in the path
+    params = {}
+    if detailFlag:
+        params["detailFlag"] = detailFlag
+    params.update(kwargs or {})
+    return http_get(path, params) or {}
 
 # Optional: a convenience that returns a normalized {SYM: {"last":..,"prev":..}}
 from datetime import datetime, timezone
@@ -433,61 +439,54 @@ from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
 
-def get_quotes(symbols, detailFlag: str | None = None, **_kwargs) -> dict:
-    """
-    Raw multi-quote JSON from E*TRADE -> normalized dict:
-      { "AAPL": {"last": 222.34, "prev": 221.01}, ... }
-    `symbols` can be list/tuple or comma string.
-    Delegates to _get_quote (E*TRADE only). No yfinance fallback.
-    """
-    if isinstance(symbols, str):
-        syms = [s.strip().upper() for s in symbols.split(",") if s.strip()]
-    else:
-        syms = [str(s).strip().upper() for s in symbols if str(s).strip()]
-    if not syms:
-        return {}
-
-    csv = ",".join(syms)
-    try:
-        raw = _get_quote(csv, detailFlag) if detailFlag is not None else _get_quote(csv)
-    except TypeError:
-        raw = _get_quote(csv) or {}
-    except Exception:
-        return {}
-
-    out = {}
-    try:
-        qr = (raw or {}).get("QuoteResponse") or {}
-        qd = qr.get("QuoteData") or []
-        if isinstance(qd, dict):
-            qd = [qd]
-
-        for item in qd:
-            prod = item.get("Product") or {}
-            sym  = (prod.get("symbol") or item.get("symbol") or "").upper()
-            allb = item.get("All") or {}
-            last = _to_f(allb.get("lastTrade") or allb.get("lastPrice"))
-            prev = _to_f(allb.get("previousClose") or allb.get("priorClose"))
-            eh   = allb.get("ExtendedHourQuoteDetail") or {}
-            eh_last = _to_f(eh.get("lastPrice"))
-            if eh_last is not None:
-                last = eh_last
-            if sym and last is not None:
-                out[sym] = {"last": last, "prev": prev}
-                # dash/dot aliases for convenience
-                if "." in sym:
-                    out[sym.replace(".", "-")] = out[sym]
-                if "-" in sym:
-                    out[sym.replace("-", ".")] = out[sym]
-    except Exception:
-        # keep best-effort
-        pass
-    return out
-
-
 def _fmt_mmddyyyy(dt: datetime) -> str:
     return dt.astimezone(ET).strftime("%m%d%Y")
 
+from typing import Dict, List
+
+# --- Build symbol -> {last: float} map for the UI ---
+from typing import Dict, List
+
+def get_quotes_map(symbols: List[str]) -> Dict[str, Dict[str, float]]:
+    resp = get_quotes(symbols, detailFlag="ALL")
+    qr = (resp or {}).get("QuoteResponse") or {}
+
+    # If API returns messages, don't explode; just return {}
+    # (Messages often lives under QuoteResponse, not at the top)
+    if qr.get("Messages"):
+        return {}
+
+    qd = qr.get("QuoteData")
+    if not qd:
+        return {}
+
+    # QuoteData can be a dict for single, or a list for multi
+    if isinstance(qd, dict):
+        qlist = [qd]
+    else:
+        qlist = [x for x in qd if isinstance(x, dict)]
+
+    out: Dict[str, Dict[str, float]] = {}
+    for item in qlist:
+        prod = item.get("Product") or {}
+        sym = (prod.get("symbol") or "").upper()
+        all_block = item.get("All") or {}
+        intraday = item.get("intraday") or {}
+        quick = item.get("Quick") or {}
+
+        last = (
+            all_block.get("lastTrade")
+            or intraday.get("lastTrade")
+            or quick.get("lastTrade")
+        )
+
+        if sym and last is not None:
+            try:
+                out[sym] = {"last": float(last)}
+            except (TypeError, ValueError):
+                # ignore weird non-numeric lastTrade
+                pass
+    return out
 
 # --- executed orders (count-based) -------------------------------------------
 def list_executed_orders_recent(count: int = 50) -> dict:
@@ -1458,35 +1457,6 @@ def list_trade_transactions_today() -> dict:
                 except: pass
 
     return trades, round(realized, 2)
-
-def get_quotes_map(symbols: List[str]) -> Dict[str, Dict[str, float]]:
-    """Return {SYM: {'last': x, 'prev_close': y}} using E*TRADE quotes."""
-    out: Dict[str, Dict[str, float]] = {}
-    if not symbols:
-        return out
-
-    et, _ = _svc()
-    uniq = sorted({s.upper() for s in symbols if s})
-    syms_csv = ",".join(uniq)
-    try:
-        raw = _eget(f"/accounts/{account_id_key}/orders.json",
-            params={"status": "OPEN", "fromDate": from_date, "toDate": to_date}) or {}
-        qd = (data.get("QuoteResponse") or {}).get("QuoteData") or []
-        if isinstance(qd, dict):
-            qd = [qd]
-        for q in qd:
-            prod = q.get("Product") or {}
-            sym = (prod.get("symbol") or "").upper()
-            allf = q.get("All") or {}
-            last = allf.get("lastTrade") or allf.get("lastTradePrice") or allf.get("price") or 0.0
-            prev = allf.get("previousClose") or allf.get("prevClose") or allf.get("close") or 0.0
-            try:
-                out[sym] = {"last": float(last or 0.0), "prev_close": float(prev or 0.0)}
-            except Exception:
-                pass
-    except Exception as e:
-        log.exception("quotes fetch failed: %s", e)
-    return out
 
 def list_recent_trades(days: int = 5) -> List[Dict[str, Any]]:
     """

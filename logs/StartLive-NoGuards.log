@@ -9984,3 +9984,28 @@ Env GUARDRAILS_ENABLED=false
 Env LIVE_SAFE_MODE=false
 Env GR_AUTO_SELLER=0
 Env LIVE_ARMED=1
+**********************
+Windows PowerShell transcript start
+Start time: 20250922092003
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
+Process ID: 15824
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/22/2025 09:20:03 START Start Live (NO GUARDS) ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+Env GUARDRAILS_ENABLED=false
+Env LIVE_SAFE_MODE=false
+Env GR_AUTO_SELLER=0
+Env LIVE_ARMED=1
