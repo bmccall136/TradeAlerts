@@ -144,11 +144,10 @@ class ETradeService:
         return self._get(f"/accounts/{account_id_key}/balance.json", params=params)
 
     # quotes (batch)
-    def get_quotes_batch(self, symbols: List[str]) -> Dict[str, Any]:
-        if not symbols: return {}
-        syms = ",".join(symbols)
-        # Intraday so we can see last/extended details
-        return self._get(f"/market/quote/{syms}.json", params={"detailFlag": "INTRADAY", "skipMiniOptionsCheck": True})
+    # services/broker.py (or broker_live.py)
+    def get_quotes_batch(self, symbols: List[str]) -> Dict[str, Dict[str, float]]:
+        from services.etrade_service import get_quotes_map
+        return get_quotes_map(symbols)
 
     # orders
     def preview_equity_order(
@@ -241,8 +240,57 @@ class LiveBroker:
     def account_id_key(self) -> str:
         return self._account_id_key
 
-    # services/broker.py  (inside class LiveBroker)
-    # --- add this inside class LiveBroker ---------------------------------
+    def _ensure_account_key(self):
+        # already cached?
+        if getattr(self, "_account_id_key", None):
+            return self._account_id_key
+
+        # fetch and cache from /accounts/list.json
+        j = self._get("/v1/accounts/list.json").json()
+        acc = (j.get("AccountListResponse") or {}) \
+                .get("Accounts", {}) \
+                .get("Account") or []
+        if isinstance(acc, dict): acc = [acc]
+        for a in acc:
+            if (a.get("institutionType") == "BROKERAGE"
+                or a.get("accountType") in ("INDIVIDUAL","JOINT","IRA")):
+                self._account_id_key = a.get("accountIdKey") or a.get("accountId")
+                break
+        if not getattr(self, "_account_id_key", None):
+            raise RuntimeError("Could not resolve accountIdKey from list.json")
+        return self._account_id_key
+
+    def get_account(self, path: str, params: dict | None = None):
+        """
+        Wrapper for account-scoped endpoints. `path` must be like '/balance.json'
+        or '/portfolio.json' etc. We inject '/v1/accounts/{accountIdKey}'.
+        """
+        aid = self._ensure_account_key()
+
+        # allow market endpoints to pass through untouched
+        if path.startswith("/v1/"):
+            url = path  # already full
+        else:
+            # ensure leading slash
+            if not path.startswith("/"):
+                path = "/" + path
+            url = f"/v1/accounts/{aid}{path}"
+
+        r = self._get(url, params or {})  # your existing OAuth1 GET
+        # If the key got stale, refresh once on 100/102
+        if r.status_code == 400:
+            try:
+                body = r.json().get("Error", {})
+                if body.get("code") in (100, 102):
+                    # refresh key and retry once
+                    self._account_id_key = None
+                    aid = self._ensure_account_key()
+                    url = f"/v1/accounts/{aid}{path}"
+                    r = self._get(url, params or {})
+            except Exception:
+                pass
+        r.raise_for_status()
+        return r.json() if url.endswith(".json") else r
 
     def get_account(self, path: str, params: dict | None = None) -> dict:
         """
@@ -289,6 +337,10 @@ class LiveBroker:
             self._account_id_key = new_key
             return True
         return bool(new_key)
+
+    # services/broker.py inside LiveBroker
+    def get_portfolio(self) -> dict:
+        return self._get_account("/portfolio.json", {"instType":"BROKERAGE"}) or {}
 
     def _get_account(self, path: str, params: dict | None = None) -> dict:
         params = dict(params or {})

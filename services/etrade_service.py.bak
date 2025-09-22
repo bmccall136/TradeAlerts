@@ -418,14 +418,20 @@ def get_quote(symbol: str, detailFlag: str | None = None) -> dict:
         return _get_quote(sym) or {}
     except Exception:
         return {}
-def get_quotes(symbols, detailFlag: str | None = None, **_kwargs) -> dict:
-    if isinstance(symbols, str):
-        syms = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+# --- E*TRADE quotes: batch fetch ---
+def get_quotes(symbols, detailFlag: str | None = None, **kwargs) -> dict:
+    # symbols can be str or a collection
+    if isinstance(symbols, (list, tuple, set)):
+        csv = ",".join(s.strip().upper() for s in symbols if s)
     else:
-        syms = [str(s).strip().upper() for s in symbols if str(s).strip()]
-    if not syms:
-        return {}
-    return _get_quote(",".join(syms), detailFlag=detailFlag) or {}
+        csv = str(symbols).strip().upper()
+
+    path = f"/v1/market/quote/{csv}.json"  # <-- important: symbols in the path
+    params = {}
+    if detailFlag:
+        params["detailFlag"] = detailFlag
+    params.update(kwargs or {})
+    return http_get(path, params) or {}
 
 # Optional: a convenience that returns a normalized {SYM: {"last":..,"prev":..}}
 from datetime import datetime, timezone
@@ -433,61 +439,35 @@ from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
 
-def get_quotes(symbols, detailFlag: str | None = None, **_kwargs) -> dict:
-    """
-    Raw multi-quote JSON from E*TRADE -> normalized dict:
-      { "AAPL": {"last": 222.34, "prev": 221.01}, ... }
-    `symbols` can be list/tuple or comma string.
-    Delegates to _get_quote (E*TRADE only). No yfinance fallback.
-    """
-    if isinstance(symbols, str):
-        syms = [s.strip().upper() for s in symbols.split(",") if s.strip()]
-    else:
-        syms = [str(s).strip().upper() for s in symbols if str(s).strip()]
-    if not syms:
-        return {}
-
-    csv = ",".join(syms)
-    try:
-        raw = _get_quote(csv, detailFlag) if detailFlag is not None else _get_quote(csv)
-    except TypeError:
-        raw = _get_quote(csv) or {}
-    except Exception:
-        return {}
-
-    out = {}
-    try:
-        qr = (raw or {}).get("QuoteResponse") or {}
-        qd = qr.get("QuoteData") or []
-        if isinstance(qd, dict):
-            qd = [qd]
-
-        for item in qd:
-            prod = item.get("Product") or {}
-            sym  = (prod.get("symbol") or item.get("symbol") or "").upper()
-            allb = item.get("All") or {}
-            last = _to_f(allb.get("lastTrade") or allb.get("lastPrice"))
-            prev = _to_f(allb.get("previousClose") or allb.get("priorClose"))
-            eh   = allb.get("ExtendedHourQuoteDetail") or {}
-            eh_last = _to_f(eh.get("lastPrice"))
-            if eh_last is not None:
-                last = eh_last
-            if sym and last is not None:
-                out[sym] = {"last": last, "prev": prev}
-                # dash/dot aliases for convenience
-                if "." in sym:
-                    out[sym.replace(".", "-")] = out[sym]
-                if "-" in sym:
-                    out[sym.replace("-", ".")] = out[sym]
-    except Exception:
-        # keep best-effort
-        pass
-    return out
-
-
 def _fmt_mmddyyyy(dt: datetime) -> str:
     return dt.astimezone(ET).strftime("%m%d%Y")
 
+from typing import Dict, List
+
+def get_quotes_map(symbols: List[str]) -> Dict[str, Dict[str, float]]:
+    resp = get_quotes(symbols, detailFlag="ALL") or {}
+    qr = resp.get("QuoteResponse") or {}
+
+    # Short-circuit if API sent an error message
+    if qr.get("Messages"):
+        # optional: log Messages, but still return {}
+        return {}
+
+    data = qr.get("QuoteData") or []
+    if isinstance(data, dict):
+        data = [data]
+
+    out: Dict[str, Dict[str, float]] = {}
+    for qd in data:
+        prod = qd.get("Product") or {}
+        sym = (prod.get("symbol") or "").upper()
+        # E*TRADE usually puts last in "All.lastTrade"; sometimes "intraday.lastTrade"/"Quick.lastTrade"
+        last = ((qd.get("All") or {}).get("lastTrade")
+                or (qd.get("intraday") or {}).get("lastTrade")
+                or (qd.get("Quick") or {}).get("lastTrade"))
+        if sym and last is not None:
+            out[sym] = {"last": float(last)}
+    return out
 
 # --- executed orders (count-based) -------------------------------------------
 def list_executed_orders_recent(count: int = 50) -> dict:
@@ -600,6 +580,98 @@ def _enrich_with_transactions(rows: list[dict], days: int = 7) -> None:
             r["pl"] = 0.0
             r["pl_pct"] = 0.0
 
+# --- BEGIN: realized P&L buckets --------------------------------------------
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+def _to_dt_utc(ts):
+    if not ts:
+        return None
+    # ts can be epoch (sec/ms) or ISO
+    try:
+        tsv = int(str(ts))
+        if tsv > 10_000_000_000:
+            return datetime.fromtimestamp(tsv / 1000, tz=ZoneInfo("UTC"))
+        return datetime.fromtimestamp(tsv, tz=ZoneInfo("UTC"))
+    except Exception:
+        try:
+            s = str(ts).replace("Z", "+00:00")
+            return datetime.fromisoformat(s).astimezone(ZoneInfo("UTC"))
+        except Exception:
+            return None
+
+def summarize_realized_buckets(trades, tz="America/New_York"):
+    """
+    Expects `trades` like those you already return in /live/status.
+    For each SELL-like trade, uses t.get('realized_pnl') if present,
+    else falls back to t.get('pnl') or t.get('net').
+
+    Percent = pnl / max(denominator) where denominator prefers
+    abs(cost_basis) then abs(proceeds) then abs(price*qty).
+    """
+    now_local = datetime.now(ZoneInfo(tz))
+    month_start = now_local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    week_start = (now_local - timedelta(days=now_local.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    buckets = {
+        "week": {"pnl": 0.0, "den": 0.0},
+        "month": {"pnl": 0.0, "den": 0.0},
+        "all": {"pnl": 0.0, "den": 0.0},
+    }
+
+    def _is_sell(t):
+        side = (t.get("side") or t.get("action") or "").upper()
+        return side in ("SELL", "SELL_SHORT", "SS_COVER", "SELL_TO_CLOSE", "STC", "SLD")
+
+    for t in trades or []:
+        if not _is_sell(t):
+            continue
+
+        # timestamp normalization
+        dt = _to_dt_utc(t.get("time") or t.get("timestamp"))
+        if not dt:
+            continue
+        dt_local = dt.astimezone(ZoneInfo(tz))
+
+        # pnl & denominator
+        pnl = t.get("realized_pnl")
+        if pnl is None:
+            pnl = t.get("pnl")
+        if pnl is None:
+            pnl = t.get("net")  # e.g., proceeds minus fees if available
+        if pnl is None:
+            # very conservative fallback: no P&L if missing
+            pnl = 0.0
+
+        cost = t.get("cost_basis") or t.get("cost") or 0.0
+        proceeds = t.get("proceeds") or t.get("amount") or 0.0
+        if not cost and not proceeds:
+            # estimate denominator from price * qty
+            px = float(t.get("price") or 0.0)
+            qty = abs(float(t.get("qty") or t.get("quantity") or 0.0))
+            proceeds = px * qty
+
+        den = abs(cost) or abs(proceeds) or 0.0
+
+        # apply to buckets
+        if dt_local >= week_start:
+            buckets["week"]["pnl"] += float(pnl)
+            buckets["week"]["den"] += float(den)
+        if dt_local >= month_start:
+            buckets["month"]["pnl"] += float(pnl)
+            buckets["month"]["den"] += float(den)
+        buckets["all"]["pnl"] += float(pnl)
+        buckets["all"]["den"] += float(den)
+
+    def _pct(p, d):
+        return (p / d * 100.0) if d and abs(d) > 1e-9 else 0.0
+
+    return {
+        "week":  {"pnl": round(buckets["week"]["pnl"], 2),  "pct": round(_pct(buckets["week"]["pnl"],  buckets["week"]["den"]), 2)},
+        "month": {"pnl": round(buckets["month"]["pnl"], 2), "pct": round(_pct(buckets["month"]["pnl"], buckets["month"]["den"]), 2)},
+        "all":   {"pnl": round(buckets["all"]["pnl"], 2),   "pct": round(_pct(buckets["all"]["pnl"],   buckets["all"]["den"]), 2)},
+    }
+# --- END: realized P&L buckets ----------------------------------------------
 
 def recent_executions_as_trades(count: int = 50) -> list[dict]:
     """
@@ -1366,35 +1438,6 @@ def list_trade_transactions_today() -> dict:
                 except: pass
 
     return trades, round(realized, 2)
-
-def get_quotes_map(symbols: List[str]) -> Dict[str, Dict[str, float]]:
-    """Return {SYM: {'last': x, 'prev_close': y}} using E*TRADE quotes."""
-    out: Dict[str, Dict[str, float]] = {}
-    if not symbols:
-        return out
-
-    et, _ = _svc()
-    uniq = sorted({s.upper() for s in symbols if s})
-    syms_csv = ",".join(uniq)
-    try:
-        raw = _eget(f"/accounts/{account_id_key}/orders.json",
-            params={"status": "OPEN", "fromDate": from_date, "toDate": to_date}) or {}
-        qd = (data.get("QuoteResponse") or {}).get("QuoteData") or []
-        if isinstance(qd, dict):
-            qd = [qd]
-        for q in qd:
-            prod = q.get("Product") or {}
-            sym = (prod.get("symbol") or "").upper()
-            allf = q.get("All") or {}
-            last = allf.get("lastTrade") or allf.get("lastTradePrice") or allf.get("price") or 0.0
-            prev = allf.get("previousClose") or allf.get("prevClose") or allf.get("close") or 0.0
-            try:
-                out[sym] = {"last": float(last or 0.0), "prev_close": float(prev or 0.0)}
-            except Exception:
-                pass
-    except Exception as e:
-        log.exception("quotes fetch failed: %s", e)
-    return out
 
 def list_recent_trades(days: int = 5) -> List[Dict[str, Any]]:
     """

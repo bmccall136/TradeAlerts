@@ -1,0 +1,13 @@
+{
+  "QuoteResponse": {
+    "Messages": {
+      "Message": [
+        {
+          "description": "json is an invalid symbol",
+          "code": 1002,
+          "type": "ERROR"
+        }
+      ]
+    }
+  }
+}

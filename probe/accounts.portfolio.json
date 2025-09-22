@@ -1,0 +1,288 @@
+{
+  "PortfolioResponse": {
+    "AccountPortfolio": [
+      {
+        "accountId": "153737458",
+        "Position": [
+          {
+            "positionId": 11878515844,
+            "symbolDescription": "COP",
+            "dateAcquired": 1757995200000,
+            "pricePaid": 93.75,
+            "commissions": 0,
+            "otherFees": 0,
+            "quantity": 1,
+            "positionIndicator": "TYPE2",
+            "positionType": "LONG",
+            "daysGain": -1.56,
+            "daysGainPct": -1.6688,
+            "marketValue": 91.92,
+            "totalCost": 93.75,
+            "totalGain": -1.83,
+            "totalGainPct": -1.9519,
+            "pctOfPortfolio": 20.9843,
+            "costPerShare": 93.75,
+            "todayCommissions": 0,
+            "todayFees": 0,
+            "todayPricePaid": 0,
+            "todayQuantity": 0,
+            "adjPrevClose": 93.48,
+            "lotsDetails": "https://api.etrade.com/v1/accounts/kW8LbkuGisPCK9Ey7C8iWA/portfolio/11878515844.json",
+            "quoteDetails": "https://api.etrade.com/v1/market/quote/COP.json",
+            "Product": {
+              "symbol": "COP",
+              "securityType": "EQ",
+              "expiryYear": 0,
+              "expiryMonth": 0,
+              "expiryDay": 0,
+              "strikePrice": 0,
+              "productId": {
+                "symbol": "COP",
+                "typeCode": "EQUITY"
+              }
+            },
+            "Quick": {
+              "lastTrade": 91.92,
+              "lastTradeTime": 1758312600,
+              "change": -1.56,
+              "changePct": -1.6688,
+              "volume": 15284109,
+              "quoteStatus": "CLOSING"
+            }
+          },
+          {
+            "positionId": 12648185844,
+            "symbolDescription": "KO",
+            "dateAcquired": 1758168000000,
+            "pricePaid": 66.87,
+            "commissions": 0,
+            "otherFees": 0,
+            "quantity": 1,
+            "positionIndicator": "TYPE2",
+            "positionType": "LONG",
+            "daysGain": -0.0299,
+            "daysGainPct": -0.0451,
+            "marketValue": 66.43,
+            "totalCost": 66.87,
+            "totalGain": -0.44,
+            "totalGainPct": -0.6579,
+            "pctOfPortfolio": 15.1652,
+            "costPerShare": 66.87,
+            "todayCommissions": 0,
+            "todayFees": 0,
+            "todayPricePaid": 0,
+            "todayQuantity": 0,
+            "adjPrevClose": 66.46,
+            "lotsDetails": "https://api.etrade.com/v1/accounts/kW8LbkuGisPCK9Ey7C8iWA/portfolio/12648185844.json",
+            "quoteDetails": "https://api.etrade.com/v1/market/quote/KO.json",
+            "Product": {
+              "symbol": "KO",
+              "securityType": "EQ",
+              "expiryYear": 0,
+              "expiryMonth": 0,
+              "expiryDay": 0,
+              "strikePrice": 0,
+              "productId": {
+                "symbol": "KO",
+                "typeCode": "EQUITY"
+              }
+            },
+            "Quick": {
+              "lastTrade": 66.43,
+              "lastTradeTime": 1758312600,
+              "change": -0.03,
+              "changePct": -0.0451,
+              "volume": 31192851,
+              "quoteStatus": "CLOSING"
+            }
+          },
+          {
+            "positionId": 12517569844,
+            "symbolDescription": "INTC",
+            "dateAcquired": 1758168000000,
+            "pricePaid": 30.82,
+            "commissions": 0,
+            "otherFees": 0,
+            "quantity": 2,
+            "positionIndicator": "TYPE2",
+            "positionType": "LONG",
+            "daysGain": -1.9799,
+            "daysGainPct": -3.2384,
+            "marketValue": 59.1599,
+            "totalCost": 61.64,
+            "totalGain": -2.4799,
+            "totalGainPct": -4.0233,
+            "pctOfPortfolio": 13.5056,
+            "costPerShare": 30.82,
+            "todayCommissions": 0,
+            "todayFees": 0,
+            "todayPricePaid": 0,
+            "todayQuantity": 0,
+            "adjPrevClose": 30.57,
+            "lotsDetails": "https://api.etrade.com/v1/accounts/kW8LbkuGisPCK9Ey7C8iWA/portfolio/12517569844.json",
+            "quoteDetails": "https://api.etrade.com/v1/market/quote/INTC.json",
+            "Product": {
+              "symbol": "INTC",
+              "securityType": "EQ",
+              "expiryYear": 0,
+              "expiryMonth": 0,
+              "expiryDay": 0,
+              "strikePrice": 0,
+              "productId": {
+                "symbol": "INTC",
+                "typeCode": "EQUITY"
+              }
+            },
+            "Quick": {
+              "lastTrade": 29.58,
+              "lastTradeTime": 1758312000,
+              "change": -0.99,
+              "changePct": -3.2384,
+              "volume": 225702854,
+              "quoteStatus": "CLOSING"
+            }
+          },
+          {
+            "positionId": 12655741844,
+            "symbolDescription": "FCX",
+            "dateAcquired": 1758168000000,
+            "pricePaid": 45.1199,
+            "commissions": 0,
+            "otherFees": 0,
+            "quantity": 1,
+            "positionIndicator": "TYPE2",
+            "positionType": "LONG",
+            "daysGain": 0.01,
+            "daysGainPct": 0.0222,
+            "marketValue": 44.9399,
+            "totalCost": 45.1199,
+            "totalGain": -0.1799,
+            "totalGainPct": -0.3989,
+            "pctOfPortfolio": 10.2593,
+            "costPerShare": 45.12,
+            "todayCommissions": 0,
+            "todayFees": 0,
+            "todayPricePaid": 0,
+            "todayQuantity": 0,
+            "adjPrevClose": 44.93,
+            "lotsDetails": "https://api.etrade.com/v1/accounts/kW8LbkuGisPCK9Ey7C8iWA/portfolio/12655741844.json",
+            "quoteDetails": "https://api.etrade.com/v1/market/quote/FCX.json",
+            "Product": {
+              "symbol": "FCX",
+              "securityType": "EQ",
+              "expiryYear": 0,
+              "expiryMonth": 0,
+              "expiryDay": 0,
+              "strikePrice": 0,
+              "productId": {
+                "symbol": "FCX",
+                "typeCode": "EQUITY"
+              }
+            },
+            "Quick": {
+              "lastTrade": 44.94,
+              "lastTradeTime": 1758312600,
+              "change": 0.01,
+              "changePct": 0.0222,
+              "volume": 21120230,
+              "quoteStatus": "CLOSING"
+            }
+          },
+          {
+            "positionId": 11901461844,
+            "symbolDescription": "DAY",
+            "dateAcquired": 1757995200000,
+            "pricePaid": 69.0199,
+            "commissions": 0,
+            "otherFees": 0,
+            "quantity": 1,
+            "positionIndicator": "TYPE2",
+            "positionType": "LONG",
+            "daysGain": -0.1499,
+            "daysGainPct": -0.2175,
+            "marketValue": 68.7999,
+            "totalCost": 69.0199,
+            "totalGain": -0.22,
+            "totalGainPct": -0.3187,
+            "pctOfPortfolio": 15.7063,
+            "costPerShare": 69.02,
+            "todayCommissions": 0,
+            "todayFees": 0,
+            "todayPricePaid": 0,
+            "todayQuantity": 0,
+            "adjPrevClose": 68.95,
+            "lotsDetails": "https://api.etrade.com/v1/accounts/kW8LbkuGisPCK9Ey7C8iWA/portfolio/11901461844.json",
+            "quoteDetails": "https://api.etrade.com/v1/market/quote/DAY.json",
+            "Product": {
+              "symbol": "DAY",
+              "securityType": "EQ",
+              "expiryYear": 0,
+              "expiryMonth": 0,
+              "expiryDay": 0,
+              "strikePrice": 0,
+              "productId": {
+                "symbol": "DAY",
+                "typeCode": "EQUITY"
+              }
+            },
+            "Quick": {
+              "lastTrade": 68.8,
+              "lastTradeTime": 1758312600,
+              "change": -0.15,
+              "changePct": -0.2175,
+              "volume": 2993779,
+              "quoteStatus": "CLOSING"
+            }
+          },
+          {
+            "positionId": 11862630844,
+            "symbolDescription": "MRNA",
+            "dateAcquired": 1757995200000,
+            "pricePaid": 24.48,
+            "commissions": 0,
+            "otherFees": 0,
+            "quantity": 4,
+            "positionIndicator": "TYPE2",
+            "positionType": "LONG",
+            "daysGain": -0.8399,
+            "daysGainPct": -0.8251,
+            "marketValue": 100.9599,
+            "totalCost": 97.92,
+            "totalGain": 3.04,
+            "totalGainPct": 3.1045,
+            "pctOfPortfolio": 23.0481,
+            "costPerShare": 24.48,
+            "todayCommissions": 0,
+            "todayFees": 0,
+            "todayPricePaid": 0,
+            "todayQuantity": 0,
+            "adjPrevClose": 25.45,
+            "lotsDetails": "https://api.etrade.com/v1/accounts/kW8LbkuGisPCK9Ey7C8iWA/portfolio/11862630844.json",
+            "quoteDetails": "https://api.etrade.com/v1/market/quote/MRNA.json",
+            "Product": {
+              "symbol": "MRNA",
+              "securityType": "EQ",
+              "expiryYear": 0,
+              "expiryMonth": 0,
+              "expiryDay": 0,
+              "strikePrice": 0,
+              "productId": {
+                "symbol": "MRNA",
+                "typeCode": "EQUITY"
+              }
+            },
+            "Quick": {
+              "lastTrade": 25.24,
+              "lastTradeTime": 1758312000,
+              "change": -0.21,
+              "changePct": -0.8251,
+              "volume": 18333959,
+              "quoteStatus": "CLOSING"
+            }
+          }
+        ],
+        "totalPages": 1
+      }
+    ]
+  }
+}
