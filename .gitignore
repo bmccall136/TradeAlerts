@@ -3,3 +3,7 @@ __pycache__/
 .env
 etrade_tokens.json
 logs/
+
+# Local debug tools
+/devtools/
+
