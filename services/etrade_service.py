@@ -447,47 +447,70 @@ from typing import Dict, List
 # --- Build symbol -> {last: float} map for the UI ---
 from typing import Dict, List
 
+def _num(x):
+    """Coerce API values to float or None (also unwraps dict shapes like {'value': 123.45})."""
+    if x is None:
+        return None
+    if isinstance(x, (int, float)):
+        return float(x)
+    if isinstance(x, dict):
+        for k in ("value", "raw", "amount"):
+            if k in x:
+                return _num(x[k])
+        return None
+    try:
+        s = str(x).replace(",", "").strip()
+        return float(s) if s else None
+    except Exception:
+        return None
+
+
 def get_quotes_map(symbols: List[str]) -> Dict[str, Dict[str, float]]:
     resp = get_quotes(symbols, detailFlag="ALL")
     qr = (resp or {}).get("QuoteResponse") or {}
-
-    # If API returns messages, don't explode; just return {}
-    # (Messages often lives under QuoteResponse, not at the top)
     if qr.get("Messages"):
         return {}
 
     qd = qr.get("QuoteData")
     if not qd:
         return {}
-
-    # QuoteData can be a dict for single, or a list for multi
-    if isinstance(qd, dict):
-        qlist = [qd]
-    else:
-        qlist = [x for x in qd if isinstance(x, dict)]
+    qlist = [qd] if isinstance(qd, dict) else [x for x in qd if isinstance(x, dict)]
 
     out: Dict[str, Dict[str, float]] = {}
     for item in qlist:
         prod = item.get("Product") or {}
         sym = (prod.get("symbol") or "").upper()
-        all_block = item.get("All") or {}
-        intraday = item.get("intraday") or {}
+        allb = item.get("All") or {}
+        intr = item.get("intraday") or {}
         quick = item.get("Quick") or {}
 
         last = (
-            all_block.get("lastTrade")
-            or intraday.get("lastTrade")
-            or quick.get("lastTrade")
+            allb.get("lastTrade") or intr.get("lastTrade") or quick.get("lastTrade")
+            or allb.get("lastPrice") or quick.get("lastPrice")
+        )
+        prev = (
+            allb.get("previousClose") or quick.get("previousClose")
+            or allb.get("priorClose") or quick.get("priorClose")
+            or allb.get("close") or quick.get("close")
         )
 
-        if sym and last is not None:
-            try:
-                out[sym] = {"last": float(last)}
-            except (TypeError, ValueError):
-                # ignore weird non-numeric lastTrade
-                pass
-    return out
+        # If prev still missing, try to back-solve from netChange
+        if prev is None:
+            net = allb.get("netChange") or quick.get("netChange")
+            if (last is not None) and (net is not None):
+                try:
+                    prev = float(last) - float(net)
+                except Exception:
+                    prev = None
 
+        try:
+            if sym and last is not None:
+                out[sym] = {"last": float(last)}
+                if prev is not None:
+                    out[sym]["prev"] = float(prev)
+        except (TypeError, ValueError):
+            pass
+    return out
 # --- executed orders (count-based) -------------------------------------------
 def list_executed_orders_recent(count: int = 50) -> dict:
     acct = account_id_key()
@@ -619,78 +642,81 @@ def _to_dt_utc(ts):
         except Exception:
             return None
 
-def summarize_realized_buckets(trades, tz="America/New_York"):
+def summarize_realized_buckets(trades):
     """
-    Expects `trades` like those you already return in /live/status.
-    For each SELL-like trade, uses t.get('realized_pnl') if present,
-    else falls back to t.get('pnl') or t.get('net').
-
-    Percent = pnl / max(denominator) where denominator prefers
-    abs(cost_basis) then abs(proceeds) then abs(price*qty).
+    Buckets realized P&L into {week, last_week, month, all} (Eastern Time).
+    Expects SELL rows with pl, qty, price_paid, and time_ms/time.
     """
-    now_local = datetime.now(ZoneInfo(tz))
-    month_start = now_local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    week_start = (now_local - timedelta(days=now_local.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    from datetime import datetime, timedelta, timezone
+    try:
+        from zoneinfo import ZoneInfo
+        ET = ZoneInfo("America/New_York")
+    except Exception:
+        ET = timezone(timedelta(hours=-5))  # crude ET fallback
 
-    buckets = {
-        "week": {"pnl": 0.0, "den": 0.0},
-        "month": {"pnl": 0.0, "den": 0.0},
-        "all": {"pnl": 0.0, "den": 0.0},
+    def _to_ms(x):
+        if x is None: return None
+        if isinstance(x, (int, float)): return int(x)
+        s = str(x).strip()
+        try:
+            dt = datetime.fromisoformat(s.replace("T", " "))
+            return int(dt.replace(tzinfo=ET).timestamp() * 1000)
+        except Exception:
+            return None
+
+    today = datetime.now(ET).date()
+    week_start       = today - timedelta(days=today.weekday())   # Mon of this week
+    last_week_start  = week_start - timedelta(days=7)            # Mon of last week
+    last_week_end    = week_start - timedelta(days=1)            # Sun of last week
+    month_start      = today.replace(day=1)
+
+    acc = {
+        "week":      {"pnl": 0.0, "basis": 0.0},
+        "last_week": {"pnl": 0.0, "basis": 0.0},
+        "month":     {"pnl": 0.0, "basis": 0.0},
+        "all":       {"pnl": 0.0, "basis": 0.0},
     }
-
-    def _is_sell(t):
-        side = (t.get("side") or t.get("action") or "").upper()
-        return side in ("SELL", "SELL_SHORT", "SS_COVER", "SELL_TO_CLOSE", "STC", "SLD")
 
     for t in trades or []:
-        if not _is_sell(t):
+        side = (t.get("action") or t.get("side") or "").upper()
+        if side != "SELL":
             continue
 
-        # timestamp normalization
-        dt = _to_dt_utc(t.get("time") or t.get("timestamp"))
-        if not dt:
+        pl   = float(t.get("pl") or t.get("pnl") or 0.0)
+        qty  = int(float(t.get("qty") or 0))
+        px   = t.get("price_paid")
+        basis = abs(float(px) * qty) if (px is not None) else 0.0
+
+        ms = t.get("time_ms") or _to_ms(t.get("time"))
+        try:
+            d = datetime.fromtimestamp(ms/1000, ET).date()
+        except Exception:
             continue
-        dt_local = dt.astimezone(ZoneInfo(tz))
 
-        # pnl & denominator
-        pnl = t.get("realized_pnl")
-        if pnl is None:
-            pnl = t.get("pnl")
-        if pnl is None:
-            pnl = t.get("net")  # e.g., proceeds minus fees if available
-        if pnl is None:
-            # very conservative fallback: no P&L if missing
-            pnl = 0.0
+        # All-time
+        acc["all"]["pnl"]   += pl
+        acc["all"]["basis"] += basis
 
-        cost = t.get("cost_basis") or t.get("cost") or 0.0
-        proceeds = t.get("proceeds") or t.get("amount") or 0.0
-        if not cost and not proceeds:
-            # estimate denominator from price * qty
-            px = float(t.get("price") or 0.0)
-            qty = abs(float(t.get("qty") or t.get("quantity") or 0.0))
-            proceeds = px * qty
+        # Month (current calendar month)
+        if d >= month_start:
+            acc["month"]["pnl"]   += pl
+            acc["month"]["basis"] += basis
 
-        den = abs(cost) or abs(proceeds) or 0.0
+        # This week (Mon..today)
+        if d >= week_start:
+            acc["week"]["pnl"]   += pl
+            acc["week"]["basis"] += basis
+        # Last week (previous Mon..Sun)
+        elif last_week_start <= d <= last_week_end:
+            acc["last_week"]["pnl"]   += pl
+            acc["last_week"]["basis"] += basis
 
-        # apply to buckets
-        if dt_local >= week_start:
-            buckets["week"]["pnl"] += float(pnl)
-            buckets["week"]["den"] += float(den)
-        if dt_local >= month_start:
-            buckets["month"]["pnl"] += float(pnl)
-            buckets["month"]["den"] += float(den)
-        buckets["all"]["pnl"] += float(pnl)
-        buckets["all"]["den"] += float(den)
+    def _finish(x):
+        pnl = round(x["pnl"], 2)
+        pct = round((pnl / x["basis"] * 100.0), 2) if x["basis"] > 0 else 0.0
+        return {"pnl": pnl, "pct": pct}
 
-    def _pct(p, d):
-        return (p / d * 100.0) if d and abs(d) > 1e-9 else 0.0
-
-    return {
-        "week":  {"pnl": round(buckets["week"]["pnl"], 2),  "pct": round(_pct(buckets["week"]["pnl"],  buckets["week"]["den"]), 2)},
-        "month": {"pnl": round(buckets["month"]["pnl"], 2), "pct": round(_pct(buckets["month"]["pnl"], buckets["month"]["den"]), 2)},
-        "all":   {"pnl": round(buckets["all"]["pnl"], 2),   "pct": round(_pct(buckets["all"]["pnl"],   buckets["all"]["den"]), 2)},
-    }
-# --- END: realized P&L buckets ----------------------------------------------
+    return {k: _finish(v) for k, v in acc.items()}
 
 def recent_executions_as_trades(count: int = 50) -> list[dict]:
     """
@@ -1872,40 +1898,59 @@ def preview_equity_order(
     return _epost(f"/accounts/{account_id_key}/orders/preview.json", body)
 
 def place_equity_order(preview_resp: dict, qty: int | None = None) -> dict:
-    aid = _primary_account_id()
+    """Place an equity order from a successful preview, using the account KEY path
+    and a minimal order payload (no read-only fields). Preserves preview quantity
+    formatting (string)."""
+    aid_key = account_id_key()  # MUST be the key, not numeric id
 
     pr = preview_resp.get("PreviewOrderResponse") or {}
+    if not pr or "Error" in preview_resp:
+        raise RuntimeError(f"preview failed: {preview_resp}")
+
     orders = pr.get("Order") or []
     if not orders:
         raise RuntimeError(f"preview response missing Order: {preview_resp}")
+    src = orders[0]
 
-    order = orders[0]
-    instr = order.get("Instrument") or []
-    if qty is not None and instr:
-        # E*TRADE is fine with numbers or numeric strings; keep consistent with preview
+    instr = src.get("Instrument") or []
+    if not instr:
+        raise RuntimeError("preview missing Instrument")
+
+    # Preserve preview quantity formatting (string), allow override
+    if qty is not None:
         instr[0]["quantity"] = str(int(qty))
 
-    # robust previewId extraction
+    order_min = {
+        "orderTerm":     src.get("orderTerm") or "GOOD_FOR_DAY",
+        "priceType":     src.get("priceType") or "MARKET",
+        "marketSession": src.get("marketSession") or "REGULAR",
+        "allOrNone":     bool(src.get("allOrNone", False)),
+        "Instrument":    instr,
+    }
+    if "limitPrice" in src and src["limitPrice"]:
+        order_min["limitPrice"] = f"{float(src['limitPrice']):.2f}"
+    if "stopPrice" in src and src["stopPrice"]:
+        order_min["stopPrice"] = f"{float(src['stopPrice']):.2f}"
+
+    # Robust previewId extraction
     pid = pr.get("previewId")
     if not pid:
-        for k, v in pr.items():
-            if isinstance(v, list) and v and isinstance(v[0], dict) and "previewId" in v[0]:
-                pid = v[0]["previewId"]; break
-            if isinstance(v, dict) and "previewId" in v:
-                pid = v["previewId"]; break
+        pids = pr.get("PreviewIds") or pr.get("previewIds") or []
+        if isinstance(pids, list) and pids and isinstance(pids[0], dict):
+            pid = pids[0].get("previewId") or pids[0].get("id")
     if not pid:
         raise RuntimeError("previewId not found in preview response")
-    if not preview_resp or "Error" in preview_resp:
-        raise RuntimeError(f"preview failed: {preview_resp}")    
+
     place_body = {
         "PlaceOrderRequest": {
-            "orderType": order.get("orderType", "EQ"),
-            "clientOrderId": order.get("clientOrderId"),
-            "PreviewIds": [{"previewId": int(pid)}],      # <-- correct location
-            "Order": [order],
+            "orderType": "EQ",
+            # Keep clientOrderId if the preview set one; else None is fine
+            "clientOrderId": pr.get("clientOrderId"),
+            "PreviewIds": [{"previewId": int(pid)}],
+            "Order": [order_min],
         }
     }
-    r = _epost(f"/accounts/{aid}/orders/place.json", place_body)
+    r = _epost(f"/accounts/{aid_key}/orders/place.json", place_body)
     return r.json()
 
 def list_recent_trades(days: int = 5) -> List[Dict[str, Any]]:

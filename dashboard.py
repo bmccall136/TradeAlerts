@@ -860,6 +860,7 @@ def summarize_realized_buckets(trades):
 
     acc = {
         "week":  {"pnl": 0.0, "basis": 0.0},
+        "last_week": {"pnl": 0.0, "pct": 0.0})
         "month": {"pnl": 0.0, "basis": 0.0},
         "all":   {"pnl": 0.0, "basis": 0.0},
     }
@@ -3350,15 +3351,34 @@ def live_status():
                 avg = _f(pos.get("price_paid")) or None
 
                 q = (qmap.get(sym) or {})
+                allq = q.get("All") or {}
+                # last price from several places (incl. nested "All")
                 last = _first_num(
                     pos.get("last_price"),
                     q.get("last"),
                     q.get("lastTrade"),
                     q.get("close"),
-                    q.get("previous_close"),  # some feeds reuse this as "last" when market closed
+                    q.get("previous_close"),
                     q.get("previousClose"),
+                    allq.get("lastTrade"),
+                    allq.get("last"),
                 )
-                prev_close = _first_num(q.get("previous_close"), q.get("previousClose"))
+
+                # previous close (primary) + robust fallbacks
+                prev_close = _first_num(
+                    q.get("previous_close"),
+                    q.get("previousClose"),
+                    q.get("prev"),
+                    allq.get("previousClose"),
+                    allq.get("previousClosePrice"),
+                    allq.get("close"),
+                )
+
+                # if still missing, back-solve from changeClose
+                if prev_close in (None, 0) and last is not None:
+                    delta = _first_num(q.get("changeClose"), allq.get("changeClose"))
+                    if delta is not None:
+                        prev_close = last - delta
 
                 # Value
                 value = round((last or 0.0) * qty, 2) if (last is not None and qty) else None
@@ -3370,6 +3390,20 @@ def live_status():
                 # Day (vs. previous close)
                 day_pl = ((last - prev_close) * qty) if (last is not None and prev_close is not None and qty) else None
                 day_pl_pct = (((last - prev_close) / prev_close) * 100.0) if (last is not None and prev_close not in (None, 0)) else None
+                # Fallbacks if prev_close wasn't usable
+                if day_pl_pct is None:
+                    dpp = _first_num(q.get("changeClosePercentage"), allq.get("changeClosePercentage"))
+                    if dpp is not None:
+                        day_pl_pct = float(dpp)
+
+                if day_pl is None:
+                    # If we have the absolute day change, multiply by qty
+                    dc = _first_num(q.get("changeClose"), allq.get("changeClose"))
+                    if dc is not None and qty:
+                        day_pl = float(dc) * qty
+                    # Or derive from pct if we have last
+                    elif day_pl_pct is not None and last is not None and qty:
+                        day_pl = (last * (day_pl_pct / 100.0)) * qty
 
                 # Legacy “change/percent” (kept so nothing else breaks)
                 change = (last - avg) if (last is not None and avg) else 0.0
@@ -3493,6 +3527,92 @@ def live_status():
         except Exception:
             pass
         quotes_dbg = [] if _debug_quotes else None
+        from datetime import datetime, timedelta, timezone
+        from zoneinfo import ZoneInfo
+        ET = ZoneInfo("America/New_York")
+
+        def realized_buckets_from_trades(trades):
+            """
+            Aggregate realized P&L into: week, last_week, month, all.
+            Uses SELL rows with 'pl' (realized P&L) and an amount/cost basis
+            to compute a simple % = pnl / cost * 100.
+            """
+            # time windows (ET)
+            now = datetime.now(ET)
+            week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+            last_week_start = week_start - timedelta(days=7)
+            last_week_end = week_start
+            month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+            # accumulators: pnl and cost basis (sum of absolute trade amounts)
+            acc = {
+                "week": {"pnl": 0.0, "cost": 0.0},
+                "last_week": {"pnl": 0.0, "cost": 0.0},
+                "month": {"pnl": 0.0, "cost": 0.0},
+                "all": {"pnl": 0.0, "cost": 0.0},
+            }
+
+            def _ts(t):
+                # prefer ms → utc, then time_utc, then naive ET 'time'
+                if t.get("time_ms"):
+                    return datetime.fromtimestamp(float(t["time_ms"]) / 1000.0, tz=timezone.utc).astimezone(ET)
+                if t.get("time_utc"):
+                    try:
+                        return datetime.strptime(t["time_utc"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).astimezone(ET)
+                    except Exception:
+                        pass
+                if t.get("time"):  # treat as ET
+                    try:
+                        return datetime.strptime(t["time"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=ET)
+                    except Exception:
+                        pass
+                return None
+
+            for tr in trades or []:
+                if (tr.get("action") != "SELL") or (tr.get("pl") is None):
+                    continue
+                ts = _ts(tr)
+                if ts is None:
+                    continue
+
+                pnl = float(tr.get("pl") or 0.0)
+                # If you store a gross notional in `amount`, use that as cost basis;
+                # otherwise fall back to price_paid * qty.
+                amt = tr.get("amount")
+                if amt is not None:
+                    cost = abs(float(amt))
+                else:
+                    price_paid = float(tr.get("price_paid") or 0.0)
+                    qty = float(tr.get("qty") or 0.0)
+                    cost = abs(price_paid * qty)
+
+                # all-time
+                acc["all"]["pnl"] += pnl
+                acc["all"]["cost"] += cost
+                # month to date
+                if ts >= month_start:
+                    acc["month"]["pnl"] += pnl
+                    acc["month"]["cost"] += cost
+                # last week (full prior week)
+                if last_week_start <= ts < last_week_end:
+                    acc["last_week"]["pnl"] += pnl
+                    acc["last_week"]["cost"] += cost
+                # this week to date
+                if ts >= week_start:
+                    acc["week"]["pnl"] += pnl
+                    acc["week"]["cost"] += cost
+
+            def _out(k):
+                pnl = round(acc[k]["pnl"], 2)
+                pct = round((pnl / acc[k]["cost"] * 100.0), 2) if acc[k]["cost"] > 0 else 0.0
+                return {"pnl": pnl, "pct": pct}
+
+            return {
+                "week": _out("week"),
+                "last_week": _out("last_week"),
+                "month": _out("month"),
+                "all": _out("all"),
+            }
 
         def _merge_quotes(raw, tag: str):
             if quotes_dbg is not None:
@@ -3682,10 +3802,12 @@ def live_status():
 
         # Optional: compute realized_buckets (week/last_week/month/all) if you have a helper
         try:
-            realized_buckets = realized_buckets_from_trades(enriched_trades)
+            realized_buckets = realized_buckets_from_trades(trades_enriched_or_recent)
+            metrics["realized_buckets"] = realized_buckets
         except Exception:
             realized_buckets = {
                 "week": {"pnl": 0.0, "pct": 0.0},
+                "last_week": {"pnl": 0.0, "pct": 0.0},   # <— add
                 "month": {"pnl": 0.0, "pct": 0.0},
                 "all": {"pnl": 0.0, "pct": 0.0},
             }

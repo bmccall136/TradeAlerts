@@ -2820,3 +2820,49 @@ Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
 CWD: C:\TradeAlerts
 Launching: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe -u .\sell_guard.py (same window)
 Recorded PID 25276 -> C:\TradeAlerts\pids\sell_guard.pid
+**********************
+Windows PowerShell transcript start
+Start time: 20250922192510
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Sell-Guard.ps1
+Process ID: 26996
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/22/2025 19:25:10 START Sell Guard (PID-backed) ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+Launching: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe -u .\sell_guard.py (same window)
+Recorded PID 18548 -> C:\TradeAlerts\pids\sell_guard.pid
+**********************
+Windows PowerShell transcript start
+Start time: 20250922201252
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Sell-Guard.ps1
+Process ID: 40152
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/22/2025 20:12:52 START Sell Guard (PID-backed) ===
+Python: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe
+CWD: C:\TradeAlerts
+Launching: C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe -u .\sell_guard.py (same window)
+Recorded PID 4716 -> C:\TradeAlerts\pids\sell_guard.pid

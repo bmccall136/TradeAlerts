@@ -38,19 +38,20 @@ if not any(isinstance(h, logging.FileHandler) for h in LOG.handlers):
     fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     LOG.addHandler(fh)
 
-# optional while we tune:
-import logging
+import logging, sys
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)s sell-guard: %(message)s"
+    format="%(asctime)s %(levelname)s sell-guard: %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+    force=True,   # <- wipes any previously attached handlers
 )
 LOG = logging.getLogger("sell-guard")
+LOG.propagate = False
 
-# Back-compat alias if parts of the file still use `log.info(...)`
+# (Optional for back-compat if older code still uses `log`)
 log = LOG
 
-LOG.setLevel(logging.DEBUG)
 # ---- WRITE-ONLY CIRCUIT + SELL QUEUE ---------------------------------------
 from datetime import datetime, timedelta
 from typing import Callable, Optional, Any, List
@@ -229,6 +230,24 @@ _last_beat_monotonic: float | None = None
 # ——— at top ———
 import requests
 from requests.adapters import HTTPAdapter, Retry
+def fresh_client_id(prefix: str, symbol: str) -> str:
+    import time
+    return f"{prefix}-{symbol.lower()}-{int(time.time()*1000)}"
+
+def preview_then_place(symbol: str, qty: int, price: float | None, price_type: str):
+    aid = account_id_key()
+    coid = fresh_client_id("sg", symbol)
+    prev = preview_equity_order(
+        aid, symbol, qty, price,
+        action="SELL",
+        price_type=price_type,
+        order_term="GOOD_FOR_DAY",
+        market_session="REGULAR",
+        client_order_id=coid,
+    )
+    # handle preview errors here (1037, 1011, etc.)
+    return place_equity_order(prev, qty)
+
 # KEEP THIS version (already in your file, later down)
 def drain_pending_sells(place_fn):
     if not PENDING_SELLS:
