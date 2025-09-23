@@ -557,7 +557,7 @@ except NameError:
         except Exception:
             return None
 
-def _enrich_with_transactions(rows: list[dict], days: int = 7) -> None:
+def _enrich_with_transactions(rows, days=30):
     """
     For SELL rows, fill price_paid / pl / pl_pct using Transactions data
     (uses gainLoss when available). Mutates rows in place.
@@ -641,82 +641,6 @@ def _to_dt_utc(ts):
             return datetime.fromisoformat(s).astimezone(ZoneInfo("UTC"))
         except Exception:
             return None
-
-def summarize_realized_buckets(trades):
-    """
-    Buckets realized P&L into {week, last_week, month, all} (Eastern Time).
-    Expects SELL rows with pl, qty, price_paid, and time_ms/time.
-    """
-    from datetime import datetime, timedelta, timezone
-    try:
-        from zoneinfo import ZoneInfo
-        ET = ZoneInfo("America/New_York")
-    except Exception:
-        ET = timezone(timedelta(hours=-5))  # crude ET fallback
-
-    def _to_ms(x):
-        if x is None: return None
-        if isinstance(x, (int, float)): return int(x)
-        s = str(x).strip()
-        try:
-            dt = datetime.fromisoformat(s.replace("T", " "))
-            return int(dt.replace(tzinfo=ET).timestamp() * 1000)
-        except Exception:
-            return None
-
-    today = datetime.now(ET).date()
-    week_start       = today - timedelta(days=today.weekday())   # Mon of this week
-    last_week_start  = week_start - timedelta(days=7)            # Mon of last week
-    last_week_end    = week_start - timedelta(days=1)            # Sun of last week
-    month_start      = today.replace(day=1)
-
-    acc = {
-        "week":      {"pnl": 0.0, "basis": 0.0},
-        "last_week": {"pnl": 0.0, "basis": 0.0},
-        "month":     {"pnl": 0.0, "basis": 0.0},
-        "all":       {"pnl": 0.0, "basis": 0.0},
-    }
-
-    for t in trades or []:
-        side = (t.get("action") or t.get("side") or "").upper()
-        if side != "SELL":
-            continue
-
-        pl   = float(t.get("pl") or t.get("pnl") or 0.0)
-        qty  = int(float(t.get("qty") or 0))
-        px   = t.get("price_paid")
-        basis = abs(float(px) * qty) if (px is not None) else 0.0
-
-        ms = t.get("time_ms") or _to_ms(t.get("time"))
-        try:
-            d = datetime.fromtimestamp(ms/1000, ET).date()
-        except Exception:
-            continue
-
-        # All-time
-        acc["all"]["pnl"]   += pl
-        acc["all"]["basis"] += basis
-
-        # Month (current calendar month)
-        if d >= month_start:
-            acc["month"]["pnl"]   += pl
-            acc["month"]["basis"] += basis
-
-        # This week (Mon..today)
-        if d >= week_start:
-            acc["week"]["pnl"]   += pl
-            acc["week"]["basis"] += basis
-        # Last week (previous Mon..Sun)
-        elif last_week_start <= d <= last_week_end:
-            acc["last_week"]["pnl"]   += pl
-            acc["last_week"]["basis"] += basis
-
-    def _finish(x):
-        pnl = round(x["pnl"], 2)
-        pct = round((pnl / x["basis"] * 100.0), 2) if x["basis"] > 0 else 0.0
-        return {"pnl": pnl, "pct": pct}
-
-    return {k: _finish(v) for k, v in acc.items()}
 
 def recent_executions_as_trades(count: int = 50) -> list[dict]:
     """
@@ -821,7 +745,7 @@ def recent_executions_as_trades(count: int = 50) -> list[dict]:
     rows.sort(key=lambda r: r["_dt"], reverse=True)
 
     # Fill price_paid / pl / pl_pct
-    _enrich_with_transactions(rows, days=7)
+    _enrich_with_transactions(rows, days=30)  # 21–30 is safe; 30 is simplest
 
     for r in rows:
         r.pop("_dt", None)
@@ -1011,8 +935,61 @@ def transactions_as_trades(days: int = 3) -> list[dict]:
 
     out.sort(key=lambda x: x["time"], reverse=True)
     return out
+from datetime import datetime, timedelta, timezone
+
+_ET = timezone(timedelta(hours=-5))  # you likely already have a _today_et()
+
 def _today_et():
-    return _now_et().date()
+    # If you already have this, keep using yours
+    return datetime.now(_ET).date()
+
+def _prev_business_days(n, end_date=None):
+    d = end_date or _today_et()
+    days = []
+    while len(days) < n:
+        d -= timedelta(days=1)
+        if d.weekday() < 5:  # Mon–Fri; (skip holidays unless you maintain a list)
+            days.append(d)
+    return list(reversed(days))  # oldest -> newest
+
+def pdt_window_dates():
+    """Return the set of ET dates in the current rolling 5-business-day window (including today if weekday)."""
+    today = _today_et()
+    dates = [today] if today.weekday() < 5 else []
+    dates = _prev_business_days(5 - len(dates), end_date=today) + dates
+    return set(dates)
+
+def recompute_pdt_counts(executed_orders_payload):
+    """
+    Build fresh per-date day trade counts *only for* the current PDT window.
+    You can adapt this to your existing structure.
+    """
+    win = pdt_window_dates()
+    counts = {}  # {date: count}
+    # Your payload shape looks like et.list_executed_orders(days=...) -> OrdersResponse.Order[].OrderDetail[].Instrument[]
+    orders = (executed_orders_payload.get("OrdersResponse") or {}).get("Order") or []
+    # Build {date_et: [(sym, action, qty)]}
+    by_date = {}
+    for o in orders:
+        for d in (o.get("OrderDetail") or []):
+            # normalize ET date from your timestamps
+            dt = datetime.fromtimestamp((d.get("executedTime") or d.get("placedTime") or 0)/1000, tz=_ET).date()
+            if dt not in win:
+                continue
+            for ins in (d.get("Instrument") or []):
+                sym = (ins.get("Product") or {}).get("symbol") or ""
+                act = (ins.get("orderAction") or "").upper()
+                qty = float(ins.get("filledQuantity") or ins.get("orderedQuantity") or 0) or 0.0
+                by_date.setdefault(dt, []).append((sym, act, qty))
+
+    # Count day trades per date: simple approximation — any symbol with at least one BUY and one SELL that day
+    for dt, rows in by_date.items():
+        actions_by_sym = {}
+        for sym, act, _ in rows:
+            actions_by_sym.setdefault(sym, set()).add(act)
+        counts[dt.isoformat()] = sum(1 for acts in actions_by_sym.values() if "BUY" in acts and "SELL" in acts)
+
+    return counts
 
 def _mmddyyyy(d) -> str:
     return d.strftime("%m%d%Y")

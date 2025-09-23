@@ -39,6 +39,15 @@ if not any(isinstance(h, logging.FileHandler) for h in LOG.handlers):
     LOG.addHandler(fh)
 
 import logging, sys
+# Optional aggregator helper; guard already uses E*TRADE quotes.
+try:
+    import requests
+    def http_get(url, **kwargs):  # only used if aggregator path is hit
+        return requests.get(url, timeout=kwargs.pop("timeout", 10), **kwargs)
+except Exception:
+    # If requests isn't available, just never use the aggregator.
+    def http_get(*a, **k):
+        raise NameError("http_get not available")
 
 logging.basicConfig(
     level=logging.INFO,
