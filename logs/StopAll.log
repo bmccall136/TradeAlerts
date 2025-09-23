@@ -922,3 +922,28 @@ Killing python(cmdline) PID 37636
 Killing powershell(cmdline) PID 27364
 Killing powershell(cmdline) PID 11156
 Killing powershell(cmdline) PID 31136
+**********************
+Windows PowerShell transcript start
+Start time: 20250922160504
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name: 
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 29540
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/22/2025 16:05:04 STOP ALL (fixed live) ===
+Killing sell_guard.pid PID 25276
+PS>TerminatingError(Stop-Process): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find a process with the process identifier 25276."
+taskkill tree for sell_guard.pid 25276 issued.
+Killing python(cmdline) PID 33496
+Killing powershell(cmdline) PID 15824
+Killing powershell(cmdline) PID 29540

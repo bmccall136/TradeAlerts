@@ -38117,3 +38117,57 @@
 2025-09-22 11:13:07,351 ERROR sell-guard: COP STOP failed after 2x 2084 adjusts
 2025-09-22 11:13:07,352 WARNING sell-guard: COP STOP MARKET fallback
 2025-09-22 11:13:07,988 ERROR sell-guard: COP SELL queued (code100 during STOP MARKET fallback) – will retry when circuit closes
+2025-09-22 19:25:11,544 INFO sell-guard: config source: C:\TradeAlerts\sell_guard_settings.json
+2025-09-22 19:25:11,545 INFO sell-guard: env: ETRADE_ENV=production  PYTHONPATH=None
+2025-09-22 19:25:11,546 INFO sell-guard: [LIVE] Using accountIdKey=kW8LbkuGisPCK9Ey7C8iWA
+2025-09-22 19:25:11,546 INFO sell-guard: [CFG] mode=live tp=200 bps stop=100 bps max_hold=100000m limit_from=bid offset=0 bps throttle=30.0s ext_hours=False fallback=SELL_STOP,SELL_TARGET,TIMEOUT
+2025-09-22 19:25:11,862 INFO sell-guard: positions via get_positions -> 15 symbol(s)
+2025-09-22 19:25:11,863 INFO sell-guard: Managing 5 symbol(s): COP,INTC,FCX,DAY,KO
+2025-09-22 19:25:11,864 WARNING sell-guard: quote fetch failed: name 'http_get' is not defined
+2025-09-22 19:25:14,879 INFO sell-guard: [SG] COP: last=92.01 entry=93.75 pnl=-186 bps (tp=200 stop=100) hold=9027m lim=92.01 free=1 -> stop=True tp=False timeout=False
+2025-09-22 19:25:14,880 INFO sell-guard: COP outside sell window 09:35–15:55 ET; deferring any sells
+2025-09-22 19:25:16,022 INFO sell-guard: [SG] INTC: last=28.76 entry=30.82 pnl=-668 bps (tp=200 stop=100) hold=6164m lim=28.75 free=2 -> stop=True tp=False timeout=False
+2025-09-22 19:25:16,023 INFO sell-guard: INTC outside sell window 09:35–15:55 ET; deferring any sells
+2025-09-22 19:25:17,126 INFO sell-guard: [SG] FCX: last=45.16 entry=45.12 pnl=+9 bps (tp=200 stop=100) hold=6033m lim=45.05 free=1 -> stop=False tp=False timeout=False
+2025-09-22 19:25:17,127 INFO sell-guard: FCX outside sell window 09:35–15:55 ET; deferring any sells
+2025-09-22 19:25:18,317 INFO sell-guard: [SG] DAY: last=68.75 entry=69.02 pnl=-38 bps (tp=200 stop=100) hold=9008m lim=68.45 free=1 -> stop=False tp=False timeout=False
+2025-09-22 19:25:18,318 INFO sell-guard: DAY outside sell window 09:35–15:55 ET; deferring any sells
+2025-09-22 19:25:19,387 INFO sell-guard: [SG] KO: last=66.23 entry=66.87 pnl=-96 bps (tp=200 stop=100) hold=6044m lim=66.28 free=1 -> stop=False tp=False timeout=False
+2025-09-22 19:25:19,389 INFO sell-guard: KO outside sell window 09:35–15:55 ET; deferring any sells
+2025-09-22 19:25:41,548 INFO sell-guard: ⏱ heartbeat: loop alive (account=?)
+2025-09-22 19:25:44,041 INFO sell-guard: positions via get_positions -> 15 symbol(s)
+2025-09-22 19:25:44,042 INFO sell-guard: Managing 5 symbol(s): COP,INTC,FCX,DAY,KO
+2025-09-22 19:25:44,043 WARNING sell-guard: quote fetch failed: name 'http_get' is not defined
+2025-09-22 19:25:46,230 INFO sell-guard: [SG] COP: last=92.01 entry=93.75 pnl=-186 bps (tp=200 stop=100) hold=9028m lim=92.01 free=1 -> stop=True tp=False timeout=False
+2025-09-22 19:25:46,231 INFO sell-guard: COP outside sell window 09:35–15:55 ET; deferring any sells
+2025-09-22 19:25:47,518 INFO sell-guard: [SG] INTC: last=28.76 entry=30.82 pnl=-668 bps (tp=200 stop=100) hold=6165m lim=28.75 free=2 -> stop=True tp=False timeout=False
+2025-09-22 19:25:47,518 INFO sell-guard: INTC outside sell window 09:35–15:55 ET; deferring any sells
+2025-09-22 19:25:48,623 INFO sell-guard: [SG] FCX: last=45.16 entry=45.12 pnl=+9 bps (tp=200 stop=100) hold=6033m lim=45.05 free=1 -> stop=False tp=False timeout=False
+2025-09-22 19:25:48,624 INFO sell-guard: FCX outside sell window 09:35–15:55 ET; deferring any sells
+2025-09-22 19:25:49,751 INFO sell-guard: [SG] DAY: last=68.75 entry=69.02 pnl=-38 bps (tp=200 stop=100) hold=9008m lim=68.45 free=1 -> stop=False tp=False timeout=False
+2025-09-22 19:25:49,752 INFO sell-guard: DAY outside sell window 09:35–15:55 ET; deferring any sells
+2025-09-22 19:25:50,887 INFO sell-guard: [SG] KO: last=66.23 entry=66.87 pnl=-96 bps (tp=200 stop=100) hold=6045m lim=66.28 free=1 -> stop=False tp=False timeout=False
+2025-09-22 19:25:50,889 INFO sell-guard: KO outside sell window 09:35–15:55 ET; deferring any sells
+2025-09-22 19:26:11,549 INFO sell-guard: ⏱ heartbeat: loop alive (account=?)
+2025-09-22 19:26:11,694 INFO sell-guard: positions via get_positions -> 15 symbol(s)
+2025-09-22 19:26:11,695 INFO sell-guard: Managing 5 symbol(s): COP,INTC,FCX,DAY,KO
+2025-09-22 19:26:11,696 WARNING sell-guard: quote fetch failed: name 'http_get' is not defined
+2025-09-22 19:26:13,909 INFO sell-guard: [SG] COP: last=92.01 entry=93.75 pnl=-186 bps (tp=200 stop=100) hold=9028m lim=92.01 free=1 -> stop=True tp=False timeout=False
+2025-09-22 19:26:13,910 INFO sell-guard: COP outside sell window 09:35–15:55 ET; deferring any sells
+2025-09-22 20:12:53,266 INFO sell-guard: config source: C:\TradeAlerts\sell_guard_settings.json
+2025-09-22 20:12:53,267 INFO sell-guard: env: ETRADE_ENV=production  PYTHONPATH=None
+2025-09-22 20:12:53,268 INFO sell-guard: [LIVE] Using accountIdKey=kW8LbkuGisPCK9Ey7C8iWA
+2025-09-22 20:12:53,268 INFO sell-guard: [CFG] mode=live tp=200 bps stop=100 bps max_hold=100000m limit_from=bid offset=0 bps throttle=30.0s ext_hours=False fallback=—
+2025-09-22 20:12:53,566 INFO sell-guard: positions via get_positions -> 15 symbol(s)
+2025-09-22 20:12:53,567 INFO sell-guard: Managing 5 symbol(s): COP,INTC,FCX,DAY,KO
+2025-09-22 20:12:53,568 WARNING sell-guard: quote fetch failed: name 'http_get' is not defined
+2025-09-22 20:12:56,226 INFO sell-guard: [SG] COP: last=92.01 entry=93.75 pnl=-186 bps (tp=200 stop=100) hold=9075m lim=92.00 free=1 -> stop=True tp=False timeout=False
+2025-09-22 20:12:56,227 INFO sell-guard: COP outside sell window 09:35–15:55 ET; deferring any sells
+2025-09-22 20:12:57,446 INFO sell-guard: [SG] INTC: last=28.76 entry=30.82 pnl=-668 bps (tp=200 stop=100) hold=6212m lim=28.74 free=2 -> stop=True tp=False timeout=False
+2025-09-22 20:12:57,447 INFO sell-guard: INTC outside sell window 09:35–15:55 ET; deferring any sells
+2025-09-22 20:12:58,754 INFO sell-guard: [SG] FCX: last=45.16 entry=45.12 pnl=+9 bps (tp=200 stop=100) hold=6080m lim=45.15 free=1 -> stop=False tp=False timeout=False
+2025-09-22 20:12:58,756 INFO sell-guard: FCX outside sell window 09:35–15:55 ET; deferring any sells
+2025-09-22 20:12:59,928 INFO sell-guard: [SG] DAY: last=68.75 entry=69.02 pnl=-38 bps (tp=200 stop=100) hold=9055m lim=68.75 free=1 -> stop=False tp=False timeout=False
+2025-09-22 20:12:59,928 INFO sell-guard: DAY outside sell window 09:35–15:55 ET; deferring any sells
+2025-09-22 20:13:01,105 INFO sell-guard: [SG] KO: last=66.23 entry=66.87 pnl=-96 bps (tp=200 stop=100) hold=6092m lim=66.22 free=1 -> stop=False tp=False timeout=False
+2025-09-22 20:13:01,106 INFO sell-guard: KO outside sell window 09:35–15:55 ET; deferring any sells

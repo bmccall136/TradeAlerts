@@ -39,6 +39,15 @@ if not any(isinstance(h, logging.FileHandler) for h in LOG.handlers):
     LOG.addHandler(fh)
 
 import logging, sys
+# Optional aggregator helper; guard already uses E*TRADE quotes.
+try:
+    import requests
+    def http_get(url, **kwargs):  # only used if aggregator path is hit
+        return requests.get(url, timeout=kwargs.pop("timeout", 10), **kwargs)
+except Exception:
+    # If requests isn't available, just never use the aggregator.
+    def http_get(*a, **k):
+        raise NameError("http_get not available")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -230,6 +239,24 @@ _last_beat_monotonic: float | None = None
 # ——— at top ———
 import requests
 from requests.adapters import HTTPAdapter, Retry
+def fresh_client_id(prefix: str, symbol: str) -> str:
+    import time
+    return f"{prefix}-{symbol.lower()}-{int(time.time()*1000)}"
+
+def preview_then_place(symbol: str, qty: int, price: float | None, price_type: str):
+    aid = account_id_key()
+    coid = fresh_client_id("sg", symbol)
+    prev = preview_equity_order(
+        aid, symbol, qty, price,
+        action="SELL",
+        price_type=price_type,
+        order_term="GOOD_FOR_DAY",
+        market_session="REGULAR",
+        client_order_id=coid,
+    )
+    # handle preview errors here (1037, 1011, etc.)
+    return place_equity_order(prev, qty)
+
 # KEEP THIS version (already in your file, later down)
 def drain_pending_sells(place_fn):
     if not PENDING_SELLS:

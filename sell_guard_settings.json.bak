@@ -22,5 +22,5 @@
   "sell_window_end_hhmm":  "15:55",
 
   "use_extended_hours": false,
-  "market_fallback_for": ["SELL_STOP", "TIMEOUT"]
+  "market_fallback_for": ["SELL_STOP", "TIMEOUT", "SELL_TARGET"]
 }
