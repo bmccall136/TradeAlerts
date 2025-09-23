@@ -432,6 +432,50 @@ def _extract_order_id(resp):
 
 
 # Small utils
+from datetime import datetime, timedelta, timezone
+
+_ET = timezone(timedelta(hours=-5))  # Eastern Time
+
+def _today_et():
+    return datetime.now(_ET).date()
+
+def _prev_business_days(n, end=None):
+    d = end or _today_et()
+    out = []
+    while len(out) < n:
+        d -= timedelta(days=1)
+        if d.weekday() < 5:
+            out.append(d)
+    return list(reversed(out))
+
+def pdt_window_dates():
+    # rolling 5 BUSINESS days (include today if weekday)
+    today = _today_et()
+    ds = [today] if today.weekday() < 5 else []
+    ds = _prev_business_days(5 - len(ds), end=today) + ds
+    return set(ds)
+
+def recompute_pdt_counts(executed_orders_payload: dict) -> dict:
+    """Return {YYYY-MM-DD: daytrade_count} ONLY for the current PDT window."""
+    win = pdt_window_dates()
+    orders = (executed_orders_payload.get("OrdersResponse") or {}).get("Order") or []
+    by_date = {}
+    for o in orders:
+        for d in (o.get("OrderDetail") or []):
+            ts = (d.get("executedTime") or d.get("placedTime") or 0) / 1000.0
+            dt = datetime.fromtimestamp(ts, tz=_ET).date()
+            if dt not in win:
+                continue
+            for ins in (d.get("Instrument") or []):
+                sym = (ins.get("Product") or {}).get("symbol") or ""
+                act = (ins.get("orderAction") or "").upper()
+                by_date.setdefault(dt, {}).setdefault(sym, set()).add(act)
+    counts = {}
+    for dt, sym_actions in by_date.items():
+        counts[dt.isoformat()] = sum(1 for acts in sym_actions.values()
+                                     if "BUY" in acts and "SELL" in acts)
+    return counts
+
 def _round_down_to_tick(px: float, tick: float = 0.01) -> float:
     return math.floor((px + 1e-9) / tick) * tick
 
@@ -690,6 +734,17 @@ def fifo_entry_from_trades(account_id_key: str, symbol: str) -> float | None:
                     return round(tot / qty, 2)
     except Exception as e:
         LOG.debug("fifo_entry_from_trades: positions path failed: %s", e)
+    # ...after: positions = get_positions(...) and managed = [...]
+    # Rebuild PDT window counts fresh each loop
+    payload     = et.list_executed_orders(days=30)   # plenty; we'll filter by window
+    pdt_counts  = recompute_pdt_counts(payload)      # { 'YYYY-MM-DD': count }
+    pdt_total   = sum(pdt_counts.values())
+    win_sorted  = sorted(pdt_counts.keys())
+    log.info(f"PDT 5-biz-day window (ET): { (win_sorted[0]+' -> '+win_sorted[-1]) if win_sorted else 'none' }  count={pdt_total}")
+
+    # (Optional) stash into state if other parts need it
+    state["pdt_counts"] = pdt_counts
+    state["pdt_total"]  = pdt_total
 
     # 2) Recent executions VWAP of BUYs (lightweight fallback)
     try:

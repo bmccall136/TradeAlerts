@@ -557,7 +557,7 @@ except NameError:
         except Exception:
             return None
 
-def _enrich_with_transactions(rows: list[dict], days: int = 7) -> None:
+def _enrich_with_transactions(rows, days=30)
     """
     For SELL rows, fill price_paid / pl / pl_pct using Transactions data
     (uses gainLoss when available). Mutates rows in place.
@@ -641,79 +641,6 @@ def _to_dt_utc(ts):
             return datetime.fromisoformat(s).astimezone(ZoneInfo("UTC"))
         except Exception:
             return None
-
-def summarize_realized_buckets(trades, tz="America/New_York"):
-    """
-    Expects `trades` like those you already return in /live/status.
-    For each SELL-like trade, uses t.get('realized_pnl') if present,
-    else falls back to t.get('pnl') or t.get('net').
-
-    Percent = pnl / max(denominator) where denominator prefers
-    abs(cost_basis) then abs(proceeds) then abs(price*qty).
-    """
-    now_local = datetime.now(ZoneInfo(tz))
-    month_start = now_local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    week_start = (now_local - timedelta(days=now_local.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-
-    buckets = {
-        "week": {"pnl": 0.0, "den": 0.0},
-        "month": {"pnl": 0.0, "den": 0.0},
-        "all": {"pnl": 0.0, "den": 0.0},
-    }
-
-    def _is_sell(t):
-        side = (t.get("side") or t.get("action") or "").upper()
-        return side in ("SELL", "SELL_SHORT", "SS_COVER", "SELL_TO_CLOSE", "STC", "SLD")
-
-    for t in trades or []:
-        if not _is_sell(t):
-            continue
-
-        # timestamp normalization
-        dt = _to_dt_utc(t.get("time") or t.get("timestamp"))
-        if not dt:
-            continue
-        dt_local = dt.astimezone(ZoneInfo(tz))
-
-        # pnl & denominator
-        pnl = t.get("realized_pnl")
-        if pnl is None:
-            pnl = t.get("pnl")
-        if pnl is None:
-            pnl = t.get("net")  # e.g., proceeds minus fees if available
-        if pnl is None:
-            # very conservative fallback: no P&L if missing
-            pnl = 0.0
-
-        cost = t.get("cost_basis") or t.get("cost") or 0.0
-        proceeds = t.get("proceeds") or t.get("amount") or 0.0
-        if not cost and not proceeds:
-            # estimate denominator from price * qty
-            px = float(t.get("price") or 0.0)
-            qty = abs(float(t.get("qty") or t.get("quantity") or 0.0))
-            proceeds = px * qty
-
-        den = abs(cost) or abs(proceeds) or 0.0
-
-        # apply to buckets
-        if dt_local >= week_start:
-            buckets["week"]["pnl"] += float(pnl)
-            buckets["week"]["den"] += float(den)
-        if dt_local >= month_start:
-            buckets["month"]["pnl"] += float(pnl)
-            buckets["month"]["den"] += float(den)
-        buckets["all"]["pnl"] += float(pnl)
-        buckets["all"]["den"] += float(den)
-
-    def _pct(p, d):
-        return (p / d * 100.0) if d and abs(d) > 1e-9 else 0.0
-
-    return {
-        "week":  {"pnl": round(buckets["week"]["pnl"], 2),  "pct": round(_pct(buckets["week"]["pnl"],  buckets["week"]["den"]), 2)},
-        "month": {"pnl": round(buckets["month"]["pnl"], 2), "pct": round(_pct(buckets["month"]["pnl"], buckets["month"]["den"]), 2)},
-        "all":   {"pnl": round(buckets["all"]["pnl"], 2),   "pct": round(_pct(buckets["all"]["pnl"],   buckets["all"]["den"]), 2)},
-    }
-# --- END: realized P&L buckets ----------------------------------------------
 
 def recent_executions_as_trades(count: int = 50) -> list[dict]:
     """
@@ -818,7 +745,7 @@ def recent_executions_as_trades(count: int = 50) -> list[dict]:
     rows.sort(key=lambda r: r["_dt"], reverse=True)
 
     # Fill price_paid / pl / pl_pct
-    _enrich_with_transactions(rows, days=7)
+    _enrich_with_transactions(rows, days=30)  # 21–30 is safe; 30 is simplest
 
     for r in rows:
         r.pop("_dt", None)
@@ -1008,8 +935,61 @@ def transactions_as_trades(days: int = 3) -> list[dict]:
 
     out.sort(key=lambda x: x["time"], reverse=True)
     return out
+from datetime import datetime, timedelta, timezone
+
+_ET = timezone(timedelta(hours=-5))  # you likely already have a _today_et()
+
 def _today_et():
-    return _now_et().date()
+    # If you already have this, keep using yours
+    return datetime.now(_ET).date()
+
+def _prev_business_days(n, end_date=None):
+    d = end_date or _today_et()
+    days = []
+    while len(days) < n:
+        d -= timedelta(days=1)
+        if d.weekday() < 5:  # Mon–Fri; (skip holidays unless you maintain a list)
+            days.append(d)
+    return list(reversed(days))  # oldest -> newest
+
+def pdt_window_dates():
+    """Return the set of ET dates in the current rolling 5-business-day window (including today if weekday)."""
+    today = _today_et()
+    dates = [today] if today.weekday() < 5 else []
+    dates = _prev_business_days(5 - len(dates), end_date=today) + dates
+    return set(dates)
+
+def recompute_pdt_counts(executed_orders_payload):
+    """
+    Build fresh per-date day trade counts *only for* the current PDT window.
+    You can adapt this to your existing structure.
+    """
+    win = pdt_window_dates()
+    counts = {}  # {date: count}
+    # Your payload shape looks like et.list_executed_orders(days=...) -> OrdersResponse.Order[].OrderDetail[].Instrument[]
+    orders = (executed_orders_payload.get("OrdersResponse") or {}).get("Order") or []
+    # Build {date_et: [(sym, action, qty)]}
+    by_date = {}
+    for o in orders:
+        for d in (o.get("OrderDetail") or []):
+            # normalize ET date from your timestamps
+            dt = datetime.fromtimestamp((d.get("executedTime") or d.get("placedTime") or 0)/1000, tz=_ET).date()
+            if dt not in win:
+                continue
+            for ins in (d.get("Instrument") or []):
+                sym = (ins.get("Product") or {}).get("symbol") or ""
+                act = (ins.get("orderAction") or "").upper()
+                qty = float(ins.get("filledQuantity") or ins.get("orderedQuantity") or 0) or 0.0
+                by_date.setdefault(dt, []).append((sym, act, qty))
+
+    # Count day trades per date: simple approximation — any symbol with at least one BUY and one SELL that day
+    for dt, rows in by_date.items():
+        actions_by_sym = {}
+        for sym, act, _ in rows:
+            actions_by_sym.setdefault(sym, set()).add(act)
+        counts[dt.isoformat()] = sum(1 for acts in actions_by_sym.values() if "BUY" in acts and "SELL" in acts)
+
+    return counts
 
 def _mmddyyyy(d) -> str:
     return d.strftime("%m%d%Y")

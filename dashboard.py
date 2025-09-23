@@ -1,4 +1,4 @@
-
+﻿
 import os, sys
 sys.path.insert(0, os.path.dirname(__file__))
 import os
@@ -23,6 +23,14 @@ from dataclasses import asdict
 from pathlib import Path
 NEED_AUTH_FLAG = Path("need_oauth.flag")
 from services.trade_source import load_trades_merged
+from datetime import datetime, timedelta
+
+try:
+    from zoneinfo import ZoneInfo          # Python 3.9+
+except Exception:
+    from backports.zoneinfo import ZoneInfo  # if running older Pythons
+
+ET = ZoneInfo("America/New_York")
 
 import os
 import json
@@ -108,7 +116,7 @@ def place_buy_with_preview_fallback(broker, symbol, qty, limit_px):
     if ok:
         return broker.place_buy(symbol, qty, limit_px)
 
-    # 8400 insufficient funds -> try the “allowed” quantity if present
+    # 8400 insufficient funds -> try the â€œallowedâ€ quantity if present
     if getattr(err, "code", None) == 8400:
         max_q = parse_max_qty_from_msg(getattr(err, "message", ""))
         if max_q and 1 <= max_q < qty:
@@ -135,7 +143,7 @@ def pick_qty(limit_px, acct, max_per_trade):
     ]
     avail = min(c for c in candidates if c > 0) if any(c > 0 for c in candidates) else 0.0
 
-    # Safety buffer so tiny price wiggles or fees don’t cause a preview reject
+    # Safety buffer so tiny price wiggles or fees donâ€™t cause a preview reject
     buffer_dollars = 3.00
     spend_cap = max(0.0, min(avail, float(max_per_trade)) - buffer_dollars)
 
@@ -191,7 +199,7 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from flask import request, redirect, url_for, render_template
 from services.backtest_service import run_full_backtest
-# ─── Load environment variables ───────────────────────────────
+# â”€â”€â”€ Load environment variables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 from dotenv import load_dotenv, set_key
 load_dotenv()
 # --- HOTFIX: unify env + signer and call E*TRADE directly --------------------
@@ -218,7 +226,7 @@ for A,B in [
 
 os.environ.setdefault("ETRADE_API_HOST", "https://api.etrade.com")
 
-# ─── Core Flask imports ───────────────────────────────────────
+# â”€â”€â”€ Core Flask imports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 from flask import (
     Flask,
     request,
@@ -231,7 +239,7 @@ from flask import (
     session
 )
 
-# ─── Service imports ──────────────────────────────────────────
+# â”€â”€â”€ Service imports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 from services.indicators import (
     compute_atr,
     daily_range_pct,
@@ -302,13 +310,19 @@ from pathlib import Path
 from flask import request
 # --- loud E*TRADE logging wrapper (module-scope; not inside live_status) ---
 _ET_LOG_WRAPPED = False
+from functools import lru_cache
 
-# ─────────────────────────────────────────────────────────────────────────────
+@lru_cache
+def _et():
+    from zoneinfo import ZoneInfo
+    return ZoneInfo("America/New_York")
+
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # DROP-IN: FIFO realized P&L + row enrichment for trades
 # Returns: (enriched_trades, realized_today, realized_today_pct)
 # Each trade in `trades` should have: symbol, action ("BUY"/"SELL"), qty, price,
 # and one of time_utc / time / time_et (ISO or epoch ms).
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def _fifo_realized_today(trades):
     import datetime as _dt
 
@@ -421,21 +435,25 @@ def _safe_float(x):
 
 _TZ_ET = zoneinfo.ZoneInfo("America/New_York")
 
-def _to_dt_local(t):
-    """Accepts epoch ms or 'YYYY-MM-DD HH:MM:SS' -> ET-aware datetime (or None)."""
-    if t is None: return None
+def _to_dt_local(t, tz=None):
+    tz = tz or _et()
+    if t is None: 
+        return None
     try:
         n = float(t)
         if n > 10_000_000_000:
-            return datetime.fromtimestamp(n/1000.0, _TZ_ET)
-    except: pass
+            return datetime.fromtimestamp(n/1000.0, tz)
+    except Exception:
+        pass
     s = str(t).strip()
-    if not s: return None
+    if not s:
+        return None
+    if 'T' in s:
+        s = s.replace('T',' ')
     try:
-        if 'T' in s: s = s.replace('T',' ')
-        # treat naive strings as ET
-        return datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=_TZ_ET)
-    except: return None
+        return datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=tz)
+    except Exception:
+        return None
 
 def _etrade_log_wrap():
     """Wrap etrade_service get_quotes/get_quote so we SEE calls in Flask logs."""
@@ -485,7 +503,7 @@ def _etrade_log_wrap():
 # before any get_cash()/buy()/sell() calls:
 setup_simulation_db()
 
-# ── Dynamic Unicode font registration ────────────────────────────────
+# â”€â”€ Dynamic Unicode font registration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if os.name == 'nt':  # Windows
     font_path = r"C:\Windows\Fonts\seguiemj.ttf"     # Segoe UI Emoji
 else:                # macOS/Linux
@@ -497,11 +515,11 @@ try:
 except Exception as e:
     print(f"[WARN] Unicode font load failed ({e}), falling back to Helvetica")
     unicode_font_name = 'Helvetica'
-# ─────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 # Pick a Unicode font path based on platform
 if os.name == 'nt':  # Windows
-    # Segoe UI Emoji ships with Windows 10+ and covers 🚀📊 etc.
+    # Segoe UI Emoji ships with Windows 10+ and covers ðŸš€ðŸ“Š etc.
     font_path = r"C:\Windows\Fonts\seguiemj.ttf"
 else:
     # Linux fallback
@@ -559,11 +577,11 @@ from pathlib import Path
 FLAG = Path("need_oauth.flag")
 
 setup_simulation_db()
-# ─── Database file paths ─────────────────────────────────────
+# â”€â”€â”€ Database file paths â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 SIM_DB      = os.path.join(os.getcwd(), 'simulation.db')
 BACKTEST_DB = os.path.join(os.getcwd(), 'backtest.db')
 
-# ─── Timeframe presets & simulation defaults ────────────────
+# â”€â”€â”€ Timeframe presets & simulation defaults â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 TIMEFRAME_DELTAS = {
     '1mo': {'months': 1},
     '3mo': {'months': 3},
@@ -573,7 +591,7 @@ TIMEFRAME_DELTAS = {
 DEFAULT_STARTING_CASH = 10000.0
 DEFAULT_MAX_PER_TRADE  = 1000.0
 
-# ─── E*TRADE OAuth configuration (production only) ──────────
+# â”€â”€â”€ E*TRADE OAuth configuration (production only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 OAUTH_HOST         = 'https://api.etrade.com'
 REQUEST_TOKEN_URL  = f'{OAUTH_HOST}/oauth/request_token'
 ACCESS_TOKEN_URL   = f'{OAUTH_HOST}/oauth/access_token'
@@ -582,7 +600,7 @@ ENV_PATH           = os.path.join(os.path.dirname(__file__), '.env')
 KEY_OAUTH_TOKEN         = 'OAUTH_TOKEN'
 KEY_OAUTH_TOKEN_SECRET  = 'OAUTH_TOKEN_SECRET'
 
-# ─── OAuth routes ────────────────────────────────────────────
+# â”€â”€â”€ OAuth routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 from requests_oauthlib import OAuth1Session
 print("LOADING settings_service.py from", __file__)
 stored = get_stored_cash()
@@ -635,9 +653,9 @@ BASE_URL = os.getenv("ETRADE_API_HOST", "https://api.etrade.com")  # ensure PROD
 from datetime import datetime, timezone
 
 # --- small helpers -----------------------------------------------------------
-# ─────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # FIFO cost-basis + Realized P&L buckets (ET timezone aware)
-# ─────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 _TZ_ET = ZoneInfo("America/New_York")
@@ -683,7 +701,7 @@ def fifo_enrich_trades(trades):
     enriched = []
     realized_today = 0.0
     realized_basis = 0.0
-    today = datetime.now(ZoneInfo("UTC")).date()
+    today = datetime.now(_et()).date()
 
 def _safe_float(val, default: float = 0.0) -> float:
     """
@@ -762,7 +780,7 @@ def get_recent_trades_and_realized(days:int=2):
                 continue
             except Exception:
                 pass
-        # If no explicit gain, we don’t synthesize here (needs lot cost basis).
+        # If no explicit gain, we donâ€™t synthesize here (needs lot cost basis).
         # Leave it 0.0 rather than guessing. Your tax-lot endpoint (if enabled)
         # can be used later for exact realized.
         # Tip: If you already store avg cost per symbol in your DB, you can
@@ -825,82 +843,6 @@ def _to_dt_local(ts, tz=_TZ_ET):
     except Exception:
         return None
 
-def summarize_realized_buckets(trades):
-    """
-    Buckets realized P&L into {week, month, all} using Eastern Time.
-    Expects SELL rows with:
-      - t['pl']  (realized P&L for that fill/lot set)
-      - t['qty'] (shares)
-      - t['price_paid'] (FIFO average basis per share; used for %)
-      - t['time_ms'] or t['time'] (ISO string)
-    """
-    from datetime import datetime, timedelta, timezone
-    try:
-        from zoneinfo import ZoneInfo
-        ET = ZoneInfo("America/New_York")
-    except Exception:
-        ET = timezone(timedelta(hours=-5))  # crude ET fallback
-
-    def _to_ms(x):
-        if x is None:
-            return None
-        if isinstance(x, (int, float)):
-            return int(x)
-        s = str(x).strip()
-        # 'YYYY-MM-DD HH:MM:SS' or 'YYYY-MM-DDTHH:MM:SS'
-        try:
-            dt = datetime.fromisoformat(s.replace("T", " "))
-            return int(dt.replace(tzinfo=ET).timestamp() * 1000)
-        except Exception:
-            return None
-
-    today = datetime.now(ET).date()
-    week_start  = today - timedelta(days=today.weekday())  # Monday
-    month_start = today.replace(day=1)
-
-    acc = {
-        "week":  {"pnl": 0.0, "basis": 0.0},
-        "last_week": {"pnl": 0.0, "pct": 0.0})
-        "month": {"pnl": 0.0, "basis": 0.0},
-        "all":   {"pnl": 0.0, "basis": 0.0},
-    }
-
-    for t in trades or []:
-        side = (t.get("action") or t.get("side") or "").upper()
-        if side != "SELL":
-            continue
-
-        pl   = float(t.get("pl") or t.get("pnl") or 0.0)
-        qty  = int(float(t.get("qty") or 0))
-        px   = t.get("price_paid")
-        basis = abs(float(px) * qty) if (px is not None) else 0.0
-
-        ms = t.get("time_ms")
-        if ms is None:
-            ms = _to_ms(t.get("time"))
-        try:
-            d = datetime.fromtimestamp(ms/1000, ET).date() if ms else today
-        except Exception:
-            d = today
-
-        # accumulate
-        if d >= week_start:
-            acc["week"]["pnl"]  += pl
-            acc["week"]["basis"] += basis
-        if d >= month_start:
-            acc["month"]["pnl"] += pl
-            acc["month"]["basis"] += basis
-
-        acc["all"]["pnl"]   += pl
-        acc["all"]["basis"] += basis
-
-    out = {}
-    for k, v in acc.items():
-        basis = v["basis"]
-        pct = (v["pnl"] / basis * 100.0) if basis > 0 else 0.0
-        out[k] = {"pnl": round(v["pnl"], 2), "pct": round(pct, 2)}
-    return out
-
 # Sum unrealized P&L from your holdings rows
 def _sum_unrealized_from_holdings(holdings):
     tot = 0.0
@@ -919,7 +861,7 @@ def _sum_unrealized_from_holdings(holdings):
 REALIZED_SINCE = "2025-08-22"
 
 def _sum_realized_from_trades(trades, since_str=REALIZED_SINCE):
-    # very forgiving parser for your “Time (ET)” strings
+    # very forgiving parser for your â€œTime (ET)â€ strings
     def _parse_dt(s):
         if not s:
             return None
@@ -1014,7 +956,7 @@ def etrade_handle_pin():
     save_tokens(tokens["oauth_token"], tokens["oauth_token_secret"])
     clear_need_auth_flag()
 
-    flash("✅ E*TRADE authenticated!", "success")
+    flash("âœ… E*TRADE authenticated!", "success")
     return redirect(url_for("simulation_view"))
 
 # --- quote helpers for last/prev-close ---------------------------------
@@ -1031,12 +973,12 @@ def _qnum(d: dict, *keys):
 def get_last_and_prev(symbol: str, fallback_price: float):
     last = prev = None
     q = fetch_etrade_quote(symbol)
-    # A) quote → last / prev (or derive prev from day delta)
+    # A) quote â†’ last / prev (or derive prev from day delta)
     if isinstance(q, dict):
         last = _qnum(q, "lastTrade","lastPrice","intradayLast","close","closePrice")
         prev = _qnum(q, "previousClose","prevClose","priorClose","closePrevDay","closePricePrev")
 
-        # ← derive prev if missing
+        # â† derive prev if missing
         if prev is None and last is not None:
             day_delta = _qnum(q, "netChange","changeClose","closeNetChange",
                                  "todaysChangeDollar","change","todaysChange")
@@ -1151,13 +1093,13 @@ def inject_label_config():
 @app.context_processor
 def inject_indicator_labels():
     return {
-        # ── SMA lengths ──
+        # â”€â”€ SMA lengths â”€â”€
         'sma_labels': {
             10: "SMA (10)",
             20: "SMA (20)",
             50: "SMA (50)",
         },
-        # ── RSI lengths ──
+        # â”€â”€ RSI lengths â”€â”€
         'rsi_len_options': {
             7:  "RSI (7)",
             14: "RSI (14)",
@@ -1168,18 +1110,18 @@ def inject_indicator_labels():
             14: "RSI (14)",
             21: "RSI (21)",
         },
-        # ── RSI thresholds ──
+        # â”€â”€ RSI thresholds â”€â”€
         'rsi_ob_labels': {
-            70: "Overbought ≥ 70",
-            80: "Overbought ≥ 80",
-            90: "Overbought ≥ 90",
+            70: "Overbought â‰¥ 70",
+            80: "Overbought â‰¥ 80",
+            90: "Overbought â‰¥ 90",
         },
         'rsi_os_labels': {
-            30: "Oversold ≤ 30",
-            20: "Oversold ≤ 20",
-            10: "Oversold ≤ 10",
+            30: "Oversold â‰¤ 30",
+            20: "Oversold â‰¤ 20",
+            10: "Oversold â‰¤ 10",
         },
-        # ── MACD EMA labels ──
+        # â”€â”€ MACD EMA labels â”€â”€
         'macd_fast_labels': {
             5:  "Fast EMA 5",
             8:  "Fast EMA 8",
@@ -1195,52 +1137,52 @@ def inject_indicator_labels():
             9:  "Signal EMA 9",
             12: "Signal EMA 12",
         },
-        # ── (Optional) MACD presets ──
+        # â”€â”€ (Optional) MACD presets â”€â”€
         'macd_presets': {
             (12, 26, 9): "MACD (12,26,9)",
             (5, 35, 5):  "MACD (5,35,5)",
             (8, 17, 9):  "MACD (8,17,9)",
         },
-        # ── Bollinger Bands ──
+        # â”€â”€ Bollinger Bands â”€â”€
         'bb_length_labels': {
             20:  "BB Length 20",
             50:  "BB Length 50",
             100: "BB Length 100",
         },
         'bb_std_labels': {
-            2.0: "Std Dev ×2",
-            2.5: "Std Dev ×2.5",
-            3.0: "Std Dev ×3",
+            2.0: "Std Dev Ã—2",
+            2.5: "Std Dev Ã—2.5",
+            3.0: "Std Dev Ã—3",
         },
-        # ── Volume multiplier ──
+        # â”€â”€ Volume multiplier â”€â”€
         'vol_multiplier_labels': {
-            1.0: "Vol ≥ 1× Avg",
-            1.5: "Vol ≥ 1.5× Avg",
-            2.0: "Vol ≥ 2× Avg",
+            1.0: "Vol â‰¥ 1Ã— Avg",
+            1.5: "Vol â‰¥ 1.5Ã— Avg",
+            2.0: "Vol â‰¥ 2Ã— Avg",
         },
-        # ── VWAP thresholds ──
+        # â”€â”€ VWAP thresholds â”€â”€
         'vwap_threshold_labels': {
-            0.0: "VWAP+ ≥ $0.00",
-            0.5: "VWAP+ ≥ $0.50",
-            1.0: "VWAP+ ≥ $1.00",
+            0.0: "VWAP+ â‰¥ $0.00",
+            0.5: "VWAP+ â‰¥ $0.50",
+            1.0: "VWAP+ â‰¥ $1.00",
         },
-        # ── ATR % filters ──
+        # â”€â”€ ATR % filters â”€â”€
         'atr_labels': {
-            0.5: "ATR ≥ 0.5%",
-            1.0: "ATR ≥ 1.0%",
-            1.5: "ATR ≥ 1.5%",
+            0.5: "ATR â‰¥ 0.5%",
+            1.0: "ATR â‰¥ 1.0%",
+            1.5: "ATR â‰¥ 1.5%",
         },
-        # ── Daily range % filters ──
+        # â”€â”€ Daily range % filters â”€â”€
         'range_labels': {
-            0.5: "Range ≥ 0.5%",
-            1.0: "Range ≥ 1.0%",
-            1.5: "Range ≥ 1.5%",
+            0.5: "Range â‰¥ 0.5%",
+            1.0: "Range â‰¥ 1.0%",
+            1.5: "Range â‰¥ 1.5%",
         },
-        # ── Pre-market gap-up % filters ──
+        # â”€â”€ Pre-market gap-up % filters â”€â”€
         'gap_labels': {
-            1.0: "Gap ≥ 1.0%",
-            2.0: "Gap ≥ 2.0%",
-            3.0: "Gap ≥ 3.0%",
+            1.0: "Gap â‰¥ 1.0%",
+            2.0: "Gap â‰¥ 2.0%",
+            3.0: "Gap â‰¥ 3.0%",
         },
     }
 
@@ -1262,7 +1204,7 @@ def extract_backtest_settings(args):
      start = today - relativedelta(**delta)
      end   = today
 
-# ── 1) Define your settings tuples ───────────────────────────────────
+# â”€â”€ 1) Define your settings tuples â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 from collections import namedtuple
 
@@ -1289,26 +1231,26 @@ BacktestSettings = namedtuple('BacktestSettings', [
 ])
 
 SimulationSettings = namedtuple('SimulationSettings', [
-    # ── entry toggles ──
+    # â”€â”€ entry toggles â”€â”€
     'sma_on', 'rsi_on', 'macd_on', 'bb_on', 'vol_on', 'vwap_on', 'news_on',
-    # ── entry numeric ──
+    # â”€â”€ entry numeric â”€â”€
     'sma_length', 'rsi_len', 'rsi_overbought', 'rsi_oversold',
     'macd_fast', 'macd_slow', 'macd_signal',
     'bb_length', 'bb_std', 'vol_multiplier', 'vwap_threshold',
-    # ── advanced entry filters ──
+    # â”€â”€ advanced entry filters â”€â”€
     'atr_on', 'atr_pct', 'range_on', 'range_pct', 'gap_on', 'gap_pct',
     'price_sma_on',
-    # ── extra entry/exit toggles ──
+    # â”€â”€ extra entry/exit toggles â”€â”€
     'rsi_slope_on', 'macd_hist_on', 'bb_breakout_on',
     'single_entry_only', 'use_trailing_stop',
-    # ── exit behavior ──
+    # â”€â”€ exit behavior â”€â”€
     'trailing_stop_pct', 'sell_after_days',
     'stop_loss_pct', 'take_profit_pct',
-    # ── capital settings ──
+    # â”€â”€ capital settings â”€â”€
     'starting_cash', 'max_per_trade'
 ])
 
-# ── 2) Extract backtest settings from args ───────────────────────────
+# â”€â”€ 2) Extract backtest settings from args â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def extract_backtest_settings(args):
     return BacktestSettings(
@@ -1359,7 +1301,7 @@ def extract_backtest_settings(args):
         take_profit_pct   = float(args.get('take_profit_pct') or 0.0),
     )
 
-# ── 3) Extract simulation settings from args ──────────────────────────
+# â”€â”€ 3) Extract simulation settings from args â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def load_your_symbols():
@@ -1387,14 +1329,14 @@ from services.backtest_engine import run_full_backtest
 import json
 from pathlib import Path
 from datetime import timedelta
-# ─── Persistence ─────────────────────────────────────────────
+# â”€â”€â”€ Persistence â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 SETTINGS_FILE = Path(__file__).parent / "settings.json"
 
 TIMEFRAME_DELTAS = {
     "1d": timedelta(days=1),
     "1h": timedelta(hours=1),
     "15m": timedelta(minutes=15),
-    # …etc…
+    # â€¦etcâ€¦
 }
 
 def load_settings(defaults: dict = None) -> dict:
@@ -1468,11 +1410,11 @@ from dateutil.relativedelta import relativedelta
 
 from services.settings_schema   import BacktestSettings, extract_backtest_settings
 from services.label_config      import (            # if you still need to import it
-    # you shouldn’t need these here if you’re using the context processor,
+    # you shouldnâ€™t need these here if youâ€™re using the context processor,
     # but listed in case you render anything manually
     timeframe_labels,
     sma_length_labels,
-    # …etc…
+    # â€¦etcâ€¦
     vol_mult_labels,
     vwap_labels,
 )
@@ -1505,7 +1447,7 @@ def run_backtest_route():
 
     # 5) Normalize result
     if not (isinstance(result, tuple) and len(result) == 2):
-        flash("⚠️ Backtest didn’t produce any data—showing an empty run", "warning")
+        flash("âš ï¸ Backtest didnâ€™t produce any dataâ€”showing an empty run", "warning")
         trades  = []
         summary = {'total_pnl': 0.0, 'num_trades': 0, 'wins': 0, 'losses': 0, 'by_symbol': {}}
     else:
@@ -1540,9 +1482,9 @@ def run_backtest_route():
     conn.commit()
     conn.close()
 
-    flash("✅ Backtest run complete!")
+    flash("âœ… Backtest run complete!")
 
-    # 7) Render the same template—labels come from your context processor
+    # 7) Render the same templateâ€”labels come from your context processor
     return render_template(
         "backtest.html",
         settings=settings,
@@ -1555,7 +1497,7 @@ def stop_scanner():
     global _is_scanner_running
     stop_simulation()
     _is_scanner_running = False
-    flash("⛔ Simulation stopped", "danger")
+    flash("â›” Simulation stopped", "danger")
     return redirect(url_for('simulation'))
 
 @app.route('/run-checkpoint')
@@ -1566,7 +1508,7 @@ def run_checkpoint():
         return redirect(url_for('index'))
     except Exception as e:
         return f"Error executing batch: {e}", 500
-### ────────────── ALERTS (LIST & CLEAR) ────────────── ###
+### â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ ALERTS (LIST & CLEAR) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ ###
 
 @app.route('/nuke_db', methods=['POST'])
 def nuke_db():
@@ -1576,11 +1518,11 @@ def nuke_db():
             capture_output=True, text=True, timeout=10
         )
         if result.returncode == 0:
-            flash('✅ Database nuked and recreated!', 'success')
+            flash('âœ… Database nuked and recreated!', 'success')
         else:
-            flash(f'❌ Nuke failed: {result.stderr}', 'danger')
+            flash(f'âŒ Nuke failed: {result.stderr}', 'danger')
     except Exception as e:
-        flash(f'❌ Error nuking DB: {e}', 'danger')
+        flash(f'âŒ Error nuking DB: {e}', 'danger')
     return redirect(url_for('index'))
 
 from io import BytesIO
@@ -1619,7 +1561,7 @@ def export_backtest_pdf():
     trades, summary_dict = run_full_backtest(settings, symbols)
     summary = SimpleNamespace(**summary_dict)
 
-    # … rest of your export logic …
+    # â€¦ rest of your export logic â€¦
 
 
     # 2) PDF setup
@@ -1645,9 +1587,9 @@ def export_backtest_pdf():
 
     elems = []
 
-    # 3) 🚀 Title
+    # 3) ðŸš€ Title
     elems.append(Spacer(1, 12))
-    elems.append(Paragraph("🚀 TradeAlerts 🚀", unicode_title))
+    elems.append(Paragraph("ðŸš€ TradeAlerts ðŸš€", unicode_title))
     elems.append(Spacer(1, 12))
 
     # 4) Summary table
@@ -1683,9 +1625,9 @@ def export_backtest_pdf():
     if settings.macd_on:
         indicator_labels.append(f"MACD ({settings.macd_fast},{settings.macd_slow},{settings.macd_signal})")
     if settings.bb_on:
-        indicator_labels.append(f"BB ({settings.bb_length},σ={settings.bb_std})")
+        indicator_labels.append(f"BB ({settings.bb_length},Ïƒ={settings.bb_std})")
     if settings.vol_on:
-        indicator_labels.append(f"Vol ≥ {settings.vol_multiplier}×")
+        indicator_labels.append(f"Vol â‰¥ {settings.vol_multiplier}Ã—")
     if settings.vwap_on:
         indicator_labels.append("VWAP+")
     if settings.news_on:
@@ -1693,19 +1635,19 @@ def export_backtest_pdf():
 
     # Advanced entry filters:
     if getattr(settings, 'rsi_slope_on', False):
-        indicator_labels.append("RSI Slope ⤴")
+        indicator_labels.append("RSI Slope â¤´")
     if getattr(settings, 'macd_hist_on', False):
-        indicator_labels.append("MACD Hist 📊")
+        indicator_labels.append("MACD Hist ðŸ“Š")
     if getattr(settings, 'bb_breakout_on', False):
-        indicator_labels.append("BB Breakout 💥")
+        indicator_labels.append("BB Breakout ðŸ’¥")
     if getattr(settings, 'price_sma_on', False):
         indicator_labels.append(f"Price>SMA({settings.sma_length})")
     if getattr(settings, 'atr_on', False):
-        indicator_labels.append(f"ATR ≥ {settings.atr_pct*100:.1f}%")
+        indicator_labels.append(f"ATR â‰¥ {settings.atr_pct*100:.1f}%")
     if getattr(settings, 'range_on', False):
-        indicator_labels.append(f"Range ≥ {settings.range_pct*100:.1f}%")
+        indicator_labels.append(f"Range â‰¥ {settings.range_pct*100:.1f}%")
     if getattr(settings, 'gap_on', False):
-        indicator_labels.append(f"Gap ≥ {settings.gap_pct*100:.1f}%")
+        indicator_labels.append(f"Gap â‰¥ {settings.gap_pct*100:.1f}%")
 
     elems.append(Paragraph("Enabled Indicators:", styles['Heading3']))
     elems.append(Spacer(1, 6))
@@ -1744,7 +1686,7 @@ def export_backtest_pdf():
 
 @app.route('/clear_all', methods=['POST'])
 def clear_all_alerts():
-    print("✅ /clear_all route hit")
+    print("âœ… /clear_all route hit")
     conn = sqlite3.connect(ALERTS_DB )
     conn.execute("DELETE FROM alerts")
     conn.commit()
@@ -1758,10 +1700,10 @@ def clear_alert(id):
         conn.execute("DELETE FROM alerts WHERE id=?", (id,))
         conn.commit()
         conn.close()
-        print(f"✅ Cleared alert #{id}")
+        print(f"âœ… Cleared alert #{id}")
         return jsonify({"success": True})
     except Exception as e:
-        print(f"❌ Error clearing alert #{id}: {e}")
+        print(f"âŒ Error clearing alert #{id}: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/launch_auth', methods=['POST'])
@@ -1771,11 +1713,11 @@ def launch_auth():
             ['start', 'cmd', '/k', 'python', 'etrade_auth_flow.py'],
             shell=True
         )
-        flash('🔑 E*TRADE Auth flow launched in new window.', 'info')
+        flash('ðŸ”‘ E*TRADE Auth flow launched in new window.', 'info')
     except Exception as e:
-        flash(f'❌ Error launching E*TRADE Auth: {e}', 'danger')
+        flash(f'âŒ Error launching E*TRADE Auth: {e}', 'danger')
     return redirect(url_for('index'))
-# ── 2) run_backtest: wipe + run + log to DB ────────────────────────────────────
+# â”€â”€ 2) run_backtest: wipe + run + log to DB â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 # at top of Dashboard.py
 BACKTEST_DB = os.path.join(os.getcwd(), 'backtest.db')
@@ -1785,7 +1727,7 @@ from services.trading_helpers import setup_simulation_db  # you already have thi
 
 @app.route('/simulation/reset', methods=['POST'])
 def nuke_simulation_db():
-    # re‐initialize your simulation schema
+    # reâ€initialize your simulation schema
     setup_simulation_db()
     flash("Simulation DB reset!", "success")
     return redirect(url_for('simulation'))
@@ -1793,7 +1735,7 @@ def nuke_simulation_db():
 @app.route('/reset_backtest', methods=['POST'])
 def reset_backtest():
     subprocess.run(['python','init_backtest_db.py'], check=True)
-    flash('✅ Backtest DB reset!', 'success')
+    flash('âœ… Backtest DB reset!', 'success')
     return redirect(url_for('backtest_view'))
 
 def simulation():
@@ -1802,7 +1744,7 @@ def simulation():
 
     # DEBUG: inspect first trade to see its shape
     if raw_trades:
-        print("🔍 raw_trades[0] =", raw_trades[0])
+        print("ðŸ” raw_trades[0] =", raw_trades[0])
 
     for t in raw_trades:
         # Case A: dict
@@ -1819,7 +1761,7 @@ def simulation():
 
         # Case B: tuple
         elif isinstance(t, tuple):
-            # Adjust this unpack order to match your service’s return
+            # Adjust this unpack order to match your serviceâ€™s return
             trade_time, symbol, action, qty, price, pnl = t
 
         else:
@@ -2040,7 +1982,7 @@ def start_scanner():
     )
     t.start()
 
-    flash("▶️ Simulation started (DB nuked first)", "success")
+    flash("â–¶ï¸ Simulation started (DB nuked first)", "success")
     return redirect(url_for(
         'simulation',
         starting_cash=starting_cash,
@@ -2175,7 +2117,7 @@ def simulation_view():
             if not isinstance(ts, datetime):
                 ts = datetime.fromisoformat(str(ts).split(".")[0])
 
-            # Convert UTC → Eastern
+            # Convert UTC â†’ Eastern
             eastern = pytz.timezone("America/New_York")
             if ts.tzinfo is None:
                 ts = pytz.UTC.localize(ts)  # assume stored in UTC
@@ -2322,23 +2264,23 @@ def simulation_buy():
         else:
             price = float(quote_data)
 
-        current_app.logger.info(f"💲 Using E*TRADE price for {symbol}: {price}")
+        current_app.logger.info(f"ðŸ’² Using E*TRADE price for {symbol}: {price}")
 
         # 3) Perform the buy with the live price
         result = buy_stock(symbol, qty, price)
         if result:
             return jsonify(success=True), 200
         else:
-            current_app.logger.error("❌ buy_stock() returned False")
+            current_app.logger.error("âŒ buy_stock() returned False")
             return jsonify(success=False, error="buy_stock() returned False"), 500
 
     except Exception as e:
-        current_app.logger.exception("🚨 Exception in simulation_buy")
+        current_app.logger.exception("ðŸš¨ Exception in simulation_buy")
         return jsonify(success=False, error=str(e)), 500
 
 
 
-    flash('✅ Backtest run complete!', 'success')
+    flash('âœ… Backtest run complete!', 'success')
     return redirect(
         url_for('backtest_view', **request.form)
     )
@@ -2417,7 +2359,7 @@ def export_backtest():
         "SELECT id FROM backtest_runs ORDER BY started_at DESC LIMIT 1"
     ).fetchone()
     if not row:
-        flash('❌ No backtest run in the database to export.', 'warning')
+        flash('âŒ No backtest run in the database to export.', 'warning')
         return redirect(url_for('backtest_view'))
     run_id = row['id']
 
@@ -2556,7 +2498,7 @@ def index():
             day_base = last_close
             change_day = display_price - last_close
         else:
-            # fallback: flat day change if we can’t get last_close
+            # fallback: flat day change if we canâ€™t get last_close
             day_base = last_close if last_close is not None else float(avg_cost or 0.0)
             ref_prev = prev_close if prev_close is not None else day_base
             change_day = day_base - ref_prev
@@ -2813,7 +2755,7 @@ def _normalize_account(raw: dict) -> dict:
         "account_id": account_id,
         "account_type": str(account_type),
     }
-# ── LIVE DASHBOARD ─────────────────────────────────────────────────────────────
+# â”€â”€ LIVE DASHBOARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/live", methods=["GET"])
 def live_view():
@@ -2909,7 +2851,7 @@ def live_view():
     except Exception:
         pass
 
-    # Render with empty trades and no KPI math — JS fills everything from /live/status
+    # Render with empty trades and no KPI math â€” JS fills everything from /live/status
     return render_template(
         "live.html",
         account=account,
@@ -2919,9 +2861,9 @@ def live_view():
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # LIVE STATUS (E*TRADE-only)
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.route("/live/status")
 @always_json
 def live_status():
@@ -3286,19 +3228,45 @@ def live_status():
             realized_pct = (realized_val / realized_basis * 100.0) if realized_basis > 0 else 0.0
 
             # PDT stats (last 5 trading days)
+            from datetime import date, timedelta
+
+            def _today_et_date():
+                # you already compute ET timestamps elsewhere; keep it simple here
+                # assuming server clock is fine; if you have a tz helper, use it.
+                return date.today()
+
+            def _is_trading_day(d: date) -> bool:
+                # Weekend filter is enough for your case (9/4 vs 9/22).
+                # If you want NYSE holidays toFP&Lo, you can add a small set here.
+                return d.weekday() < 5  # 0=Mon .. 4=Fri
+
+            def _last_n_trading_days(n: int, end: date | None = None) -> list[date]:
+                end = end or _today_et_date()
+                days = []
+                cur = end
+                while len(days) < n:
+                    if _is_trading_day(cur):
+                        days.append(cur)
+                    cur -= timedelta(days=1)
+                return list(reversed(days))  # oldest -> newest
+
+            # Build per-day counts from detected daytrades
             by_date = {}
-            for d in daytrades:
-                k = d["date"].isoformat()
+            for drec in daytrades:
+                k = drec["date"].isoformat()
                 rec = by_date.setdefault(k, {"count": 0, "profitable": 0})
                 rec["count"] += 1
-                if (d["pl"] or 0) > 0:
+                if (drec.get("pl") or 0) > 0:
                     rec["profitable"] += 1
 
-            pdt_dates = sorted({d["date"] for d in daytrades}, reverse=True)[:5]
+            # Rolling window = last 5 trading days *from today*
+            window = _last_n_trading_days(5)
+            window_keys = {d.isoformat() for d in window}
+
             pdt_total = 0
             pdt_map = {}
-            for dt_ in pdt_dates:
-                k = dt_.isoformat()
+            for d in window:
+                k = d.isoformat()
                 c = by_date.get(k, {"count": 0})
                 pdt_map[k] = {"count": c["count"]}
                 pdt_total += c["count"]
@@ -3405,7 +3373,7 @@ def live_status():
                     elif day_pl_pct is not None and last is not None and qty:
                         day_pl = (last * (day_pl_pct / 100.0)) * qty
 
-                # Legacy “change/percent” (kept so nothing else breaks)
+                # Legacy â€œchange/percentâ€ (kept so nothing else breaks)
                 change = (last - avg) if (last is not None and avg) else 0.0
                 change_pct = ((change / avg) * 100.0) if avg else 0.0
 
@@ -3416,7 +3384,7 @@ def live_status():
                     "last_price": round(last, 4) if last is not None else None,
                     "price_paid": round(avg, 4) if avg is not None else None,
 
-                    # ✅ what the Holdings table shows
+                    # âœ… what the Holdings table shows
                     "day_pl": round(day_pl, 2) if day_pl is not None else None,
                     "day_pl_pct": round(day_pl_pct, 2) if day_pl_pct is not None else None,
                     "total_pl": round(total_pl, 2) if total_pl is not None else None,
@@ -3496,14 +3464,14 @@ def live_status():
             pf = (pf[0] if pf else {}) or {}
 
         try:
-            # PortfolioResponse → AccountPortfolio (list|dict) → Position (list|dict)
+            # PortfolioResponse â†’ AccountPortfolio (list|dict) â†’ Position (list|dict)
             pr  = (pf.get("PortfolioResponse") or pf.get("portfolioResponse") or {})  # be case tolerant
             aps = _as_list(pr.get("AccountPortfolio") or pr.get("accountPortfolio"))
             raw_positions = []
             for ap in aps:
                 raw_positions.extend(_as_list(ap.get("Position") or ap.get("position")))
 
-            # Build long-qty map for “ensure a row exists…” logic
+            # Build long-qty map for â€œensure a row existsâ€¦â€ logic
             for pos in raw_positions:
                 prod = pos.get("Product") or {}
                 sym  = prod.get("symbol") or pos.get("symbol")
@@ -3528,8 +3496,125 @@ def live_status():
             pass
         quotes_dbg = [] if _debug_quotes else None
         from datetime import datetime, timedelta, timezone
+        # ---- Realized P&L buckets: Week / Last Week / Month / All -------------------
         from zoneinfo import ZoneInfo
-        ET = ZoneInfo("America/New_York")
+        _ET = ZoneInfo("America/New_York")
+
+        def _trade_dt_et(trow):
+            """
+            Returns an ET-aware datetime for a trade row. Supports:
+              - epoch ms in time_ms/time_utc
+              - "YYYY-MM-DD HH:MM:SS" in time or time_et
+              - ISO 8601 in time_utc
+            """
+            from datetime import datetime, timezone
+            val = trow.get("time_utc") or trow.get("time_ms") or trow.get("time") or trow.get("time_et")
+            if val is None:
+                return None
+            # epoch seconds/ms?
+            try:
+                v = float(val)
+                # treat >10_000_000_000 as ms
+                ts = v if v > 10_000_000_000 else v * 1000.0
+                return datetime.fromtimestamp(ts/1000.0, tz=timezone.utc).astimezone(_ET)
+            except Exception:
+                pass
+            # string parse
+            s = str(val).strip().replace("T", " ")
+            fmts = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d")
+            for fmt in fmts:
+                try:
+                    dt = datetime.strptime(s, fmt)
+                    # treat naive as ET
+                    return dt.replace(tzinfo=_ET)
+                except Exception:
+                    continue
+            # ISO with Z/offset
+            try:
+                dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=_ET)
+                return dt.astimezone(_ET)
+            except Exception:
+                return None
+
+        def summarize_realized_buckets(trades: list[dict]) -> dict:
+            """
+            Expects SELL rows to have FIFO-enriched fields `pl`, `pl_pct`, `price_paid`, `qty`.
+            Falls back to computing P&L from price - price_paid when needed.
+            Returns:
+              {
+                "week":      {"pnl": float, "pct": float},
+                "last_week": {"pnl": float, "pct": float},
+                "month":     {"pnl": float, "pct": float},
+                "all":       {"pnl": float, "pct": float},
+              }
+            """
+            from datetime import datetime, timedelta
+
+            today_et = datetime.now(_ET).date()
+            # Week windows (Mon..Sun)
+            week_start     = today_et - timedelta(days=today_et.weekday())
+            last_week_end   = week_start - timedelta(days=1)
+            last_week_start = last_week_end - timedelta(days=6)
+            # Month
+            month_start = today_et.replace(day=1)
+
+            buckets = {
+                "week":      {"pnl": 0.0, "basis": 0.0},
+                "last_week": {"pnl": 0.0, "basis": 0.0},
+                "month":     {"pnl": 0.0, "basis": 0.0},
+                "all":       {"pnl": 0.0, "basis": 0.0},
+            }
+
+            def add(dt_et, pnl, basis):
+                d = dt_et.date()
+                buckets["all"]["pnl"]   += pnl
+                buckets["all"]["basis"] += basis
+                if d >= week_start:
+                    buckets["week"]["pnl"]   += pnl
+                    buckets["week"]["basis"] += basis
+                if last_week_start <= d <= last_week_end:
+                    buckets["last_week"]["pnl"]   += pnl
+                    buckets["last_week"]["basis"] += basis
+                if d >= month_start:
+                    buckets["month"]["pnl"]   += pnl
+                    buckets["month"]["basis"] += basis
+
+            for t in (trades or []):
+                if (t.get("action") or "").upper() != "SELL":
+                    continue
+                dt = _trade_dt_et(t)
+                if not dt:
+                    continue
+
+                qty  = float(t.get("qty") or 0) or 0.0
+                pl   = t.get("pl")
+                paid = t.get("price_paid")
+                px   = t.get("price")
+
+                # prefer FIFO-enriched pl/basis if present
+                if pl is not None and paid is not None and qty > 0:
+                    pnl   = float(pl)
+                    basis = float(paid) * qty
+                else:
+                    # fallback compute
+                    try:
+                        px = float(px); paid = float(paid); qty = float(qty)
+                        pnl   = (px - paid) * qty
+                        basis = max(paid * qty, 0.0)
+                    except Exception:
+                        continue
+
+                add(dt, float(pnl), float(basis))
+
+            # convert to {pnl, pct}
+            out = {}
+            for k, v in buckets.items():
+                pnl = round(v["pnl"], 2)
+                pct = round((pnl / v["basis"] * 100.0), 2) if v["basis"] > 0 else 0.0
+                out[k] = {"pnl": pnl, "pct": pct}
+            return out
 
         def realized_buckets_from_trades(trades):
             """
@@ -3538,7 +3623,7 @@ def live_status():
             to compute a simple % = pnl / cost * 100.
             """
             # time windows (ET)
-            now = datetime.now(ET)
+            now = datetime.now(_et())
             week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
             last_week_start = week_start - timedelta(days=7)
             last_week_end = week_start
@@ -3553,17 +3638,17 @@ def live_status():
             }
 
             def _ts(t):
-                # prefer ms → utc, then time_utc, then naive ET 'time'
+                # prefer ms â†’ utc, then time_utc, then naive ET 'time'
                 if t.get("time_ms"):
-                    return datetime.fromtimestamp(float(t["time_ms"]) / 1000.0, tz=timezone.utc).astimezone(ET)
+                    return datetime.fromtimestamp(float(t["time_ms"]) / 1000.0, tz=timezone.utc).astimezone(_et())
                 if t.get("time_utc"):
                     try:
-                        return datetime.strptime(t["time_utc"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).astimezone(ET)
+                        return datetime.strptime(t["time_utc"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).astimezone(_et())
                     except Exception:
                         pass
                 if t.get("time"):  # treat as ET
                     try:
-                        return datetime.strptime(t["time"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=ET)
+                        return datetime.strptime(t["time"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=_et())
                     except Exception:
                         pass
                 return None
@@ -3623,7 +3708,7 @@ def live_status():
                         if isinstance(obj, (list, tuple)):
                             return {"type": "list", "len": len(obj)}
                         s = str(obj)
-                        return (s[:160] + "…") if len(s) > 160 else s
+                        return (s[:160] + "â€¦") if len(s) > 160 else s
                     except Exception:
                         return "<glimpse-failed>"
                 quotes_dbg.append({"tag": tag, "glimpse": _glimpse(raw)})
@@ -3807,7 +3892,7 @@ def live_status():
         except Exception:
             realized_buckets = {
                 "week": {"pnl": 0.0, "pct": 0.0},
-                "last_week": {"pnl": 0.0, "pct": 0.0},   # <— add
+                "last_week": {"pnl": 0.0, "pct": 0.0},   # <â€” add
                 "month": {"pnl": 0.0, "pct": 0.0},
                 "all": {"pnl": 0.0, "pct": 0.0},
             }
@@ -3893,7 +3978,7 @@ def live_status():
         open_since = {}
 
         try:
-            # use the chronological, pre-enriched list ("mapped") — that's enough
+            # use the chronological, pre-enriched list ("mapped") â€” that's enough
             open_since = _open_since_map(mapped) if mapped else {}
         except Exception as e:
             _log("warning", "[LIVE] open_since_map failed: %s", e)
@@ -3941,9 +4026,10 @@ def live_status():
         except Exception:
             current_app.logger.exception("realized_buckets summarize failed")
             realized_buckets = {
-                "week": {"pnl": 0.0, "pct": 0.0},
-                "month": {"pnl": 0.0, "pct": 0.0},
-                "all": {"pnl": 0.0, "pct": 0.0},
+                "week":      {"pnl": 0.0, "pct": 0.0},
+                "last_week": {"pnl": 0.0, "pct": 0.0},
+                "month":     {"pnl": 0.0, "pct": 0.0},
+                "all":       {"pnl": 0.0, "pct": 0.0},
             }
 
         for t in trades_enriched:
