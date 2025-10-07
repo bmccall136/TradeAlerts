@@ -8,7 +8,8 @@ cur = conn.cursor()
 cur.execute("DROP TABLE IF EXISTS alerts")
 
 # Recreate the alerts table with correct schema
-cur.execute("""
+cur.execute(
+    """
 CREATE TABLE alerts (
     symbol TEXT,
     name TEXT,
@@ -19,7 +20,8 @@ CREATE TABLE alerts (
     sparkline TEXT,
     signal_type TEXT
 )
-""")
+"""
+)
 
 conn.commit()
 conn.close()

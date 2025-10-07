@@ -1,6 +1,9 @@
 # fetch_accounts.py
 
-import sys, logging, pprint
+import logging
+import pprint
+import sys
+
 # ensure your project package imports correctly
 sys.path.insert(0, ".")
 
@@ -10,8 +13,7 @@ logger = logging.getLogger("debug")
 logger.setLevel(logging.DEBUG)
 
 resp = client.session.get(
-    f"{client.base_url}/v1/accounts/list.json",
-    params={"needBalances": "true"}
+    f"{client.base_url}/v1/accounts/list.json", params={"needBalances": "true"}
 )
 
 print("Status:", resp.status_code)

@@ -1,20 +1,21 @@
+import ctypes
+import io
+import json  # ← add this (or move it up if it’s below your main)
+import logging
 import os
 import sys
-import io
-import logging
-import json                      # ← add this (or move it up if it’s below your main)
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
+
 from dotenv import load_dotenv
-import os, ctypes
+
 from services.trading_helpers import setup_simulation_db
-from services.trading_helpers import fetch_intraday_vwap
 
 # before any get_cash()/buy()/sell() calls:
 setup_simulation_db()
 
 # switch Windows console into UTF‑8 mode
-os.system('chcp 65001 > nul')                 # simpler, fires off "chcp 65001"
+os.system("chcp 65001 > nul")  # simpler, fires off "chcp 65001"
 ctypes.windll.kernel32.SetConsoleOutputCP(65001)
 ctypes.windll.kernel32.SetConsoleCP(65001)
 
@@ -51,24 +52,21 @@ logger.debug(f"E*TRADE Consumer Key: {os.getenv('CONSUMER_KEY')}")
 
 # ─── Environment for simulation DB ───────────────────────────────────────────
 from settings import SIMULATION_DB
+
 os.environ["ALERT_DB_PATH"] = SIMULATION_DB
 
 # ─── Core imports (after env & logging) ─────────────────────────────────────
+from services.settings_schema import extract_simulation_settings
+from services.simulation_service import run_simulation_loop
 from services.trading_helpers import (
     setup_simulation_db,
-    check_if_position_open,
-    enter_trade,
-    check_exit_orders,
-    compute_qty,
 )
-from services.settings_schema import SimulationSettings, extract_simulation_settings
-from services.market_service import get_symbols, analyze_symbol
-from services.simulation_service import run_simulation_loop, stop_simulation
+
 
 # ─── Main routine ────────────────────────────────────────────────────────────
 def main():
     # load simulation config
-    cfg_path = Path(__file__).parent / 'simulation_config.json'
+    cfg_path = Path(__file__).parent / "simulation_config.json"
     with open(cfg_path) as f:
         cfg = json.load(f)
     print("Loaded config:", cfg)
@@ -85,6 +83,7 @@ def main():
 
     except KeyboardInterrupt:
         print("Simulation interrupted by user.")
+
 
 if __name__ == "__main__":
     main()

@@ -49,7 +49,7 @@ Before placing **any** BUY in a margin account:
 **Minimal Pseudocode**
 ```python
 def can_day_trade(today_count, equity):
-    if equity >= 25000: 
+    if equity >= 25000:
         return True
     return today_count < 3
 
@@ -116,7 +116,7 @@ if account.type == "MARGIN":
 
 ---
 
-**Bottom line for small accounts:**  
-- Favor **swings (2–5 days)** to avoid PDT choke.  
-- Use **scalp guard** intraday for safety.  
-- Reserve **day trades** for only your best setups.  
+**Bottom line for small accounts:**
+- Favor **swings (2–5 days)** to avoid PDT choke.
+- Use **scalp guard** intraday for safety.
+- Reserve **day trades** for only your best setups.

@@ -6,7 +6,8 @@ cursor = conn.cursor()
 # Rename 'time' column to 'timestamp'
 try:
     cursor.execute("ALTER TABLE alerts RENAME TO alerts_old;")
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE alerts (
             symbol TEXT,
             name TEXT,
@@ -18,11 +19,14 @@ try:
             chart_url TEXT,
             signal_type TEXT
         );
-    """)
-    cursor.execute("""
+    """
+    )
+    cursor.execute(
+        """
         INSERT INTO alerts (symbol, name, signal, timestamp, confidence)
         SELECT symbol, name, signal, time, confidence FROM alerts_old;
-    """)
+    """
+    )
     cursor.execute("DROP TABLE alerts_old;")
     print("✅ Schema fixed and 'timestamp' added.")
 except Exception as e:

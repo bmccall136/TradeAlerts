@@ -243,7 +243,7 @@ def compute_vwap(
     """
     Compute the most recent VWAP (volume weighted average price)
     from a DataFrame with lower-cased columns ['high','low','close','volume'].
-    
+
     The `threshold` argument is accepted for backwards compatibility but ignored here.
     """
     # sanity-check

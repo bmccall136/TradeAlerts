@@ -1,48 +1,54 @@
 from __future__ import annotations
-import os, time, logging
-from typing import Iterable
+
+import logging
+import os
+import time
+from collections.abc import Iterable
+
+from services.broker_live import (
+    BASE as _BASE,  # https://api.etrade.com/v1
+)
 
 # Reuse the proven live session + base URL from broker_live
 from services.broker_live import (
-    _sesh,                   # OAuth1 session
-    get_account_id_key,      # robust accountIdKey
-    BASE as _BASE,           # https://api.etrade.com/v1
-    get_quote as _get_quote, # raw quotes
+    _sesh,  # OAuth1 session
+    get_account_id_key,  # robust accountIdKey
+)
+from services.broker_live import (
+    get_quote as _get_quote,  # raw quotes
 )
 
 log = logging.getLogger("etrade_service")
 
-from typing import Any, Dict, List, Tuple
+from datetime import UTC, datetime, timedelta, timezone
+from typing import Any
 
-import os
-from services.broker_live import _sesh, get_account_id_key as _get_aid
+from services.broker_live import get_account_id_key as _get_aid
 
-from datetime import datetime, timedelta, timezone
 try:
     import zoneinfo  # Py3.9+
 except Exception:
     zoneinfo = None
 
-from datetime import datetime, timedelta, timezone
+
 try:
     import zoneinfo
 except Exception:
     zoneinfo = None
 
 # --- time helpers (Eastern) ---
-from datetime import datetime, timezone
+
 try:
     import zoneinfo
 except Exception:
     zoneinfo = None
 
-from datetime import datetime, timedelta, timezone
+
 try:
     import zoneinfo
 except Exception:
     zoneinfo = None
 
-from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
@@ -56,6 +62,7 @@ _DOT_TICKER_FIXES = {
 
 # aliases so legacy calls don't blow up
 
+
 # ---------- OPEN ORDERS (robust) ----------
 def get_open_orders(account_id_key: str, days: int = 14) -> dict:
     """
@@ -66,8 +73,9 @@ def get_open_orders(account_id_key: str, days: int = 14) -> dict:
 
     # 1) no dates – many tenants accept this and avoid 400s
     try:
-        return _eget(f"/accounts/{account_id_key}/orders.json",
-                     params={"status": "OPEN"})
+        return _eget(
+            f"/accounts/{account_id_key}/orders.json", params={"status": "OPEN"}
+        )
     except Exception:
         pass
 
@@ -89,8 +97,7 @@ def get_open_orders(account_id_key: str, days: int = 14) -> dict:
             continue
 
     # 3) last resort – bubble the error for visibility
-    return _eget(f"/accounts/{account_id_key}/orders.json",
-                 params={"status": "OPEN"})
+    return _eget(f"/accounts/{account_id_key}/orders.json", params={"status": "OPEN"})
 
 
 def open_sell_qty_map(account_id_key: str) -> dict[str, float]:
@@ -103,13 +110,15 @@ def open_sell_qty_map(account_id_key: str) -> dict[str, float]:
 
     def _to_f(x):
         try:
-            if x is None: return 0.0
+            if x is None:
+                return 0.0
             return float(str(x).replace(",", "").strip())
         except Exception:
             return 0.0
 
     def _put(sym, qty):
-        if not sym: return
+        if not sym:
+            return
         key = str(sym).upper()
         out[key] = out.get(key, 0.0) + max(0.0, _to_f(qty))
 
@@ -121,14 +130,22 @@ def open_sell_qty_map(account_id_key: str) -> dict[str, float]:
             sym = n.get("symbol") or (n.get("Product") or {}).get("symbol")
 
             # quantities (prefer remaining if present)
-            qty = (n.get("remainingQuantity") or n.get("remainingQty") or
-                   n.get("orderedQuantity") or n.get("quantity") or
-                   n.get("qty"))
+            qty = (
+                n.get("remainingQuantity")
+                or n.get("remainingQty")
+                or n.get("orderedQuantity")
+                or n.get("quantity")
+                or n.get("qty")
+            )
 
             # If this node clearly looks like an order-leg, process it.
-            if action.startswith("SELL") and (st in ("OPEN", "WORKING", "PARTIALLY_FILLED", "")):
+            if action.startswith("SELL") and (
+                st in ("OPEN", "WORKING", "PARTIALLY_FILLED", "")
+            ):
                 # adjust for partial fills if we can see it
-                filled = _to_f(n.get("filledQuantity") or n.get("executedQuantity") or 0)
+                filled = _to_f(
+                    n.get("filledQuantity") or n.get("executedQuantity") or 0
+                )
                 if qty is not None:
                     rem = _to_f(qty) - max(0.0, filled)
                     _put(sym, rem)
@@ -146,6 +163,35 @@ def open_sell_qty_map(account_id_key: str) -> dict[str, float]:
     return {k: (v if v > 0 else 0.0) for k, v in out.items()}
 
 
+# --- add near imports ---
+import threading
+
+_QUOTE_CACHE = {"key": None, "asof": 0.0, "data": None}
+_QUOTE_LOCK = threading.Lock()
+
+
+def _norm_syms(symbols):
+    if isinstance(symbols, (list, tuple, set)):
+        syms = [str(s).replace(".", "-").upper().strip() for s in symbols if s]
+    else:
+        syms = [str(symbols).replace(".", "-").upper().strip()]
+    # stable, deduped
+    return tuple(sorted(dict.fromkeys(syms)))
+
+
+def _cache_get(key: tuple, ttl: float = 2.0):
+    now = time.time()
+    with _QUOTE_LOCK:
+        if _QUOTE_CACHE["key"] == key and (now - _QUOTE_CACHE["asof"]) < ttl:
+            return _QUOTE_CACHE["data"]
+    return None
+
+
+def _cache_put(key: tuple, data):
+    with _QUOTE_LOCK:
+        _QUOTE_CACHE.update({"key": key, "asof": time.time(), "data": data})
+
+
 def available_to_sell(account_id_key: str, symbol: str) -> int:
     """
     Clamp what we attempt to sell to: long_qty(symbol) - reserved_open_sell_qty(symbol)
@@ -156,6 +202,7 @@ def available_to_sell(account_id_key: str, symbol: str) -> int:
     avail = int(max(0.0, float(long_map.get(sym, 0.0)) - float(open_map.get(sym, 0.0))))
     return avail
 
+
 def long_qty_map() -> dict[str, float]:
     """
     Return {SYM: qty_available} using positions.
@@ -163,10 +210,11 @@ def long_qty_map() -> dict[str, float]:
     """
     out = {}
     raw = get_positions() or []
+
     def visit(n):
         if isinstance(n, dict):
             prod = n.get("Product") or n.get("product") or {}
-            sym  = _sym_upper(n.get("symbol") or prod.get("symbol"))
+            sym = _sym_upper(n.get("symbol") or prod.get("symbol"))
             if sym:
                 q = _dig_available_qty(n)
                 if q is not None:
@@ -176,8 +224,10 @@ def long_qty_map() -> dict[str, float]:
         elif isinstance(n, (list, tuple)):
             for v in n:
                 visit(v)
+
     visit(raw)
     return out
+
 
 def _normalize_account(raw):
     """
@@ -187,6 +237,7 @@ def _normalize_account(raw):
     - settled_cash            -> alias of available_to_withdraw (UI uses this id)
     - equity_value            -> netAccountValue (aka Net Account Value)
     """
+
     def _dig(node, names):
         # recursive lookup by key name anywhere in the blob
         if node is None:
@@ -210,26 +261,26 @@ def _normalize_account(raw):
         try:
             if x is None:
                 return None
-            return float(str(x).replace(',', '').strip())
+            return float(str(x).replace(",", "").strip())
         except Exception:
             return None
 
     r = raw or {}
 
-    buying_power = _to_f(_dig(r, {
-        "marginBuyingPower", "cashBuyingPower", "buyingPower"
-    }))
+    buying_power = _to_f(
+        _dig(r, {"marginBuyingPower", "cashBuyingPower", "buyingPower"})
+    )
 
-    available_to_withdraw = _to_f(_dig(r, {
-        "cashAvailableForWithdrawal"  # this is what the site shows
-    }))
+    available_to_withdraw = _to_f(
+        _dig(r, {"cashAvailableForWithdrawal"})  # this is what the site shows
+    )
 
     # Keep the old key the UI currently reads
     settled_cash = available_to_withdraw
 
-    equity_value = _to_f(_dig(r, {
-        "netAccountValue", "netAssets", "netValue", "totalAccountValue"
-    }))
+    equity_value = _to_f(
+        _dig(r, {"netAccountValue", "netAssets", "netValue", "totalAccountValue"})
+    )
 
     out = {
         "buying_power": buying_power,
@@ -245,6 +296,7 @@ def _normalize_account(raw):
 
     return out
 
+
 def available_to_sell(account_id_key: str, symbol: str) -> int:
     """
     Integer shares actually free to sell now:
@@ -255,6 +307,8 @@ def available_to_sell(account_id_key: str, symbol: str) -> int:
     open_map = open_sell_qty_map(account_id_key)
     avail = max(0.0, float(long_map.get(sym, 0.0)) - float(open_map.get(sym, 0.0)))
     return int(avail // 1)  # ensure whole shares
+
+
 def _normalize_symbol(sym: str) -> str:
     if not sym:
         return sym
@@ -263,6 +317,7 @@ def _normalize_symbol(sym: str) -> str:
     if "-" in s and len(s.split("-")[-1]) <= 2:
         s = s.replace("-", ".")
     return _DOT_TICKER_FIXES.get(s, s)
+
 
 def _visit(node, fn):
     """Depth-first walk calling fn(dict_node)."""
@@ -274,30 +329,42 @@ def _visit(node, fn):
         for v in node:
             _visit(v, fn)
 
+
 def list_open_orders(symbol: str | None = None) -> list[dict]:
     aid = account_id_key()
     s = get_oauth_session()
-    r = s.get(f"https://api.etrade.com/v1/accounts/{aid}/orders.json",
-              params={"status":"OPEN","count":50,"sortOrder":"DESC"},
-              timeout=15)
-    if r.status_code == 204: return []
+    r = s.get(
+        f"https://api.etrade.com/v1/accounts/{aid}/orders.json",
+        params={"status": "OPEN", "count": 50, "sortOrder": "DESC"},
+        timeout=15,
+    )
+    if r.status_code == 204:
+        return []
     r.raise_for_status()
     j = r.json() or {}
     orders = (j.get("OrdersResponse") or {}).get("Order") or []
-    if isinstance(orders, dict): orders = [orders]
+    if isinstance(orders, dict):
+        orders = [orders]
     rows = []
     for o in orders:
-        for d in (o.get("OrderDetail") or []):
-            for ins in (d.get("Instrument") or []):
+        for d in o.get("OrderDetail") or []:
+            for ins in d.get("Instrument") or []:
                 prod = ins.get("Product") or {}
                 sym = (prod.get("symbol") or "").upper()
                 if symbol and sym != str(symbol).upper():
                     continue
-                rows.append({
-                    "symbol": sym,
-                    "action": (ins.get("orderAction") or "").upper(),
-                    "qty": int(float(ins.get("quantity") or ins.get("orderedQuantity") or 0) or 0),
-                })
+                rows.append(
+                    {
+                        "symbol": sym,
+                        "action": (ins.get("orderAction") or "").upper(),
+                        "qty": int(
+                            float(
+                                ins.get("quantity") or ins.get("orderedQuantity") or 0
+                            )
+                            or 0
+                        ),
+                    }
+                )
     return rows
 
 
@@ -306,6 +373,57 @@ def get_balances(account_id_key: str) -> dict:
         f"/accounts/{account_id_key}/balance.json",
         params={"instType": "BROKERAGE", "realTimeNAV": "true"},
     )
+
+
+# ---- Identity (numeric id + key + type) -------------------------------------
+def account_identity() -> dict:
+    """
+    {
+      "account_id": "153737458",
+      "account_id_key": "kW8L…",
+      "account_type": "INDIVIDUAL",
+      "account_type_display": "Individual Brokerage"
+    }
+    """
+    sess = get_oauth_session()
+    r = sess.get("https://api.etrade.com/v1/accounts/list.json", timeout=15)
+    r.raise_for_status()
+    j = r.json() or {}
+    accounts = (
+        j.get("AccountListResponse", {}).get("Accounts", {}).get("Account", [])
+    ) or j.get("accounts", [])
+    if isinstance(accounts, dict):
+        accounts = [accounts]
+
+    key_wanted = account_id_key()
+    pick = None
+    for a in accounts:
+        if (a.get("accountIdKey") or a.get("accountIdKeyValue")) == key_wanted:
+            pick = a
+            break
+    if pick is None and accounts:
+        pick = accounts[0]
+
+    acct_id = (pick.get("accountId") or pick.get("accountIdValue") or "").strip()
+    acct_key = (pick.get("accountIdKey") or pick.get("accountIdKeyValue") or "").strip()
+    typ = (pick.get("accountType") or "").strip().upper()
+    typ_disp = (
+        pick.get("accountDesc")
+        or pick.get("accountTypeDesc")
+        or pick.get("displayName")
+        or typ
+        or "Brokerage"
+    )
+
+    return {
+        "account_id": acct_id,
+        "account_id_key": acct_key,
+        "account_type": typ or "BROKERAGE",
+        "account_type_display": typ_disp,
+    }
+
+
+# ---- Summary (raw + UI-normalized) ------------------------------------------
 
 
 def account_id_key() -> str:
@@ -338,12 +456,9 @@ def account_id_key() -> str:
         r = sess.get("https://api.etrade.com/v1/accounts/list.json", timeout=15)
         r.raise_for_status()
         j = r.json() or {}
-        accounts = (
-            j.get("AccountListResponse", {})
-             .get("Accounts", {})
-             .get("Account", [])
-            or j.get("accounts", [])
-        )
+        accounts = j.get("AccountListResponse", {}).get("Accounts", {}).get(
+            "Account", []
+        ) or j.get("accounts", [])
         for a in accounts:
             key = a.get("accountIdKey") or a.get("accountIdKeyValue")
             if key:
@@ -357,21 +472,24 @@ def account_id_key() -> str:
         "or ensure OAuth is valid so /v1/accounts/list.json can be queried."
     )
 
+
 def _now_et():
     if zoneinfo:
         try:
             return datetime.now(zoneinfo.ZoneInfo("America/New_York"))
         except Exception:
             pass
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
+
 
 def _is_same_et_day(ts: datetime) -> bool:
     return ts.astimezone(_now_et().tzinfo).date() == _now_et().date()
-from datetime import datetime, timezone
 
-from datetime import datetime, timezone
+
 from zoneinfo import ZoneInfo
+
 ET = ZoneInfo("America/New_York")
+
 
 def _parse_any_ts(ts):
     """
@@ -392,17 +510,19 @@ def _parse_any_ts(ts):
                     dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
                 except Exception:
                     from dateutil import parser as _p
+
                     dt = _p.parse(s)
                 if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                return dt.astimezone(timezone.utc)
+                    dt = dt.replace(tzinfo=UTC)
+                return dt.astimezone(UTC)
         if t > 10_000_000_000:  # ms → s
             t /= 1000.0
         if t < 0:
             return None
-        return datetime.fromtimestamp(t, tz=timezone.utc)
+        return datetime.fromtimestamp(t, tz=UTC)
     except Exception:
         return None
+
 
 def get_quote(symbol: str, detailFlag: str | None = None) -> dict:
     """
@@ -412,40 +532,43 @@ def get_quote(symbol: str, detailFlag: str | None = None) -> dict:
     sym = str(symbol).strip().upper()
     try:
         # Try passing the flag positionally if provided
-        return _get_quote(sym, detailFlag) if detailFlag is not None else _get_quote(sym)
+        return (
+            _get_quote(sym, detailFlag) if detailFlag is not None else _get_quote(sym)
+        )
     except TypeError:
         # Older broker_live.get_quote has no detailFlag param — just call without it
         return _get_quote(sym) or {}
     except Exception:
         return {}
+
+
 # --- E*TRADE quotes: batch fetch ---
 def get_quotes(symbols, detailFlag: str | None = None, **kwargs) -> dict:
-    # symbols can be str or a collection
-    if isinstance(symbols, (list, tuple, set)):
-        csv = ",".join(s.strip().upper() for s in symbols if s)
-    else:
-        csv = str(symbols).strip().upper()
+    syms = _norm_syms(symbols)
+    key = (syms, detailFlag or "ALL")
+    hit = _cache_get(key, ttl=2.0)
+    if hit is not None:
+        return hit
+    # existing body: build csv *from syms* and make the HTTP call...
+    csv = ",".join(syms)
+    # ... existing request/parse into `resp` ...
+    # finally:
+    _cache_put(key, resp or {})
+    return resp or {}
 
-    path = f"/v1/market/quote/{csv}.json"  # <-- important: symbols in the path
-    params = {}
-    if detailFlag:
-        params["detailFlag"] = detailFlag
-    params.update(kwargs or {})
-    return http_get(path, params) or {}
 
 # Optional: a convenience that returns a normalized {SYM: {"last":..,"prev":..}}
-from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 ET = ZoneInfo("America/New_York")
 
+
 def _fmt_mmddyyyy(dt: datetime) -> str:
     return dt.astimezone(ET).strftime("%m%d%Y")
 
-from typing import Dict, List
 
 # --- Build symbol -> {last: float} map for the UI ---
-from typing import Dict, List
+
 
 def _num(x):
     """Coerce API values to float or None (also unwraps dict shapes like {'value': 123.45})."""
@@ -465,7 +588,7 @@ def _num(x):
         return None
 
 
-def get_quotes_map(symbols: List[str]) -> Dict[str, Dict[str, float]]:
+def get_quotes_map(symbols: list[str]) -> dict[str, dict[str, float]]:
     resp = get_quotes(symbols, detailFlag="ALL")
     qr = (resp or {}).get("QuoteResponse") or {}
     if qr.get("Messages"):
@@ -476,7 +599,7 @@ def get_quotes_map(symbols: List[str]) -> Dict[str, Dict[str, float]]:
         return {}
     qlist = [qd] if isinstance(qd, dict) else [x for x in qd if isinstance(x, dict)]
 
-    out: Dict[str, Dict[str, float]] = {}
+    out: dict[str, dict[str, float]] = {}
     for item in qlist:
         prod = item.get("Product") or {}
         sym = (prod.get("symbol") or "").upper()
@@ -485,13 +608,19 @@ def get_quotes_map(symbols: List[str]) -> Dict[str, Dict[str, float]]:
         quick = item.get("Quick") or {}
 
         last = (
-            allb.get("lastTrade") or intr.get("lastTrade") or quick.get("lastTrade")
-            or allb.get("lastPrice") or quick.get("lastPrice")
+            allb.get("lastTrade")
+            or intr.get("lastTrade")
+            or quick.get("lastTrade")
+            or allb.get("lastPrice")
+            or quick.get("lastPrice")
         )
         prev = (
-            allb.get("previousClose") or quick.get("previousClose")
-            or allb.get("priorClose") or quick.get("priorClose")
-            or allb.get("close") or quick.get("close")
+            allb.get("previousClose")
+            or quick.get("previousClose")
+            or allb.get("priorClose")
+            or quick.get("priorClose")
+            or allb.get("close")
+            or quick.get("close")
         )
 
         # If prev still missing, try to back-solve from netChange
@@ -511,6 +640,8 @@ def get_quotes_map(symbols: List[str]) -> Dict[str, Dict[str, float]]:
         except (TypeError, ValueError):
             pass
     return out
+
+
 # --- executed orders (count-based) -------------------------------------------
 def list_executed_orders_recent(count: int = 50) -> dict:
     acct = account_id_key()
@@ -527,26 +658,36 @@ def list_executed_orders_recent(count: int = 50) -> dict:
 
 
 def extract_funds(bal: dict):
-    comp = (bal or {}).get("computedBalance", {}) or (bal or {}).get("Computed", {}) or {}
+    comp = (
+        (bal or {}).get("computedBalance", {}) or (bal or {}).get("Computed", {}) or {}
+    )
     # Buying power
-    bp = comp.get("marginBuyingPower") \
-         or comp.get("cashBuyingPower") \
-         or comp.get("buyingPower") \
-         or comp.get("cashAvailableForWithdrawal")
+    bp = (
+        comp.get("marginBuyingPower")
+        or comp.get("cashBuyingPower")
+        or comp.get("buyingPower")
+        or comp.get("cashAvailableForWithdrawal")
+    )
     # Settled cash
-    settled = comp.get("settledCash") \
-             or comp.get("cashAvailableForWithdrawal") \
-             or comp.get("cashBalance")
+    settled = (
+        comp.get("settledCash")
+        or comp.get("cashAvailableForWithdrawal")
+        or comp.get("cashBalance")
+    )
     try:
-        return (float(bp) if bp is not None else None,
-                float(settled) if settled is not None else None)
+        return (
+            float(bp) if bp is not None else None,
+            float(settled) if settled is not None else None,
+        )
     except Exception:
         return (None, None)
+
 
 # --- numeric helper (guard) ---
 try:
     _to_f
 except NameError:
+
     def _to_f(x):
         try:
             if x is None:
@@ -556,6 +697,7 @@ except NameError:
             return float(str(x).replace(",", "").strip())
         except Exception:
             return None
+
 
 def _enrich_with_transactions(rows, days=30):
     """
@@ -571,10 +713,10 @@ def _enrich_with_transactions(rows, days=30):
     # Prebuild simplified view of tx SELLs
     candidates = []
     for t in txs:
-        br   = (t.get("brokerage") or {})
-        prod = (br.get("product") or {})
-        sym  = (t.get("symbol") or prod.get("symbol") or "").upper()
-        gl   = t.get("gainLoss") or t.get("gain")
+        br = t.get("brokerage") or {}
+        prod = br.get("product") or {}
+        sym = (t.get("symbol") or prod.get("symbol") or "").upper()
+        gl = t.get("gainLoss") or t.get("gain")
         try:
             qty = int(abs(float(br.get("quantity") or 0)))
         except Exception:
@@ -608,7 +750,7 @@ def _enrich_with_transactions(rows, days=30):
             try:
                 pl = float(best["gl"])
                 qty = float(r["qty"] or 0.0)
-                px  = float(r.get("price") or 0.0)
+                px = float(r.get("price") or 0.0)
                 price_paid = round(px - (pl / qty), 2) if qty else 0.0
                 denom = price_paid * qty
                 r["price_paid"] = price_paid
@@ -622,9 +764,10 @@ def _enrich_with_transactions(rows, days=30):
             r["pl"] = 0.0
             r["pl_pct"] = 0.0
 
+
 # --- BEGIN: realized P&L buckets --------------------------------------------
-from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+
 
 def _to_dt_utc(ts):
     if not ts:
@@ -642,10 +785,12 @@ def _to_dt_utc(ts):
         except Exception:
             return None
 
+
 def recent_executions_as_trades(count: int = 50) -> list[dict]:
     """
     Newest→oldest EXECUTED trades from Orders API, with ET time and P&L where possible.
     """
+
     # Normalize orders payload
     def _normalize_orders_list(j: dict) -> list:
         if not j:
@@ -665,8 +810,13 @@ def recent_executions_as_trades(count: int = 50) -> list[dict]:
 
     rows: list[dict] = []
     for o in orders:
-        o_ts = (o.get("executedTime") or o.get("placeTime")
-                or o.get("placedTime") or o.get("orderTime") or o.get("updateTime"))
+        o_ts = (
+            o.get("executedTime")
+            or o.get("placeTime")
+            or o.get("placedTime")
+            or o.get("orderTime")
+            or o.get("updateTime")
+        )
 
         details = o.get("OrderDetail") or o.get("orderDetail") or []
         if isinstance(details, dict):
@@ -676,8 +826,8 @@ def recent_executions_as_trades(count: int = 50) -> list[dict]:
 
         for d in details:
             ts = d.get("filledTime") or d.get("executedTime") or o_ts
-            dt_utc = _parse_any_ts(ts) or datetime.now(timezone.utc)
-            dt_et  = dt_utc.astimezone(ET)
+            dt_utc = _parse_any_ts(ts) or datetime.now(UTC)
+            dt_et = dt_utc.astimezone(ET)
 
             instrs = d.get("Instrument") or d.get("instrument") or []
             if isinstance(instrs, dict):
@@ -685,16 +835,26 @@ def recent_executions_as_trades(count: int = 50) -> list[dict]:
 
             for ins in instrs:
                 prod = ins.get("Product") or ins.get("product") or {}
-                sym  = (prod.get("symbol") or ins.get("symbol") or "").upper()
+                sym = (prod.get("symbol") or ins.get("symbol") or "").upper()
                 if not sym:
                     continue
 
-                side = (ins.get("orderAction") or d.get("orderAction") or
-                        o.get("orderAction") or "").upper() or "BUY"
+                side = (
+                    ins.get("orderAction")
+                    or d.get("orderAction")
+                    or o.get("orderAction")
+                    or ""
+                ).upper() or "BUY"
 
-                qty = (ins.get("filledQuantity") or d.get("filledQuantity") or
-                       ins.get("orderedQuantity") or d.get("orderedQuantity") or
-                       ins.get("quantity") or d.get("quantity") or 0)
+                qty = (
+                    ins.get("filledQuantity")
+                    or d.get("filledQuantity")
+                    or ins.get("orderedQuantity")
+                    or d.get("orderedQuantity")
+                    or ins.get("quantity")
+                    or d.get("quantity")
+                    or 0
+                )
                 try:
                     qty = float(qty or 0)
                 except Exception:
@@ -702,41 +862,58 @@ def recent_executions_as_trades(count: int = 50) -> list[dict]:
                 if qty == 0.0:
                     continue
 
-                price = (ins.get("averageExecutionPrice") or d.get("averageExecutionPrice") or
-                         ins.get("limitPrice") or d.get("limitPrice") or
-                         ins.get("price") or d.get("price"))
+                price = (
+                    ins.get("averageExecutionPrice")
+                    or d.get("averageExecutionPrice")
+                    or ins.get("limitPrice")
+                    or d.get("limitPrice")
+                    or ins.get("price")
+                    or d.get("price")
+                )
                 px = _to_f(price)
                 if px is None:
-                    execs = (ins.get("executions") or ins.get("Execution") or
-                             d.get("executions") or [])
+                    execs = (
+                        ins.get("executions")
+                        or ins.get("Execution")
+                        or d.get("executions")
+                        or []
+                    )
                     if isinstance(execs, dict):
                         execs = [execs]
                     for ex in execs:
-                        px = _to_f(ex.get("avgExecPrice") or ex.get("execPrice") or ex.get("price"))
+                        px = _to_f(
+                            ex.get("avgExecPrice")
+                            or ex.get("execPrice")
+                            or ex.get("price")
+                        )
                         if px is not None:
                             break
                 if px is None:
                     continue
 
-                rows.append({
-                    # 24h ET to match your table; no AM/PM, no zone suffix
-                    "time":     dt_et.strftime("%Y-%m-%d %H:%M:%S"),
-                    "time_et":  dt_et.strftime("%Y-%m-%d %H:%M:%S"),
-                    "time_utc": dt_utc.isoformat(),
-                    "symbol":   sym,
-                    "action":   side,
-                    "qty":      int(qty) if float(qty).is_integer() else qty,
-                    "price":    round(px, 2),
-                    "amount":   round(px * qty * (1.0 if side == "SELL" else -1.0), 2),
-                    "_dt":      dt_utc,
-                })
+                rows.append(
+                    {
+                        # 24h ET to match your table; no AM/PM, no zone suffix
+                        "time": dt_et.strftime("%Y-%m-%d %H:%M:%S"),
+                        "time_et": dt_et.strftime("%Y-%m-%d %H:%M:%S"),
+                        "time_utc": dt_utc.isoformat(),
+                        "symbol": sym,
+                        "action": side,
+                        "qty": int(qty) if float(qty).is_integer() else qty,
+                        "price": round(px, 2),
+                        "amount": round(
+                            px * qty * (1.0 if side == "SELL" else -1.0), 2
+                        ),
+                        "_dt": dt_utc,
+                    }
+                )
 
     if not rows:
         # fallback so UI isn't empty
         tx_rows, _ = get_today_trades_and_realized(3)
         for r in tx_rows:
-            dt_utc = _parse_any_ts(r.get("time")) or datetime.now(timezone.utc)
-            dt_et  = dt_utc.astimezone(ET)
+            dt_utc = _parse_any_ts(r.get("time")) or datetime.now(UTC)
+            dt_et = dt_utc.astimezone(ET)
             r["_dt"] = dt_utc
             r["time"] = dt_et.strftime("%Y-%m-%d %H:%M:%S")
         rows = tx_rows
@@ -751,8 +928,9 @@ def recent_executions_as_trades(count: int = 50) -> list[dict]:
         r.pop("_dt", None)
     return rows
 
+
 # --- BEGIN: public quotes() shim for sell_guard --------------------------------
-from datetime import datetime, timezone
+
 
 def _extract_price_fields(q: dict, use_extended: bool = False):
     """
@@ -775,21 +953,32 @@ def _extract_price_fields(q: dict, use_extended: bool = False):
             return None
 
     last = _flt(
-        src.get("lastTrade") or src.get("LastTrade") or
-        src.get("lastPrice") or src.get("LastPrice") or
-        src.get("last")
+        src.get("lastTrade")
+        or src.get("LastTrade")
+        or src.get("lastPrice")
+        or src.get("LastPrice")
+        or src.get("last")
     )
-    bid  = _flt(src.get("bid") or src.get("Bid"))
-    ask  = _flt(src.get("ask") or src.get("Ask"))
+    bid = _flt(src.get("bid") or src.get("Bid"))
+    ask = _flt(src.get("ask") or src.get("Ask"))
 
     # Timestamps show up variably; prefer UTC if present
     ts = (
-        src.get("dateTimeUTC") or src.get("timeUTC") or src.get("TimeUTC") or
-        regular.get("dateTimeUTC") or regular.get("timeUTC") or regular.get("TimeUTC")
+        src.get("dateTimeUTC")
+        or src.get("timeUTC")
+        or src.get("TimeUTC")
+        or regular.get("dateTimeUTC")
+        or regular.get("timeUTC")
+        or regular.get("TimeUTC")
     )
     # Fallbacks (epoch millis / seconds)
     if not ts:
-        ts = src.get("time") or src.get("Time") or regular.get("time") or regular.get("Time")
+        ts = (
+            src.get("time")
+            or src.get("Time")
+            or regular.get("time")
+            or regular.get("Time")
+        )
 
     dt_utc = None
     if ts:
@@ -797,13 +986,15 @@ def _extract_price_fields(q: dict, use_extended: bool = False):
             # E*TRADE sometimes returns epoch millis
             tsv = int(ts)
             if tsv > 10_000_000_000:  # millis
-                dt_utc = datetime.fromtimestamp(tsv / 1000, tz=timezone.utc)
+                dt_utc = datetime.fromtimestamp(tsv / 1000, tz=UTC)
             else:  # seconds
-                dt_utc = datetime.fromtimestamp(tsv, tz=timezone.utc)
+                dt_utc = datetime.fromtimestamp(tsv, tz=UTC)
         except Exception:
             # ISO or unknown formats
             try:
-                dt_utc = datetime.fromisoformat(str(ts).replace("Z", "+00:00")).astimezone(timezone.utc)
+                dt_utc = datetime.fromisoformat(
+                    str(ts).replace("Z", "+00:00")
+                ).astimezone(UTC)
             except Exception:
                 dt_utc = None
 
@@ -813,6 +1004,7 @@ def _extract_price_fields(q: dict, use_extended: bool = False):
         "ask": ask,
         "time_utc": dt_utc.isoformat() if dt_utc else None,
     }
+
 
 def quotes(symbols, use_extended: bool = False, per_symbol_fetch=None):
     """
@@ -852,12 +1044,20 @@ def quotes(symbols, use_extended: bool = False, per_symbol_fetch=None):
         try:
             raw = fetch_fn(sym)
             norm = _extract_price_fields(raw or {}, use_extended=use_extended)
-            out[sym] = norm or {"last": None, "bid": None, "ask": None, "time_utc": None}
+            out[sym] = norm or {
+                "last": None,
+                "bid": None,
+                "ask": None,
+                "time_utc": None,
+            }
         except Exception:
             # Never explode the caller; provide a null record so the guard can log/skips
             out[sym] = {"last": None, "bid": None, "ask": None, "time_utc": None}
     return out
+
+
 # --- END: public quotes() shim for sell_guard ----------------------------------
+
 
 def transactions_as_trades(days: int = 3) -> list[dict]:
     """
@@ -871,26 +1071,32 @@ def transactions_as_trades(days: int = 3) -> list[dict]:
 
     out: list[dict] = []
     for t in txs:
-        br   = t.get("brokerage") or {}
+        br = t.get("brokerage") or {}
         prod = br.get("product") or {}
-        sym  = (prod.get("symbol") or "").upper()
+        sym = (prod.get("symbol") or "").upper()
         if not sym:
             continue
 
         # Type / side / qty / price
         typ = str(t.get("transactionType") or "").upper()  # "BOUGHT" / "SOLD"
         qty_raw = br.get("quantity") or 0
-        try: qty_val = int(float(qty_raw))
-        except: qty_val = 0
+        try:
+            qty_val = int(float(qty_raw))
+        except:
+            qty_val = 0
         side = "SELL" if (qty_val < 0 or typ.startswith("SOLD")) else "BUY"
-        qty  = abs(qty_val)
+        qty = abs(qty_val)
 
-        try: price = float(br.get("price") or 0.0)
-        except: price = 0.0
+        try:
+            price = float(br.get("price") or 0.0)
+        except:
+            price = 0.0
 
         # Broker cashflow (+ for SELL, - for BUY) if they provide it
-        try: amount = float(t.get("amount"))
-        except: amount = round(price * qty * (1 if side == "SELL" else -1), 2)
+        try:
+            amount = float(t.get("amount"))
+        except:
+            amount = round(price * qty * (1 if side == "SELL" else -1), 2)
 
         # Gain/loss is sometimes provided (esp. for closed sells)
         gl = t.get("gainLoss") or t.get("gain")
@@ -916,8 +1122,10 @@ def transactions_as_trades(days: int = 3) -> list[dict]:
             pl_pct = 0.0
 
         # Timestamp (ms since epoch if present)
-        try: ts = int(t.get("transactionDate") or 0)
-        except: ts = 0
+        try:
+            ts = int(t.get("transactionDate") or 0)
+        except:
+            ts = 0
 
         row = {
             "time": ts,
@@ -926,8 +1134,8 @@ def transactions_as_trades(days: int = 3) -> list[dict]:
             "qty": qty,
             "price": price,
             "amount": round(amount, 2),
-            "price_paid": price_paid,     # <- for your table
-            "pricePaid": price_paid,      # <- dual key for UI compatibility
+            "price_paid": price_paid,  # <- for your table
+            "pricePaid": price_paid,  # <- dual key for UI compatibility
             "pl": pl,
             "pl_pct": pl_pct,
         }
@@ -935,13 +1143,15 @@ def transactions_as_trades(days: int = 3) -> list[dict]:
 
     out.sort(key=lambda x: x["time"], reverse=True)
     return out
-from datetime import datetime, timedelta, timezone
+
 
 _ET = timezone(timedelta(hours=-5))  # you likely already have a _today_et()
+
 
 def _today_et():
     # If you already have this, keep using yours
     return datetime.now(_ET).date()
+
 
 def _prev_business_days(n, end_date=None):
     d = end_date or _today_et()
@@ -952,12 +1162,14 @@ def _prev_business_days(n, end_date=None):
             days.append(d)
     return list(reversed(days))  # oldest -> newest
 
+
 def pdt_window_dates():
     """Return the set of ET dates in the current rolling 5-business-day window (including today if weekday)."""
     today = _today_et()
     dates = [today] if today.weekday() < 5 else []
     dates = _prev_business_days(5 - len(dates), end_date=today) + dates
     return set(dates)
+
 
 def recompute_pdt_counts(executed_orders_payload):
     """
@@ -971,15 +1183,20 @@ def recompute_pdt_counts(executed_orders_payload):
     # Build {date_et: [(sym, action, qty)]}
     by_date = {}
     for o in orders:
-        for d in (o.get("OrderDetail") or []):
+        for d in o.get("OrderDetail") or []:
             # normalize ET date from your timestamps
-            dt = datetime.fromtimestamp((d.get("executedTime") or d.get("placedTime") or 0)/1000, tz=_ET).date()
+            dt = datetime.fromtimestamp(
+                (d.get("executedTime") or d.get("placedTime") or 0) / 1000, tz=_ET
+            ).date()
             if dt not in win:
                 continue
-            for ins in (d.get("Instrument") or []):
+            for ins in d.get("Instrument") or []:
                 sym = (ins.get("Product") or {}).get("symbol") or ""
                 act = (ins.get("orderAction") or "").upper()
-                qty = float(ins.get("filledQuantity") or ins.get("orderedQuantity") or 0) or 0.0
+                qty = (
+                    float(ins.get("filledQuantity") or ins.get("orderedQuantity") or 0)
+                    or 0.0
+                )
                 by_date.setdefault(dt, []).append((sym, act, qty))
 
     # Count day trades per date: simple approximation — any symbol with at least one BUY and one SELL that day
@@ -987,15 +1204,20 @@ def recompute_pdt_counts(executed_orders_payload):
         actions_by_sym = {}
         for sym, act, _ in rows:
             actions_by_sym.setdefault(sym, set()).add(act)
-        counts[dt.isoformat()] = sum(1 for acts in actions_by_sym.values() if "BUY" in acts and "SELL" in acts)
+        counts[dt.isoformat()] = sum(
+            1 for acts in actions_by_sym.values() if "BUY" in acts and "SELL" in acts
+        )
 
     return counts
+
 
 def _mmddyyyy(d) -> str:
     return d.strftime("%m%d%Y")
 
+
 def _ymd(d):
     return d.strftime("%Y-%m-%d")
+
 
 def _normalize_orders_list(j: dict) -> list:
     """
@@ -1032,8 +1254,9 @@ def get_today_trades_cashflow():
         if isinstance(details, dict):
             details = [details]
         for od in details:
-            ts_raw = (od.get("executedTime") or od.get("placedTime") or
-                      od.get("updateTime"))
+            ts_raw = (
+                od.get("executedTime") or od.get("placedTime") or od.get("updateTime")
+            )
             ts = _parse_any_ts(ts_raw)
 
             # Only keep today's fills (ET timezone)
@@ -1045,27 +1268,30 @@ def get_today_trades_cashflow():
                 insts = [insts]
 
             for ins in insts:
-                side  = (ins.get("orderAction") or "").upper()     # BUY/SELL
-                qty   = int(ins.get("filledQuantity")
-                           or ins.get("orderedQuantity") or 0)
-                price = float(ins.get("averageExecutionPrice")
-                              or od.get("limitPrice") or 0.0)
-                sym   = ((ins.get("Product") or {}).get("symbol") or "").upper()
+                side = (ins.get("orderAction") or "").upper()  # BUY/SELL
+                qty = int(ins.get("filledQuantity") or ins.get("orderedQuantity") or 0)
+                price = float(
+                    ins.get("averageExecutionPrice") or od.get("limitPrice") or 0.0
+                )
+                sym = ((ins.get("Product") or {}).get("symbol") or "").upper()
 
                 if qty and price:
                     amt = price * qty * (1 if side == "SELL" else -1)
-                    trades.append({
-                        "time":   ts.isoformat(),
-                        "symbol": sym,
-                        "action": side,
-                        "qty":    qty,
-                        "price":  price,
-                        "amount": round(amt, 2),
-                    })
+                    trades.append(
+                        {
+                            "time": ts.isoformat(),
+                            "symbol": sym,
+                            "action": side,
+                            "qty": qty,
+                            "price": price,
+                            "amount": round(amt, 2),
+                        }
+                    )
                     cash += amt
 
     trades.sort(key=lambda x: x["time"], reverse=True)
     return trades, round(cash, 2)
+
 
 def list_executed_orders_today() -> dict:
     acct = account_id_key()
@@ -1074,26 +1300,27 @@ def list_executed_orders_today() -> dict:
     url = f"https://api.etrade.com/v1/accounts/{acct}/orders.json"
     params = {
         "fromDate": _mmddyyyy(d),
-        "toDate":   _mmddyyyy(d),
-        "status":   "EXECUTED",
-        "count":    50,
+        "toDate": _mmddyyyy(d),
+        "status": "EXECUTED",
+        "count": 50,
         "sortOrder": "DESC",
     }
     r = sess.get(url, params=params, timeout=15)
     r.raise_for_status()
     return r.json() or {}
 
+
 def list_trade_transactions_range(days: int = 3) -> dict:
     acct = account_id_key()
     sess = get_oauth_session()
-    end  = _now_et()
+    end = _now_et()
     start = end - timedelta(days=max(1, int(days)))
     url = f"https://api.etrade.com/v1/accounts/{acct}/transactions.json"
     params = {
         "startDate": _fmt_mmddyyyy(start),
-        "endDate":   _fmt_mmddyyyy(end),
-        "category":  "TRADE",
-        "count":     50,   # E*TRADE enforces 1..50
+        "endDate": _fmt_mmddyyyy(end),
+        "category": "TRADE",
+        "count": 50,  # E*TRADE enforces 1..50
     }
     r = sess.get(url, params=params, headers={"Accept": "application/json"}, timeout=15)
     if r.status_code != 200:
@@ -1105,11 +1332,14 @@ def list_trade_transactions_range(days: int = 3) -> dict:
         raise RuntimeError(f"transactions call failed ({r.status_code}): {body}")
     return r.json() or {}
 
+
 def _normalize_tx_list(j: dict) -> list:
     """
     TransactionListResponse -> Transaction (list or dict).
     """
-    tlr = (j.get("TransactionListResponse") or j.get("transactionListResponse") or {}) or {}
+    tlr = (
+        j.get("TransactionListResponse") or j.get("transactionListResponse") or {}
+    ) or {}
     txs = (tlr.get("Transaction") or tlr.get("transactions") or []) or []
     if isinstance(txs, dict):
         txs = [txs]
@@ -1130,8 +1360,8 @@ def get_today_trades_and_realized(days_back: int = 3):
         if not _is_same_et_day(ts):
             continue
 
-        br  = (t.get("brokerage") or {})
-        prod = (br.get("product") or {})
+        br = t.get("brokerage") or {}
+        prod = br.get("product") or {}
         sym = (t.get("symbol") or prod.get("symbol") or "").upper()
 
         qty_raw = br.get("quantity")  # sells often negative
@@ -1139,8 +1369,15 @@ def get_today_trades_and_realized(days_back: int = 3):
             qty_val = int(float(qty_raw or 0))
         except Exception:
             qty_val = 0
-        side = "SELL" if (qty_val < 0 or str(t.get("transactionType","")).upper().startswith("SOLD")) else "BUY"
-        qty  = abs(qty_val)
+        side = (
+            "SELL"
+            if (
+                qty_val < 0
+                or str(t.get("transactionType", "")).upper().startswith("SOLD")
+            )
+            else "BUY"
+        )
+        qty = abs(qty_val)
 
         price = 0.0
         try:
@@ -1162,17 +1399,20 @@ def get_today_trades_and_realized(days_back: int = 3):
             except Exception:
                 pass
 
-        trades.append({
-            "time": ts.isoformat(),
-            "symbol": sym,
-            "action": side,
-            "qty": qty,
-            "price": price,
-            "amount": round(amt, 2),
-        })
+        trades.append(
+            {
+                "time": ts.isoformat(),
+                "symbol": sym,
+                "action": side,
+                "qty": qty,
+                "price": price,
+                "amount": round(amt, 2),
+            }
+        )
 
     trades.sort(key=lambda x: x["time"], reverse=True)
     return trades, round(realized, 2)
+
 
 def list_executed_orders(days: int = 5) -> dict:
     acct = account_id_key()
@@ -1182,14 +1422,15 @@ def list_executed_orders(days: int = 5) -> dict:
     url = f"https://api.etrade.com/v1/accounts/{acct}/orders.json"
     params = {
         "fromDate": _mmddyyyy(start),
-        "toDate":   _mmddyyyy(end),
-        "status":   "EXECUTED",
-        "count":    50,          # safe cap
+        "toDate": _mmddyyyy(end),
+        "status": "EXECUTED",
+        "count": 50,  # safe cap
         "sortOrder": "DESC",
     }
     r = sess.get(url, params=params, timeout=15)
     r.raise_for_status()
     return r.json()
+
 
 def list_trade_transactions(days: int = 5) -> dict:
     aid = account_id_key()
@@ -1199,15 +1440,16 @@ def list_trade_transactions(days: int = 5) -> dict:
     url = f"{API_BASE}/accounts/{aid}/transactions.json"
     params = {
         "startDate": _ymd(start),
-        "endDate":   _ymd(end),
-        "category":  "TRADE",
-        "count":     200,
+        "endDate": _ymd(end),
+        "category": "TRADE",
+        "count": 200,
     }
     r = ses.get(url, params=params, timeout=15)
     if r.status_code == 204:
         return {}
     r.raise_for_status()
     return _json_or_empty(r)
+
 
 def get_recent_trades_and_realized(days: int = 5):
     """
@@ -1220,27 +1462,31 @@ def get_recent_trades_and_realized(days: int = 5):
     trades = []
     for o in raw_orders:
         ts = o.get("executedTime") or o.get("placedTime") or o.get("updateTime")
-        for leg in (o.get("orderLegs") or []):
-            sym  = (leg.get("symbol") or "").upper()
+        for leg in o.get("orderLegs") or []:
+            sym = (leg.get("symbol") or "").upper()
             side = (leg.get("side") or o.get("orderAction") or "").upper()
-            for ex in (leg.get("executions") or []):
+            for ex in leg.get("executions") or []:
                 price = float(ex.get("avgExecPrice") or ex.get("price") or 0)
-                qty   = int(ex.get("quantity") or 0)
-                trades.append({
-                    "time":   ts,
-                    "symbol": sym,
-                    "action": side,            # BUY / SELL
-                    "qty":    qty,
-                    "price":  price,
-                    "amount": round(price * qty * (1 if side == "SELL" else -1), 2),
-                })
+                qty = int(ex.get("quantity") or 0)
+                trades.append(
+                    {
+                        "time": ts,
+                        "symbol": sym,
+                        "action": side,  # BUY / SELL
+                        "qty": qty,
+                        "price": price,
+                        "amount": round(price * qty * (1 if side == "SELL" else -1), 2),
+                    }
+                )
     trades.sort(key=lambda x: str(x.get("time") or ""), reverse=True)
     trades = trades[:50]
 
     # Transactions -> realized P&L sum
     realized = 0.0
     tx = list_trade_transactions(days) or {}
-    for t in (tx.get("TransactionListResponse", {}) or {}).get("transactions", []) or []:
+    for t in (tx.get("TransactionListResponse", {}) or {}).get(
+        "transactions", []
+    ) or []:
         gl = t.get("gainLoss") or t.get("gain")
         try:
             if gl is not None:
@@ -1250,11 +1496,13 @@ def get_recent_trades_and_realized(days: int = 5):
 
     return trades, round(realized, 2)
 
-from datetime import datetime, timedelta
+
+from datetime import timedelta
+
 # ---- Canonical helpers (no self-imports, no class dependency) ---------------
-import os
 
 _sess_cache = None
+
 
 def get_oauth_session():
     """Return an OAuth-signed requests.Session (cached)."""
@@ -1264,6 +1512,7 @@ def get_oauth_session():
     try:
         # Use your existing live factory if you have it
         from services.broker_live import get_oauth_session as _factory
+
         _sess_cache = _factory()
         return _sess_cache
     except Exception as e:
@@ -1287,7 +1536,6 @@ def account_id_key() -> str:
 
     # 2) Try a helper you might already have
     try:
-        from services.broker_live import get_account_id_key as _get
         aid = account_id_key() or ""
         if aid:
             return aid
@@ -1300,12 +1548,9 @@ def account_id_key() -> str:
         r = sess.get("https://api.etrade.com/v1/accounts/list.json", timeout=15)
         r.raise_for_status()
         j = r.json() or {}
-        accounts = (
-            j.get("AccountListResponse", {})
-             .get("Accounts", {})
-             .get("Account", [])
-            or j.get("accounts", [])
-        )
+        accounts = j.get("AccountListResponse", {}).get("Accounts", {}).get(
+            "Account", []
+        ) or j.get("accounts", [])
         for a in accounts:
             key = a.get("accountIdKey") or a.get("accountIdKeyValue")
             if key:
@@ -1318,12 +1563,13 @@ def account_id_key() -> str:
         "or provide services.broker_live.get_account_id_key()."
     )
 
+
 # Optional alias if other code uses it
 get_account_id_key = account_id_key
 
 # ---- Canonical helpers (no self-imports, no duplicates) --------------------
 _sess_cache = None
-from datetime import datetime
+
 
 # --- replace your list_trade_transactions_today() with this ---
 def list_trade_transactions_today() -> dict:
@@ -1337,7 +1583,7 @@ def list_trade_transactions_today() -> dict:
         # a) strict today w/ category filter
         {
             "startDate": _mmddyyyy(et_today),
-            "endDate":   _mmddyyyy(et_today),
+            "endDate": _mmddyyyy(et_today),
             "transactionCategory": "TRADE",
             "count": 50,
             "sortOrder": "DESC",
@@ -1345,14 +1591,14 @@ def list_trade_transactions_today() -> dict:
         # b) strict today without category (some accounts don’t expose the filter)
         {
             "startDate": _mmddyyyy(et_today),
-            "endDate":   _mmddyyyy(et_today),
+            "endDate": _mmddyyyy(et_today),
             "count": 50,
             "sortOrder": "DESC",
         },
         # c) widen window (yesterday→today) w/ category
         {
             "startDate": _mmddyyyy(et_today - timedelta(days=1)),
-            "endDate":   _mmddyyyy(et_today),
+            "endDate": _mmddyyyy(et_today),
             "transactionCategory": "TRADE",
             "count": 50,
             "sortOrder": "DESC",
@@ -1396,26 +1642,34 @@ def list_trade_transactions_today() -> dict:
         ts = _g(o, "executedTime", "placedTime", "orderTime", "updateTime")
         legs = o.get("orderLegCollection") or o.get("orderLegs") or []
         for leg in legs:
-            sym = (_g(leg, "symbol", ("instrument","symbol")) or "").upper()
-            side = (_g(leg, "side", "orderAction") or _g(o, "orderAction") or "").upper()
+            sym = (_g(leg, "symbol", ("instrument", "symbol")) or "").upper()
+            side = (
+                _g(leg, "side", "orderAction") or _g(o, "orderAction") or ""
+            ).upper()
             execs = leg.get("executions") or leg.get("execution") or []
             for ex in execs:
                 qty = _g(ex, "quantity", "execQuantity", "filledQuantity") or 0
-                try: qty = int(float(qty))
-                except: qty = 0
-                px  = _g(ex, "avgExecPrice", "price", "execPrice") or 0.0
-                try: px = float(px)
-                except: px = 0.0
+                try:
+                    qty = int(float(qty))
+                except:
+                    qty = 0
+                px = _g(ex, "avgExecPrice", "price", "execPrice") or 0.0
+                try:
+                    px = float(px)
+                except:
+                    px = 0.0
                 tstamp = _g(ex, "time", "execTime") or ts
-                trades.append({
-                    "time":   tstamp,
-                    "symbol": sym,
-                    "action": side or "TRADE",
-                    "qty":    qty,
-                    "price":  px,
-                    # convenient cash-flow sign for UI P&L column
-                    "amount": round((px * qty) * (1 if side == "SELL" else -1), 2),
-                })
+                trades.append(
+                    {
+                        "time": tstamp,
+                        "symbol": sym,
+                        "action": side or "TRADE",
+                        "qty": qty,
+                        "price": px,
+                        # convenient cash-flow sign for UI P&L column
+                        "amount": round((px * qty) * (1 if side == "SELL" else -1), 2),
+                    }
+                )
 
     trades.sort(key=lambda x: str(x["time"]), reverse=True)
     trades = trades[:count]
@@ -1423,19 +1677,26 @@ def list_trade_transactions_today() -> dict:
     # ---------- Realized via closed gain/loss; fallback to transactions ----------
     realized = 0.0
     try:
-        url_gl = f"https://api.etrade.com/v1/accounts/{acct}/gainloss/closedpositions.json"
-        rgl = sess.get(url_gl, params={"startDate": _ymd(start), "endDate": _ymd(end)}, timeout=15)
+        url_gl = (
+            f"https://api.etrade.com/v1/accounts/{acct}/gainloss/closedpositions.json"
+        )
+        rgl = sess.get(
+            url_gl, params={"startDate": _ymd(start), "endDate": _ymd(end)}, timeout=15
+        )
         if rgl.ok:
             gj = rgl.json() or {}
             rows = (
-                gj.get("ClosedPositions", {}).get("closedPosition", []) or
-                gj.get("closedPosition", []) or []
+                gj.get("ClosedPositions", {}).get("closedPosition", [])
+                or gj.get("closedPosition", [])
+                or []
             )
             for row in rows:
                 val = _g(row, "realizedGainLoss", "gainLoss", "gainloss")
                 if val is not None:
-                    try: realized += float(val)
-                    except: pass
+                    try:
+                        realized += float(val)
+                    except:
+                        pass
     except Exception:
         pass
 
@@ -1447,28 +1708,35 @@ def list_trade_transactions_today() -> dict:
         if rtx.ok:
             tj = rtx.json() or {}
             items = (
-                tj.get("TransactionListResponse", {}).get("transactions", []) or
-                tj.get("transactions", []) or []
+                tj.get("TransactionListResponse", {}).get("transactions", [])
+                or tj.get("transactions", [])
+                or []
             )
             for t in items:
-                action = (_g(t, "action", "transactionType", "description") or "").upper()
+                action = (
+                    _g(t, "action", "transactionType", "description") or ""
+                ).upper()
                 try:
                     if "SELL" in action:
-                        realized += float(_g(t, "netProceeds", "amount", "netAmount") or 0.0)
+                        realized += float(
+                            _g(t, "netProceeds", "amount", "netAmount") or 0.0
+                        )
                     elif "BUY" in action:
                         realized -= float(_g(t, "amount", "netAmount") or 0.0)
-                except: pass
+                except:
+                    pass
 
     return trades, round(realized, 2)
 
-def list_recent_trades(days: int = 5) -> List[Dict[str, Any]]:
+
+def list_recent_trades(days: int = 5) -> list[dict[str, Any]]:
     """
     Recently executed trades via Orders API; falls back to Transactions API.
     """
     et, aid = _svc()
     end = datetime.utcnow()
     start = end - timedelta(days=max(1, days))
-    out: List[Dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
 
     # Primary: Orders (EXECUTED)
     try:
@@ -1490,61 +1758,122 @@ def list_recent_trades(days: int = 5) -> List[Dict[str, Any]]:
                 details = [details]
             for d in details:
                 status = (d.get("status") or "").upper()
-                if status not in {"EXECUTED", "FILLED", "PARTIALLY_EXECUTED", "PARTIAL"}:
+                if status not in {
+                    "EXECUTED",
+                    "FILLED",
+                    "PARTIALLY_EXECUTED",
+                    "PARTIAL",
+                }:
                     continue
-                when = d.get("executedTime") or d.get("placedTime") or o.get("placedTime") or ""
+                when = (
+                    d.get("executedTime")
+                    or d.get("placedTime")
+                    or o.get("placedTime")
+                    or ""
+                )
                 instrs = d.get("Instrument") or []
                 if isinstance(instrs, dict):
                     instrs = [instrs]
                 for ins in instrs:
                     prod = ins.get("Product") or {}
                     sym = (prod.get("symbol") or "").upper()
-                    action = (ins.get("orderAction") or d.get("orderAction") or o.get("orderAction") or "").upper()
-                    qty = ins.get("filledQuantity") or d.get("filledQuantity") or ins.get("quantity") or 0
-                    px = ins.get("averageExecutionPrice") or d.get("averageExecutionPrice") or ins.get("limitPrice") or 0.0
-                    try: qty = int(float(qty or 0))
-                    except Exception: qty = 0
-                    try: px = float(px or 0.0)
-                    except Exception: px = 0.0
+                    action = (
+                        ins.get("orderAction")
+                        or d.get("orderAction")
+                        or o.get("orderAction")
+                        or ""
+                    ).upper()
+                    qty = (
+                        ins.get("filledQuantity")
+                        or d.get("filledQuantity")
+                        or ins.get("quantity")
+                        or 0
+                    )
+                    px = (
+                        ins.get("averageExecutionPrice")
+                        or d.get("averageExecutionPrice")
+                        or ins.get("limitPrice")
+                        or 0.0
+                    )
+                    try:
+                        qty = int(float(qty or 0))
+                    except Exception:
+                        qty = 0
+                    try:
+                        px = float(px or 0.0)
+                    except Exception:
+                        px = 0.0
                     if sym and qty:
-                        out.append({"time": str(when), "symbol": sym, "action": action or "BUY", "qty": qty, "price": px, "pl": 0.0})
+                        out.append(
+                            {
+                                "time": str(when),
+                                "symbol": sym,
+                                "action": action or "BUY",
+                                "qty": qty,
+                                "price": px,
+                                "pl": 0.0,
+                            }
+                        )
         if out:
-            out.sort(key=lambda x: str(x.get("time","")), reverse=True)
+            out.sort(key=lambda x: str(x.get("time", "")), reverse=True)
             return out
     except Exception as e:
         log.exception("orders fetch failed: %s", e)
 
     # Fallback: Transactions
     try:
-        tparams = {"startDate": start.strftime("%Y-%m-%d"), "endDate": end.strftime("%Y-%m-%d")}
-        raw = _eget(f"/accounts/{account_id_key}/orders.json",
-            params={"status": "OPEN"}) or {}
+        tparams = {
+            "startDate": start.strftime("%Y-%m-%d"),
+            "endDate": end.strftime("%Y-%m-%d"),
+        }
+        raw = (
+            _eget(f"/accounts/{account_id_key}/orders.json", params={"status": "OPEN"})
+            or {}
+        )
         items = (data.get("TransactionListResponse") or {}).get("Transaction") or []
         if isinstance(items, dict):
             items = [items]
         for t in items:
-            sym = (t.get("symbol") or (t.get("Product") or {}).get("symbol") or "").upper()
+            sym = (
+                t.get("symbol") or (t.get("Product") or {}).get("symbol") or ""
+            ).upper()
             qty = t.get("quantity") or t.get("qty") or 0
             if not sym or not qty:
                 continue
-            act = (t.get("transactionType") or t.get("type") or t.get("subType") or "").upper()
+            act = (
+                t.get("transactionType") or t.get("type") or t.get("subType") or ""
+            ).upper()
             if not act:
                 desc = (t.get("description") or "").upper()
                 act = "SELL" if "SELL" in desc else ("BUY" if "BUY" in desc else "")
             px = t.get("price") or t.get("tradePrice") or 0.0
             ts = t.get("transactionDate") or t.get("date") or t.get("time") or ""
-            try: qty = int(float(qty))
-            except Exception: qty = 0
-            try: px = float(px or 0.0)
-            except Exception: px = 0.0
-            if act in {"BUY","SELL","BUY_TO_COVER","SELL_SHORT"}:
-                out.append({"time": str(ts), "symbol": sym, "action": act, "qty": qty, "price": px, "pl": 0.0})
-        out.sort(key=lambda x: str(x.get("time","")), reverse=True)
+            try:
+                qty = int(float(qty))
+            except Exception:
+                qty = 0
+            try:
+                px = float(px or 0.0)
+            except Exception:
+                px = 0.0
+            if act in {"BUY", "SELL", "BUY_TO_COVER", "SELL_SHORT"}:
+                out.append(
+                    {
+                        "time": str(ts),
+                        "symbol": sym,
+                        "action": act,
+                        "qty": qty,
+                        "price": px,
+                        "pl": 0.0,
+                    }
+                )
+        out.sort(key=lambda x: str(x.get("time", "")), reverse=True)
         return out
     except Exception as e:
         log.exception("transactions fallback failed: %s", e)
 
     return out
+
 
 # ---------------- HTTP helpers (always go through broker_live session) ----------------
 # --- NEW helpers (put near your other small helpers) --------------------------
@@ -1555,8 +1884,10 @@ def _uf(x):
     except Exception:
         return None
 
+
 def _sym_upper(x):
     return (str(x or "")).strip().upper()
+
 
 def _dig_available_qty(pos: dict) -> float | None:
     """
@@ -1564,11 +1895,21 @@ def _dig_available_qty(pos: dict) -> float | None:
     Falls back to long quantity if no explicit available key exists.
     """
     cand_keys = [
-        "availableQty", "availableQuantity", "availQty", "openQty",  # common variants
-        "longAvailableQty", "longAvailableQuantity",
+        "availableQty",
+        "availableQuantity",
+        "availQty",
+        "openQty",  # common variants
+        "longAvailableQty",
+        "longAvailableQuantity",
     ]
     # long/position qty fallbacks
-    long_keys = ["longQty", "longQuantity", "positionQty", "positionQuantity", "quantity"]
+    long_keys = [
+        "longQty",
+        "longQuantity",
+        "positionQty",
+        "positionQuantity",
+        "quantity",
+    ]
 
     # look for explicit 'available' first
     for k in cand_keys:
@@ -1586,30 +1927,39 @@ def _dig_available_qty(pos: dict) -> float | None:
 
     return None
 
+
 def _eget(path: str, params: dict | None = None):
     s = _sesh()
-    r = s.get(f"{_BASE}{path}", params=params or {}, headers={"Accept": "application/json"})
+    r = s.get(
+        f"{_BASE}{path}", params=params or {}, headers={"Accept": "application/json"}
+    )
     r.raise_for_status()
     return r
+
 
 def _epost(path, body):
     s = get_oauth_session()  # use the signed session you already have
     url = f"https://api.etrade.com/v1{path}"
     r = s.post(url, json=body, headers={"Content-Type": "application/json"})
     if r.status_code >= 400:
-        try: err = r.json()
-        except Exception: err = r.text
+        try:
+            err = r.json()
+        except Exception:
+            err = r.text
         raise RuntimeError(f"etrade POST {path} -> {r.status_code}: {err}")
     return r.json()
+
+
 # Back-compat aliases (catch any legacy calls)
-_get  = _eget
+_get = _eget
 _post = _epost
 
 # ─────────────────────────────────────────────────────────────────────────────
 # OAuth liveness + keepalive (append near end of services/etrade_service.py)
 # ─────────────────────────────────────────────────────────────────────────────
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta, timezone
+
 try:
     from zoneinfo import ZoneInfo  # py>=3.9
 except Exception:
@@ -1620,20 +1970,26 @@ _ET = ZoneInfo("America/New_York") if ZoneInfo else timezone(timedelta(hours=-5)
 _AUTH_DEAD = False
 _last_api_hit = 0.0
 
+
 class AuthExpiredError(RuntimeError):
     pass
+
 
 def _is_auth_error(exc: Exception | str) -> bool:
     s = str(exc)
     # E*TRADE tends to use 401/Unauthorized or oauth_problem messages when auth dies
-    return ("oauth_problem" in s.lower()
-            or "token_rejected" in s.lower()
-            or "unauthorized" in s.lower()
-            or "401" in s)
+    return (
+        "oauth_problem" in s.lower()
+        or "token_rejected" in s.lower()
+        or "unauthorized" in s.lower()
+        or "401" in s
+    )
+
 
 # Save originals to wrap
 _orig__eget = _eget
 _orig__epost = _epost
+
 
 def _wrap_eget(path: str, params: dict | None = None):
     global _last_api_hit, _AUTH_DEAD
@@ -1646,6 +2002,7 @@ def _wrap_eget(path: str, params: dict | None = None):
             _AUTH_DEAD = True
         raise
 
+
 def _wrap_epost(path: str, body: dict):
     global _last_api_hit, _AUTH_DEAD
     try:
@@ -1657,9 +2014,11 @@ def _wrap_epost(path: str, body: dict):
             _AUTH_DEAD = True
         raise
 
+
 # Swap in wrappers so all higher-level funcs benefit
 _eget = _wrap_eget
 _epost = _wrap_epost
+
 
 def auth_ok() -> bool:
     """
@@ -1669,6 +2028,7 @@ def auth_ok() -> bool:
     if _AUTH_DEAD:
         return False
     return True
+
 
 def keepalive_daemon(interval_min: int = 60):
     """Ping a cheap endpoint periodically to avoid inactivity expiry (best-effort)."""
@@ -1686,6 +2046,7 @@ def keepalive_daemon(interval_min: int = 60):
             if _is_auth_error(e):
                 _AUTH_DEAD = True
 
+
 # Start the keepalive thread unless explicitly disabled
 try:
     if os.getenv("ETRADE_KEEPALIVE", "1").lower() not in ("0", "false", "no"):
@@ -1695,6 +2056,7 @@ except Exception:
 
 # ---------------- Account helpers ----------------
 
+
 def _primary_account_id() -> str:
     """Use env override if present, else discover via accounts/list."""
     return (
@@ -1703,7 +2065,9 @@ def _primary_account_id() -> str:
         or get_account_id_key()
     )
 
+
 # ---------------- Quotes ----------------
+
 
 def _extract_last_price(qd: dict) -> float | None:
     if not isinstance(qd, dict):
@@ -1718,6 +2082,7 @@ def _extract_last_price(qd: dict) -> float | None:
             except Exception:
                 pass
     return None
+
 
 def fetch_etrade_quote(symbols: str | Iterable[str]) -> float | dict[str, float] | None:
     """
@@ -1742,15 +2107,17 @@ def fetch_etrade_quote(symbols: str | Iterable[str]) -> float | dict[str, float]
 
     out: dict[str, float] = {}
     for qd in items:
-        prod = (qd.get("Product") or {})
-        sym  = (prod.get("symbol") or "").upper()
-        px   = _extract_last_price(qd)
+        prod = qd.get("Product") or {}
+        sym = (prod.get("symbol") or "").upper()
+        px = _extract_last_price(qd)
         if sym and (px is not None):
             out[sym] = px
 
     return out.get(sym_list[0]) if single else out
 
+
 # ---------------- Portfolio / Balances (backwards-compatible API) ----------------
+
 
 def get_account_summary() -> dict:
     aid = _primary_account_id()
@@ -1771,9 +2138,11 @@ def get_account_summary() -> dict:
         out["settled_cash"] = 0.0
     return out
 
-from datetime import datetime, timedelta
+
+from datetime import timedelta
 
 API_BASE = "https://api.etrade.com/v1"
+
 
 def _json_or_empty(resp):
     try:
@@ -1783,6 +2152,7 @@ def _json_or_empty(resp):
         return resp.json()
     except Exception:
         return {}
+
 
 def get_positions():
     acct = account_id_key()
@@ -1801,8 +2171,10 @@ def get_positions():
         return []  # be tolerant, return empty positions on bad payloads
     return j
 
+
 # make sure you have at top of file:
 # import time
+
 
 def preview_equity_order(
     account_id_key: str,
@@ -1842,12 +2214,14 @@ def preview_equity_order(
         "priceType": pt,
         "orderTerm": order_term,
         "marketSession": market_session,
-        "Instrument": [{
-            "Product": {"securityType": "EQ", "symbol": _normalize_symbol(symbol)},
-            "orderAction": action,
-            "quantityType": "QUANTITY",
-            "quantity": str(int(qty)),
-        }],
+        "Instrument": [
+            {
+                "Product": {"securityType": "EQ", "symbol": _normalize_symbol(symbol)},
+                "orderAction": action,
+                "quantityType": "QUANTITY",
+                "quantity": str(int(qty)),
+            }
+        ],
     }
 
     # Prices
@@ -1862,7 +2236,7 @@ def preview_equity_order(
     if pt in {"TRAILING_STOP_PRCT", "TRAILING_STOP_CNST"}:
         if offset_value is None:
             raise ValueError("offset_value required for trailing stops")
-        order["offsetType"]  = offset_type or pt
+        order["offsetType"] = offset_type or pt
         order["offsetValue"] = float(offset_value)
 
     body = {
@@ -1873,6 +2247,7 @@ def preview_equity_order(
         }
     }
     return _epost(f"/accounts/{account_id_key}/orders/preview.json", body)
+
 
 def place_equity_order(preview_resp: dict, qty: int | None = None) -> dict:
     """Place an equity order from a successful preview, using the account KEY path
@@ -1898,15 +2273,15 @@ def place_equity_order(preview_resp: dict, qty: int | None = None) -> dict:
         instr[0]["quantity"] = str(int(qty))
 
     order_min = {
-        "orderTerm":     src.get("orderTerm") or "GOOD_FOR_DAY",
-        "priceType":     src.get("priceType") or "MARKET",
+        "orderTerm": src.get("orderTerm") or "GOOD_FOR_DAY",
+        "priceType": src.get("priceType") or "MARKET",
         "marketSession": src.get("marketSession") or "REGULAR",
-        "allOrNone":     bool(src.get("allOrNone", False)),
-        "Instrument":    instr,
+        "allOrNone": bool(src.get("allOrNone", False)),
+        "Instrument": instr,
     }
-    if "limitPrice" in src and src["limitPrice"]:
+    if src.get("limitPrice"):
         order_min["limitPrice"] = f"{float(src['limitPrice']):.2f}"
-    if "stopPrice" in src and src["stopPrice"]:
+    if src.get("stopPrice"):
         order_min["stopPrice"] = f"{float(src['stopPrice']):.2f}"
 
     # Robust previewId extraction
@@ -1930,7 +2305,8 @@ def place_equity_order(preview_resp: dict, qty: int | None = None) -> dict:
     r = _epost(f"/accounts/{aid_key}/orders/place.json", place_body)
     return r.json()
 
-def list_recent_trades(days: int = 5) -> List[Dict[str, Any]]:
+
+def list_recent_trades(days: int = 5) -> list[dict[str, Any]]:
     """
     Return recently executed trades (BUY/SELL) using the Orders API,
     and fall back to the Transactions API if needed.
@@ -1943,11 +2319,11 @@ def list_recent_trades(days: int = 5) -> List[Dict[str, Any]]:
     params = {
         "fromDate": start.strftime("%Y-%m-%d"),
         "toDate": end.strftime("%Y-%m-%d"),
-        "status": "EXECUTED",     # executed orders only
+        "status": "EXECUTED",  # executed orders only
         "count": 100,
         "sortOrder": "DESC",
     }
-    out: List[Dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
 
     try:
         resp = et._get(f"/accounts/{aid}/orders.json", params=params)
@@ -1963,7 +2339,12 @@ def list_recent_trades(days: int = 5) -> List[Dict[str, Any]]:
 
             for d in details:
                 status = (d.get("status") or "").upper()
-                if status not in {"EXECUTED", "FILLED", "PARTIALLY_EXECUTED", "PARTIAL"}:
+                if status not in {
+                    "EXECUTED",
+                    "FILLED",
+                    "PARTIALLY_EXECUTED",
+                    "PARTIAL",
+                }:
                     continue
 
                 instrs = d.get("Instrument") or d.get("instrument") or []
@@ -1971,16 +2352,29 @@ def list_recent_trades(days: int = 5) -> List[Dict[str, Any]]:
                     instrs = [instrs]
 
                 # pick a timestamp; executedTime when available
-                tstamp = d.get("executedTime") or d.get("placedTime") or o.get("placedTime") or ""
+                tstamp = (
+                    d.get("executedTime")
+                    or d.get("placedTime")
+                    or o.get("placedTime")
+                    or ""
+                )
 
                 for ins in instrs:
                     prod = ins.get("Product") or ins.get("product") or {}
                     sym = (prod.get("symbol") or "").upper()
-                    action = (ins.get("orderAction") or d.get("orderAction") or o.get("orderAction") or "").upper()
+                    action = (
+                        ins.get("orderAction")
+                        or d.get("orderAction")
+                        or o.get("orderAction")
+                        or ""
+                    ).upper()
 
                     qty = (
-                        ins.get("filledQuantity") or d.get("filledQuantity") or
-                        ins.get("quantity") or d.get("quantity") or 0
+                        ins.get("filledQuantity")
+                        or d.get("filledQuantity")
+                        or ins.get("quantity")
+                        or d.get("quantity")
+                        or 0
                     )
                     try:
                         qty = int(float(qty or 0))
@@ -1988,8 +2382,11 @@ def list_recent_trades(days: int = 5) -> List[Dict[str, Any]]:
                         qty = 0
 
                     price = (
-                        ins.get("averageExecutionPrice") or d.get("averageExecutionPrice") or
-                        ins.get("limitPrice") or d.get("limitPrice") or 0.0
+                        ins.get("averageExecutionPrice")
+                        or d.get("averageExecutionPrice")
+                        or ins.get("limitPrice")
+                        or d.get("limitPrice")
+                        or 0.0
                     )
                     try:
                         price = float(price or 0.0)
@@ -1997,14 +2394,16 @@ def list_recent_trades(days: int = 5) -> List[Dict[str, Any]]:
                         price = 0.0
 
                     if sym and qty:
-                        out.append({
-                            "time":  str(tstamp),
-                            "symbol": sym,
-                            "action": action or ("BUY" if qty > 0 else "SELL"),
-                            "qty":    qty,
-                            "price":  price,
-                            "pl":     0.0,  # P/L is not provided at order level; keep 0 for now
-                        })
+                        out.append(
+                            {
+                                "time": str(tstamp),
+                                "symbol": sym,
+                                "action": action or ("BUY" if qty > 0 else "SELL"),
+                                "qty": qty,
+                                "price": price,
+                                "pl": 0.0,  # P/L is not provided at order level; keep 0 for now
+                            }
+                        )
 
         if out:
             out.sort(key=lambda x: str(x.get("time", "")), reverse=True)
@@ -2019,8 +2418,10 @@ def list_recent_trades(days: int = 5) -> List[Dict[str, Any]]:
             "startDate": start.strftime("%Y-%m-%d"),
             "endDate": end.strftime("%Y-%m-%d"),
         }
-        raw = _eget(f"/accounts/{account_id_key}/orders.json",
-            params={"status": "OPEN"}) or {}
+        raw = (
+            _eget(f"/accounts/{account_id_key}/orders.json", params={"status": "OPEN"})
+            or {}
+        )
 
         tr = data.get("TransactionListResponse", {}) or data
         items = tr.get("Transaction") or tr.get("Transactions") or []
@@ -2028,12 +2429,16 @@ def list_recent_trades(days: int = 5) -> List[Dict[str, Any]]:
             items = [items]
 
         for t in items:
-            sym = (t.get("symbol") or (t.get("Product") or {}).get("symbol") or "").upper()
+            sym = (
+                t.get("symbol") or (t.get("Product") or {}).get("symbol") or ""
+            ).upper()
             qty = t.get("quantity") or t.get("qty") or 0
             if not sym or not qty:
                 continue  # skip non-trade entries
 
-            act = (t.get("transactionType") or t.get("type") or t.get("subType") or "").upper()
+            act = (
+                t.get("transactionType") or t.get("type") or t.get("subType") or ""
+            ).upper()
             if not act:
                 desc = (t.get("description") or "").upper()
                 act = "SELL" if "SELL" in desc else ("BUY" if "BUY" in desc else "")
@@ -2042,22 +2447,30 @@ def list_recent_trades(days: int = 5) -> List[Dict[str, Any]]:
             pl = t.get("gain") or t.get("pnl") or 0.0
             ts = t.get("transactionDate") or t.get("date") or t.get("time") or ""
 
-            try: qty = int(float(qty))
-            except Exception: qty = 0
-            try: price = float(price or 0.0)
-            except Exception: price = 0.0
-            try: pl = float(pl or 0.0)
-            except Exception: pl = 0.0
+            try:
+                qty = int(float(qty))
+            except Exception:
+                qty = 0
+            try:
+                price = float(price or 0.0)
+            except Exception:
+                price = 0.0
+            try:
+                pl = float(pl or 0.0)
+            except Exception:
+                pl = 0.0
 
             if act in {"BUY", "SELL", "BUY_TO_COVER", "SELL_SHORT"}:
-                out.append({
-                    "time":   str(ts),
-                    "symbol": sym,
-                    "action": act,
-                    "qty":    qty,
-                    "price":  price,
-                    "pl":     pl,
-                })
+                out.append(
+                    {
+                        "time": str(ts),
+                        "symbol": sym,
+                        "action": act,
+                        "qty": qty,
+                        "price": price,
+                        "pl": pl,
+                    }
+                )
 
         out.sort(key=lambda x: str(x.get("time", "")), reverse=True)
         return out
@@ -2066,7 +2479,10 @@ def list_recent_trades(days: int = 5) -> List[Dict[str, Any]]:
         log.exception("transactions fallback failed: %s", e)
 
     return out
+
+
 # ======= Backwards-compat shim for LiveBroker =======
+
 
 # Give broker.py a concrete class with the methods it expects.
 class ETradeService:
@@ -2088,6 +2504,8 @@ class ETradeService:
 # this module never raises it. (Harmless if unused.)
 class RateLimitError(Exception):
     pass
+
+
 # Ensure public API names exist for importers
 try:
     ETradeService
@@ -2099,8 +2517,11 @@ except NameError:
 try:
     RateLimitError
 except NameError:
+
     class RateLimitError(Exception):
         """Raised when E*TRADE rate limits are encountered."""
+
         pass
+
 
 __all__ = ["ETradeService", "RateLimitError"]

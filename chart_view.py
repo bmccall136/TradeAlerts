@@ -1,17 +1,22 @@
-from flask import Flask, render_template, request
-import yfinance as yf
-import plotly.graph_objs as go
-from datetime import datetime
-from pytz import timezone
 import sqlite3
+from datetime import datetime
+
+import plotly.graph_objs as go
+import yfinance as yf
+from flask import Flask, render_template
+from pytz import timezone
 
 app = Flask(__name__)
+
 
 @app.route("/chart/<symbol>")
 def chart(symbol):
     conn = sqlite3.connect("alerts.db")
     cursor = conn.cursor()
-    cursor.execute("SELECT timestamp FROM alerts WHERE symbol = ? ORDER BY timestamp ASC LIMIT 1", (symbol,))
+    cursor.execute(
+        "SELECT timestamp FROM alerts WHERE symbol = ? ORDER BY timestamp ASC LIMIT 1",
+        (symbol,),
+    )
     row = cursor.fetchone()
     conn.close()
 
@@ -31,14 +36,14 @@ def chart(symbol):
         y=[df["Close"].min(), df["Close"].max()],
         mode="lines",
         name="Alert Time",
-        line=dict(color="red", dash="dash")
+        line=dict(color="red", dash="dash"),
     )
 
     layout = go.Layout(
         title=f"{symbol} - Intraday Chart",
         xaxis=dict(title="Time"),
         yaxis=dict(title="Price"),
-        template="plotly_dark"
+        template="plotly_dark",
     )
 
     fig = go.Figure(data=[trace, alert_line], layout=layout)

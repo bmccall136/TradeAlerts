@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const API_ALERTS = '/api/alerts';
       const API_STATUS = '/api/status';
       let currentFilter = 'all';
-    
+
       // -- Status updater --
       function loadStatus() {
         fetch(API_STATUS)
@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
           })
           .catch(console.error);
       }
-    
+
       // -- Sparkline helper --
       function sparkline(dataString) {
         const arr = dataString.split(',').map(Number).filter(n => !isNaN(n));
@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join(' ');
         return `<svg width="${w}" height="${h}"><polyline fill="none" stroke="#4eaaff" stroke-width="1" points="${pts}"/></svg>`;
       }
-    
+
       // -- Signal badge helper --
       function badge(type) {
         switch (type) {
@@ -44,7 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
           default: return '<span class="signal-sell">Sell 🔥</span>';
         }
       }
-    
+
       // -- Load alerts into table --
       function loadAlerts() {
         fetch(API_ALERTS)
@@ -98,7 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
           window.location.href = '/simulation/';
         }
       });
-    
+
       // -- Simulation: wire Clear-trade buttons --
       document.body.addEventListener('click', async (e) => {
         if (e.target.matches('.btn-clear-trade')) {
@@ -108,7 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
           window.location.reload();
         }
       });
-    
+
       // -- Simulation: wire Clear-holding buttons --
       document.body.addEventListener('click', async (e) => {
         if (e.target.matches('.btn-clear-holding')) {

@@ -65,5 +65,3 @@ def fetch_intraday_vwap(symbol: str) -> float:
     # VWAP is at last timestamp
     vwap = df["cum_pv"].iat[-1] / df["cum_vol"].iat[-1]
     return float(vwap)
-
-

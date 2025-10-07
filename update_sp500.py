@@ -3,6 +3,7 @@ import pandas as pd
 # Wikipedia page for S&P 500 constituents
 WIKI_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
 
+
 def get_sp500_symbols(filepath="sp500_symbols.txt"):
     tables = pd.read_html(WIKI_URL, attrs={"id": "constituents"})
     df = tables[0]
@@ -14,6 +15,7 @@ def get_sp500_symbols(filepath="sp500_symbols.txt"):
         for sym in symbols:
             f.write(f"{sym}\n")
     print(f"Updated {filepath} with {len(symbols)} tickers.")
+
 
 if __name__ == "__main__":
     get_sp500_symbols()

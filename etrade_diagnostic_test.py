@@ -1,8 +1,9 @@
+import logging
 import os
+from urllib.parse import quote
+
 import requests
 from dotenv import load_dotenv
-from urllib.parse import quote
-import logging
 
 # Load your E*TRADE credentials
 load_dotenv()
@@ -22,9 +23,7 @@ if not all([key, secret, token, token_secret]):
 symbol = "AAPL"
 url = f"https://api.etrade.com/v1/market/quote/{quote(symbol)}.json"
 
-headers = {
-    "Authorization": f'OAuth oauth_consumer_key="{key}", oauth_token="{token}"'
-}
+headers = {"Authorization": f'OAuth oauth_consumer_key="{key}", oauth_token="{token}"'}
 
 logging.info(f"Requesting quote for {symbol} from {url}")
 

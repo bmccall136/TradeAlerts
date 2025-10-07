@@ -1,12 +1,16 @@
 # probe_etrade.py
 # Quick OAuth1-signed GETs to E*TRADE so you can see the raw JSON.
 
-import os, sys, json, time
+import json
+import os
+import sys
+import time
 from pathlib import Path
 from urllib.parse import urljoin
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv(dotenv_path=Path(".env"))
 except Exception:
     pass
@@ -16,23 +20,30 @@ from requests_oauthlib import OAuth1
 
 BASE = "https://api.etrade.com"
 
+
 def oauth():
     ck = os.environ.get("ETRADE_API_KEY") or os.environ.get("CONSUMER_KEY")
     cs = os.environ.get("ETRADE_API_SECRET") or os.environ.get("CONSUMER_SECRET")
     ot = os.environ.get("OAUTH_TOKEN")
     os_ = os.environ.get("OAUTH_TOKEN_SECRET")
     if not all([ck, cs, ot, os_]):
-        raise SystemExit("Missing one or more env vars: ETRADE_API_KEY/SECRET and OAUTH_TOKEN/_SECRET")
+        raise SystemExit(
+            "Missing one or more env vars: ETRADE_API_KEY/SECRET and OAUTH_TOKEN/_SECRET"
+        )
     return OAuth1(ck, cs, ot, os_)
+
 
 # one shared session
 sess = requests.Session()
 sess.auth = oauth()
 sess.headers.update({"Accept": "application/json", "User-Agent": "TA-probe/1.1"})
 
+
 def dump(name, data):
-    outdir = Path("probe"); outdir.mkdir(exist_ok=True)
+    outdir = Path("probe")
+    outdir.mkdir(exist_ok=True)
     (outdir / f"{name}.json").write_text(json.dumps(data, indent=2))
+
 
 def eget_path(path, params=None):
     """path like '/v1/accounts/list.json' (absolute path under api root)"""
@@ -49,6 +60,7 @@ def eget_path(path, params=None):
     r.raise_for_status()
     return j
 
+
 def accounts_first(accts_json):
     """Return (account_dict | None). Handles list/dict shapes."""
     try:
@@ -61,9 +73,11 @@ def accounts_first(accts_json):
     except Exception:
         return None
 
+
 def get_balance_portfolio(aid_key, aid_num):
     """Try key → id, with and without realtime; never bail early; return dicts (or None) and a summary."""
     attempts = []
+
     def try_one(aid, realtime: bool):
         params = {"instType": "BROKERAGE"}
         if realtime:
@@ -81,14 +95,23 @@ def get_balance_portfolio(aid_key, aid_num):
                 err_b = {"raw": str(e)}
         # portfolio
         try:
-            pf = eget_path(f"/v1/accounts/{aid}/portfolio.json", {"instType":"BROKERAGE"})
+            pf = eget_path(
+                f"/v1/accounts/{aid}/portfolio.json", {"instType": "BROKERAGE"}
+            )
         except requests.HTTPError as e:
             try:
                 err_p = e.response.json()
             except Exception:
                 err_p = {"raw": str(e)}
-        attempts.append({"which": which, "balance_ok": bal is not None, "portfolio_ok": pf is not None,
-                         "balance_err": err_b, "portfolio_err": err_p})
+        attempts.append(
+            {
+                "which": which,
+                "balance_ok": bal is not None,
+                "portfolio_ok": pf is not None,
+                "balance_err": err_b,
+                "portfolio_err": err_p,
+            }
+        )
         return bal, pf
 
     results = []
@@ -99,24 +122,34 @@ def get_balance_portfolio(aid_key, aid_num):
     # print a compact summary
     print("\n=== Attempts summary ===")
     for a in attempts:
-        print(f"{a['which']}: bal_ok={a['balance_ok']} pf_ok={a['portfolio_ok']} "
-              f"bal_err={a['balance_err']} pf_err={a['portfolio_err']}")
+        print(
+            f"{a['which']}: bal_ok={a['balance_ok']} pf_ok={a['portfolio_ok']} "
+            f"bal_err={a['balance_err']} pf_err={a['portfolio_err']}"
+        )
     print("=== end summary ===\n")
 
     # pick the first successful balance; otherwise first successful portfolio
-    for (bal, pf) in results:
+    for bal, pf in results:
         if bal:
             return bal, pf
-    for (bal, pf) in results:
+    for bal, pf in results:
         if pf:
             return bal, pf
     # nothing worked
-    raise SystemExit("No balance/portfolio combination succeeded; see attempts summary above.")
+    raise SystemExit(
+        "No balance/portfolio combination succeeded; see attempts summary above."
+    )
+
+
 def quotes_multi(symbols):
-    return eget_path("/v1/market/quote.json", {"symbols": ",".join(symbols), "detailFlag": "ALL"})
+    return eget_path(
+        "/v1/market/quote.json", {"symbols": ",".join(symbols), "detailFlag": "ALL"}
+    )
+
 
 def quote_single(symbol):
     return eget_path(f"/v1/market/quote/{symbol}.json", {"detailFlag": "ALL"})
+
 
 def main():
     # 1) Accounts list
@@ -128,7 +161,9 @@ def main():
 
     acct = accounts_first(acc_list)
     if not acct:
-        print("\nNo accounts found. If you know your accountIdKey, run:\n  python probe_etrade.py <ACCOUNT_ID_KEY or ACCOUNT_ID>")
+        print(
+            "\nNo accounts found. If you know your accountIdKey, run:\n  python probe_etrade.py <ACCOUNT_ID_KEY or ACCOUNT_ID>"
+        )
         return
 
     # allow CLI override
@@ -139,7 +174,7 @@ def main():
         arg = sys.argv[1]
         if arg.isdigit():
             aid_num = arg
-            aid_key = aid_key or ""   # still try key first if we have it
+            aid_key = aid_key or ""  # still try key first if we have it
         else:
             aid_key = arg
 
@@ -153,17 +188,20 @@ def main():
     dump("accounts.portfolio", pf)
 
     # 3) Quotes (multi + single)
-    symbols = ["COP","KO","INTC","FCX","DAY","MRNA"]
+    symbols = ["COP", "KO", "INTC", "FCX", "DAY", "MRNA"]
 
     # Path-style multi-quote (works reliably)
-    q_multi = eget_path(f"/v1/market/quote/{','.join(symbols)}.json", {"detailFlag":"ALL"})
+    q_multi = eget_path(
+        f"/v1/market/quote/{','.join(symbols)}.json", {"detailFlag": "ALL"}
+    )
     dump("market.quote.multi", q_multi)
 
     time.sleep(1)
 
     # Single symbol example
-    q1 = eget_path("/v1/market/quote/COP.json", {"detailFlag":"ALL"})
+    q1 = eget_path("/v1/market/quote/COP.json", {"detailFlag": "ALL"})
     dump("market.quote.COP", q1)
+
 
 if __name__ == "__main__":
     main()

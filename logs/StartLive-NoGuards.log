@@ -3,9 +3,9 @@ Windows PowerShell transcript start
 Start time: 20250908220426
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
-Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Start-Live.ps1 
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Start-Live.ps1
 Process ID: 110080
 PSVersion: 5.1.26100.4061
 PSEdition: Desktop
@@ -48,9 +48,9 @@ Windows PowerShell transcript start
 Start time: 20250908220732
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
-Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Start-Live.ps1 
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Start-Live.ps1
 Process ID: 111240
 PSVersion: 5.1.26100.4061
 PSEdition: Desktop
@@ -94,9 +94,9 @@ Windows PowerShell transcript start
 Start time: 20250908222240
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
-Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Start-Live.ps1 
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Start-Live.ps1
 Process ID: 106368
 PSVersion: 5.1.26100.4061
 PSEdition: Desktop
@@ -140,9 +140,9 @@ Windows PowerShell transcript start
 Start time: 20250908222406
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
-Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Start-Live.ps1 
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Start-Live.ps1
 Process ID: 112956
 PSVersion: 5.1.26100.4061
 PSEdition: Desktop
@@ -181,7 +181,7 @@ Windows PowerShell transcript start
 Start time: 20250908223840
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: powershell -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 106564
@@ -206,7 +206,7 @@ Windows PowerShell transcript start
 Start time: 20250908224925
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: powershell -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 109936
@@ -231,7 +231,7 @@ Windows PowerShell transcript start
 Start time: 20250908225556
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: powershell -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 16004
@@ -274,7 +274,7 @@ Windows PowerShell transcript start
 Start time: 20250908231513
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: powershell -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 111708
@@ -299,7 +299,7 @@ Windows PowerShell transcript start
 Start time: 20250909002051
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 112272
@@ -324,7 +324,7 @@ Windows PowerShell transcript start
 Start time: 20250909002247
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 113300
@@ -359,7 +359,7 @@ Windows PowerShell transcript start
 Start time: 20250909002306
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 105732
@@ -394,7 +394,7 @@ Windows PowerShell transcript start
 Start time: 20250909002358
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 110232
@@ -419,7 +419,7 @@ Windows PowerShell transcript start
 Start time: 20250909002505
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 32336
@@ -444,7 +444,7 @@ Windows PowerShell transcript start
 Start time: 20250909003254
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 106912
@@ -484,7 +484,7 @@ Windows PowerShell transcript start
 Start time: 20250909003658
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 79404
@@ -529,7 +529,7 @@ Windows PowerShell transcript start
 Start time: 20250909092002
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 114888
@@ -554,7 +554,7 @@ Windows PowerShell transcript start
 Start time: 20250909114536
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 114440
@@ -579,7 +579,7 @@ Windows PowerShell transcript start
 Start time: 20250909125953
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 47444
@@ -614,7 +614,7 @@ Windows PowerShell transcript start
 Start time: 20250909132518
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 37664
@@ -803,7 +803,7 @@ Windows PowerShell transcript start
 Start time: 20250910092003
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 116060
@@ -3825,7 +3825,7 @@ Windows PowerShell transcript start
 Start time: 20250911092003
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 127572
@@ -6847,7 +6847,7 @@ Windows PowerShell transcript start
 Start time: 20250911160101
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 131440
@@ -6892,7 +6892,7 @@ Windows PowerShell transcript start
 Start time: 20250916092004
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 13876
@@ -6917,7 +6917,7 @@ Windows PowerShell transcript start
 Start time: 20250917092003
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 25180
@@ -6942,7 +6942,7 @@ Windows PowerShell transcript start
 Start time: 20250918092004
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 27364
@@ -9964,7 +9964,7 @@ Windows PowerShell transcript start
 Start time: 20250919092003
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 8820
@@ -9989,7 +9989,7 @@ Windows PowerShell transcript start
 Start time: 20250922092003
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Start-Live.ps1
 Process ID: 15824

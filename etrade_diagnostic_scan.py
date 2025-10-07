@@ -1,9 +1,10 @@
 import os
-import requests
-from requests_oauthlib import OAuth1
-from dotenv import load_dotenv
 import time
+
+import requests
 from dotenv import load_dotenv
+from requests_oauthlib import OAuth1
+
 load_dotenv()
 
 print("OAUTH_TOKEN =", os.getenv("OAUTH_TOKEN"))

@@ -1,55 +1,45 @@
-import os
 import logging
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+import os
 from datetime import datetime
-from dotenv import load_dotenv; load_dotenv(override=True)
-import yfinance as yf
+
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
 import pandas as pd
 
+from services.data_fetch import fetch_data_with_timeout
 from services.etrade_service import fetch_etrade_quote
 from services.indicators import (
-    compute_sma, compute_rsi, compute_macd, compute_bollinger_bands,
-    compute_volume_multiplier, compute_vwap, compute_atr,
-    daily_range_pct, gap_up_pct
+    compute_atr,
+    compute_bollinger_bands,
+    compute_macd,
+    compute_rsi,
+    compute_sma,
+    compute_volume_multiplier,
+    compute_vwap,
+    daily_range_pct,
+    gap_up_pct,
 )
-from services.data_fetch import fetch_data_with_timeout
-from services.news_service import fetch_latest_headlines
 from services.settings_schema import SimulationSettings
 
 logger = logging.getLogger(__name__)
 
+
 def _match_tags(conds):
     return [tag for cond, tag in conds if cond]
 
-from services.settings_schema import SimulationSettings
 
-from typing import Dict, Any
-from services.settings_schema import SimulationSettings
-from services.indicators      import (
-    compute_sma,
-    compute_rsi,
-    compute_macd,           # alias for calculate_macd
-    compute_bollinger_bands,# alias for compute_bollinger
-    compute_volume_multiplier,
-    compute_vwap,
-)
-from services.trading_helpers import (
-     buy_stock,
-     set_cash,
-     insert_trade,
-     insert_or_update_holding,
-     compute_qty,
-     )
-from services.etrade_service  import fetch_etrade_quote
-from services.risk_management import enforce_wash_sale, enforce_settlement
-import yfinance as yf
-import pandas as pd
 import logging
-from datetime import datetime
+from typing import Any
+
+from services.trading_helpers import (
+    compute_qty,
+)
 
 logger = logging.getLogger("market")
 
-def analyze_symbol(symbol: str, settings: SimulationSettings) -> Dict[str, Any]:
+
+def analyze_symbol(symbol: str, settings: SimulationSettings) -> dict[str, Any]:
     """
     Run all toggles and indicators for `symbol` under simulation settings,
     fetches price & quantity, applies filters, and returns an alert payload dict.
@@ -65,30 +55,27 @@ def analyze_symbol(symbol: str, settings: SimulationSettings) -> Dict[str, Any]:
 
     # ── normalize intraday columns ────────────────────────
     df.columns = [
-        c[0].lower() if isinstance(c, tuple) else c.lower()
-        for c in df.columns
+        c[0].lower() if isinstance(c, tuple) else c.lower() for c in df.columns
     ]
 
     # 3) Fetch daily bars (for range, gap, ATR, etc)
-    df_daily = fetch_data_with_timeout(symbol, period='60d', interval='1d')
+    df_daily = fetch_data_with_timeout(symbol, period="60d", interval="1d")
     if df_daily is None or df_daily.empty:
         logger.warning(f"[DATA] {symbol}: no daily bars → skip")
         return {}
 
     # ── normalize daily columns ────────────────────────────
     df_daily.columns = [
-        c[0].lower() if isinstance(c, tuple) else c.lower()
-        for c in df_daily.columns
+        c[0].lower() if isinstance(c, tuple) else c.lower() for c in df_daily.columns
     ]
 
     # now it’s safe to pull from lowercase names
-    close_col = df['close']
+    close_col = df["close"]
     if isinstance(close_col, pd.DataFrame):
         # multi-column case: pick first column
         close_series = close_col.iloc[:, 0]
     else:
         close_series = close_col
-
 
     # 4) “Live” price: always use E*TRADE, but fallback to bar-close on error
     try:
@@ -97,7 +84,9 @@ def analyze_symbol(symbol: str, settings: SimulationSettings) -> Dict[str, Any]:
     except Exception as e:
         # if E*TRADE fails, fall back
         fallback = float(close_series.iat[-1])
-        logger.warning(f"[E*TRADE] {symbol}: fetch failed ({e}) — using close={fallback:.2f}")
+        logger.warning(
+            f"[E*TRADE] {symbol}: fetch failed ({e}) — using close={fallback:.2f}"
+        )
         price_live = fallback
 
     logger.debug(f"[PRICE] {symbol}: price_live = {price_live:.2f}")
@@ -106,10 +95,10 @@ def analyze_symbol(symbol: str, settings: SimulationSettings) -> Dict[str, Any]:
     tags = []
 
     # use our squeezed series for all further indicator calls
-    close      = close_series
-    high       = df_daily['high'].iloc[-1]
-    low        = df_daily['low'].iloc[-1]
-    prev_close = df_daily['close'].shift(1).iloc[-1]
+    close = close_series
+    high = df_daily["high"].iloc[-1]
+    low = df_daily["low"].iloc[-1]
+    prev_close = df_daily["close"].shift(1).iloc[-1]
 
     # — SMA —
     if s.get("sma_on"):
@@ -120,7 +109,7 @@ def analyze_symbol(symbol: str, settings: SimulationSettings) -> Dict[str, Any]:
     # — RSI —
     if s.get("rsi_on"):
         rsi_series = compute_rsi(close, s["rsi_len"])
-        rsi_val    = rsi_series.iloc[-1]
+        rsi_val = rsi_series.iloc[-1]
         if rsi_val > s["rsi_overbought"]:
             tags.append("RSI 📈")
 
@@ -137,9 +126,7 @@ def analyze_symbol(symbol: str, settings: SimulationSettings) -> Dict[str, Any]:
 
     # — Bollinger Bands —
     if s.get("bb_on"):
-        up, mid, lowb = compute_bollinger_bands(
-            close, s["bb_length"], s["bb_std"]
-        )
+        up, mid, lowb = compute_bollinger_bands(close, s["bb_length"], s["bb_std"])
         if price_live > up.iloc[-1]:
             tags.append("BB 📈")
 
@@ -159,7 +146,7 @@ def analyze_symbol(symbol: str, settings: SimulationSettings) -> Dict[str, Any]:
 
     # — Price vs. SMA —
     if s.get("price_sma_on"):
-        sma_last = compute_sma(close, s["sma_length"])   # float
+        sma_last = compute_sma(close, s["sma_length"])  # float
         if price_live > sma_last:
             tags.append(f"Price>SMA({s['sma_length']})")
 
@@ -171,7 +158,7 @@ def analyze_symbol(symbol: str, settings: SimulationSettings) -> Dict[str, Any]:
 
     # — ATR % ≥ Y —
     if s.get("atr_pct_on"):
-        atr_val    = compute_atr(df_daily, period=s.get("atr_len", 14))
+        atr_val = compute_atr(df_daily, period=s.get("atr_len", 14))
         atr_percent = (atr_val / price_live * 100) if price_live > 0 else 0.0
         if atr_percent >= s.get("atr_pct", 0.0):
             tags.append(f"ATR % ≥ {s['atr_pct']:.1f}%")
@@ -190,10 +177,9 @@ def analyze_symbol(symbol: str, settings: SimulationSettings) -> Dict[str, Any]:
 
     # — Price vs. SMA —
     if s.get("price_sma_on"):
-        sma_last = compute_sma(close, s["sma_length"])   # ← returns float
+        sma_last = compute_sma(close, s["sma_length"])  # ← returns float
         if price_live > sma_last:
             tags.append(f"Price>SMA({s['sma_length']})")
-                
 
     # — Risk / wash‐sale / settlement (if you use them) —
     # enforce_wash_sale, enforce_settlement can be called here if desired
@@ -201,21 +187,21 @@ def analyze_symbol(symbol: str, settings: SimulationSettings) -> Dict[str, Any]:
     # 6) Compute trade quantity under simulation
     qty = compute_qty(settings, price_live)
 
-     # 7) Build the payload dictionary
+    # 7) Build the payload dictionary
     payload = {
-        "symbol":    symbol,
-        "price":     price_live,
-        "qty":       qty,
+        "symbol": symbol,
+        "price": price_live,
+        "qty": qty,
         "timestamp": datetime.utcnow().isoformat(),
         # keep the raw list so we can count it
-        "triggers":  tags,
+        "triggers": tags,
     }
-
 
     logger.info(f"[SIM] ALERT {symbol}: {tags}")
     return payload
 
-def get_symbols(simulation=False, clean_path='sp500_symbols_clean.txt'):
+
+def get_symbols(simulation=False, clean_path="sp500_symbols_clean.txt"):
     if simulation:
         try:
             with open(clean_path) as f:
@@ -225,18 +211,19 @@ def get_symbols(simulation=False, clean_path='sp500_symbols_clean.txt'):
             return []
     try:
         tables = pd.read_html(
-            "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
-            header=0
+            "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies", header=0
         )
         df_sp = tables[0]
-        col   = 'Symbol' if 'Symbol' in df_sp.columns else df_sp.columns[0]
-        return (df_sp[col]
-                .astype(str)
-                .str.replace('.', '-', regex=False)
-                .str.upper()
-                .tolist())
+        col = "Symbol" if "Symbol" in df_sp.columns else df_sp.columns[0]
+        return (
+            df_sp[col]
+            .astype(str)
+            .str.replace(".", "-", regex=False)
+            .str.upper()
+            .tolist()
+        )
     except Exception:
-        fallback = os.path.join(os.path.dirname(__file__), 'symbols.txt')
+        fallback = os.path.join(os.path.dirname(__file__), "symbols.txt")
         return [l.strip().upper() for l in open(fallback) if l.strip()]
 
 
@@ -251,7 +238,7 @@ def fetch_etrade_quote(symbol):
         CONSUMER_KEY,
         client_secret=CONSUMER_SECRET,
         resource_owner_key=OAUTH_TOKEN,
-        resource_owner_secret=OAUTH_TOKEN_SECRET
+        resource_owner_secret=OAUTH_TOKEN_SECRET,
     )
     url = f"https://api.etrade.com/v1/market/quote/{symbol}.json"
     resp = session.get(url)

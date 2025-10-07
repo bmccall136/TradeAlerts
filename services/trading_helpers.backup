@@ -1001,7 +1001,7 @@ def check_exit_orders(settings) -> None:
             broker_sell(symbol, qty, current)
             TRAIL_PEAKS.pop(symbol, None)
             continue
-        
+
         # --- TRAILING STOP (persistent) ---
         if getattr(settings, "use_trailing_stop", False) and float(getattr(settings, "trailing_stop_pct", 0) or 0) > 0:
             pct = float(settings.trailing_stop_pct)

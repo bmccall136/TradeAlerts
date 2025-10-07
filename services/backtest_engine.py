@@ -2,7 +2,7 @@
 
 from services.settings_schema import BacktestSettings
 from services.trading_helpers import init_backtest_db
-from settings import BACKTEST_DB
+
 
 def run_full_backtest(settings: BacktestSettings, symbols, **kwargs):
     """

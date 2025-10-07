@@ -1,5 +1,6 @@
 import pandas as pd
 
+
 def calculate_indicators(df):
     close = df["Close"]
     if isinstance(close, pd.DataFrame):

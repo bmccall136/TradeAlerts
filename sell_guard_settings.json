@@ -2,29 +2,34 @@
   "sell_guard": {
     "mode": "live",
 
-    "use_extended_hours": false,        
-    "sell_window_start_et": "09:35",    
-    "sell_window_end_et":   "15:55",    
-    
-	"avoid_daytrades": true,           
-    "min_hold_days": 1,                
-    "min_hold_minutes": 390,             
-    "allow_intraday_stoploss": false,    
+    "use_extended_hours": false,
+    "sell_window_start_et": "09:35",
+    "sell_window_end_et":   "15:55",
 
-    "target_bps": 200,                  
-    "stop_bps":   100,                
+	"avoid_daytrades": true,
+    "min_hold_days": 1,
+    "min_hold_minutes": 390,
+    "allow_intraday_stoploss": false,
+	"pdt_allow_stop": false,
+
+    "target_bps": 200,
+    "stop_bps":   100,
     "max_hold_mins": 100000,
-	
-    "limit_from": "bid",               
+
+    "limit_from": "bid",
     "limit_offset_bps": 0,
-    "throttle_ms": 30000,               
+    "throttle_ms": 30000,
 
     "blocklist": [],
-    "market_fallback_for": [],           
-    "sell_protect_after_mins": null,     
+    "market_fallback_for": ["SELL_STOP", "TIMEOUT"],
+    "sell_protect_after_mins": null,
 
-    "circuit_open_seconds": 180,
-    "max_place_attempts": 1,
-    "normalize_tick": 0.01
-  }
+    "circuit_open_seconds": 480,
+    "max_place_attempts": 4,
+    "normalize_tick": 0.01,
+
+    "force_symbols": [],
+	"circuit_fail_threshold": 2,
+    "force_without_entry": false
+	}
 }

@@ -1,5 +1,4 @@
-
-"""
+r"""
 sell_equity_now.py — Sell an equity now using your wrapper; fallback to direct POST w/ account_id_key path.
 
 USAGE (from C:\TradeAlerts):
@@ -12,8 +11,13 @@ USAGE (from C:\TradeAlerts):
   # Sell 1 with explicit limit
   python .\sell_equity_now.py --symbol FCX --sell 1 --limit 45.02
 """
-import sys, argparse, json, os, time
-from typing import Any, Dict
+
+import argparse
+import json
+import os
+import sys
+import time
+from typing import Any
 
 HERE = os.path.abspath(os.path.dirname(__file__))
 if HERE not in sys.path:
@@ -21,25 +25,35 @@ if HERE not in sys.path:
 
 from services import etrade_service as et
 
+
 def j(x: Any) -> str:
-    try: return json.dumps(x, indent=2, sort_keys=True, default=str)
-    except Exception: return str(x)
+    try:
+        return json.dumps(x, indent=2, sort_keys=True, default=str)
+    except Exception:
+        return str(x)
+
 
 def f(x, d=0.0):
-    try: return float(x)
-    except Exception: return d
+    try:
+        return float(x)
+    except Exception:
+        return d
+
 
 def get_acct_key() -> str:
     if hasattr(et, "get_account_id_key"):
         try:
             k = et.get_account_id_key()
-            if k: return str(k)
+            if k:
+                return str(k)
         except Exception:
             pass
     if hasattr(et, "account_id_key"):
-        k = getattr(et, "account_id_key")
-        if k: return str(k)
+        k = et.account_id_key
+        if k:
+            return str(k)
     raise RuntimeError("Could not determine account_id_key")
+
 
 def available_to_sell(acct_key: str, symbol: str) -> float:
     if hasattr(et, "available_to_sell"):
@@ -49,12 +63,13 @@ def available_to_sell(acct_key: str, symbol: str) -> float:
             pass
     return 0.0
 
+
 def best_bid(symbol: str) -> float:
     try:
         q = et.fetch_etrade_quote(symbol)
         if isinstance(q, dict):
             for src in (q, q.get("All") or {}, q.get("ExtendedHourQuoteDetail") or {}):
-                for k in ("bid","bidPrice","bestBid"):
+                for k in ("bid", "bidPrice", "bestBid"):
                     if k in src:
                         return f(src[k], 0.0)
     except Exception:
@@ -67,14 +82,19 @@ def best_bid(symbol: str) -> float:
             if isinstance(qd, list) and qd:
                 qd = qd[0]
             if isinstance(qd, dict):
-                for src in (qd.get("All") or {}, qd.get("ExtendedHourQuoteDetail") or {}):
-                    for k in ("bid","bidPrice","bestBid"):
-                        if k in src: return f(src[k], 0.0)
+                for src in (
+                    qd.get("All") or {},
+                    qd.get("ExtendedHourQuoteDetail") or {},
+                ):
+                    for k in ("bid", "bidPrice", "bestBid"):
+                        if k in src:
+                            return f(src[k], 0.0)
     except Exception:
         pass
     return 0.0
 
-def build_place_body_from_preview(prev: dict, qty_override: int|None=None) -> dict:
+
+def build_place_body_from_preview(prev: dict, qty_override: int | None = None) -> dict:
     pr = prev.get("PreviewOrderResponse") or {}
     orders = pr.get("Order") or []
     if not isinstance(orders, list) or not orders:
@@ -102,10 +122,13 @@ def build_place_body_from_preview(prev: dict, qty_override: int|None=None) -> di
         }
     }
 
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--symbol", required=True)
-    ap.add_argument("--sell", nargs="?", const="__AUTO__", help="sell all available if omitted")
+    ap.add_argument(
+        "--sell", nargs="?", const="__AUTO__", help="sell all available if omitted"
+    )
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--limit", type=float)
     ap.add_argument("--offset", type=float, default=0.02)
@@ -125,39 +148,57 @@ def main():
 
     qty = avail if args.sell == "__AUTO__" else f(args.sell, -1)
     if qty <= 0:
-        print("[SELL] Aborting: qty <= 0"); return
+        print("[SELL] Aborting: qty <= 0")
+        return
     if qty > avail:
         if args.force:
             print(f"[SELL] Requested {qty} > available {avail}; clamping.")
             qty = avail
         else:
-            print(f"[SELL] Requested {qty} exceeds available {avail}. Use --force or cancel reserving orders."); return
+            print(
+                f"[SELL] Requested {qty} exceeds available {avail}. Use --force or cancel reserving orders."
+            )
+            return
     qty = int(qty)
     if qty <= 0:
-        print("[SELL] Fractional only; route likely disallows fractional sells."); return
+        print("[SELL] Fractional only; route likely disallows fractional sells.")
+        return
 
     # Price build
     if args.market:
-        pt = "MARKET"; price = None
+        pt = "MARKET"
+        price = None
         print("[QUOTE] using MARKET")
     elif args.limit and args.limit > 0:
-        pt = "LIMIT"; price = float(args.limit)
+        pt = "LIMIT"
+        price = float(args.limit)
         print(f"[QUOTE] using manual --limit {price:.2f}")
     else:
         bid = best_bid(symbol)
         if bid <= 0:
-            print("[QUOTE] Could not get a valid BID; use --market or --limit."); return
-        pt = "LIMIT"; price = max(0.01, bid - args.offset)
-        print(f"[QUOTE] {symbol} BID={bid:.2f} -> limit={price:.2f} (offset {args.offset:.2f})")
+            print("[QUOTE] Could not get a valid BID; use --market or --limit.")
+            return
+        pt = "LIMIT"
+        price = max(0.01, bid - args.offset)
+        print(
+            f"[QUOTE] {symbol} BID={bid:.2f} -> limit={price:.2f} (offset {args.offset:.2f})"
+        )
 
     # PREVIEW via wrapper
     try:
         prev = et.preview_equity_order(
-            acct_key, symbol, qty, price,
-            action="SELL", price_type=pt, order_term="GOOD_FOR_DAY", market_session="REGULAR"
+            acct_key,
+            symbol,
+            qty,
+            price,
+            action="SELL",
+            price_type=pt,
+            order_term="GOOD_FOR_DAY",
+            market_session="REGULAR",
         )
     except Exception as e:
-        print("[PREVIEW] failed:", e); return
+        print("[PREVIEW] failed:", e)
+        return
     print("[PREVIEW] ok")
     if args.debug:
         print(j(prev))
@@ -183,14 +224,16 @@ def main():
     try:
         body = build_place_body_from_preview(prev)
         if args.debug:
-            print("[DBG] fallback place body:"); print(j(body))
+            print("[DBG] fallback place body:")
+            print(j(body))
         resp = et._epost(f"/accounts/{acct_key}/orders/place.json", body)
         print("[SELL] placed via direct fallback")
-        print(j(resp)); 
+        print(j(resp))
         return
     except Exception as e:
         print("[SELL] fallback failed:", e)
         return
+
 
 if __name__ == "__main__":
     main()

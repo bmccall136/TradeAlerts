@@ -145,6 +145,30 @@ def open_sell_qty_map(account_id_key: str) -> dict[str, float]:
     # Normalize any tiny negatives to zero
     return {k: (v if v > 0 else 0.0) for k, v in out.items()}
 
+# --- add near imports ---
+import time, threading
+
+_QUOTE_CACHE = {"key": None, "asof": 0.0, "data": None}
+_QUOTE_LOCK = threading.Lock()
+
+def _norm_syms(symbols):
+    if isinstance(symbols, (list, tuple, set)):
+        syms = [str(s).replace(".", "-").upper().strip() for s in symbols if s]
+    else:
+        syms = [str(symbols).replace(".", "-").upper().strip()]
+    # stable, deduped
+    return tuple(sorted(dict.fromkeys(syms)))
+
+def _cache_get(key: tuple, ttl: float = 2.0):
+    now = time.time()
+    with _QUOTE_LOCK:
+        if _QUOTE_CACHE["key"] == key and (now - _QUOTE_CACHE["asof"]) < ttl:
+            return _QUOTE_CACHE["data"]
+    return None
+
+def _cache_put(key: tuple, data):
+    with _QUOTE_LOCK:
+        _QUOTE_CACHE.update({"key": key, "asof": time.time(), "data": data})
 
 def available_to_sell(account_id_key: str, symbol: str) -> int:
     """
@@ -306,6 +330,48 @@ def get_balances(account_id_key: str) -> dict:
         f"/accounts/{account_id_key}/balance.json",
         params={"instType": "BROKERAGE", "realTimeNAV": "true"},
     )
+# ---- Identity (numeric id + key + type) -------------------------------------
+def account_identity() -> dict:
+    """
+    {
+      "account_id": "153737458",
+      "account_id_key": "kW8L…",
+      "account_type": "INDIVIDUAL",
+      "account_type_display": "Individual Brokerage"
+    }
+    """
+    sess = get_oauth_session()
+    r = sess.get("https://api.etrade.com/v1/accounts/list.json", timeout=15)
+    r.raise_for_status()
+    j = r.json() or {}
+    accounts = (j.get("AccountListResponse", {})
+                  .get("Accounts", {})
+                  .get("Account", [])) or j.get("accounts", [])
+    if isinstance(accounts, dict):
+        accounts = [accounts]
+
+    key_wanted = account_id_key()
+    pick = None
+    for a in accounts:
+        if (a.get("accountIdKey") or a.get("accountIdKeyValue")) == key_wanted:
+            pick = a; break
+    if pick is None and accounts:
+        pick = accounts[0]
+
+    acct_id  = (pick.get("accountId") or pick.get("accountIdValue") or "").strip()
+    acct_key = (pick.get("accountIdKey") or pick.get("accountIdKeyValue") or "").strip()
+    typ      = (pick.get("accountType") or "").strip().upper()
+    typ_disp = (pick.get("accountDesc") or pick.get("accountTypeDesc")
+                or pick.get("displayName") or typ or "Brokerage")
+
+    return {
+        "account_id": acct_id,
+        "account_id_key": acct_key,
+        "account_type": typ or "BROKERAGE",
+        "account_type_display": typ_disp,
+    }
+
+# ---- Summary (raw + UI-normalized) ------------------------------------------
 
 
 def account_id_key() -> str:
@@ -557,7 +623,7 @@ except NameError:
         except Exception:
             return None
 
-def _enrich_with_transactions(rows, days=30)
+def _enrich_with_transactions(rows, days=30):
     """
     For SELL rows, fill price_paid / pl / pl_pct using Transactions data
     (uses gainLoss when available). Mutates rows in place.

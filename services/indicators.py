@@ -1,8 +1,8 @@
 # services/indicators.py
 
-import math
 import numpy as np
 import pandas as pd
+
 
 def compute_supertracker(history, fast_len, slow_len, signal_len):
     # 1) compute your two ATRs
@@ -18,7 +18,7 @@ def compute_supertracker(history, fast_len, slow_len, signal_len):
 
     # 3) guard against zero‐division, coerce to float Series
     atr_slow = atr_slow.replace(0, np.nan).astype(float)
-    ratio    = atr_fast.astype(float).divide(atr_slow)
+    ratio = atr_fast.astype(float).divide(atr_slow)
 
     # 4) oscillator
     osc = 100 * (ratio - 1)
@@ -30,6 +30,7 @@ def compute_supertracker(history, fast_len, slow_len, signal_len):
     sig = osc.ewm(span=signal_len, adjust=False).mean()
 
     return osc, sig
+
 
 def compute_adx(history, length=14):
     """Compute the Average Directional Index (ADX) from OHLCV history DataFrame.
@@ -47,7 +48,7 @@ def compute_adx(history, length=14):
     minus_dm[low.diff() > 0] = 0
     plus_dm[high.diff() < 0] = 0
 
-    tr1 = (high - low)
+    tr1 = high - low
     tr2 = (high - close.shift()).abs()
     tr3 = (low - close.shift()).abs()
     tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
@@ -58,6 +59,7 @@ def compute_adx(history, length=14):
     dx = (abs(plus_di - minus_di) / (plus_di + minus_di)) * 100
     adx = dx.rolling(length, min_periods=1).mean()
     return adx.fillna(0)
+
 
 def price_above_sma(price_series: pd.Series, length: int = 20) -> bool:
     """
@@ -75,6 +77,7 @@ def price_above_sma(price_series: pd.Series, length: int = 20) -> bool:
 
 # services/indicators.py
 
+
 def daily_range_pct(df: pd.DataFrame) -> float:
     """
     Compute the latest day’s high-low range as a percentage of the low.
@@ -82,11 +85,11 @@ def daily_range_pct(df: pd.DataFrame) -> float:
     Returns a float: (High_today - Low_today) / Low_today * 100.
     """
     # pick the right columns
-    high_col = 'high' if 'high' in df.columns else 'High'
-    low_col  = 'low'  if 'low'  in df.columns else 'Low'
+    high_col = "high" if "high" in df.columns else "High"
+    low_col = "low" if "low" in df.columns else "Low"
 
     high = df[high_col].iloc[-1]
-    low  = df[low_col].iloc[-1]
+    low = df[low_col].iloc[-1]
     if low == 0:
         return 0.0
     return (high - low) / low * 100
@@ -99,8 +102,8 @@ def gap_up_pct(df: pd.DataFrame) -> float:
     Returns a float: (Open_today - Close_yesterday) / Close_yesterday * 100.
     """
     # pick the right column names (lowercase-first)
-    open_col  = 'open'  if 'open'  in df.columns else 'Open'
-    close_col = 'close' if 'close' in df.columns else 'Close'
+    open_col = "open" if "open" in df.columns else "Open"
+    close_col = "close" if "close" in df.columns else "Close"
 
     # need at least two bars to compute a gap
     if len(df) < 2:
@@ -114,11 +117,9 @@ def gap_up_pct(df: pd.DataFrame) -> float:
 
     return (today_open - prev_close) / prev_close * 100
 
+
 def calculate_macd(
-    series: pd.Series,
-    fast: int = 12,
-    slow: int = 26,
-    signal: int = 9
+    series: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9
 ) -> (pd.Series, pd.Series):
     """
     Compute the MACD and signal line for the given price series.
@@ -134,6 +135,7 @@ def calculate_macd(
 
 import pandas as pd
 
+
 def compute_rsi(obj, length):
     # if you passed a Series, just use it directly
     if isinstance(obj, pd.Series):
@@ -142,31 +144,31 @@ def compute_rsi(obj, length):
         # otherwise assume DataFrame with a "Close" column
         close = obj["Close"]
     delta = close.diff()
-    gain  = delta.clip(lower=0)
-    loss  = -delta.clip(upper=0)
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
     avg_gain = gain.rolling(length).mean()
     avg_loss = loss.rolling(length).mean()
     rs = avg_gain / avg_loss
     return 100 - (100 / (1 + rs))
+
 
 def compute_macd(data, fast, slow, signal):
     """Accepts either a pd.Series of closes or a DataFrame with .columns including 'close' or 'Close'."""
     if isinstance(data, pd.Series):
         close = data
     else:
-        key = 'close' if 'close' in data.columns else 'Close'
+        key = "close" if "close" in data.columns else "Close"
         close = data[key]
 
     exp1 = close.ewm(span=fast, adjust=False).mean()
     exp2 = close.ewm(span=slow, adjust=False).mean()
     macd_line = exp1 - exp2
-    sig_line  = macd_line.ewm(span=signal, adjust=False).mean()
+    sig_line = macd_line.ewm(span=signal, adjust=False).mean()
     return macd_line, sig_line
 
+
 def compute_bollinger(
-    series: pd.Series,
-    window: int = 20,
-    num_std: float = 2.0
+    series: pd.Series, window: int = 20, num_std: float = 2.0
 ) -> (pd.Series, pd.Series, pd.Series):
     """
     Compute Bollinger Bands:
@@ -181,10 +183,7 @@ def compute_bollinger(
     return upper, middle, lower
 
 
-def compute_sma(
-    series: pd.Series,
-    length: int = 20
-) -> float:
+def compute_sma(series: pd.Series, length: int = 20) -> float:
     """
     Compute the most recent Simple Moving Average (SMA) over `length` bars.
     Returns a single float (the last SMA value).
@@ -192,18 +191,15 @@ def compute_sma(
     return series.rolling(window=length).mean().iloc[-1]
 
 
-def compute_atr(
-    df: pd.DataFrame,
-    period: int = 14
-) -> float:
+def compute_atr(df: pd.DataFrame, period: int = 14) -> float:
     """
     Compute the most recent ATR over `period` daily bars.
     Expects df with columns ['high','low','close'] indexed by date.
     Returns a single float (the last ATR value).
     """
-    high = df['high']
-    low = df['low']
-    close = df['close']
+    high = df["high"]
+    low = df["low"]
+    close = df["close"]
     prev_close = close.shift(1)
     tr1 = high - low
     tr2 = (high - prev_close).abs()
@@ -213,52 +209,46 @@ def compute_atr(
     return atr
 
 
-def compute_daily_range_pct(
-    df: pd.DataFrame
-) -> float:
+def compute_daily_range_pct(df: pd.DataFrame) -> float:
     """
     Compute the high-low percent range of the most recent daily bar.
     Expects df with ['high','low','close'] and at least 2 rows.
     Returns a float (range_pct).
     """
     today = df.iloc[-1]
-    prev_close = df['close'].shift(1).iloc[-1]
-    range_pct = (today['high'] - today['low']) / prev_close
+    prev_close = df["close"].shift(1).iloc[-1]
+    range_pct = (today["high"] - today["low"]) / prev_close
     return range_pct
 
 
-def compute_gap_pct(
-    prev_close: float,
-    today_open: float
-) -> float:
+def compute_gap_pct(prev_close: float, today_open: float) -> float:
     """
     Compute pre-market gap percentage given yesterday's close and today's open.
     Returns a float gap_pct.
     """
     return (today_open - prev_close) / prev_close
 
-import pandas as pd
-import numpy as np
-import math
 
-def compute_vwap(
-    df: pd.DataFrame,
-    threshold: float = None
-) -> float:
+import pandas as pd
+
+
+def compute_vwap(df: pd.DataFrame, threshold: float = None) -> float:
     """
     Compute the most recent VWAP (volume weighted average price)
     from a DataFrame with lower-cased columns ['high','low','close','volume'].
-    
+
     The `threshold` argument is accepted for backwards compatibility but ignored here.
     """
     # sanity-check
-    missing = [col for col in ("high","low","close","volume") if col not in df.columns]
+    missing = [
+        col for col in ("high", "low", "close", "volume") if col not in df.columns
+    ]
     if missing:
         raise KeyError(f"compute_vwap: missing columns {missing} in df")
 
     # typical price × volume
-    tp      = (df["high"] + df["low"] + df["close"]) / 3.0
-    tp_vol  = (tp * df["volume"]).cumsum()
+    tp = (df["high"] + df["low"] + df["close"]) / 3.0
+    tp_vol = (tp * df["volume"]).cumsum()
     cum_vol = df["volume"].cumsum()
 
     # avoid division by zero on the very first bars
@@ -269,37 +259,37 @@ def compute_vwap(
     latest_vwap = tp_vol.iloc[-1] / last_cum_vol
     return float(latest_vwap)
 
+
 import pandas as pd
+
 
 def bb_bounds(df: pd.DataFrame, length: int, std: float):
     """
     Returns (upper_band, middle_band, lower_band) for Bollinger Bands.
     """
-    ma  = df['close'].rolling(length).mean()
-    sd  = df['close'].rolling(length).std()
+    ma = df["close"].rolling(length).mean()
+    sd = df["close"].rolling(length).std()
     return ma + std * sd, ma, ma - std * sd
+
 
 def compute_rsi(df: pd.DataFrame, length: int):
     """
     Returns a pandas Series of RSI values.
     """
-    delta = df['close'].diff()
-    up    = delta.clip(lower=0)
-    down  = -delta.clip(upper=0)
-    ma_up   = up.ewm(com=length-1, adjust=False).mean()
-    ma_down = down.ewm(com=length-1, adjust=False).mean()
-    rs      = ma_up / ma_down
+    delta = df["close"].diff()
+    up = delta.clip(lower=0)
+    down = -delta.clip(upper=0)
+    ma_up = up.ewm(com=length - 1, adjust=False).mean()
+    ma_down = down.ewm(com=length - 1, adjust=False).mean()
+    rs = ma_up / ma_down
     return 100 - (100 / (1 + rs))
 
-# services/indicators.py
-
-import pandas as pd
-
-import pandas as pd
 
 # services/indicators.py
 
+# services/indicators.py
 import pandas as pd
+
 
 def compute_bollinger_bands(df_or_series, length: int, std: float):
     """
@@ -308,7 +298,7 @@ def compute_bollinger_bands(df_or_series, length: int, std: float):
     """
     # pick out the Close series
     if isinstance(df_or_series, pd.DataFrame):
-        close = df_or_series['close']
+        close = df_or_series["close"]
     else:
         close = df_or_series
 
@@ -327,17 +317,19 @@ def compute_volume_multiplier(df: pd.DataFrame, multiplier: float) -> pd.Series:
     """
     Return a boolean mask Series: True where df['Volume'] ≥ multiplier × avg_vol (20‑bar rolling).
     """
-    avg_vol = df['volume'].rolling(window=20).mean()
-    return df['volume'] >= multiplier * avg_vol
+    avg_vol = df["volume"].rolling(window=20).mean()
+    return df["volume"] >= multiplier * avg_vol
+
 
 def compute_vwap(df: pd.DataFrame):
     """
     Volume‐weighted average price over the whole df.
     Returns a pd.Series of the same length.
     """
-    vp = (df['close'] * df['Volume']).cumsum()
-    v  = df['volume'].cumsum()
+    vp = (df["close"] * df["Volume"]).cumsum()
+    v = df["volume"].cumsum()
     return vp / v
+
 
 # (You already have compute_atr, daily_range_pct, gap_up_pct, etc. defined above.)
 

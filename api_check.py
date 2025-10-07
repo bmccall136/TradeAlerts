@@ -1,5 +1,5 @@
-import requests
 from authlib.integrations.requests_client import OAuth1Session
+
 
 # Manually load .env file
 def load_env(filepath):
@@ -10,6 +10,7 @@ def load_env(filepath):
                 key, value = line.strip().split("=", 1)
                 env_vars[key] = value
     return env_vars
+
 
 # Load credentials
 env = load_env(".env")

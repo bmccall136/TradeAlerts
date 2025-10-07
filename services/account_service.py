@@ -14,9 +14,9 @@ def get_cash() -> float:
     import xml.etree.ElementTree as ET
 
     # derive root URL
-    root = client.base_url.rstrip('/')
-    if root.endswith('/v1/market'):
-        root = root[:-len('/v1/market')]
+    root = client.base_url.rstrip("/")
+    if root.endswith("/v1/market"):
+        root = root[: -len("/v1/market")]
 
     # 1) List accounts (XML)
     list_url = f"{root}/v1/accounts/list"
@@ -25,7 +25,7 @@ def get_cash() -> float:
     # parse XML response
     root_el = ET.fromstring(resp.text)
     # namespace-agnostic findall for accountIdKey
-    acct_keys = [el.text for el in root_el.findall('.//accountIdKey')]
+    acct_keys = [el.text for el in root_el.findall(".//accountIdKey")]
 
     total = 0.0
     # 2) For each account, fetch its balance (XML)
@@ -35,7 +35,7 @@ def get_cash() -> float:
         bresp.raise_for_status()
         btree = ET.fromstring(bresp.text)
         # find all availableCash elements
-        for cash_el in btree.findall('.//availableCash'):
+        for cash_el in btree.findall(".//availableCash"):
             try:
                 total += float(cash_el.text)
             except (TypeError, ValueError):
@@ -76,7 +76,7 @@ def compute_qty(settings, price: float) -> int:
     Decide how many shares to buy by allocating available cash across max_positions.
     """
     cash = get_cash()
-    if getattr(settings, 'max_positions', 0) > 0:
+    if getattr(settings, "max_positions", 0) > 0:
         allocation = cash / settings.max_positions
     else:
         allocation = cash

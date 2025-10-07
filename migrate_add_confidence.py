@@ -1,6 +1,6 @@
 import sqlite3
 
-DB = 'alerts.db'
+DB = "alerts.db"
 
 conn = sqlite3.connect(DB)
 c = conn.cursor()

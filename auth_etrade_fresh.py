@@ -1,6 +1,5 @@
-import os
-import json
 import webbrowser
+
 from requests_oauthlib import OAuth1Session
 
 CONSUMER_KEY = "1e0978925ddea6a6addb5436e6ff2164"
@@ -35,7 +34,7 @@ oauth = OAuth1Session(
 access_tokens = oauth.fetch_access_token(ACCESS_TOKEN_URL)
 
 with open("etrade.env", "w") as f:
-    f.write(f"ETRADE_ENV=production\n")
+    f.write("ETRADE_ENV=production\n")
     f.write(f"ETRADE_API_KEY={CONSUMER_KEY}\n")
     f.write(f"ETRADE_API_SECRET={CONSUMER_SECRET}\n")
     f.write(f"OAUTH_TOKEN={resource_owner_key}\n")

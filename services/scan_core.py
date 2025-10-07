@@ -1,19 +1,26 @@
-# -*- coding: utf-8 -*-
 from __future__ import annotations
-import time, logging
-from typing import Iterable, Sequence
-from services.settings_schema import SimulationSettings
-from services.market_service import get_symbols
-from services.simulation_service import analyze_symbol, _is_market_open  # reuse
+
+import logging
+import time
+from collections.abc import Sequence
+
 from services.broker_adapter import Broker
+from services.market_service import get_symbols
+from services.settings_schema import SimulationSettings
+from services.simulation_service import _is_market_open, analyze_symbol  # reuse
 
 log = logging.getLogger("scan")
 
 IGNORED_TICKERS = {"GEVO"}  # same ignore you wanted on Live
 
-def run_scan_loop(broker: Broker, settings: SimulationSettings, symbols: Sequence[str] | None = None):
+
+def run_scan_loop(
+    broker: Broker, settings: SimulationSettings, symbols: Sequence[str] | None = None
+):
     if not symbols:
-        symbols = get_symbols(simulation=False)  # for Live; pass simulation=True for sim page
+        symbols = get_symbols(
+            simulation=False
+        )  # for Live; pass simulation=True for sim page
 
     strict = getattr(settings, "strict_buy_signals", 4)
     require_sma20 = getattr(settings, "require_sma20", True)
@@ -43,9 +50,11 @@ def run_scan_loop(broker: Broker, settings: SimulationSettings, symbols: Sequenc
             sigs = len(toks)
 
             has_sma20 = any("price>sma20" in t or "price>sma(20)" in t for t in toks)
-            has_adx   = any(t.startswith("adx") or "adx>=" in t for t in toks)
-            has_macd  = any("macd" in t for t in toks)
-            meets_req = (("adx" not in req or has_adx) and ("macd" not in req or has_macd))
+            has_adx = any(t.startswith("adx") or "adx>=" in t for t in toks)
+            has_macd = any("macd" in t for t in toks)
+            meets_req = ("adx" not in req or has_adx) and (
+                "macd" not in req or has_macd
+            )
 
             if (sigs >= strict) and (not require_sma20 or has_sma20) and meets_req:
                 candidates.append((sym, float(price), list(triggered)))

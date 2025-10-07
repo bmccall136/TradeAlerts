@@ -23,7 +23,7 @@ def count_day_trades(trade_log, min_equity=25000, account_equity=0):
         if symbol not in day_trades[date]:
             day_trades[date][symbol] = set()
         day_trades[date][symbol].add(action)
-    
+
     # Count days with both BUY and SELL
     total_day_trades = []
     today = datetime.utcnow().date()
@@ -35,7 +35,7 @@ def count_day_trades(trade_log, min_equity=25000, account_equity=0):
             for acts in syms.values():
                 if "BUY" in acts and "SELL" in acts:
                     total_day_trades.append(dt)
-    
+
     # PDT if >=4 in last 5 business days
     pdt_flag = len(total_day_trades) >= 4
     return len(total_day_trades), pdt_flag

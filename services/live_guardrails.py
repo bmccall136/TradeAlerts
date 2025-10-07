@@ -1,27 +1,35 @@
 # services/live_guardrails.py
-import os, sqlite3, threading, time, logging
-from datetime import datetime, timezone, timedelta
+import logging
+import os
+import sqlite3
+import threading
+import time
+from datetime import UTC, datetime, timedelta
+
 import pytz
 
-from services.broker_live import market_sell
 from services import etrade_service as et
+from services.broker_live import market_sell
 
 log = logging.getLogger("live_guardrails")
 
 DB_PATH = os.path.join(os.getcwd(), "simulation.db")  # reuse your existing DB
 EASTERN = pytz.timezone("America/New_York")
-ENABLED = (os.getenv("GUARDRAILS_ENABLED", "true").lower() in {"1","true","on","yes"})
+ENABLED = os.getenv("GUARDRAILS_ENABLED", "true").lower() in {"1", "true", "on", "yes"}
+
 
 # ── helpers for time ─────────────────────────────────────────
 def now_eastern():
-    return datetime.now(timezone.utc).astimezone(EASTERN)
+    return datetime.now(UTC).astimezone(EASTERN)
+
 
 def local_date(dt):
     if dt.tzinfo is None:  # assume UTC
-        dt = dt.replace(tzinfo=timezone.utc).astimezone(EASTERN)
+        dt = dt.replace(tzinfo=UTC).astimezone(EASTERN)
     else:
         dt = dt.astimezone(EASTERN)
     return dt.date()
+
 
 def next_market_open_seconds():
     """
@@ -37,13 +45,16 @@ def next_market_open_seconds():
         target_time += timedelta(days=1)
     return max(1, int((target_time - n).total_seconds()))
 
+
 # ── storage ──────────────────────────────────────────────────
 def _conn():
     return sqlite3.connect(DB_PATH)
 
+
 def init_table():
     with _conn() as c:
-        c.execute("""
+        c.execute(
+            """
         CREATE TABLE IF NOT EXISTS live_guardrails (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           symbol TEXT NOT NULL,
@@ -51,28 +62,42 @@ def init_table():
           opened_at TEXT NOT NULL,   -- ISO UTC
           status TEXT NOT NULL DEFAULT 'OPEN'  -- OPEN | SOLD | CANCELED
         );
-        """)
+        """
+        )
+
 
 def record_entry(symbol: str, qty: int):
     dt = datetime.utcnow().replace(microsecond=0).isoformat()
     with _conn() as c:
-        c.execute("INSERT INTO live_guardrails(symbol, qty, opened_at, status) VALUES (?, ?, ?, 'OPEN')",
-                  (symbol.upper(), int(qty), dt))
+        c.execute(
+            "INSERT INTO live_guardrails(symbol, qty, opened_at, status) VALUES (?, ?, ?, 'OPEN')",
+            (symbol.upper(), int(qty), dt),
+        )
     log.info("[GR] recorded entry %s x%d at %s", symbol, qty, dt)
+
 
 def list_open_entries():
     with _conn() as c:
-        rows = c.execute("SELECT id, symbol, qty, opened_at, status FROM live_guardrails WHERE status='OPEN'").fetchall()
-    return [{"id": r[0], "symbol": r[1], "qty": r[2], "opened_at": r[3], "status": r[4]} for r in rows]
+        rows = c.execute(
+            "SELECT id, symbol, qty, opened_at, status FROM live_guardrails WHERE status='OPEN'"
+        ).fetchall()
+    return [
+        {"id": r[0], "symbol": r[1], "qty": r[2], "opened_at": r[3], "status": r[4]}
+        for r in rows
+    ]
+
 
 def mark_sold(entry_id: int):
     with _conn() as c:
         c.execute("UPDATE live_guardrails SET status='SOLD' WHERE id=?", (entry_id,))
 
+
 def has_bought_today():
     today = local_date(now_eastern())
     with _conn() as c:
-        rows = c.execute("SELECT opened_at FROM live_guardrails WHERE status IN ('OPEN','SOLD')").fetchall()
+        rows = c.execute(
+            "SELECT opened_at FROM live_guardrails WHERE status IN ('OPEN','SOLD')"
+        ).fetchall()
     for (ts,) in rows:
         try:
             dt = datetime.fromisoformat(ts)  # stored UTC naive
@@ -82,8 +107,10 @@ def has_bought_today():
             pass
     return False
 
+
 def open_position_exists():
     return len(list_open_entries()) > 0
+
 
 def should_sell_today(opened_at_iso: str) -> bool:
     try:
@@ -92,19 +119,22 @@ def should_sell_today(opened_at_iso: str) -> bool:
         return False
     return local_date(dt) < local_date(now_eastern())  # opened before today
 
+
 # ── reconcile helper (optional but useful) ──────────────────
 def current_qty(symbol: str) -> int:
     try:
-        for p in (et.get_positions() or []):
+        for p in et.get_positions() or []:
             if (p.get("symbol") or "").upper() == symbol.upper():
                 return int(p.get("qty") or 0)
     except Exception:
         pass
     return 0
 
+
 # ── auto seller thread ───────────────────────────────────────
 _thread = None
 _started = False
+
 
 def _auto_seller_loop():
     log.info("[GR] auto-seller started (enabled=%s)", ENABLED)
@@ -140,6 +170,7 @@ def _auto_seller_loop():
         except Exception:
             log.exception("[GR] loop error")
             time.sleep(30)
+
 
 def start_guardrails_auto_seller():
     global _thread, _started

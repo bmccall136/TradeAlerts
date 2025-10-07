@@ -1,27 +1,28 @@
-import yfinance as yf
 import pandas as pd
+import yfinance as yf
+
 from services.news_service import fetch_latest_headlines
 
 
 def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # basic price indicators: RSI, MACD, Bollinger
-    close = df['Close']
+    close = df["Close"]
     # RSI
     delta = close.diff()
     gain = delta.clip(lower=0).rolling(14).mean()
     loss = (-delta.clip(upper=0)).rolling(14).mean()
-    df['RSI'] = 100 - (100 / (1 + gain / loss))
+    df["RSI"] = 100 - (100 / (1 + gain / loss))
     # MACD
     ema_fast = close.ewm(span=12, adjust=False).mean()
     ema_slow = close.ewm(span=26, adjust=False).mean()
-    df['MACD'] = ema_fast - ema_slow
-    df['MACD_SIGNAL'] = df['MACD'].ewm(span=9, adjust=False).mean()
+    df["MACD"] = ema_fast - ema_slow
+    df["MACD_SIGNAL"] = df["MACD"].ewm(span=9, adjust=False).mean()
     # Bollinger Bands
     mb = close.rolling(20).mean()
     std = close.rolling(20).std()
-    df['BB_MID'] = mb
-    df['BB_UP'] = mb + 2 * std
-    df['BB_LOW'] = mb - 2 * std
+    df["BB_MID"] = mb
+    df["BB_UP"] = mb + 2 * std
+    df["BB_LOW"] = mb - 2 * std
     return df
 
 
@@ -57,22 +58,19 @@ def backtest(
     Single-symbol backtest. Returns list of trades and net P&L.
     """
     # 1) Fetch data
-    df = yf.Ticker(symbol.replace('.', '-')).history(
-        start=start_date,
-        end=end_date,
-        interval='1d',
-        auto_adjust=False
+    df = yf.Ticker(symbol.replace(".", "-")).history(
+        start=start_date, end=end_date, interval="1d", auto_adjust=False
     )
     if df is None or df.empty:
         return [], 0.0
 
     # 2) Compute indicators
-    df['Close'] = df['Close'].astype(float)
+    df["Close"] = df["Close"].astype(float)
     df = calculate_indicators(df)
     # VWAP
-    tp = (df['High'] + df['Low'] + df['Close']) / 3
-    df['VWAP'] = (tp * df['Volume']).cumsum() / df['Volume'].cumsum()
-    df['VWAP_DIFF'] = df['Close'] - df['VWAP']
+    tp = (df["High"] + df["Low"] + df["Close"]) / 3
+    df["VWAP"] = (tp * df["Volume"]).cumsum() / df["Volume"].cumsum()
+    df["VWAP_DIFF"] = df["Close"] - df["VWAP"]
 
     trades = []
     cash = initial_cash
@@ -81,35 +79,39 @@ def backtest(
 
     # 3) Loop through bars
     for idx in range(1, len(df)):
-        price = df['Open'].iat[idx] if 'Open' in df.columns else df['Close'].iat[idx]
+        price = df["Open"].iat[idx] if "Open" in df.columns else df["Close"].iat[idx]
         # EXIT: stop-loss / take-profit
         if position > 0:
             # stop-loss
             if stop_loss_pct > 0 and price <= entry_price * (1 - stop_loss_pct):
                 pnl = (price - entry_price) * position
                 cash += position * price
-                trades.append({
-                    'symbol': symbol,
-                    'action': 'SELL',
-                    'date': str(df.index[idx]),
-                    'qty': position,
-                    'price': price,
-                    'pnl': round(pnl, 2)
-                })
+                trades.append(
+                    {
+                        "symbol": symbol,
+                        "action": "SELL",
+                        "date": str(df.index[idx]),
+                        "qty": position,
+                        "price": price,
+                        "pnl": round(pnl, 2),
+                    }
+                )
                 position = 0
                 continue
             # take-profit
             if take_profit_pct > 0 and price >= entry_price * (1 + take_profit_pct):
                 pnl = (price - entry_price) * position
                 cash += position * price
-                trades.append({
-                    'symbol': symbol,
-                    'action': 'SELL',
-                    'date': str(df.index[idx]),
-                    'qty': position,
-                    'price': price,
-                    'pnl': round(pnl, 2)
-                })
+                trades.append(
+                    {
+                        "symbol": symbol,
+                        "action": "SELL",
+                        "date": str(df.index[idx]),
+                        "qty": position,
+                        "price": price,
+                        "pnl": round(pnl, 2),
+                    }
+                )
                 position = 0
                 continue
 
@@ -117,11 +119,11 @@ def backtest(
         if position == 0:
             # SMA filter
             if sma_on:
-                sma = df['Close'].rolling(sma_length).mean().iat[idx]
+                sma = df["Close"].rolling(sma_length).mean().iat[idx]
                 if price <= sma:
                     continue
             # VWAP filter
-            if vwap_on and df['VWAP_DIFF'].iat[idx] < vwap_threshold:
+            if vwap_on and df["VWAP_DIFF"].iat[idx] < vwap_threshold:
                 continue
             # News filter
             if news_on and not fetch_latest_headlines(symbol).empty:
@@ -135,31 +137,34 @@ def backtest(
             cash -= qty * price
             entry_price = price
             position = qty
-            trades.append({
-                'symbol': symbol,
-                'action': 'BUY',
-                'date': str(df.index[idx]),
-                'qty': qty,
-                'price': price,
-                'pnl': None
-            })
+            trades.append(
+                {
+                    "symbol": symbol,
+                    "action": "BUY",
+                    "date": str(df.index[idx]),
+                    "qty": qty,
+                    "price": price,
+                    "pnl": None,
+                }
+            )
 
     # 4) Final sell at end
     if position > 0:
-        final_price = df['Close'].iat[-1]
+        final_price = df["Close"].iat[-1]
         pnl = (final_price - entry_price) * position
         cash += position * final_price
-        trades.append({
-            'symbol': symbol,
-            'action': 'SELL',
-            'date': str(df.index[-1]),
-            'qty': position,
-            'price': final_price,
-            'pnl': round(pnl, 2)
-        })
+        trades.append(
+            {
+                "symbol": symbol,
+                "action": "SELL",
+                "date": str(df.index[-1]),
+                "qty": position,
+                "price": final_price,
+                "pnl": round(pnl, 2),
+            }
+        )
 
-    net_pnl = round(sum(t['pnl'] for t in trades if t['action']=='SELL'), 2)
-
+    net_pnl = round(sum(t["pnl"] for t in trades if t["action"] == "SELL"), 2)
 
 
 def run_full_backtest(settings, symbols):
@@ -168,11 +173,11 @@ def run_full_backtest(settings, symbols):
     """
     all_trades = []
     summary = {
-        'total_pnl': 0.0,
-        'num_trades': 0,
-        'wins': 0,
-        'losses': 0,
-        'by_symbol': {}
+        "total_pnl": 0.0,
+        "num_trades": 0,
+        "wins": 0,
+        "losses": 0,
+        "by_symbol": {},
     }
     for symbol in symbols:
         trades, net_pnl = backtest(
@@ -201,22 +206,23 @@ def run_full_backtest(settings, symbols):
             settings.vwap_threshold,
             stop_loss_pct=settings.stop_loss_pct,
             take_profit_pct=settings.take_profit_pct,
-            log_to_db=False
+            log_to_db=False,
         )
         all_trades.extend(trades)
-        summary['total_pnl'] += net_pnl
-        summary['num_trades'] += len(trades)
-        wins = sum(1 for t in trades if t['action']=='SELL' and t['pnl']>0)
-        losses = sum(1 for t in trades if t['action']=='SELL' and t['pnl']<=0)
-        summary['wins'] += wins
-        summary['losses'] += losses
-        summary['by_symbol'][symbol] = {
-            'pnl': net_pnl,
-            'trades': len(trades),
-            'wins': wins,
-            'losses': losses
+        summary["total_pnl"] += net_pnl
+        summary["num_trades"] += len(trades)
+        wins = sum(1 for t in trades if t["action"] == "SELL" and t["pnl"] > 0)
+        losses = sum(1 for t in trades if t["action"] == "SELL" and t["pnl"] <= 0)
+        summary["wins"] += wins
+        summary["losses"] += losses
+        summary["by_symbol"][symbol] = {
+            "pnl": net_pnl,
+            "trades": len(trades),
+            "wins": wins,
+            "losses": losses,
         }
     return all_trades, summary
+
 
 # alias
 backtest_scanner = run_full_backtest

@@ -56,7 +56,7 @@ Edit
 
 ## Quick Start
 
-1. **Install Dependencies**:  
+1. **Install Dependencies**:
 pip install flask pytz
 
 markdown
@@ -65,7 +65,7 @@ Edit
 
 2. **Initialize Databases** (see instructions above)
 
-3. **Run the App**:  
+3. **Run the App**:
 python dashboard.py
 
 yaml

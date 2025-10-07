@@ -1,5 +1,6 @@
 # services/signal_service.py
 
+
 def compute_buy_triggers(df):
     """
     Compute buy trigger conditions on DataFrame `df`.
@@ -11,6 +12,7 @@ def compute_buy_triggers(df):
     #     triggers.append('TREND')
     # return triggers
     return []
+
 
 def compute_sell_triggers(df):
     """

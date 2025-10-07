@@ -1,76 +1,51 @@
-# --- Console theme (optional) ---
-try {
-    $raw = $Host.UI.RawUI
-    $raw.BackgroundColor = 'Black'
-    $raw.ForegroundColor = 'Gray'
-    $raw.WindowTitle     = 'TradeAlerts — Sell Guard (RTH Only)'
-    Clear-Host
-} catch {}
+# TradeAlerts — LIVE (Buy Loop)
+$ErrorActionPreference = 'Continue'
+try { $Host.UI.RawUI.WindowTitle = 'TradeAlerts — LIVE (Buy Loop)'; Clear-Host } catch {}
 
-# --- Paths ---
 $root   = 'C:\TradeAlerts'
-$py     = 'C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe'
-$script = Join-Path $root 'sell_guard.py'
-$cfg    = Join-Path $root 'sell_guard_settings.json'
+$script = Join-Path $root 'live_start.py'        # <— your real live entrypoint
+$cfg    = Join-Path $root 'live_settings.json'
 $logDir = Join-Path $root 'logs'
 $pidDir = Join-Path $root 'pids'
-$pidFile= Join-Path $pidDir 'sell_guard.pid'
 New-Item -ItemType Directory -Path $logDir,$pidDir -Force | Out-Null
-
-# --- Log transcript ---
-$log = Join-Path $logDir ("StartSellGuard-RTH.log")
-Start-Transcript -Path $log -Append | Out-Null
-
-Write-Host "=== $(Get-Date) START Sell Guard (RTH-only / No Day Trades / No Intraday) ==="
-Write-Host "Python: $py"
 Set-Location -Path $root
+
+# Find Python (PowerShell 5.1 safe)
+$py = $null
+try { $py = (Get-Command python -ErrorAction Stop).Source } catch {
+  try { $py = (Get-Command py -ErrorAction Stop).Source } catch {
+    $py = 'C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe'
+    if (-not (Test-Path $py)) { Write-Host "Python not found." -ForegroundColor Red; exit 1 }
+  }
+}
+Write-Host "Python: $py"
 Write-Host "CWD: $((Get-Location).Path)"
 
-# --- Environment (explicit, safe) ---
-$env:ETRADE_ENV            = 'production'
-$env:PYTHONPATH            = $null
-$env:SELL_GUARD_SETTINGS   = $cfg   # tell the guard exactly which settings to use
+# Log transcript
+$log = Join-Path $logDir 'Start-Live.log'
+try { Start-Transcript -Path $log -Append -ErrorAction SilentlyContinue | Out-Null } catch {}
 
-# DO NOT disable guardrails; we honor the JSON:
-#   use_extended_hours=false
-#   avoid_daytrades=true
-#   allow_intraday_stoploss=false
-#   sell window 09:35–15:55 ET
-Write-Host "Using SELL_GUARD_SETTINGS=$($env:SELL_GUARD_SETTINGS)"
+# Environment (match your live code)
+$env:ETRADE_ENV                = 'production'
+$env:PYTHONUNBUFFERED          = '1'
+$env:PYTHONIOENCODING          = 'utf-8'
+$env:LIVE_SETTINGS             = $cfg                  # legacy var some code reads
+$env:TRADEALERTS_LIVE_SETTINGS = $cfg                  # newer name (harmless if unused)
 
-# --- Single-instance protection (PID file) ---
-if (Test-Path $pidFile) {
-    try {
-        $oldPid = Get-Content $pidFile -ErrorAction Stop | Select-Object -First 1
-        if ($oldPid -and (Get-Process -Id $oldPid -ErrorAction SilentlyContinue)) {
-            Write-Host "Another Sell Guard appears to be running (PID $oldPid). Exiting." -ForegroundColor Yellow
-            Stop-Transcript | Out-Null
-            return
-        } else {
-            Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
-        }
-    } catch {
-        Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
-    }
-}
+# --- Explicit overrides for Monday ---
+$env:GUARDRAILS_ENABLED = 'false'
+$env:LIVE_SAFE_MODE     = 'false'
+$env:GR_AUTO_SELLER     = '0'
 
-# --- Launch guard (same window, unbuffered output) ---
+Write-Host "Launching: $py -u `"$script`""
 try {
-    Write-Host "Launching: $py -u `"$script`""
-    & $py -u $script
+  & $py -u $script
 } catch {
-    Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
-    Write-Host $_.Exception | Format-List -Force
+  Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
 } finally {
-    # Best-effort cleanup; guard itself should also manage the PID
-    if (Test-Path $pidFile) { Remove-Item $pidFile -Force -ErrorAction SilentlyContinue }
+  try { Stop-Transcript | Out-Null } catch {}
 }
 
-Write-Host "=== $(Get-Date) END Sell Guard (RTH-only) ==="
-Stop-Transcript | Out-Null
-
-Write-Host ''
-Write-Host '--------------------------------------------------'
-Write-Host 'Window will stay open. Close it when you are done.' -ForegroundColor Yellow
-Write-Host 'Press Ctrl+C or click the close [X] to exit.' -ForegroundColor Yellow
+Write-Host "`n--------------------------------------------------"
+Write-Host "Window will stay open. Close it when you are done." -ForegroundColor Yellow
 while ($true) { Start-Sleep -Seconds 3600 }

@@ -1,0 +1,6 @@
+line-length = 100
+target-version = "py311"
+fix = true
+select = ["E", "F", "W", "B", "I", "UP", "Q", "RUF"]
+ignore = ["E203"]
+extend-exclude = [".venv", "venv", "env", "**/site-packages/**", "build", "dist", ".pytest_cache", ".mypy_cache"]

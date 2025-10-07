@@ -17,18 +17,29 @@ if row:
     old_qty, old_cost = row
     new_qty = old_qty + qty
     new_avg = ((old_cost * old_qty) + (price * qty)) / new_qty
-    cursor.execute("UPDATE holdings SET qty = ?, avg_cost = ? WHERE symbol = ?", (new_qty, new_avg, symbol))
+    cursor.execute(
+        "UPDATE holdings SET qty = ?, avg_cost = ? WHERE symbol = ?",
+        (new_qty, new_avg, symbol),
+    )
 else:
-    cursor.execute("INSERT INTO holdings (symbol, qty, avg_cost) VALUES (?, ?, ?)", (symbol, qty, price))
+    cursor.execute(
+        "INSERT INTO holdings (symbol, qty, avg_cost) VALUES (?, ?, ?)",
+        (symbol, qty, price),
+    )
 
 # Insert trade history
-cursor.execute("""
+cursor.execute(
+    """
     INSERT INTO trade_history (timestamp, symbol, action, qty, price)
     VALUES (?, ?, 'BUY', ?, ?)
-""", (timestamp, symbol, qty, price))
+""",
+    (timestamp, symbol, qty, price),
+)
 
 # Deduct from account
-cursor.execute("UPDATE account SET cash_balance = cash_balance - ? WHERE id = 1", (price * qty,))
+cursor.execute(
+    "UPDATE account SET cash_balance = cash_balance - ? WHERE id = 1", (price * qty,)
+)
 
 conn.commit()
 conn.close()

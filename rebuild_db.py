@@ -1,5 +1,5 @@
-import sqlite3
 import os
+import sqlite3
 
 # Backup original DB just in case
 if os.path.exists("alerts.db"):
@@ -13,7 +13,8 @@ cur = conn.cursor()
 cur.execute("ALTER TABLE alerts RENAME TO alerts_old")
 
 # Create the new alerts table
-cur.execute("""
+cur.execute(
+    """
     CREATE TABLE alerts (
         symbol TEXT,
         name TEXT,
@@ -24,13 +25,16 @@ cur.execute("""
         sparkline TEXT,
         chart_url TEXT
     )
-""")
+"""
+)
 
 # Migrate data from alerts_old
-cur.execute("""
+cur.execute(
+    """
     INSERT INTO alerts (symbol, name, signal, timestamp, confidence, price, sparkline, chart_url)
     SELECT symbol, name, signal, timestamp, confidence, price, sparkline, '' FROM alerts_old
-""")
+"""
+)
 
 # Finalize changes
 conn.commit()

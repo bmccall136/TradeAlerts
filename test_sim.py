@@ -1,6 +1,6 @@
 # test_sim.py
-from services.simulation_service import init_db, process_trade, get_simulation_state
 from config import Config
+from services.simulation_service import get_simulation_state, init_db, process_trade
 
 print("DB path:", Config.SIM_DB)
 init_db()

@@ -33,5 +33,3 @@ def load_settings(defaults):
 
 def save_settings(settings_dict):
     Settings.update(data=json.dumps(settings_dict)).where(Settings.id == 1).execute()
-
-

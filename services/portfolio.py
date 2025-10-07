@@ -1,5 +1,7 @@
 import sqlite3
+
 from .settings_schema import SIM_DB_PATH
+
 
 def get_holdings():
     """

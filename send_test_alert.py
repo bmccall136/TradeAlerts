@@ -1,4 +1,3 @@
-
 import requests
 
 url = "http://localhost:5000/trade-alert"
@@ -10,7 +9,7 @@ data = {
     "confidence": "100.0",
     "price": "123.45",
     "sparkline": "121,122,123,124,125",
-    "chart_url": "https://finance.yahoo.com/quote/TEST"
+    "chart_url": "https://finance.yahoo.com/quote/TEST",
 }
 
 response = requests.post(url, json=data)
