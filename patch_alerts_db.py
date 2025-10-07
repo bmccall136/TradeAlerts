@@ -1,13 +1,9 @@
-
 import sqlite3
 
 conn = sqlite3.connect("alerts_clean.db")
 cursor = conn.cursor()
 
-columns_to_add = [
-    ("timestamp", "TEXT"),
-    ("signal_type", "TEXT")
-]
+columns_to_add = [("timestamp", "TEXT"), ("signal_type", "TEXT")]
 
 for column_name, column_type in columns_to_add:
     try:

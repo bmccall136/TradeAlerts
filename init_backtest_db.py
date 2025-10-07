@@ -1,7 +1,7 @@
 # init_backtest_db.py
 import sqlite3
 
-conn = sqlite3.connect('BACKTEST_DB')
+conn = sqlite3.connect("BACKTEST_DB")
 c = conn.cursor()
 
 # drop old tables if they exist
@@ -9,16 +9,19 @@ c.execute("DROP TABLE IF EXISTS backtest_runs;")
 c.execute("DROP TABLE IF EXISTS backtest_trades;")
 
 # create backtest_runs with started_at & settings_json
-c.execute("""
+c.execute(
+    """
 CREATE TABLE backtest_runs (
     id            INTEGER PRIMARY KEY,
     started_at    TEXT    NOT NULL,
     settings_json TEXT    NOT NULL
 );
-""")
+"""
+)
 
 # create backtest_trades
-c.execute("""
+c.execute(
+    """
 CREATE TABLE backtest_trades (
     id        INTEGER PRIMARY KEY,
     run_id    INTEGER NOT NULL,
@@ -30,7 +33,8 @@ CREATE TABLE backtest_trades (
     pnl       REAL,
     FOREIGN KEY(run_id) REFERENCES backtest_runs(id)
 );
-""")
+"""
+)
 
 conn.commit()
 conn.close()

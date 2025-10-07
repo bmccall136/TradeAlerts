@@ -1,31 +1,34 @@
-﻿import json
-from datetime import datetime, timedelta
+import json
+from datetime import datetime
 
 # Use the helpers you already have in services\etrade_service.py
 try:
     from services.etrade_service import (
+        account_id_key,  # if present
         get_account_summary,
         get_positions,
+        get_recent_trades_and_realized,
         list_executed_orders,
         list_trade_transactions,
-        get_recent_trades_and_realized,
-        account_id_key,  # if present
     )
 except ImportError:
     from services.etrade_service import (
         get_account_summary,
         get_positions,
+        get_recent_trades_and_realized,
         list_executed_orders,
         list_trade_transactions,
-        get_recent_trades_and_realized,
     )
+
     account_id_key = lambda: None
+
 
 def safe(callable_obj, *args, **kwargs):
     try:
         return callable_obj(*args, **kwargs)
     except Exception as e:
         return {"error": str(e)}
+
 
 def main():
     end = datetime.utcnow()
@@ -34,7 +37,7 @@ def main():
         "account_id_key": safe(account_id_key),
         "balances": safe(get_account_summary),
         "positions": safe(get_positions),
-        "orders_executed": safe(list_executed_orders, 30),   # last 30 days
+        "orders_executed": safe(list_executed_orders, 30),  # last 30 days
         "transactions_trade": safe(list_trade_transactions, 30),
     }
     try:
@@ -47,6 +50,7 @@ def main():
         out["recent_trades_error"] = str(e)
 
     print(json.dumps(out, indent=2, default=str))
+
 
 if __name__ == "__main__":
     main()

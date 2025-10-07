@@ -1,9 +1,9 @@
-
-import os
 import logging
+import os
+
 import requests
-from requests_oauthlib import OAuth1
 from dotenv import load_dotenv
+from requests_oauthlib import OAuth1
 
 # Load .env file
 load_dotenv()

@@ -1,9 +1,8 @@
 # services/data_service.py
 import os
-from typing import List
 
 
-def load_symbols(filename: str = "sp500_symbols.txt") -> List[str]:
+def load_symbols(filename: str = "sp500_symbols.txt") -> list[str]:
     """
     Load a list of tickers from a file at the project root.
     Ignores blank lines and lines beginning with '#'.
@@ -18,11 +17,11 @@ def load_symbols(filename: str = "sp500_symbols.txt") -> List[str]:
     if not os.path.isfile(filepath):
         raise FileNotFoundError(f"Symbols file not found: {filepath}")
 
-    symbols: List[str] = []
-    with open(filepath, 'r') as f:
+    symbols: list[str] = []
+    with open(filepath) as f:
         for line in f:
             line = line.strip()
-            if not line or line.startswith('#'):
+            if not line or line.startswith("#"):
                 continue
             symbols.append(line)
     return symbols

@@ -1,5 +1,6 @@
-from services import etrade_service as et
 import json
+
+from services import etrade_service as et
 
 aid = et.account_id_key()
 prev = et.preview_equity_order(aid, "FCX", 1, 45.10, action="SELL", price_type="LIMIT")

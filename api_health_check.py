@@ -1,7 +1,7 @@
 import os
-import requests
-from dotenv import load_dotenv
+
 from authlib.integrations.requests_client import OAuth1Session
+from dotenv import load_dotenv
 
 # Load .env
 load_dotenv()
@@ -38,5 +38,5 @@ try:
         print(response.text)
 
 except Exception as e:
-    print(f"\n❌ Error: {str(e)}")
+    print(f"\n❌ Error: {e!s}")
     exit(1)

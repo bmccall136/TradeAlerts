@@ -1,6 +1,7 @@
 import sqlite3
 
-DB_PATH = 'alerts.db'
+DB_PATH = "alerts.db"
+
 
 def compute_vwap_for_symbol(symbol, limit=20):
     """
@@ -12,7 +13,7 @@ def compute_vwap_for_symbol(symbol, limit=20):
     cur = conn.cursor()
     cur.execute(
         "SELECT price, volume FROM alerts WHERE symbol = ? AND volume IS NOT NULL ORDER BY timestamp DESC LIMIT ?",
-        (symbol, limit)
+        (symbol, limit),
     )
     rows = cur.fetchall()
     conn.close()
@@ -20,12 +21,13 @@ def compute_vwap_for_symbol(symbol, limit=20):
     if not rows or len(rows) < 2:
         return None
 
-    total_pv = sum(r['price'] * r['volume'] for r in rows)
-    total_vol = sum(r['volume'] for r in rows)
+    total_pv = sum(r["price"] * r["volume"] for r in rows)
+    total_vol = sum(r["volume"] for r in rows)
     if total_vol == 0:
         return None
 
     return total_pv / total_vol
+
 
 def get_sparkline_svg(alert_id, limit=20, width=100, height=30):
     """
@@ -39,22 +41,22 @@ def get_sparkline_svg(alert_id, limit=20, width=100, height=30):
     row = cur.fetchone()
     conn.close()
     if not row:
-        return ''
-    symbol = row['symbol']
+        return ""
+    symbol = row["symbol"]
 
     conn = sqlite3.connect(ALERTS_DB)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     cur.execute(
         "SELECT price FROM alerts WHERE symbol = ? ORDER BY timestamp DESC LIMIT ?",
-        (symbol, limit)
+        (symbol, limit),
     )
     price_rows = cur.fetchall()
     conn.close()
 
-    prices = [r['price'] for r in price_rows]
+    prices = [r["price"] for r in price_rows]
     if len(prices) < 2:
-        return ''
+        return ""
     # reverse to chronological
     prices = prices[::-1]
     min_p, max_p = min(prices), max(prices)
@@ -65,11 +67,11 @@ def get_sparkline_svg(alert_id, limit=20, width=100, height=30):
         x = i * step
         y = height - ((p - min_p) / span) * height
         pts.append(f"{x:.1f},{y:.1f}")
-    polyline = ' '.join(pts)
+    polyline = " ".join(pts)
 
     svg = (
         f'<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">'
         f'<polyline fill="none" stroke="#0f0" stroke-width="1" points="{polyline}"/>'
-        '</svg>'
+        "</svg>"
     )
     return svg

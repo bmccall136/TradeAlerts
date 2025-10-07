@@ -1,8 +1,8 @@
 # config.py
 
-DB_PATH       = '/path/to/your/app.db'
-SIM_DB        = 'simulation.db'
-BACKTEST_DB   = 'backtest.db'
+DB_PATH = "/path/to/your/app.db"
+SIM_DB = "simulation.db"
+BACKTEST_DB = "backtest.db"
 
 # <<< add this >>>
 BACKTEST_SCHEMA = """

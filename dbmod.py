@@ -1,6 +1,6 @@
 import sqlite3
 
-conn = sqlite3.connect('alerts.db')
+conn = sqlite3.connect("alerts.db")
 c = conn.cursor()
 # Add vwap column if it doesn't exist
 try:

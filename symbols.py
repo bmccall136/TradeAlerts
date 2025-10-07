@@ -1,4 +1,3 @@
-
 # symbols.py
 
 import os
@@ -11,6 +10,7 @@ symbols_path = filename if os.path.isabs(filename) else os.path.join(base_dir, f
 # Load raw S&P 500 symbols
 with open(symbols_path) as f:
     SP500_SYMBOLS = [line.strip() for line in f if line.strip()]
+
 
 # Optional mapping function if any tickers need adjustment for Yahoo Finance
 def map_symbol(symbol):

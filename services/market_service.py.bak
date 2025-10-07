@@ -193,7 +193,7 @@ def analyze_symbol(symbol: str, settings: SimulationSettings) -> Dict[str, Any]:
         sma_last = compute_sma(close, s["sma_length"])   # ← returns float
         if price_live > sma_last:
             tags.append(f"Price>SMA({s['sma_length']})")
-                
+
 
     # — Risk / wash‐sale / settlement (if you use them) —
     # enforce_wash_sale, enforce_settlement can be called here if desired

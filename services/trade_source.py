@@ -1,37 +1,41 @@
 # services/trade_source.py
 from __future__ import annotations
+
 import datetime as _dt
-from typing import List, Dict, Any, Tuple, Optional, Deque
-from collections import deque
 import re
+from collections import deque
+from typing import Any
 
 try:
     from zoneinfo import ZoneInfo
+
     _ET = ZoneInfo("America/New_York")
 except Exception:
     _ET = _dt.timezone(_dt.timedelta(hours=-5))
 
 from . import etrade_service as et
 
-
 # ───────────────────────── Time helpers ─────────────────────────
+
 
 def _now_et() -> _dt.datetime:
     return _dt.datetime.now(tz=_ET)
+
 
 def _as_et(dt: _dt.datetime) -> _dt.datetime:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=_ET)
     return dt.astimezone(_ET)
 
-def _parse_any_dt(s: Any) -> Optional[_dt.datetime]:
+
+def _parse_any_dt(s: Any) -> _dt.datetime | None:
     if s is None:
         return None
     try:
         f = float(s)
         if f > 10_000_000_000:
             f /= 1000.0
-        return _as_et(_dt.datetime.fromtimestamp(f, tz=_dt.timezone.utc))
+        return _as_et(_dt.datetime.fromtimestamp(f, tz=_dt.UTC))
     except Exception:
         pass
     if isinstance(s, str):
@@ -71,7 +75,9 @@ def _parse_any_dt(s: Any) -> Optional[_dt.datetime]:
     return None
 
 
-def _date_range(days: Optional[int], start_iso: Optional[str]) -> Tuple[_dt.datetime, _dt.datetime]:
+def _date_range(
+    days: int | None, start_iso: str | None
+) -> tuple[_dt.datetime, _dt.datetime]:
     end_dt = _now_et()
     if start_iso:
         try:
@@ -87,13 +93,16 @@ def _date_range(days: Optional[int], start_iso: Optional[str]) -> Tuple[_dt.date
 
 # ─────────────────────── Normalization / merge ───────────────────────
 
-def _upper(val: Optional[str]) -> str:
+
+def _upper(val: str | None) -> str:
     return (val or "").upper()
 
-_SELL_PAT = re.compile(r"\bSELL|SOLD|SELL\s*TO\s*CLOSE|SELL\s*SHORT\b", re.I)
-_BUY_PAT  = re.compile(r"\bBUY|BOUGHT|BUY\s*TO\s*OPEN|BUY\s*TO\s*COVER\b", re.I)
 
-def _infer_side(row: Dict[str, Any], qty: float) -> str:
+_SELL_PAT = re.compile(r"\bSELL|SOLD|SELL\s*TO\s*CLOSE|SELL\s*SHORT\b", re.I)
+_BUY_PAT = re.compile(r"\bBUY|BOUGHT|BUY\s*TO\s*OPEN|BUY\s*TO\s*COVER\b", re.I)
+
+
+def _infer_side(row: dict[str, Any], qty: float) -> str:
     """
     Determine BUY/SELL using a lot of hints. Order of precedence:
     1) Explicit fields: side, orderAction, transactionType, action
@@ -113,13 +122,16 @@ def _infer_side(row: Dict[str, Any], qty: float) -> str:
 
     # 2) position effect
     v = _upper(row.get("positionEffect"))
-    if "CLOS" in v:   # CLOSING, CLOSE
+    if "CLOS" in v:  # CLOSING, CLOSE
         return "SELL"
     if "OPEN" in v:
         return "BUY"
 
     # 3) description-like text
-    desc = " ".join(str(row.get(k) or "") for k in ("description", "memo", "activityDesc", "details"))
+    desc = " ".join(
+        str(row.get(k) or "")
+        for k in ("description", "memo", "activityDesc", "details")
+    )
     if _SELL_PAT.search(desc):
         return "SELL"
     if _BUY_PAT.search(desc):
@@ -144,7 +156,7 @@ def _infer_side(row: Dict[str, Any], qty: float) -> str:
     return "BUY"
 
 
-def _norm_trade(row: Dict[str, Any]) -> Dict[str, Any]:
+def _norm_trade(row: dict[str, Any]) -> dict[str, Any]:
     symbol = (
         row.get("symbol")
         or row.get("Symbol")
@@ -155,8 +167,11 @@ def _norm_trade(row: Dict[str, Any]) -> Dict[str, Any]:
     symbol = str(symbol).strip().upper()
 
     qty_val = (
-        row.get("qty") or row.get("quantity") or row.get("Quantity")
-        or row.get("orderedQuantity") or row.get("filledQuantity")
+        row.get("qty")
+        or row.get("quantity")
+        or row.get("Quantity")
+        or row.get("orderedQuantity")
+        or row.get("filledQuantity")
     )
     try:
         qty = float(qty_val or 0)
@@ -164,8 +179,11 @@ def _norm_trade(row: Dict[str, Any]) -> Dict[str, Any]:
         qty = 0.0
 
     price_val = (
-        row.get("price") or row.get("Price") or row.get("executionPrice")
-        or row.get("executedPrice") or row.get("avgExecutionPrice")
+        row.get("price")
+        or row.get("Price")
+        or row.get("executionPrice")
+        or row.get("executedPrice")
+        or row.get("avgExecutionPrice")
         or row.get("pricePaid")
     )
     try:
@@ -191,8 +209,15 @@ def _norm_trade(row: Dict[str, Any]) -> Dict[str, Any]:
 
     src = row.get("_source") or "unknown"
     id_parts = [
-        row.get("orderId") or row.get("orderNumber") or row.get("transactionId") or row.get("executionId") or "",
-        symbol, f"{qty:g}", f"{price:.4f}", time_iso or str(time_ms or "")
+        row.get("orderId")
+        or row.get("orderNumber")
+        or row.get("transactionId")
+        or row.get("executionId")
+        or "",
+        symbol,
+        f"{qty:g}",
+        f"{price:.4f}",
+        time_iso or str(time_ms or ""),
     ]
     id_key = "|".join(str(p) for p in id_parts)
 
@@ -214,9 +239,9 @@ def _norm_trade(row: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _merge_dedup(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _merge_dedup(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen = set()
-    out: List[Dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
     for r in rows:
         k = r.get("_id")
         if not k or k in seen:
@@ -229,8 +254,11 @@ def _merge_dedup(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 # ─────────────── Fetch: executions & transactions ───────────────
 
-def _fetch_executions(start_dt: _dt.datetime, end_dt: _dt.datetime, max_count: int = 800) -> List[Dict[str, Any]]:
-    out: List[Dict[str, Any]] = []
+
+def _fetch_executions(
+    start_dt: _dt.datetime, end_dt: _dt.datetime, max_count: int = 800
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
     if hasattr(et, "list_executed_orders_between"):
         page = 1
         while len(out) < max_count:
@@ -248,7 +276,7 @@ def _fetch_executions(start_dt: _dt.datetime, end_dt: _dt.datetime, max_count: i
     if hasattr(et, "recent_executions_as_trades"):
         try:
             batch = et.recent_executions_as_trades(min(max_count, 1000))  # type: ignore[attr-defined]
-            for b in (batch or []):
+            for b in batch or []:
                 b["_source"] = "executions_recent"
                 nr = _norm_trade(b)
                 dt = _parse_any_dt(nr.get("time"))
@@ -261,7 +289,7 @@ def _fetch_executions(start_dt: _dt.datetime, end_dt: _dt.datetime, max_count: i
     if hasattr(et, "list_executed_orders_recent"):
         try:
             batch = et.list_executed_orders_recent(min(max_count, 1000))  # type: ignore[attr-defined]
-            for b in (batch or []):
+            for b in batch or []:
                 b["_source"] = "executions_recent_raw"
                 nr = _norm_trade(b)
                 dt = _parse_any_dt(nr.get("time"))
@@ -274,8 +302,10 @@ def _fetch_executions(start_dt: _dt.datetime, end_dt: _dt.datetime, max_count: i
     return out
 
 
-def _fetch_transactions(start_dt: _dt.datetime, end_dt: _dt.datetime, max_count: int = 800) -> List[Dict[str, Any]]:
-    out: List[Dict[str, Any]] = []
+def _fetch_transactions(
+    start_dt: _dt.datetime, end_dt: _dt.datetime, max_count: int = 800
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
     sd, ed = start_dt.date(), end_dt.date()
 
     if hasattr(et, "list_transactions_between"):
@@ -289,7 +319,11 @@ def _fetch_transactions(start_dt: _dt.datetime, end_dt: _dt.datetime, max_count:
                 break
             for b in batch:
                 ttype = _upper(b.get("transactionType"))
-                if any(k in ttype for k in ("BUY", "SELL", "BOUGHT", "SOLD")) or _SELL_PAT.search(str(b)) or _BUY_PAT.search(str(b)):
+                if (
+                    any(k in ttype for k in ("BUY", "SELL", "BOUGHT", "SOLD"))
+                    or _SELL_PAT.search(str(b))
+                    or _BUY_PAT.search(str(b))
+                ):
                     b["_source"] = "transactions"
                     nr = _norm_trade(b)
                     dt = _parse_any_dt(nr.get("time"))
@@ -308,7 +342,11 @@ def _fetch_transactions(start_dt: _dt.datetime, end_dt: _dt.datetime, max_count:
                 batch = et.list_transactions(s, e) or []  # type: ignore[attr-defined]
                 for b in batch:
                     ttype = _upper(b.get("transactionType"))
-                    if any(k in ttype for k in ("BUY", "SELL", "BOUGHT", "SOLD")) or _SELL_PAT.search(str(b)) or _BUY_PAT.search(str(b)):
+                    if (
+                        any(k in ttype for k in ("BUY", "SELL", "BOUGHT", "SOLD"))
+                        or _SELL_PAT.search(str(b))
+                        or _BUY_PAT.search(str(b))
+                    ):
                         b["_source"] = "transactions_simple"
                         nr = _norm_trade(b)
                         dt = _parse_any_dt(nr.get("time"))
@@ -328,7 +366,11 @@ def _fetch_transactions(start_dt: _dt.datetime, end_dt: _dt.datetime, max_count:
                 batch = et.account_transactions(s, e) or []  # type: ignore[attr-defined]
                 for b in batch:
                     ttype = _upper(b.get("transactionType"))
-                    if any(k in ttype for k in ("BUY", "SELL", "BOUGHT", "SOLD")) or _SELL_PAT.search(str(b)) or _BUY_PAT.search(str(b)):
+                    if (
+                        any(k in ttype for k in ("BUY", "SELL", "BOUGHT", "SOLD"))
+                        or _SELL_PAT.search(str(b))
+                        or _BUY_PAT.search(str(b))
+                    ):
                         b["_source"] = "transactions_account"
                         nr = _norm_trade(b)
                         dt = _parse_any_dt(nr.get("time"))
@@ -344,16 +386,17 @@ def _fetch_transactions(start_dt: _dt.datetime, end_dt: _dt.datetime, max_count:
 
 # ───────────────────── Realized P&L (FIFO) ─────────────────────
 
-def _enrich_fifo_realized_pl(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+
+def _enrich_fifo_realized_pl(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ordered = sorted(rows, key=lambda r: (r.get("time_ms") or 0))
-    lots: Dict[str, Deque[Tuple[float, float]]] = {}
-    out: List[Dict[str, Any]] = []
+    lots: dict[str, deque[tuple[float, float]]] = {}
+    out: list[dict[str, Any]] = []
 
     for r in ordered:
         sym = r["symbol"]
         side = r["side"]
         qty = float(r["qty"] or 0)
-        px  = float(r["price"] or 0)
+        px = float(r["price"] or 0)
 
         if sym not in lots:
             lots[sym] = deque()
@@ -388,7 +431,11 @@ def _enrich_fifo_realized_pl(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]
                 rr["price_paid"] = round(avg_basis, 4) if basis_qty else None
                 rr["amount"] = round(px * basis_qty, 4)
                 rr["pl"] = round(realized, 4)
-                rr["pl_pct"] = round(((px - avg_basis) / avg_basis) * 100.0, 4) if avg_basis else None
+                rr["pl_pct"] = (
+                    round(((px - avg_basis) / avg_basis) * 100.0, 4)
+                    if avg_basis
+                    else None
+                )
                 out.append(rr)
             else:
                 out.append(r)
@@ -402,29 +449,32 @@ def _enrich_fifo_realized_pl(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]
 
 # ────────────────────────── Public API ──────────────────────────
 
-def load_trades_merged(days: int | None = None,
-                       start_iso: str | None = None,
-                       max_count: int = 800) -> List[Dict[str, Any]]:
+
+def load_trades_merged(
+    days: int | None = None, start_iso: str | None = None, max_count: int = 800
+) -> list[dict[str, Any]]:
     start_dt, end_dt = _date_range(days, start_iso)
     execs = _fetch_executions(start_dt, end_dt, max_count=max_count)
-    txns  = _fetch_transactions(start_dt, end_dt, max_count=max_count)
+    txns = _fetch_transactions(start_dt, end_dt, max_count=max_count)
     merged = _merge_dedup(execs + txns)
     enriched = _enrich_fifo_realized_pl(merged)
 
-    final_rows: List[Dict[str, Any]] = []
+    final_rows: list[dict[str, Any]] = []
     for r in enriched[:max_count]:
         dt = _parse_any_dt(r.get("time"))
-        final_rows.append({
-            "symbol": r["symbol"],
-            "action": r.get("action") or r.get("side"),
-            "qty": r.get("qty"),
-            "price": r.get("price"),
-            "price_paid": r.get("price_paid"),
-            "amount": r.get("amount"),
-            "pl": r.get("pl"),
-            "pl_pct": r.get("pl_pct"),
-            "time": dt.strftime("%Y-%m-%d %H:%M:%S") if dt else None,
-            "time_utc": dt.isoformat() if dt else None,
-            "time_ms": r.get("time_ms"),
-        })
+        final_rows.append(
+            {
+                "symbol": r["symbol"],
+                "action": r.get("action") or r.get("side"),
+                "qty": r.get("qty"),
+                "price": r.get("price"),
+                "price_paid": r.get("price_paid"),
+                "amount": r.get("amount"),
+                "pl": r.get("pl"),
+                "pl_pct": r.get("pl_pct"),
+                "time": dt.strftime("%Y-%m-%d %H:%M:%S") if dt else None,
+                "time_utc": dt.isoformat() if dt else None,
+                "time_ms": r.get("time_ms"),
+            }
+        )
     return final_rows

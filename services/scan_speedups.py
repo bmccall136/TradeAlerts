@@ -1,12 +1,12 @@
 # services/scan_speedups.py
 from __future__ import annotations
-from services.triggers_logger import append_trigger_row
 
 import logging
-from typing import Dict, Iterable, Iterator, List, Sequence, Tuple, Optional
-
 import math
 import time
+from collections.abc import Iterable, Iterator, Sequence
+
+from services.triggers_logger import append_trigger_row
 
 log = logging.getLogger("live")
 
@@ -19,13 +19,14 @@ except Exception:  # pragma: no cover
 
 # ── small utilities ───────────────────────────────────────────────────────────
 
-def batched(seq: Sequence[str] | Iterable[str], n: int) -> Iterator[List[str]]:
+
+def batched(seq: Sequence[str] | Iterable[str], n: int) -> Iterator[list[str]]:
     """
     Yield lists of size ≤ n from seq/iterable.
     """
     if n <= 0:
         raise ValueError("n must be > 0")
-    buf: List[str] = []
+    buf: list[str] = []
     for s in seq:
         buf.append(s)
         if len(buf) >= n:
@@ -35,7 +36,7 @@ def batched(seq: Sequence[str] | Iterable[str], n: int) -> Iterator[List[str]]:
         yield buf
 
 
-def _safe_float(x) -> Optional[float]:
+def _safe_float(x) -> float | None:
     try:
         if x is None:
             return None
@@ -48,6 +49,7 @@ def _safe_float(x) -> Optional[float]:
 
 
 # ── logging helpers ──────────────────────────────────────────────────────────
+
 
 def _pretty_signal_name(t: str) -> str:
     t = (t or "").strip()
@@ -66,6 +68,7 @@ def _pretty_signal_name(t: str) -> str:
         return "Price > SMA20"
     return t
 
+
 def _dedupe_preserve_order(items):
     seen = set()
     out = []
@@ -75,17 +78,25 @@ def _dedupe_preserve_order(items):
             seen.add(x)
     return out
 
-def log_candidate(sym: str, price: float, triggered: List[str], scanned_i: int, total: int) -> None:
+
+def log_candidate(
+    sym: str, price: float, triggered: list[str], scanned_i: int, total: int
+) -> None:
     pretty = [_pretty_signal_name(x) for x in (triggered or [])]
     pretty = _dedupe_preserve_order(pretty)
     # console log (unchanged)
-    log.info("[LIVE] ➕ candidate %-6s px=%.2f signals=%s", sym, float(price), ", ".join(pretty))
+    log.info(
+        "[LIVE] ➕ candidate %-6s px=%.2f signals=%s",
+        sym,
+        float(price),
+        ", ".join(pretty),
+    )
     # CSV (one-hot indicator flags)
     try:
         append_trigger_row(
             symbol=sym,
             price=price,
-            triggered=pretty,             # we can feed the pretty list; mapper is tolerant
+            triggered=pretty,  # we can feed the pretty list; mapper is tolerant
             source="speed_scan",
             notes=f"{scanned_i}/{total}",
             signals_pretty=", ".join(pretty),
@@ -93,13 +104,15 @@ def log_candidate(sym: str, price: float, triggered: List[str], scanned_i: int, 
     except Exception as e:
         log.debug("triggers CSV append failed for %s: %s", sym, e)
 
+
 # ── fast quotes via E*TRADE + fallback to yfinance ───────────────────────────
 
-def _parse_etrade_quote_payload(payload: Dict) -> Dict[str, float]:
+
+def _parse_etrade_quote_payload(payload: dict) -> dict[str, float]:
     """
     Robust parser for E*TRADE /market/quote batch JSON. Returns {symbol: last_price}.
     """
-    out: Dict[str, float] = {}
+    out: dict[str, float] = {}
     if not isinstance(payload, dict):
         return out
 
@@ -135,14 +148,14 @@ def _parse_etrade_quote_payload(payload: Dict) -> Dict[str, float]:
     return out
 
 
-def fetch_intraday_prices_et(broker, symbols: Sequence[str]) -> Dict[str, float]:
+def fetch_intraday_prices_et(broker, symbols: Sequence[str]) -> dict[str, float]:
     """
     Use E*TRADE batch quote endpoint via the existing broker session.
     Returns {symbol: last_price}.
     """
     if not symbols:
         return {}
-    out: Dict[str, float] = {}
+    out: dict[str, float] = {}
     # E*TRADE seems fine with ~100-150 per call; go conservative.
     for chunk in batched(list(symbols), 100):
         try:
@@ -154,7 +167,7 @@ def fetch_intraday_prices_et(broker, symbols: Sequence[str]) -> Dict[str, float]
     return out
 
 
-def _yf_latest_price(sym: str) -> Optional[float]:
+def _yf_latest_price(sym: str) -> float | None:
     if yf is None:
         return None
     try:
@@ -175,7 +188,9 @@ def _yf_latest_price(sym: str) -> Optional[float]:
     return None
 
 
-def fetch_intraday_prices_with_fallback(broker, symbols: Sequence[str]) -> Dict[str, float]:
+def fetch_intraday_prices_with_fallback(
+    broker, symbols: Sequence[str]
+) -> dict[str, float]:
     """
     First try E*TRADE batch quotes; fill in any missing symbols with yfinance.
     """
@@ -192,6 +207,7 @@ def fetch_intraday_prices_with_fallback(broker, symbols: Sequence[str]) -> Dict[
 
 
 # ── warm yfinance caches so analyze_symbol runs faster ───────────────────────
+
 
 def preload_history_yahoo(symbols: Sequence[str], months: int = 6) -> None:
     """

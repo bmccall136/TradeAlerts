@@ -32,7 +32,7 @@
   "atr_threshold": 2.0,
   "atr_pct_on": true,
   "atr_pct": 0.5,
-  
+
   "super_on": true,
   "super_fast": 7,
   "super_slow": 21,

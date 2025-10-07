@@ -51,7 +51,7 @@ def fifo_basis_for_current(trades, inv_map):
         q   = int(_to_f(t.get("qty")) or 0)
         px  = _to_f(t.get("price"))
         tms = _ms(t.get("time_ms") or t.get("time_utc") or t.get("time"))
-        if not s or q<=0 or (px or 0)<=0: 
+        if not s or q<=0 or (px or 0)<=0:
             continue
         lots.setdefault(s, [])
         if a == "BUY":

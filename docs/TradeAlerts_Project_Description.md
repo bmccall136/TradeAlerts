@@ -5,23 +5,23 @@ TradeAlerts is a Flask-based web application for live and simulated stock tradin
 
 ## Major Features
 
-- **Dashboard**  
+- **Dashboard**
   - Real-time alerts (Prime/Sell) with filter, sparklines, triggers, and news links.
   - Table with confidence, price, timestamp, trigger badges, and buy/sell actions.
   - Persistent nav bar for one-click access to all app sections.
 
-- **Scanner**  
+- **Scanner**
   - Loops through S&P500, computes all indicators and triggers.
   - Posts new Prime alerts to the dashboard API if *all* required signals align (configurable).
 
-- **Backtest Engine**  
+- **Backtest Engine**
   - Run historical simulations using your exact “Prime” logic and tweakable parameters.
   - Simulate auto-buy/sell with customizable profit/stop/hold/exits.
   - See summary stats (win %, avg win/loss, max drawdown), full trade log, and interactive equity/P&L charts.
   - Download results as CSV.
   - “Promote to Live” button applies backtest settings to your live scanner instantly.
 
-- **Parameter Controls**  
+- **Parameter Controls**
   - All key strategy variables (targets, stops, hold time, required triggers) are adjustable from the UI—both for backtest and (optionally) live trading.
   - Config is stored in `config.json` and read by both modules.
 

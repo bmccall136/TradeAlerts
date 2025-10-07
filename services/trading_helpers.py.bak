@@ -424,7 +424,7 @@ try:
     _ensure_trail_table()
 except Exception:
     pass
- 
+
 # ─── State accessors ───────────────────────────────────────────────────────
 def _ensure_state() -> None:
     conn = _connect()

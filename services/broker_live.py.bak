@@ -90,7 +90,7 @@ def get_quote(symbols: str) -> dict:
     return r.json()
 
 # --- preview/place (unchanged) ---
-def preview_equity_order(accountIdKey: str, *, 
+def preview_equity_order(accountIdKey: str, *,
                          action: str | None = None,
                          side: str | None = None,             # alias
                          symbol: str,

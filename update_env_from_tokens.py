@@ -1,16 +1,19 @@
 import json
 import os
 import subprocess
+
 from dotenv import load_dotenv
 
 ENV_FILE = "etrade.env"
 TOKENS_FILE = "etrade_tokens.json"
+
 
 def load_env_tokens():
     if not os.path.exists(ENV_FILE):
         return None, None
     load_dotenv(ENV_FILE)
     return os.getenv("ACCESS_TOKEN"), os.getenv("ACCESS_TOKEN_SECRET")
+
 
 def load_json_tokens():
     if not os.path.exists(TOKENS_FILE):
@@ -19,8 +22,9 @@ def load_json_tokens():
         data = json.load(f)
         return data.get("oauth_token"), data.get("oauth_token_secret")
 
+
 def write_updated_env(oauth_token, oauth_token_secret):
-    with open(ENV_FILE, "r") as f:
+    with open(ENV_FILE) as f:
         lines = f.readlines()
     with open(ENV_FILE, "w") as f:
         for line in lines:
@@ -31,6 +35,7 @@ def write_updated_env(oauth_token, oauth_token_secret):
             else:
                 f.write(line)
     print("✅ Updated etrade.env with new access tokens.")
+
 
 def main():
     env_token, env_secret = load_env_tokens()
@@ -46,6 +51,7 @@ def main():
             print("❌ Failed to read new tokens after auth.")
     else:
         print("✅ Tokens already up to date.")
+
 
 if __name__ == "__main__":
     main()

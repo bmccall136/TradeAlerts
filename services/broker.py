@@ -1,8 +1,12 @@
 # services/broker.py
 from __future__ import annotations
 
-import os, json, time, math, logging
-from typing import Any, Dict, Optional, List
+import json
+import logging
+import math
+import os
+import time
+from typing import Any
 
 import requests
 from requests_oauthlib import OAuth1
@@ -11,10 +15,12 @@ log = logging.getLogger(__name__)
 
 # ── .env helpers ──────────────────────────────────────────────────────────────
 try:
-    from dotenv import load_dotenv, find_dotenv
+    from dotenv import find_dotenv, load_dotenv
+
     load_dotenv(find_dotenv(), override=True)
 except Exception:
     pass
+
 
 def _alias_env(a: str, b: str) -> None:
     va, vb = os.getenv(a), os.getenv(b)
@@ -22,6 +28,7 @@ def _alias_env(a: str, b: str) -> None:
         os.environ[b] = va
     if vb and not va:
         os.environ[a] = vb
+
 
 for A, B in [
     ("OAUTH_TOKEN", "ETRADE_ACCESS_TOKEN"),
@@ -46,10 +53,12 @@ def _normalize_symbol(sym: str) -> str:
         s = s.replace("-", ".")
     return s
 
+
 def _tick_size(price: float) -> float:
     return 0.01 if (price or 0) >= 1 else 0.0001
 
-def _round_limit(price: Optional[float], side: str) -> Optional[float]:
+
+def _round_limit(price: float | None, side: str) -> float | None:
     if price is None:
         return None
     t = _tick_size(price)
@@ -59,8 +68,10 @@ def _round_limit(price: Optional[float], side: str) -> Optional[float]:
     # E*TRADE accepts 2dp >=$1, 4dp for sub-dollar
     return float(f"{px:.2f}" if t == 0.01 else f"{px:.4f}")
 
-def _round4(x: Optional[float]) -> Optional[float]:
+
+def _round4(x: float | None) -> float | None:
     return None if x is None else float(f"{float(x):.4f}")
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Error
@@ -71,6 +82,7 @@ class ETradeHTTPError(RuntimeError):
         self.status_code = status_code
         self.payload = payload
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # E*TRADE raw client (minimal subset we use)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -79,57 +91,81 @@ class ETradeService:
         host = os.getenv("ETRADE_API_HOST", "https://api.etrade.com").rstrip("/")
         self.base = f"{host}/v1"
 
-        ck  = os.getenv("ETRADE_CONSUMER_KEY")
-        cs  = os.getenv("ETRADE_CONSUMER_SECRET")
-        at  = os.getenv("ETRADE_ACCESS_TOKEN")
+        ck = os.getenv("ETRADE_CONSUMER_KEY")
+        cs = os.getenv("ETRADE_CONSUMER_SECRET")
+        at = os.getenv("ETRADE_ACCESS_TOKEN")
         ats = os.getenv("ETRADE_ACCESS_TOKEN_SECRET")
-        missing = [n for n, v in [
-            ("ETRADE_CONSUMER_KEY", ck),
-            ("ETRADE_CONSUMER_SECRET", cs),
-            ("ETRADE_ACCESS_TOKEN", at),
-            ("ETRADE_ACCESS_TOKEN_SECRET", ats),
-        ] if not v]
+        missing = [
+            n
+            for n, v in [
+                ("ETRADE_CONSUMER_KEY", ck),
+                ("ETRADE_CONSUMER_SECRET", cs),
+                ("ETRADE_ACCESS_TOKEN", at),
+                ("ETRADE_ACCESS_TOKEN_SECRET", ats),
+            ]
+            if not v
+        ]
         if missing:
             raise RuntimeError(f"Missing env: {', '.join(missing)}")
 
         self.session = requests.Session()
         self.session.auth = OAuth1(ck, cs, at, ats)
 
-    def _headers(self) -> Dict[str, str]:
+    def _headers(self) -> dict[str, str]:
         return {"Content-Type": "application/json", "Accept": "application/json"}
 
-    def _get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _get(
+        self, path: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         url = f"{self.base}{path}"
         r = self.session.get(url, params=params, headers=self._headers(), timeout=30)
         if r.status_code >= 400:
-            try: body = r.json()
-            except Exception: body = r.text
+            try:
+                body = r.json()
+            except Exception:
+                body = r.text
             log.error("GET %s -> %s\n%s", url, r.status_code, body)
             raise ETradeHTTPError(r.status_code, body)
-        try: return r.json()
-        except Exception: return {}
+        try:
+            return r.json()
+        except Exception:
+            return {}
 
-    def _post(self, path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         url = f"{self.base}{path}"
-        r = self.session.post(url, data=json.dumps(payload), headers=self._headers(), timeout=30)
+        r = self.session.post(
+            url, data=json.dumps(payload), headers=self._headers(), timeout=30
+        )
         if r.status_code >= 400:
-            try: body = r.json()
-            except Exception: body = r.text
-            try: dbg = json.dumps(payload, indent=2)
-            except Exception: dbg = str(payload)
-            log.error("POST %s -> %s\npayload=%s\nresp=%s", url, r.status_code, dbg, body)
+            try:
+                body = r.json()
+            except Exception:
+                body = r.text
+            try:
+                dbg = json.dumps(payload, indent=2)
+            except Exception:
+                dbg = str(payload)
+            log.error(
+                "POST %s -> %s\npayload=%s\nresp=%s", url, r.status_code, dbg, body
+            )
             raise ETradeHTTPError(r.status_code, body)
-        try: return r.json()
-        except Exception: return {}
+        try:
+            return r.json()
+        except Exception:
+            return {}
 
     # accounts
-    def list_accounts(self) -> Dict[str, Any]:
+    def list_accounts(self) -> dict[str, Any]:
         return self._get("/accounts/list.json")
 
-    def first_account_id_key(self) -> Optional[str]:
+    def first_account_id_key(self) -> str | None:
         try:
             data = self.list_accounts()
-            a = data.get("AccountListResponse", {}).get("Accounts", {}).get("Account", [])
+            a = (
+                data.get("AccountListResponse", {})
+                .get("Accounts", {})
+                .get("Account", [])
+            )
             if isinstance(a, list) and a:
                 return a[0].get("accountIdKey")
         except Exception as e:
@@ -145,18 +181,28 @@ class ETradeService:
 
     # quotes (batch)
     # services/broker.py (or broker_live.py)
-    def get_quotes_batch(self, symbols: List[str]) -> Dict[str, Dict[str, float]]:
+    def get_quotes_batch(self, symbols: list[str]) -> dict[str, dict[str, float]]:
         from services.etrade_service import get_quotes_map
+
         return get_quotes_map(symbols)
 
     # orders
     def preview_equity_order(
-        self, account_id_key: str, symbol: str, quantity: int, price: Optional[float],
-        action: str, order_term: str = "GOOD_FOR_DAY", market_session: str = "REGULAR",
-        price_type: Optional[str] = None, client_order_id: Optional[str] = None,
-        all_or_none: bool = False, stop_price: Optional[float] = None,
-        offset_type: Optional[str] = None, offset_value: Optional[float] = None,
-    ) -> Dict[str, Any]:
+        self,
+        account_id_key: str,
+        symbol: str,
+        quantity: int,
+        price: float | None,
+        action: str,
+        order_term: str = "GOOD_FOR_DAY",
+        market_session: str = "REGULAR",
+        price_type: str | None = None,
+        client_order_id: str | None = None,
+        all_or_none: bool = False,
+        stop_price: float | None = None,
+        offset_type: str | None = None,
+        offset_value: float | None = None,
+    ) -> dict[str, Any]:
         if client_order_id is None:
             client_order_id = f"TA{int(time.time()*1000)%1_000_000_000}"
 
@@ -168,17 +214,19 @@ class ETradeService:
             "marketSession": market_session,
             **({"limitPrice": _round4(price)} if price is not None else {}),
             **({"stopPrice": _round4(stop_price)} if stop_price is not None else {}),
-            "Instrument": [{
-                "Product": {"securityType": "EQ", "symbol": symbol},
-                "orderAction": action,
-                "quantityType": "QUANTITY",
-                "quantity": int(quantity),
-            }],
+            "Instrument": [
+                {
+                    "Product": {"securityType": "EQ", "symbol": symbol},
+                    "orderAction": action,
+                    "quantityType": "QUANTITY",
+                    "quantity": int(quantity),
+                }
+            ],
         }
         if pt in ("TRAILING_STOP_PRCT", "TRAILING_STOP_CNST"):
             if offset_value is None:
                 raise ValueError("offset_value required for trailing stops")
-            order["offsetType"]  = offset_type or pt
+            order["offsetType"] = offset_type or pt
             order["offsetValue"] = float(offset_value)
 
         payload = {
@@ -191,13 +239,22 @@ class ETradeService:
         return self._post(f"/accounts/{account_id_key}/orders/preview.json", payload)
 
     def place_equity_order(
-        self, account_id_key: str, symbol: str, quantity: int, price: Optional[float],
-        action: str, preview_id: int, order_term: str = "GOOD_FOR_DAY",
-        market_session: str = "REGULAR", price_type: Optional[str] = None,
-        client_order_id: Optional[str] = None, all_or_none: bool = False,
-        stop_price: Optional[float] = None, offset_type: Optional[str] = None,
-        offset_value: Optional[float] = None,
-    ) -> Dict[str, Any]:
+        self,
+        account_id_key: str,
+        symbol: str,
+        quantity: int,
+        price: float | None,
+        action: str,
+        preview_id: int,
+        order_term: str = "GOOD_FOR_DAY",
+        market_session: str = "REGULAR",
+        price_type: str | None = None,
+        client_order_id: str | None = None,
+        all_or_none: bool = False,
+        stop_price: float | None = None,
+        offset_type: str | None = None,
+        offset_value: float | None = None,
+    ) -> dict[str, Any]:
         if client_order_id is None:
             client_order_id = f"TA{int(time.time()*1000)%1_000_000_000}"
 
@@ -209,17 +266,19 @@ class ETradeService:
             "marketSession": market_session,
             **({"limitPrice": _round4(price)} if price is not None else {}),
             **({"stopPrice": _round4(stop_price)} if stop_price is not None else {}),
-            "Instrument": [{
-                "Product": {"securityType": "EQ", "symbol": symbol},
-                "orderAction": action,
-                "quantityType": "QUANTITY",
-                "quantity": int(quantity),
-            }],
+            "Instrument": [
+                {
+                    "Product": {"securityType": "EQ", "symbol": symbol},
+                    "orderAction": action,
+                    "quantityType": "QUANTITY",
+                    "quantity": int(quantity),
+                }
+            ],
         }
         if pt in ("TRAILING_STOP_PRCT", "TRAILING_STOP_CNST"):
             if offset_value is None:
                 raise ValueError("offset_value required for trailing stops")
-            order["offsetType"]  = offset_type or pt
+            order["offsetType"] = offset_type or pt
             order["offsetValue"] = float(offset_value)
 
         payload = {
@@ -231,6 +290,7 @@ class ETradeService:
             }
         }
         return self._post(f"/accounts/{account_id_key}/orders/place.json", payload)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Broker facade
@@ -247,13 +307,17 @@ class LiveBroker:
 
         # fetch and cache from /accounts/list.json
         j = self._get("/v1/accounts/list.json").json()
-        acc = (j.get("AccountListResponse") or {}) \
-                .get("Accounts", {}) \
-                .get("Account") or []
-        if isinstance(acc, dict): acc = [acc]
+        acc = (j.get("AccountListResponse") or {}).get("Accounts", {}).get(
+            "Account"
+        ) or []
+        if isinstance(acc, dict):
+            acc = [acc]
         for a in acc:
-            if (a.get("institutionType") == "BROKERAGE"
-                or a.get("accountType") in ("INDIVIDUAL","JOINT","IRA")):
+            if a.get("institutionType") == "BROKERAGE" or a.get("accountType") in (
+                "INDIVIDUAL",
+                "JOINT",
+                "IRA",
+            ):
                 self._account_id_key = a.get("accountIdKey") or a.get("accountId")
                 break
         if not getattr(self, "_account_id_key", None):
@@ -315,7 +379,7 @@ class LiveBroker:
             log.exception("[LIVE] failed to refresh accountIdKey: %s", e)
             return False
 
-        alr = (data.get("AccountListResponse") or {})
+        alr = data.get("AccountListResponse") or {}
         acs = (alr.get("Accounts") or {}).get("Account") or []
         if isinstance(acs, dict):
             acs = [acs]
@@ -326,34 +390,45 @@ class LiveBroker:
         new_key = None
         for a in acs:
             if str(a.get("accountMode") or "").upper() == "BROKERAGE":
-                new_key = a.get("accountIdKey") or a.get("accountId"); break
+                new_key = a.get("accountIdKey") or a.get("accountId")
+                break
         if not new_key:
             a0 = acs[0]
             new_key = a0.get("accountIdKey") or a0.get("accountId")
 
         if new_key and new_key != getattr(self, "_account_id_key", None):
-            log.warning("[LIVE] accountIdKey changed %s -> %s",
-                        getattr(self, "_account_id_key", None), new_key)
+            log.warning(
+                "[LIVE] accountIdKey changed %s -> %s",
+                getattr(self, "_account_id_key", None),
+                new_key,
+            )
             self._account_id_key = new_key
             return True
         return bool(new_key)
 
     # services/broker.py inside LiveBroker
     def get_portfolio(self) -> dict:
-        return self._get_account("/portfolio.json", {"instType":"BROKERAGE"}) or {}
+        return self._get_account("/portfolio.json", {"instType": "BROKERAGE"}) or {}
 
     def _get_account(self, path: str, params: dict | None = None) -> dict:
         params = dict(params or {})
         norm = str(path or "")
 
         # these endpoints are NOT account-scoped
-        if norm.startswith("/accounts/list.json") or norm.startswith("/market/") or norm.startswith("/v1/market/"):
+        if (
+            norm.startswith("/accounts/list.json")
+            or norm.startswith("/market/")
+            or norm.startswith("/v1/market/")
+        ):
             return self._et._get(norm, params)
 
         # Lazy resolve key if empty
         if not getattr(self, "_account_id_key", ""):
             if not self._refresh_account_id_key():
-                log.error("[LIVE] no accountIdKey and refresh failed; returning {} for %s", path)
+                log.error(
+                    "[LIVE] no accountIdKey and refresh failed; returning {} for %s",
+                    path,
+                )
                 return {}
 
         attempts = 0
@@ -361,16 +436,23 @@ class LiveBroker:
             attempts += 1
             try:
                 # NEW (bypasses any instance-level monkey patch)
-                return ETradeService._get(self._et, f"/accounts/{self._account_id_key}{path}", params=params)
+                return ETradeService._get(
+                    self._et, f"/accounts/{self._account_id_key}{path}", params=params
+                )
             except ETradeHTTPError as e:
-                status  = getattr(e, "status_code", None)
+                status = getattr(e, "status_code", None)
                 payload = getattr(e, "payload", {}) or {}
-                err     = (payload.get("Error") or {})
-                code    = err.get("code")
-                msg     = (err.get("message") or "").lower()
+                err = payload.get("Error") or {}
+                code = err.get("code")
+                msg = (err.get("message") or "").lower()
 
                 # stale/wrong key
-                if status and 400 <= status < 500 and code == 100 and "belong to user" in msg:
+                if (
+                    status
+                    and 400 <= status < 500
+                    and code == 100
+                    and "belong to user" in msg
+                ):
                     log.warning("[LIVE] code 100 on %s; refreshing accountIdKey", path)
                     if self._refresh_account_id_key():
                         continue
@@ -380,19 +462,32 @@ class LiveBroker:
                 # transient hiccup: retry up to 3 times
                 if status and status >= 500 and attempts <= 3:
                     delay = 0.4 * (2 ** (attempts - 1)) + random.uniform(0, 0.25)
-                    log.warning("[LIVE] %s on %s; retry %d in %.2fs", status, path, attempts, delay)
+                    log.warning(
+                        "[LIVE] %s on %s; retry %d in %.2fs",
+                        status,
+                        path,
+                        attempts,
+                        delay,
+                    )
                     time.sleep(delay)
                     continue
 
-                log.error("[LIVE] _get_account failed %s %s -> returning {}", status, path)
+                log.error(
+                    "[LIVE] _get_account failed %s %s -> returning {}", status, path
+                )
                 return {}
+
     def _fresh_funds(self) -> float | None:
         now = time.time()
-        if self._pp_cache["pp"] is not None and (now - self._pp_cache["ts"]) < self._pp_ttl:
+        if (
+            self._pp_cache["pp"] is not None
+            and (now - self._pp_cache["ts"]) < self._pp_ttl
+        ):
             return self._pp_cache["pp"]
         try:
-            br   = (self._et.get_balances(self._account_id_key, realtime=True)
-                    .get("BalanceResponse", {}))
+            br = self._et.get_balances(self._account_id_key, realtime=True).get(
+                "BalanceResponse", {}
+            )
             comp = br.get("Computed", {}) or {}
             cash = br.get("Cash", {}) or {}
 
@@ -410,26 +505,35 @@ class LiveBroker:
                     return self._pp_cache["pp"]
 
             v = cash.get("settledCash")
-            self._pp_cache.update(ts=now, pp=(float(v) if isinstance(v, (int, float)) else None))
+            self._pp_cache.update(
+                ts=now, pp=(float(v) if isinstance(v, (int, float)) else None)
+            )
             return self._pp_cache["pp"]
         except Exception as e:
             log.warning("[LIVE] fresh funds read failed: %s", e)
             return self._pp_cache["pp"]
 
-    def get_account_summary(self) -> Dict[str, Any]:
+    def get_account_summary(self) -> dict[str, Any]:
         try:
-            br   = (self._et.get_balances(self._account_id_key, realtime=True)
-                    .get("BalanceResponse", {}))
+            br = self._et.get_balances(self._account_id_key, realtime=True).get(
+                "BalanceResponse", {}
+            )
             comp = br.get("Computed", {}) or {}
             cash = br.get("Cash", {}) or {}
-            rtv  = comp.get("RealTimeValues", {}) or {}
+            rtv = comp.get("RealTimeValues", {}) or {}
 
             # opportunistic cache refresh
-            for k in ("cashAvailableForWithdrawal","cashAvailableForInvestment",
-                      "cashBuyingPower","marginBuyingPower"):
+            for k in (
+                "cashAvailableForWithdrawal",
+                "cashAvailableForInvestment",
+                "cashBuyingPower",
+                "marginBuyingPower",
+            ):
                 v = comp.get(k)
                 if isinstance(v, (int, float)):
-                    self._last_bp = float(v); self._bp_ts = time.time(); break
+                    self._last_bp = float(v)
+                    self._bp_ts = time.time()
+                    break
 
             return {
                 "Computed": comp,
@@ -438,19 +542,26 @@ class LiveBroker:
                 # handy UI rollups
                 "ui": {
                     "buying_power": next(
-                        (float(comp[k]) for k in (
-                            "cashAvailableForWithdrawal",
-                            "cashAvailableForInvestment",
-                            "settledCashForInvestment",
-                            "cashBuyingPower",
-                            "marginBuyingPower",
-                        ) if isinstance(comp.get(k), (int, float))), None),
+                        (
+                            float(comp[k])
+                            for k in (
+                                "cashAvailableForWithdrawal",
+                                "cashAvailableForInvestment",
+                                "settledCashForInvestment",
+                                "cashBuyingPower",
+                                "marginBuyingPower",
+                            )
+                            if isinstance(comp.get(k), (int, float))
+                        ),
+                        None,
+                    ),
                     "available_to_trade": comp.get("cashAvailableForInvestment"),
                     "available_to_withdraw": comp.get("cashAvailableForWithdrawal")
-                                              or comp.get("totalAvailableForWithdrawal"),
-                    "settled_cash": comp.get("settledCashForInvestment") or cash.get("settledCash"),
+                    or comp.get("totalAvailableForWithdrawal"),
+                    "settled_cash": comp.get("settledCashForInvestment")
+                    or cash.get("settledCash"),
                     "nav": rtv.get("totalAccountValue")
-                            or ((comp.get("netCash") or 0) + (rtv.get("netMv") or 0)),
+                    or ((comp.get("netCash") or 0) + (rtv.get("netMv") or 0)),
                     "positions_value": rtv.get("netMv"),
                 },
             }
@@ -464,33 +575,42 @@ class LiveBroker:
         self._et = ETradeService()
 
         # Try env first, then API, but never hard-fail here
-        env_key = (os.getenv("ETRADE_ACCOUNT_ID_KEY")
-                   or os.getenv("ETRADE_ACCOUNT_KEY")
-                   or None)
+        env_key = (
+            os.getenv("ETRADE_ACCOUNT_ID_KEY")
+            or os.getenv("ETRADE_ACCOUNT_KEY")
+            or None
+        )
         api_key = None
         try:
             api_key = self._et.first_account_id_key()
         except Exception as e:
             log.warning("[LIVE] first_account_id_key failed at init: %s", e)
 
-        self._account_id_key = env_key or api_key or ""  # may be empty; lazy-refresh later
+        self._account_id_key = (
+            env_key or api_key or ""
+        )  # may be empty; lazy-refresh later
         if not self._account_id_key:
-            log.warning("[LIVE] starting without accountIdKey; will lazy-refresh on first account call")
+            log.warning(
+                "[LIVE] starting without accountIdKey; will lazy-refresh on first account call"
+            )
 
         # Caches / TTLs
         self._pp_cache = {"ts": 0.0, "pp": None}
-        self._pp_ttl   = float(os.getenv("LIVE_FUNDS_TTL_SEC", "15"))
-        self._last_bp: Optional[float] = None
+        self._pp_ttl = float(os.getenv("LIVE_FUNDS_TTL_SEC", "15"))
+        self._last_bp: float | None = None
         self._bp_ts: float = 0.0
         self._bp_ttl = int(os.getenv("LIVE_BP_TTL_SECONDS", "45"))
 
-    def get_buying_power(self, fresh: bool = False) -> Optional[float]:
-        if (not fresh) and (self._last_bp is not None) and (time.time() - self._bp_ts < self._bp_ttl):
+    def get_buying_power(self, fresh: bool = False) -> float | None:
+        if (
+            (not fresh)
+            and (self._last_bp is not None)
+            and (time.time() - self._bp_ts < self._bp_ttl)
+        ):
             return self._last_bp
         try:
-            br = (
-                self._et.get_balances(self._account_id_key, realtime=True)
-                .get("BalanceResponse", {})
+            br = self._et.get_balances(self._account_id_key, realtime=True).get(
+                "BalanceResponse", {}
             )
             comp = br.get("Computed", {}) or {}
             # prefer conservative fields; fall back to BP
@@ -519,10 +639,12 @@ class LiveBroker:
         return self._trade("SELL", symbol, quantity, price, **kw)
 
     # Core trade
-    def _trade(self, action: str, symbol: str, quantity: int, price: Optional[float], **kw) -> Dict[str, Any]:
-        q   = int(max(0, quantity))
+    def _trade(
+        self, action: str, symbol: str, quantity: int, price: float | None, **kw
+    ) -> dict[str, Any]:
+        q = int(max(0, quantity))
         sym = _normalize_symbol(symbol)
-        px  = _round_limit(price, action) if price is not None else None
+        px = _round_limit(price, action) if price is not None else None
         log.info("[LIVE] %s request for %s x%d @%s", action, sym, q, px)
 
         # --- BEFORE preview, resize by fresh funds (prevents 8400 spam) ---
@@ -530,8 +652,14 @@ class LiveBroker:
         if isinstance(bp, (int, float)) and (px or 0) > 0:
             afford = int(max(0.0, float(bp) - 0.01) // float(px))  # tiny penny buffer
             if afford < q:
-                log.info("[LIVE] resizing by broker funds %s: q %d→%d (fresh_pp=%.2f, px=%.4f)",
-                         sym, q, afford, bp, px or 0.0)
+                log.info(
+                    "[LIVE] resizing by broker funds %s: q %d→%d (fresh_pp=%.2f, px=%.4f)",
+                    sym,
+                    q,
+                    afford,
+                    bp,
+                    px or 0.0,
+                )
                 q = afford
         else:
             # When bp is None (401/429/etc), do NOT resize to zero
@@ -541,7 +669,9 @@ class LiveBroker:
         if q <= 0:
             return {
                 "ok": False,
-                "reason": "INSUFFICIENT_FUNDS" if isinstance(bp, (int, float)) else "QTY_LT_ONE",
+                "reason": "INSUFFICIENT_FUNDS"
+                if isinstance(bp, (int, float))
+                else "QTY_LT_ONE",
                 "fresh_pp": (None if bp is None else round(float(bp), 2)),
                 "px": px,
             }
@@ -555,38 +685,63 @@ class LiveBroker:
             msg = str(e.payload) if hasattr(e, "payload") else str(e)
             short = None
             try:
-                s = json.dumps(e.payload) if isinstance(e.payload, dict) else str(e.payload)
+                s = (
+                    json.dumps(e.payload)
+                    if isinstance(e.payload, dict)
+                    else str(e.payload)
+                )
                 import re
+
                 m = re.search(r"approximately\s*\$([0-9]+(?:\.[0-9]+)?)", s, re.I)
-                if m: short = float(m.group(1))
+                if m:
+                    short = float(m.group(1))
             except Exception:
                 pass
             log.info(
                 "[LIVE] preview rejected %s (fresh_pp=%.2f, px=%.4f, q=%d, shortfall=%s)",
-                sym, float(bp or 0), float(px or 0), q, (f"${short:.2f}" if short is not None else "n/a"),
+                sym,
+                float(bp or 0),
+                float(px or 0),
+                q,
+                (f"${short:.2f}" if short is not None else "n/a"),
             )
             return {
-                "ok": False, "reason": "INSUFFICIENT_FUNDS", "error": msg,
-                "fresh_pp": round(float(bp or 0), 2), "px": px, "q": q, "shortfall": short
+                "ok": False,
+                "reason": "INSUFFICIENT_FUNDS",
+                "error": msg,
+                "fresh_pp": round(float(bp or 0), 2),
+                "px": px,
+                "q": q,
+                "shortfall": short,
             }
         except Exception as e:
             log.exception("[LIVE] preview error")
             return {"ok": False, "reason": "EXCEPTION", "error": str(e)}
 
         # Dig previewId
-        def _dig_preview_id(node) -> Optional[int]:
+        def _dig_preview_id(node) -> int | None:
             if isinstance(node, dict):
-                for k in ("previewId","PreviewId","preview_id","PreviewID","previewID"):
+                for k in (
+                    "previewId",
+                    "PreviewId",
+                    "preview_id",
+                    "PreviewID",
+                    "previewID",
+                ):
                     if k in node:
-                        try: return int(node[k])
-                        except Exception: pass
+                        try:
+                            return int(node[k])
+                        except Exception:
+                            pass
                 for v in node.values():
                     got = _dig_preview_id(v)
-                    if got is not None: return got
+                    if got is not None:
+                        return got
             elif isinstance(node, (list, tuple)):
                 for it in node:
                     got = _dig_preview_id(it)
-                    if got is not None: return got
+                    if got is not None:
+                        return got
             return None
 
         preview_id = _dig_preview_id(prev)
@@ -600,7 +755,12 @@ class LiveBroker:
             )
         except Exception as e:
             log.exception("[LIVE] place error")
-            return {"ok": False, "reason": "EXCEPTION", "error": str(e), "preview": prev}
+            return {
+                "ok": False,
+                "reason": "EXCEPTION",
+                "error": str(e),
+                "preview": prev,
+            }
 
         # Normalize success
         if isinstance(placed, dict):
@@ -611,9 +771,12 @@ class LiveBroker:
 
         return {"ok": False, "reason": "BROKER_REJECT", "resp": placed, "preview": prev}
 
+
 # singleton
-_singleton: Optional[LiveBroker] = None
-def get_broker(mode: Optional[str] = "LIVE") -> LiveBroker:
+_singleton: LiveBroker | None = None
+
+
+def get_broker(mode: str | None = "LIVE") -> LiveBroker:
     global _singleton
     if _singleton is None:
         _singleton = LiveBroker(mode)

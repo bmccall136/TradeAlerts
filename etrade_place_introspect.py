@@ -1,13 +1,15 @@
-
 # etrade_place_introspect.py — print signatures, docstrings, and (if available) source for E*TRADE wrapper fns.
+import inspect
+import textwrap
+
 from services import etrade_service as et
-import inspect, textwrap, json
+
 
 def dump_fn(name):
     fn = getattr(et, name, None)
     print(f"\n=== {name} ===")
     if fn is None:
-        print("not found"); 
+        print("not found")
         return
     try:
         sig = inspect.signature(fn)
@@ -21,6 +23,7 @@ def dump_fn(name):
         print("\nsource:\n", textwrap.dedent(src))
     except Exception as e:
         print("\nsource: <unavailable>", e)
+
 
 for n in [
     "preview_equity_order",

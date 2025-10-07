@@ -68,7 +68,7 @@ def pick_qty(limit_px, acct, max_per_trade):
     acct: dict from et.get_account_summary() or balances endpoint
     max_per_trade: e.g. 150.0 dollars
     """
-    def _f(x): 
+    def _f(x):
         try: return float(x) if x is not None else 0.0
         except: return 0.0
 
@@ -992,7 +992,7 @@ def _dedupe_trades(rows):
                             str(t.get("action") or t.get("side") or ""),
                             str(t.get("qty") or 0),
                             f'{float(t.get("price") or 0):.2f}']))
-        if uid in seen: 
+        if uid in seen:
             continue
         seen.add(uid)
         out.append(t)
@@ -2480,7 +2480,7 @@ def export_simulation():
         _starting_cash = float(getattr(load_simulation_settings(), "starting_cash", 0.0) or 0.0)
     except Exception:
         start_cash   = get_starting_cash_safe()
-        
+
     # ---- Now that _starting_cash is set, compute realized % ----
     realized_pnl_pct = (realized_pnl / start_cash * 100.0) if start_cash else 0.0
     # ---- CSV export ----
@@ -2887,7 +2887,7 @@ def simulation_sell():
 @app.route('/export_alerts')
 def export_alerts():
     # pull your alerts from the DB (or your service)
-    alerts = get_alerts()  
+    alerts = get_alerts()
 
     # Build CSV in memory
     buf = io.StringIO()
@@ -3083,7 +3083,7 @@ def index():
         })
 
     return redirect(url_for("simulation_view"))
-     
+
     cash = round(get_cash(), 2)
     unrealized_pnl = round(sum(h["total_gain"] for h in holdings), 2)
     total_cost_basis = sum(h["qty"] * h["price_paid"] for h in holdings)
@@ -3457,7 +3457,7 @@ def live_status():
         # --- local helpers (must be defined before first use) ---
         def _to_f(val, default=0.0):
             try:
-                if val is None: 
+                if val is None:
                     return default
                 return float(val)
             except Exception:
@@ -4159,7 +4159,7 @@ def live_status():
                 parts.extend(r);  _log("info","[LIVE] transactions_as_trades(%s)->%d", days, len(r))
         except Exception as e:
             _log("warning","[LIVE] transactions_as_trades failed: %s", e)
-            
+
         # ... after you compute metrics like total_value/positions_value:
         metrics["realized_buckets"] = realized_buckets_from_trades(
             trades_rows,

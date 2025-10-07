@@ -1,14 +1,15 @@
 import sqlite3
 from pathlib import Path
 
-db_path = Path(__file__).parent / 'alerts.db'
+db_path = Path(__file__).parent / "alerts.db"
 print("🔧 Recreating", db_path.resolve())
 
 conn = sqlite3.connect(db_path)
 c = conn.cursor()
 
 c.execute("DROP TABLE IF EXISTS alerts")
-c.execute("""
+c.execute(
+    """
     CREATE TABLE alerts (
         symbol       TEXT PRIMARY KEY,
         name         TEXT,
@@ -21,7 +22,8 @@ c.execute("""
         qty          INTEGER,
         buy          BOOLEAN
     )
-""")
+"""
+)
 conn.commit()
 conn.close()
 print("✅ Table created with 'time' column.")

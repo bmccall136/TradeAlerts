@@ -56,10 +56,10 @@
 ---
 
 ### Your Edge
-**You’re now running a setup that gives you full control, full transparency, and real statistical edge.  
+**You’re now running a setup that gives you full control, full transparency, and real statistical edge.
 No guessing—just facts, logic, and growth.**
 
 ---
 
-**Ready to keep pushing the edge? Want this as a downloadable PDF/markdown? Just say the word!  
+**Ready to keep pushing the edge? Want this as a downloadable PDF/markdown? Just say the word!
 Let’s make this the best trading system you’ve ever seen.**

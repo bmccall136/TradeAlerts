@@ -9,7 +9,7 @@ columns = [
     ("confidence", "REAL"),
     ("cleared", "INTEGER"),
     ("name", "TEXT"),
-    ("qty", "INTEGER")
+    ("qty", "INTEGER"),
 ]
 
 for column, col_type in columns:

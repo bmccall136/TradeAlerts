@@ -53,7 +53,7 @@ class SimulationSettings:
     adx_on: bool = False
     adx_len: int  = 14
     adx_threshold: float = 20.0
-    
+
     super_on:           bool = False
     super_fast:         int  = 7
     super_slow:         int  = 21
@@ -80,7 +80,7 @@ class SimulationSettings:
 
     # ─── Required filters (custom logic) ────────────────────────────────────
     required_filters: List[str] = field(default_factory=list)
-    
+
     # ─── Strict Buy Logic (NEW) ──────────────────────────────────────────────
     strict_buy_signals: int = 4
     require_sma20: bool = True

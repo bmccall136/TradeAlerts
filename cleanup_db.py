@@ -3,7 +3,8 @@ import sqlite3
 conn = sqlite3.connect("alerts_clean.db")
 c = conn.cursor()
 
-c.execute("""
+c.execute(
+    """
   DELETE FROM alerts
    WHERE symbol   IS NULL
       OR name     IS NULL
@@ -12,7 +13,8 @@ c.execute("""
       OR confidence IS NULL
       OR price    IS NULL
       OR sparkline IS NULL
-""")
+"""
+)
 
 conn.commit()
 conn.close()

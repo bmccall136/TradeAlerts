@@ -3,9 +3,9 @@ Windows PowerShell transcript start
 Start time: 20250908222209
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
-Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1
 Process ID: 110940
 PSVersion: 5.1.26100.4061
 PSEdition: Desktop
@@ -27,9 +27,9 @@ Windows PowerShell transcript start
 Start time: 20250908222317
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
-Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1
 Process ID: 98488
 PSVersion: 5.1.26100.4061
 PSEdition: Desktop
@@ -52,9 +52,9 @@ Windows PowerShell transcript start
 Start time: 20250908222431
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
-Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1
 Process ID: 113640
 PSVersion: 5.1.26100.4061
 PSEdition: Desktop
@@ -77,9 +77,9 @@ Windows PowerShell transcript start
 Start time: 20250908224838
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
-Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1
 Process ID: 45964
 PSVersion: 5.1.26100.4061
 PSEdition: Desktop
@@ -105,7 +105,7 @@ Windows PowerShell transcript start
 Start time: 20250908224950
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: powershell -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All.ps1
 Process ID: 107668
@@ -125,7 +125,7 @@ Windows PowerShell transcript start
 Start time: 20250908225621
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: powershell -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All.ps1
 Process ID: 108796

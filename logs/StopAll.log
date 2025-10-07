@@ -3,9 +3,9 @@ Windows PowerShell transcript start
 Start time: 20250908215853
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
-Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\Users\bmccall\Downloads\Stop-All.ps1 
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\Users\bmccall\Downloads\Stop-All.ps1
 Process ID: 110944
 PSVersion: 5.1.26100.4061
 PSEdition: Desktop
@@ -27,9 +27,9 @@ Windows PowerShell transcript start
 Start time: 20250908215958
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
-Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1
 Process ID: 41568
 PSVersion: 5.1.26100.4061
 PSEdition: Desktop
@@ -51,9 +51,9 @@ Windows PowerShell transcript start
 Start time: 20250908220043
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
-Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1
 Process ID: 111600
 PSVersion: 5.1.26100.4061
 PSEdition: Desktop
@@ -75,9 +75,9 @@ Windows PowerShell transcript start
 Start time: 20250908220116
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
-Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1
 Process ID: 82096
 PSVersion: 5.1.26100.4061
 PSEdition: Desktop
@@ -99,9 +99,9 @@ Windows PowerShell transcript start
 Start time: 20250908220506
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
-Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1
 Process ID: 109700
 PSVersion: 5.1.26100.4061
 PSEdition: Desktop
@@ -124,9 +124,9 @@ Windows PowerShell transcript start
 Start time: 20250908220716
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
-Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1
 Process ID: 65324
 PSVersion: 5.1.26100.4061
 PSEdition: Desktop
@@ -148,9 +148,9 @@ Windows PowerShell transcript start
 Start time: 20250908220805
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
-Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1
 Process ID: 33424
 PSVersion: 5.1.26100.4061
 PSEdition: Desktop
@@ -173,9 +173,9 @@ Windows PowerShell transcript start
 Start time: 20250908220922
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
-Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1
 Process ID: 109320
 PSVersion: 5.1.26100.4061
 PSEdition: Desktop
@@ -197,9 +197,9 @@ Windows PowerShell transcript start
 Start time: 20250908221753
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
-Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1
 Process ID: 109540
 PSVersion: 5.1.26100.4061
 PSEdition: Desktop
@@ -235,9 +235,9 @@ Windows PowerShell transcript start
 Start time: 20250908221822
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
-Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1
 Process ID: 68636
 PSVersion: 5.1.26100.4061
 PSEdition: Desktop
@@ -273,7 +273,7 @@ Windows PowerShell transcript start
 Start time: 20250908224206
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: powershell -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All.ps1
 Process ID: 82728
@@ -367,9 +367,9 @@ Windows PowerShell transcript start
 Start time: 20250908231328
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
-Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1 
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  C:\TradeAlerts\Stop-All.ps1
 Process ID: 112948
 PSVersion: 5.1.26100.4061
 PSEdition: Desktop
@@ -396,7 +396,7 @@ Windows PowerShell transcript start
 Start time: 20250909001638
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
 Process ID: 105080
@@ -478,7 +478,7 @@ Windows PowerShell transcript start
 Start time: 20250909001801
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
 Process ID: 108744
@@ -560,7 +560,7 @@ Windows PowerShell transcript start
 Start time: 20250909002024
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
 Process ID: 103000
@@ -583,7 +583,7 @@ Windows PowerShell transcript start
 Start time: 20250909002105
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
 Process ID: 110652
@@ -604,7 +604,7 @@ Windows PowerShell transcript start
 Start time: 20250909002115
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
 Process ID: 103000
@@ -624,7 +624,7 @@ Windows PowerShell transcript start
 Start time: 20250909002432
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
 Process ID: 49568
@@ -647,7 +647,7 @@ Windows PowerShell transcript start
 Start time: 20250909002521
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
 Process ID: 111344
@@ -670,7 +670,7 @@ Windows PowerShell transcript start
 Start time: 20250909003307
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
 Process ID: 23300
@@ -695,7 +695,7 @@ Windows PowerShell transcript start
 Start time: 20250909003740
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
 Process ID: 98488
@@ -719,7 +719,7 @@ Windows PowerShell transcript start
 Start time: 20250909133650
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
 Process ID: 101160
@@ -741,7 +741,7 @@ Windows PowerShell transcript start
 Start time: 20250909160501
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
 Process ID: 116000
@@ -763,7 +763,7 @@ Windows PowerShell transcript start
 Start time: 20250910160504
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
 Process ID: 109996
@@ -789,7 +789,7 @@ Windows PowerShell transcript start
 Start time: 20250911155731
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
 Process ID: 126408
@@ -814,7 +814,7 @@ Windows PowerShell transcript start
 Start time: 20250911160502
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
 Process ID: 131616
@@ -838,7 +838,7 @@ Windows PowerShell transcript start
 Start time: 20250916134044
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
 Process ID: 36696
@@ -861,7 +861,7 @@ Windows PowerShell transcript start
 Start time: 20250916160503
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
 Process ID: 18620
@@ -881,7 +881,7 @@ Windows PowerShell transcript start
 Start time: 20250917160503
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
 Process ID: 35040
@@ -903,7 +903,7 @@ Windows PowerShell transcript start
 Start time: 20250918160503
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
 Process ID: 31136
@@ -927,7 +927,7 @@ Windows PowerShell transcript start
 Start time: 20250922160504
 Username: GCSD\bmccall
 RunAs User: GCSD\bmccall
-Configuration Name: 
+Configuration Name:
 Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
 Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
 Process ID: 29540
@@ -947,3 +947,171 @@ taskkill tree for sell_guard.pid 25276 issued.
 Killing python(cmdline) PID 33496
 Killing powershell(cmdline) PID 15824
 Killing powershell(cmdline) PID 29540
+**********************
+Windows PowerShell transcript start
+Start time: 20250930160502
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name:
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 54280
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 09/30/2025 16:05:02 STOP ALL (fixed live) ===
+Killing sell_guard.pid PID 16376
+Killing powershell(cmdline) PID 10564
+Killing powershell(cmdline) PID 54280
+**********************
+Windows PowerShell transcript start
+Start time: 20251001160502
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name:
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 53496
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 10/01/2025 16:05:02 STOP ALL (fixed live) ===
+Killing sell_guard.pid PID 55176
+PS>TerminatingError(Stop-Process): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find a process with the process identifier 55176."
+taskkill tree for sell_guard.pid 55176 issued.
+Killing powershell(cmdline) PID 53496
+**********************
+Windows PowerShell transcript start
+Start time: 20251002160502
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name:
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 70108
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 10/02/2025 16:05:03 STOP ALL (fixed live) ===
+Killing sell_guard.pid PID 100
+PS>TerminatingError(Stop-Process): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find a process with the process identifier 100."
+taskkill tree for sell_guard.pid 100 issued.
+Killing powershell(cmdline) PID 31092
+Killing powershell(cmdline) PID 70108
+**********************
+Windows PowerShell transcript start
+Start time: 20251003160502
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name:
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 32856
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 10/03/2025 16:05:02 STOP ALL (fixed live) ===
+Killing sell_guard.pid PID 67232
+Killing powershell(cmdline) PID 75512
+Killing powershell(cmdline) PID 9896
+Killing powershell(cmdline) PID 32856
+**********************
+Windows PowerShell transcript start
+Start time: 20251003222338
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name:
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 36400
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 10/03/2025 22:23:39 STOP ALL (fixed live) ===
+Killing sell_guard.pid PID 77924
+PS>TerminatingError(Stop-Process): "The running command stopped because the preference variable "ErrorActionPreference" or common parameter is set to Stop: Cannot find a process with the process identifier 77924."
+taskkill tree for sell_guard.pid 77924 issued.
+Killing python(cmdline) PID 75224
+Killing powershell(cmdline) PID 53484
+Killing powershell(cmdline) PID 63492
+Killing powershell(cmdline) PID 36400
+**********************
+Windows PowerShell transcript start
+Start time: 20251006160503
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name:
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 90916
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 10/06/2025 16:05:03 STOP ALL (fixed live) ===
+Killing sell_guard.pid PID 77976
+Killing python(cmdline) PID 85800
+Killing powershell(cmdline) PID 3568
+Killing powershell(cmdline) PID 87268
+Killing powershell(cmdline) PID 74600
+Killing powershell(cmdline) PID 90916
+**********************
+Windows PowerShell transcript start
+Start time: 20251007110356
+Username: GCSD\bmccall
+RunAs User: GCSD\bmccall
+Configuration Name:
+Machine: 001A-WA-BMCCAL2 (Microsoft Windows NT 10.0.26100.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoExit -ExecutionPolicy Bypass -File C:\TradeAlerts\Stop-All-clean.ps1
+Process ID: 89548
+PSVersion: 5.1.26100.4652
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.4652
+BuildVersion: 10.0.26100.4652
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== 10/07/2025 11:03:56 STOP ALL (fixed live) ===
+Killing sell_guard.pid PID 82580
+Killing python(cmdline) PID 72376
+Killing powershell(cmdline) PID 18088
+Killing powershell(cmdline) PID 86596
+Killing powershell(cmdline) PID 79752
+Killing powershell(cmdline) PID 89548

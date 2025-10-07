@@ -1,8 +1,8 @@
 import os
-import json
 import webbrowser
-from requests_oauthlib import OAuth1Session
+
 from dotenv import load_dotenv
+from requests_oauthlib import OAuth1Session
 
 load_dotenv("etrade.env")
 
@@ -15,7 +15,9 @@ AUTHORIZE_URL = "https://us.etrade.com/e/t/etws/authorize"
 ACCESS_TOKEN_URL = "https://api.etrade.com/oauth/access_token"
 
 print("🔑 Requesting token...")
-oauth = OAuth1Session(ETRADE_API_KEY, client_secret=ETRADE_API_SECRET, callback_uri=CALLBACK_URI)
+oauth = OAuth1Session(
+    ETRADE_API_KEY, client_secret=ETRADE_API_SECRET, callback_uri=CALLBACK_URI
+)
 fetch_response = oauth.fetch_request_token(REQUEST_TOKEN_URL)
 
 resource_owner_key = fetch_response.get("oauth_token")
@@ -34,7 +36,7 @@ oauth = OAuth1Session(
     client_secret=ETRADE_API_SECRET,
     resource_owner_key=resource_owner_key,
     resource_owner_secret=resource_owner_secret,
-    verifier=verifier
+    verifier=verifier,
 )
 access_token_response = oauth.fetch_access_token(ACCESS_TOKEN_URL)
 

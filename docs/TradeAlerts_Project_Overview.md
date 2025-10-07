@@ -53,4 +53,3 @@ Next steps may include:
 - Notification hooks (email, Slack)
 - Expanded indicator set (ATR, stochastic, AI-driven)
 - Responsive refinements (mobile interactivity)
-

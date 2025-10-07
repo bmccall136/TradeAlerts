@@ -1,11 +1,12 @@
 from dotenv import load_dotenv
+
 load_dotenv()
-import time
-import json
 import logging
-from datetime import datetime, time as dt_time, timedelta
-from services.market_service import get_symbols, analyze_symbol
+from datetime import datetime, timedelta
+from datetime import time as dt_time
+
 from services.alert_service import insert_alert
+from services.market_service import analyze_symbol, get_symbols
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
@@ -16,9 +17,11 @@ MARKET_OPEN = dt_time(hour=9, minute=30)
 MARKET_CLOSE = dt_time(hour=16, minute=0)
 ET_OFFSET = timedelta(hours=-4)  # naive: assumes server clock is UTC
 
+
 def _now_et():
     """Get current UTC time shifted to Eastern Time (ET)."""
     return datetime.utcnow() + ET_OFFSET
+
 
 def in_market_hours():
     """Return True if now (ET) is between 9:30 and 16:00 (weekdays)."""
@@ -27,6 +30,7 @@ def in_market_hours():
         return False
     t = now.time()
     return MARKET_OPEN <= t <= MARKET_CLOSE
+
 
 def wait_for_open():
     """Sleep until the next ET market open, logging how long."""
@@ -45,13 +49,14 @@ def wait_for_open():
     hours = delta.total_seconds() / 3600
     logger.info(f"Market closed. Sleeping for {hours:.2f}h until next open.")
 
+
 # ─── Main scanner loop ─────────────────────────────────────────────────────────
+
 
 def main(simulation=False):
     syms = get_symbols(simulation=simulation)
     logger.info(f"Starting live scan of {len(syms)} symbols")
     while True:
-
         for sym in syms:
             logger.info(f"→Scanning {sym}")
             try:

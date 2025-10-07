@@ -1,14 +1,16 @@
 import logging
-from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
-import yfinance as yf
+from datetime import datetime
+
 import pandas as pd
 import pytz
+import yfinance as yf
 
 logger = logging.getLogger(__name__)
 ET = pytz.timezone("US/Eastern")
 
-def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
+
+def fetch_data_with_timeout(sym, period="1d", interval="5m", timeout=10):
     def _fetch():
         try:
             return yf.download(
@@ -17,7 +19,7 @@ def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
                 interval=interval,
                 auto_adjust=False,
                 progress=False,
-                threads=False
+                threads=False,
             )
         except Exception as e:
             logger.error(f"[ERROR] Yahoo download {sym} failed: {e}")
@@ -36,14 +38,10 @@ def fetch_intraday_vwap(symbol: str) -> float:
     """
     Fetch today's 1‑minute bars for `symbol` and return the intraday VWAP.
     """
-    now_et     = datetime.now(ET)
-    today_start= now_et.replace(hour=0, minute=0, second=0, microsecond=0)
+    now_et = datetime.now(ET)
+    today_start = now_et.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    raw = fetch_data_with_timeout(
-        symbol,
-        period="1d",
-        interval="1m"
-    )
+    raw = fetch_data_with_timeout(symbol, period="1d", interval="1m")
     if raw is None or raw.empty:
         raise ValueError(f"No intraday data for {symbol}")
 
@@ -60,8 +58,8 @@ def fetch_intraday_vwap(symbol: str) -> float:
         if col not in df:
             raise KeyError(f"Missing {col} in intraday data for {symbol}")
 
-    df["pv"]      = df["close"] * df["volume"]
-    df["cum_pv"]  = df["pv"].cumsum()
+    df["pv"] = df["close"] * df["volume"]
+    df["cum_pv"] = df["pv"].cumsum()
     df["cum_vol"] = df["volume"].cumsum()
 
     return float(df["cum_pv"].iat[-1] / df["cum_vol"].iat[-1])

@@ -4,13 +4,15 @@ from pathlib import Path
 import os
 
 # 1) Point to the DB file you want to (re)create:
-ALERTS_DB = Path(__file__).parent / 'alerts.db'
+ALERTS_DB = Path(__file__).parent / "alerts.db"
+
 
 def init_alerts_db():
     """Create the alerts table if it doesn't already exist."""
     conn = sqlite3.connect(str(ALERTS_DB))
     c = conn.cursor()
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS alerts (
             symbol       TEXT PRIMARY KEY,
             name         TEXT,
@@ -23,11 +25,13 @@ def init_alerts_db():
             qty          INTEGER,
             buy          BOOLEAN
         )
-    """)
+    """
+    )
     conn.commit()
     conn.close()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     # Delete old DB if present (optional)
     if ALERTS_DB.exists():
         os.remove(ALERTS_DB)
