@@ -1,0 +1,51 @@
+# services/realized_buckets.py
+import sqlite3
+from datetime import datetime, timedelta, timezone
+
+def _date_str(dtobj) -> str:
+    return dtobj.strftime("%Y-%m-%d")
+
+def realized_buckets_from_live_db(db_path: str) -> dict | None:
+    try:
+        con = sqlite3.connect(db_path)
+        con.row_factory = sqlite3.Row
+    except Exception:
+        return None
+
+    def sum_gain(start_d=None, end_d=None) -> float:
+        q = "SELECT COALESCE(SUM(gain),0.0) FROM realized_trades WHERE gain IS NOT NULL"
+        params = []
+        if start_d is not None:
+            q += " AND date(close_date) >= date(?)"; params.append(start_d)
+        if end_d is not None:
+            q += " AND date(close_date) <  date(?)"; params.append(end_d)
+        return float(con.execute(q, params).fetchone()[0] or 0.0)
+
+    def sum_basis(start_d=None, end_d=None) -> float:
+        q = "SELECT COALESCE(SUM(ABS(total_cost)),0.0) FROM realized_trades WHERE total_cost IS NOT NULL"
+        params = []
+        if start_d is not None:
+            q += " AND date(close_date) >= date(?)"; params.append(start_d)
+        if end_d is not None:
+            q += " AND date(close_date) <  date(?)"; params.append(end_d)
+        return float(con.execute(q, params).fetchone()[0] or 0.0)
+
+    now = datetime.now(timezone.utc)
+    monday = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    last_monday = monday - timedelta(days=7)
+    first_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    md, lmd, fdom = _date_str(monday), _date_str(last_monday), _date_str(first_of_month)
+
+    def bucket(start_d=None, end_d=None):
+        pnl = sum_gain(start_d, end_d)
+        basis = sum_basis(start_d, end_d)
+        pct = (pnl / basis * 100.0) if basis > 1e-9 else 0.0
+        return {"pnl": pnl, "pct": pct}
+
+    return {
+        "week":      bucket(md, None),
+        "last_week": bucket(lmd, md),
+        "month":     bucket(fdom, None),
+        "all":       bucket(None, None),
+    }

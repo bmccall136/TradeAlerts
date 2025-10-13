@@ -1,13 +1,12 @@
-
 # services/trading_helpers.py  — cleaned & consolidated
 from __future__ import annotations
 
+import logging
 import os
 import sqlite3
-import logging
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from datetime import datetime, timedelta, timezone
-from typing import Tuple, Optional, Dict, Any, List
+from typing import Any
 
 import pandas_market_calendars as mcal
 
@@ -16,13 +15,15 @@ logger = logging.getLogger("sim")
 # ─── Timezones ──────────────────────────────────────────────────────────────
 try:
     from zoneinfo import ZoneInfo
+
     ET = ZoneInfo("America/New_York")
 except Exception:  # pragma: no cover
     try:
         import pytz
+
         ET = pytz.timezone("America/New_York")
     except Exception:
-        ET = timezone.utc
+        ET = UTC
 
 # ─── DB paths ──────────────────────────────────────────────────────────────
 DB_PATH = Path(__file__).resolve().parent.parent / "simulation.db"
@@ -35,11 +36,12 @@ except Exception:
     _SIM_DB_FROM_SETTINGS = None
 
 # ─── Trailing stop persistence (canonical) ─────────────────────────────
-from datetime import timezone
+
 
 def _utcnow_iso() -> str:
     # UTC ISO8601 with Z, consistent everywhere
-    return datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+
 
 def _ensure_trail_table() -> None:
     """
@@ -49,36 +51,43 @@ def _ensure_trail_table() -> None:
     """
     conn = _connect()
     # Create (idempotent) with DEFAULT on since
-    conn.execute("""
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS trail_state (
             symbol TEXT PRIMARY KEY,
             peak   REAL NOT NULL,
             since  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
         );
-    """)
+    """
+    )
     # Migrate older schema that lacked 'since'
     cols = [r[1] for r in conn.execute("PRAGMA table_info(trail_state);").fetchall()]
     if "since" not in cols:
-        conn.execute("""
+        conn.execute(
+            """
             ALTER TABLE trail_state
             ADD COLUMN since TEXT NOT NULL
                 DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'));
-        """)
+        """
+        )
         # Backfill any rows that may still be NULL (paranoia)
-        conn.execute("UPDATE trail_state SET since = COALESCE(since, strftime('%Y-%m-%dT%H:%M:%SZ','now'));")
+        conn.execute(
+            "UPDATE trail_state SET since = COALESCE(since, strftime('%Y-%m-%dT%H:%M:%SZ','now'));"
+        )
     conn.commit()
     conn.close()
+
 
 def _trail_get(symbol: str):
     """Return (peak, since) for trailing stop, or (None, None) if absent."""
     _ensure_trail_table()
     conn = _connect()
     row = conn.execute(
-        "SELECT peak, since FROM trail_state WHERE symbol=?;",
-        (symbol,)
+        "SELECT peak, since FROM trail_state WHERE symbol=?;", (symbol,)
     ).fetchone()
     conn.close()
     return (float(row[0]), row[1]) if row else (None, None)
+
 
 def _trail_set(symbol: str, new_peak: float) -> None:
     """
@@ -98,10 +107,11 @@ def _trail_set(symbol: str, new_peak: float) -> None:
             since = CASE WHEN excluded.peak > trail_state.peak
                          THEN excluded.since ELSE trail_state.since END;
         """,
-        (symbol, float(new_peak), now)
+        (symbol, float(new_peak), now),
     )
     conn.commit()
     conn.close()
+
 
 def _trail_clear(symbol: str) -> None:
     """Remove trail row after position is closed."""
@@ -110,6 +120,7 @@ def _trail_clear(symbol: str) -> None:
     conn.execute("DELETE FROM trail_state WHERE symbol=?;", (symbol,))
     conn.commit()
     conn.close()
+
 
 # ─── Backtest DB initializer (restored) ────────────────────────────────────────
 def init_backtest_db():
@@ -122,6 +133,7 @@ def init_backtest_db():
     try:
         # Preferred: take the path from your settings module
         from settings import BACKTEST_DB as _BACKTEST_DB
+
         BACKTEST_DB = _BACKTEST_DB
     except Exception:
         # Fallback to a file next to simulation.db in project root
@@ -131,6 +143,7 @@ def init_backtest_db():
     schema = None
     try:
         from config import BACKTEST_SCHEMA as _SCHEMA
+
         schema = _SCHEMA
     except Exception:
         # Minimal schema fallback
@@ -162,43 +175,50 @@ def init_backtest_db():
         conn.commit()
     finally:
         conn.close()
+
+
 # --- Backtest logging shim (back-compat): enter_trade ----------------
 from pathlib import Path
-import sqlite3
 
 try:
     # Prefer centralized path if you have it
     from settings import BACKTEST_DB  # e.g., "C:/TradeAlerts/backtest.db"
 except Exception:
     # Fallback to project root/backtest.db
-    BACKTEST_DB = str((Path(__file__).resolve().parent.parent / "backtest.db"))
-from datetime import datetime, timezone
-
+    BACKTEST_DB = str(Path(__file__).resolve().parent.parent / "backtest.db")
 # put near your other imports at the top of this file
-from datetime import datetime, timezone
+from datetime import UTC
+
 
 def _migrate_trail_table() -> None:
     """Ensure trail_state exists and has (symbol PK, peak, since with DEFAULT)."""
     conn = _connect()
     # Create with DEFAULT on since so inserts without 'since' don't fail
-    conn.execute("""
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS trail_state (
             symbol TEXT PRIMARY KEY,
             peak   REAL NOT NULL,
             since  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
         );
-    """)
+    """
+    )
     # If table existed without 'since', add it
     cols = [r[1] for r in conn.execute("PRAGMA table_info(trail_state);").fetchall()]
     if "since" not in cols:
-        conn.execute("""
+        conn.execute(
+            """
             ALTER TABLE trail_state
             ADD COLUMN since TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'));
-        """)
+        """
+        )
     # Backfill any legacy NULLs (from pre-constraint rows)
-    conn.execute("UPDATE trail_state SET since = ? WHERE since IS NULL;", (_utcnow_iso(),))
+    conn.execute(
+        "UPDATE trail_state SET since = ? WHERE since IS NULL;", (_utcnow_iso(),)
+    )
     conn.commit()
     conn.close()
+
 
 def enter_trade(
     symbol: str,
@@ -221,7 +241,8 @@ def enter_trade(
 
     conn = sqlite3.connect(BACKTEST_DB)
     cur = conn.cursor()
-    cur.execute("""
+    cur.execute(
+        """
         CREATE TABLE IF NOT EXISTS trades (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             symbol     TEXT    NOT NULL,
@@ -235,25 +256,30 @@ def enter_trade(
             qty        INTEGER,
             buy        INTEGER
         );
-    """)
-    cur.execute("""
+    """
+    )
+    cur.execute(
+        """
         INSERT INTO trades
           (symbol, name, price, time, trigger, alert_type, vwap, vwap_diff, qty, buy)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-    """, (
-        symbol,
-        name,
-        float(price or 0.0),
-        ts,
-        trigger,
-        alert_type,
-        float(vwap or 0.0),
-        float(vwap_diff or 0.0),
-        int(qty or 0),
-        int(buy or 0),
-    ))
+    """,
+        (
+            symbol,
+            name,
+            float(price or 0.0),
+            ts,
+            trigger,
+            alert_type,
+            float(vwap or 0.0),
+            float(vwap_diff or 0.0),
+            int(qty or 0),
+            int(buy or 0),
+        ),
+    )
     conn.commit()
     conn.close()
+
 
 # --- Position helpers (back-compat) ---------------------------------
 def check_if_position_open(symbol: str) -> bool:
@@ -272,31 +298,38 @@ def check_if_position_open(symbol: str) -> bool:
         conn.close()
         return bool(row and (row[0] or 0) > 0)
 
+
 # Back-compat: expose fetch_intraday_vwap via trading_helpers
-def fetch_intraday_vwap(symbol: str, date=None, tz=None, retries: int = 2, timeout: int = 10):
+def fetch_intraday_vwap(
+    symbol: str, date=None, tz=None, retries: int = 2, timeout: int = 10
+):
     try:
         from services.data_fetch import fetch_intraday_vwap as _fiw
     except Exception as e:
         raise ImportError(f"services.data_fetch.fetch_intraday_vwap not available: {e}")
     return _fiw(symbol, date=date, tz=tz, retries=retries, timeout=timeout)
 
+
 def _resolve_sim_db() -> Path:
     if _SIM_DB_FROM_SETTINGS and Path(_SIM_DB_FROM_SETTINGS).exists():
         return Path(_SIM_DB_FROM_SETTINGS)
     return DB_PATH
 
+
 # ─── Market calendar ───────────────────────────────────────────────────────
 nyse = mcal.get_calendar("NYSE")
+
 
 # ─── SQLite helpers ────────────────────────────────────────────────────────
 def _connect() -> sqlite3.Connection:
     return sqlite3.connect(_resolve_sim_db(), detect_types=sqlite3.PARSE_DECLTYPES)
 
+
 # ─── Init schema ───────────────────────────────────────────────────────────
 def setup_simulation_db() -> None:
     """Create core tables if missing and seed starting cash on first run."""
-    from pathlib import Path
     import json
+    from pathlib import Path
 
     db_file = _resolve_sim_db()
     first_run = not db_file.exists()
@@ -354,27 +387,32 @@ def setup_simulation_db() -> None:
             )
             print(f"▶︎ Seeded simulation.db with starting cash = ${starting:.2f}")
         else:
-            cur.execute("INSERT OR IGNORE INTO state(id, cash, realized_pl) VALUES (1, 0.0, 0.0);")
+            cur.execute(
+                "INSERT OR IGNORE INTO state(id, cash, realized_pl) VALUES (1, 0.0, 0.0);"
+            )
 
     conn.commit()
     conn.close()
 
+
 # near your other helpers
 # near your quote helpers in dashboard.py
 SYMBOL_ALIASES = {
-    "PARA": "PSKY",       # Paramount Global -> Paramount Skydance (Class B)
+    "PARA": "PSKY",  # Paramount Global -> Paramount Skydance (Class B)
     "PARAA": "PSKY",
 }
 
+
 def _alias(sym: str) -> str:
     return SYMBOL_ALIASES.get(sym, sym)
+
 
 def _is_bad_quote(x):
     try:
         return x is None or float(x) <= 0
     except Exception:
         return True
-}
+
 
 def get_last_and_prev(symbol: str, fallback_price: float):
     qsym = _alias(symbol)
@@ -384,14 +422,22 @@ def get_last_and_prev(symbol: str, fallback_price: float):
 
     if isinstance(q, dict):
         # same keys as you already had…
-        for k in ("lastTrade","lastPrice","intradayLast","close","closePrice"):
+        for k in ("lastTrade", "lastPrice", "intradayLast", "close", "closePrice"):
             v = q.get(k)
             if not _is_bad_quote(v):
-                last = float(v); break
-        for k in ("previousClose","prevClose","priorClose","closePrevDay","closePricePrev"):
+                last = float(v)
+                break
+        for k in (
+            "previousClose",
+            "prevClose",
+            "priorClose",
+            "closePrevDay",
+            "closePricePrev",
+        ):
             v = q.get(k)
             if not _is_bad_quote(v):
-                prev = float(v); break
+                prev = float(v)
+                break
     else:
         try:
             last = float(q)
@@ -405,7 +451,9 @@ def get_last_and_prev(symbol: str, fallback_price: float):
         try:
             df = fetch_data_with_timeout(qsym, "2d")
             if df is not None:
-                close_col = next((c for c in df.columns if str(c).lower() == "close"), None)
+                close_col = next(
+                    (c for c in df.columns if str(c).lower() == "close"), None
+                )
                 if close_col is not None:
                     if last is None and len(df) >= 1:
                         last = float(df[close_col].iloc[-1])
@@ -419,18 +467,23 @@ def get_last_and_prev(symbol: str, fallback_price: float):
 
     return float(last), (None if prev is None else float(prev))
 
+
 # Make sure trail_state has the 'since' column even on old installs
 try:
     _ensure_trail_table()
 except Exception:
     pass
 
+
 # ─── State accessors ───────────────────────────────────────────────────────
 def _ensure_state() -> None:
     conn = _connect()
-    conn.execute("INSERT OR IGNORE INTO state (id, cash, realized_pl) VALUES (1, 0.0, 0.0);")
+    conn.execute(
+        "INSERT OR IGNORE INTO state (id, cash, realized_pl) VALUES (1, 0.0, 0.0);"
+    )
     conn.commit()
     conn.close()
+
 
 def set_cash(amount: float) -> None:
     _ensure_state()
@@ -439,6 +492,7 @@ def set_cash(amount: float) -> None:
     conn.commit()
     conn.close()
 
+
 def get_stored_cash() -> float:
     _ensure_state()
     conn = _connect()
@@ -446,10 +500,17 @@ def get_stored_cash() -> float:
     conn.close()
     return float(row[0]) if row else 0.0
 
+
 # ─── Trades I/O ────────────────────────────────────────────────────────────
-def insert_trade(symbol: str, action: str, price: float, qty: int,
-                 pnl: float | None = None, trade_time: str | None = None) -> None:
-    ts = trade_time or datetime.now(timezone.utc).isoformat()
+def insert_trade(
+    symbol: str,
+    action: str,
+    price: float,
+    qty: int,
+    pnl: float | None = None,
+    trade_time: str | None = None,
+) -> None:
+    ts = trade_time or datetime.now(UTC).isoformat()
     conn = _connect()
     conn.execute(
         "INSERT INTO simulation_trades (symbol, action, price, qty, trade_time, pnl) VALUES (?,?,?,?,?,?);",
@@ -458,21 +519,25 @@ def insert_trade(symbol: str, action: str, price: float, qty: int,
     conn.commit()
     conn.close()
 
-def get_trades(limit: int = 100) -> List[Dict[str, Any]]:
+
+def get_trades(limit: int = 100) -> list[dict[str, Any]]:
     conn = _connect()
     cur = conn.cursor()
     cur.execute(
         "SELECT trade_time, symbol, action, qty, price, pnl "
         "FROM simulation_trades ORDER BY trade_time DESC LIMIT ?;",
-        (limit,)
+        (limit,),
     )
     rows = cur.fetchall()
     conn.close()
     cols = ["trade_time", "symbol", "action", "qty", "price", "pnl"]
-    return [dict(zip(cols, r)) for r in rows]
+    return [dict(zip(cols, r, strict=False)) for r in rows]
+
 
 # ─── Holdings I/O ─────────────────────────────────────────────────────────
-def insert_or_update_holding(symbol: str, qty: int, avg_cost: float, last_price: float) -> None:
+def insert_or_update_holding(
+    symbol: str, qty: int, avg_cost: float, last_price: float
+) -> None:
     conn = _connect()
     cur = conn.cursor()
     cur.execute("SELECT qty, avg_cost FROM holdings WHERE symbol=?;", (symbol,))
@@ -498,21 +563,28 @@ def insert_or_update_holding(symbol: str, qty: int, avg_cost: float, last_price:
     conn.commit()
     conn.close()
 
-def get_holdings() -> List[tuple]:
+
+def get_holdings() -> list[tuple]:
     conn = _connect()
-    rows = conn.execute("SELECT symbol, qty, avg_cost, last_price FROM holdings;").fetchall()
+    rows = conn.execute(
+        "SELECT symbol, qty, avg_cost, last_price FROM holdings;"
+    ).fetchall()
     conn.close()
     return rows
 
-def get_position(symbol: str) -> Optional[Dict[str, Any]]:
+
+def get_position(symbol: str) -> dict[str, Any] | None:
     """Compatibility: try settings.SIMULATION_DB first, then our DB_PATH."""
     path = Path(_SIM_DB_FROM_SETTINGS) if _SIM_DB_FROM_SETTINGS else _resolve_sim_db()
     conn = sqlite3.connect(path)
-    row = conn.execute("SELECT qty, last_price FROM holdings WHERE symbol=?;", (symbol,)).fetchone()
+    row = conn.execute(
+        "SELECT qty, last_price FROM holdings WHERE symbol=?;", (symbol,)
+    ).fetchone()
     conn.close()
     if row:
         return {"qty": int(row[0]), "last_price": float(row[1])}
     return None
+
 
 def get_position_qty(symbol: str) -> int:
     conn = _connect()
@@ -520,18 +592,25 @@ def get_position_qty(symbol: str) -> int:
     conn.close()
     return int(row[0]) if row else 0
 
+
 def get_avg_cost(symbol: str) -> float:
     conn = _connect()
-    row = conn.execute("SELECT avg_cost FROM holdings WHERE symbol=?;", (symbol,)).fetchone()
+    row = conn.execute(
+        "SELECT avg_cost FROM holdings WHERE symbol=?;", (symbol,)
+    ).fetchone()
     conn.close()
     return float(row[0]) if row else 0.0
+
 
 # ─── Cash (ledger-first) ──────────────────────────────────────────────────
 def get_cash_ledger() -> float:
     """Cash = starting_cash - Σ(BUY) + Σ(SELL)."""
     try:
         from services.simulation_service import load_simulation_settings
-        starting_cash = float(getattr(load_simulation_settings(), "starting_cash", 0.0) or 0.0)
+
+        starting_cash = float(
+            getattr(load_simulation_settings(), "starting_cash", 0.0) or 0.0
+        )
     except Exception:
         starting_cash = 0.0
 
@@ -539,16 +618,18 @@ def get_cash_ledger() -> float:
     buy_total = sell_total = 0.0
     for t in trades:
         side = (t.get("action") or "").upper()
-        qty  = float(t.get("qty") or 0.0)
-        px   = float(t.get("price") or 0.0)
+        qty = float(t.get("qty") or 0.0)
+        px = float(t.get("price") or 0.0)
         if side == "BUY":
-            buy_total  += qty * px
+            buy_total += qty * px
         elif side == "SELL":
             sell_total += qty * px
     return round(starting_cash - buy_total + sell_total, 2)
 
+
 def get_cash() -> float:
     return get_cash_ledger()
+
 
 # ─── Metrics ──────────────────────────────────────────────────────────────
 def get_unrealized_pl() -> float:
@@ -557,11 +638,13 @@ def get_unrealized_pl() -> float:
         total += (float(last_price) - float(avg_cost)) * int(qty)
     return round(total, 2)
 
+
 def get_realized_pl() -> float:
     conn = _connect()
     row = conn.execute("SELECT realized_pl FROM state WHERE id=1;").fetchone()
     conn.close()
     return float(row[0]) if row else 0.0
+
 
 def get_realized_pl_sum() -> float:
     """Sum P/L from SELL rows in trades."""
@@ -574,6 +657,7 @@ def get_realized_pl_sum() -> float:
                 pass
     return round(total, 2)
 
+
 # ─── Utility time helpers ────────────────────────────────────────────────
 def _as_utc(dt_like) -> datetime:
     if isinstance(dt_like, datetime):
@@ -584,14 +668,16 @@ def _as_utc(dt_like) -> datetime:
         except Exception:
             dt = datetime.utcnow()
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     else:
-        dt = dt.astimezone(timezone.utc)
+        dt = dt.astimezone(UTC)
     return dt
 
+
 # ─── Risk management helpers ─────────────────────────────────────────────
-def enforce_settlement_on_buy(symbol: str, qty: int, price: float, now=None,
-                              account_type: str = "CASH") -> Tuple[bool, str]:
+def enforce_settlement_on_buy(
+    symbol: str, qty: int, price: float, now=None, account_type: str = "CASH"
+) -> tuple[bool, str]:
     """Basic T+N guard for CASH accounts: if you need unsettled proceeds to fund
     this BUY and your most recent SELL is within T+N, block.
     """
@@ -616,11 +702,14 @@ def enforce_settlement_on_buy(symbol: str, qty: int, price: float, now=None,
     last_sell = _as_utc(row[0])
     settle_at = last_sell + timedelta(days=n)
     if now_utc < settle_at:
-        return False, (f"Unsettled funds (T+{n}). Last SELL {last_sell.date()} settles "
-                       f"{settle_at.date()}. Need ${cost:.2f}, available cash ${get_cash():.2f}.")
+        return False, (
+            f"Unsettled funds (T+{n}). Last SELL {last_sell.date()} settles "
+            f"{settle_at.date()}. Need ${cost:.2f}, available cash ${get_cash():.2f}."
+        )
     return True, ""
 
-def enforce_wash_sale(symbol: str, qty: int, price: float, now=None) -> Optional[str]:
+
+def enforce_wash_sale(symbol: str, qty: int, price: float, now=None) -> str | None:
     """Advisory: if a SELL at a loss occurred within 30 days, this BUY may be wash-sale affected."""
     try:
         now_utc = _as_utc(now or datetime.utcnow())
@@ -631,7 +720,7 @@ def enforce_wash_sale(symbol: str, qty: int, price: float, now=None) -> Optional
         cur.execute(
             "SELECT price, qty, trade_time FROM simulation_trades "
             "WHERE symbol=? AND action='SELL' ORDER BY trade_time DESC LIMIT 100;",
-            (symbol,)
+            (symbol,),
         )
         rows = cur.fetchall()
         conn.close()
@@ -641,13 +730,18 @@ def enforce_wash_sale(symbol: str, qty: int, price: float, now=None) -> Optional
         for px, q, ts in rows:
             ts_utc = _as_utc(ts)
             if ts_utc >= cutoff and float(px) < float(avg):
-                return (f"Wash-sale advisory: recent SELL at a loss on {ts_utc.date()} "
-                        f"and this BUY may disallow some loss deduction.")
+                return (
+                    f"Wash-sale advisory: recent SELL at a loss on {ts_utc.date()} "
+                    f"and this BUY may disallow some loss deduction."
+                )
     except Exception:
         pass
     return None
 
-def enforce_pdt_on_sell(symbol: str, qty: int, now=None, account_type: str = "CASH") -> Tuple[bool, str]:
+
+def enforce_pdt_on_sell(
+    symbol: str, qty: int, now=None, account_type: str = "CASH"
+) -> tuple[bool, str]:
     """Simple PDT guard (margin only): block if this would be the 4th+ day-trade in 5 calendar days."""
     if (account_type or "CASH").upper() != "MARGIN":
         return True, ""
@@ -661,14 +755,14 @@ def enforce_pdt_on_sell(symbol: str, qty: int, now=None, account_type: str = "CA
     cur.execute(
         "SELECT trade_time, symbol, action FROM simulation_trades "
         "WHERE trade_time >= ? ORDER BY trade_time ASC;",
-        (five_days_ago.isoformat(),)
+        (five_days_ago.isoformat(),),
     )
     rows = cur.fetchall()
     conn.close()
 
     # Count day-trades = buy/sell same day (any symbol)
     day_trades_by_date = {}
-    intraday_map: Dict[str, Dict[str, set]] = {}
+    intraday_map: dict[str, dict[str, set]] = {}
 
     for ts, sym, act in rows:
         ts_dt = _as_utc(ts).astimezone(ET)
@@ -687,6 +781,7 @@ def enforce_pdt_on_sell(symbol: str, qty: int, now=None, account_type: str = "CA
         return False, f"PDT: would exceed 3 day-trades in 5 days (have {total_dt})."
     return True, ""
 
+
 # ─── Order helpers ───────────────────────────────────────────────────────
 def compute_qty(settings, price: float) -> int:
     if price <= 0:
@@ -695,10 +790,15 @@ def compute_qty(settings, price: float) -> int:
     max_by_cash = int(get_cash() / float(price))
     return max(0, min(max_by_size, max_by_cash))
 
-def buy_stock(symbol: str, qty: int, price: float, trade_time: str | None = None) -> bool:
+
+def buy_stock(
+    symbol: str, qty: int, price: float, trade_time: str | None = None
+) -> bool:
     # Settlement guard (CASH accounts)
     acct_type = os.getenv("ACCOUNT_TYPE", "CASH")
-    ok, reason = enforce_settlement_on_buy(symbol, qty, price, now=trade_time, account_type=acct_type)
+    ok, reason = enforce_settlement_on_buy(
+        symbol, qty, price, now=trade_time, account_type=acct_type
+    )
     if not ok:
         raise RuntimeError(f"[SETTLEMENT] {reason}")
 
@@ -714,22 +814,33 @@ def buy_stock(symbol: str, qty: int, price: float, trade_time: str | None = None
 
     set_cash(cash - cost)
     insert_trade(symbol, "BUY", float(price), int(qty), None, trade_time)
-    insert_or_update_holding(symbol, int(qty), avg_cost=float(price), last_price=float(price))
+    insert_or_update_holding(
+        symbol, int(qty), avg_cost=float(price), last_price=float(price)
+    )
     return True
+
 
 def _get_live_price(symbol: str) -> float:
     try:
         from services.etrade_service import fetch_etrade_quote
+
         px = fetch_etrade_quote(symbol)
         return float(px.get("lastTrade") if isinstance(px, dict) else px or 0.0)
     except Exception:
         return 0.0
 
-def sell_stock(symbol: str, qty: int | None = None, price: float | None = None,
-               trade_time: str | None = None) -> bool:
+
+def sell_stock(
+    symbol: str,
+    qty: int | None = None,
+    price: float | None = None,
+    trade_time: str | None = None,
+) -> bool:
     # PDT guard (margin only)
     acct_type = os.getenv("ACCOUNT_TYPE", "CASH")
-    ok, reason = enforce_pdt_on_sell(symbol, qty or 0, now=trade_time, account_type=acct_type)
+    ok, reason = enforce_pdt_on_sell(
+        symbol, qty or 0, now=trade_time, account_type=acct_type
+    )
     if not ok:
         raise RuntimeError(f"[PDT] {reason}")
 
@@ -751,7 +862,9 @@ def sell_stock(symbol: str, qty: int | None = None, price: float | None = None,
     pnl = (float(price) - float(avg)) * int(qty)
 
     insert_trade(symbol, "SELL", float(price), int(qty), float(pnl), trade_time)
-    insert_or_update_holding(symbol, qty=-int(qty), avg_cost=float(avg), last_price=float(price))
+    insert_or_update_holding(
+        symbol, qty=-int(qty), avg_cost=float(avg), last_price=float(price)
+    )
 
     # If closed, clear trail peak
     try:
@@ -761,9 +874,11 @@ def sell_stock(symbol: str, qty: int | None = None, price: float | None = None,
         pass
     return True
 
+
 # ─── Exit logic (SL/TP/Max days/Trailing stop) ───────────────────────────
 def check_exit_orders(settings) -> None:
     from services.broker_api import sell_stock as broker_sell
+
     try:
         from services.etrade_service import fetch_etrade_quote
     except Exception:
@@ -779,16 +894,24 @@ def check_exit_orders(settings) -> None:
         # --- live price (fallback to last_price) ---
         try:
             val = fetch_etrade_quote(symbol) if fetch_etrade_quote else last_price
-            current = float(val.get("lastTrade") if isinstance(val, dict) else val or 0.0)
+            current = float(
+                val.get("lastTrade") if isinstance(val, dict) else val or 0.0
+            )
         except Exception:
             current = float(last_price or 0.0)
 
-        pnl_pct = ((current - float(avg_cost)) / float(avg_cost) * 100.0) if float(avg_cost) else 0.0
+        pnl_pct = (
+            ((current - float(avg_cost)) / float(avg_cost) * 100.0)
+            if float(avg_cost)
+            else 0.0
+        )
 
         # --- STOP LOSS ---
         sl = float(getattr(settings, "stop_loss_pct", 0.0) or 0.0)
         if sl and pnl_pct <= -sl:
-            logger.info(f"[SIM-SELL] {symbol} STOP LOSS qty={qty} px=${current:.2f} P/L={pnl_pct:.2f}%")
+            logger.info(
+                f"[SIM-SELL] {symbol} STOP LOSS qty={qty} px=${current:.2f} P/L={pnl_pct:.2f}%"
+            )
             broker_sell(symbol, qty, current)
             _trail_clear(symbol)
             continue
@@ -796,7 +919,9 @@ def check_exit_orders(settings) -> None:
         # --- TAKE PROFIT ---
         tp = float(getattr(settings, "take_profit_pct", 0.0) or 0.0)
         if tp and pnl_pct >= tp:
-            logger.info(f"[SIM-SELL] {symbol} TAKE PROFIT qty={qty} px=${current:.2f} P/L={pnl_pct:.2f}%")
+            logger.info(
+                f"[SIM-SELL] {symbol} TAKE PROFIT qty={qty} px=${current:.2f} P/L={pnl_pct:.2f}%"
+            )
             broker_sell(symbol, qty, current)
             _trail_clear(symbol)
             continue
@@ -808,16 +933,18 @@ def check_exit_orders(settings) -> None:
             row = conn.execute(
                 "SELECT trade_time FROM simulation_trades "
                 "WHERE symbol=? AND action='BUY' ORDER BY trade_time ASC LIMIT 1;",
-                (symbol,)
+                (symbol,),
             ).fetchone()
             conn.close()
             if row:
                 entry_utc = _as_utc(row[0])
-                now_utc = datetime.now(timezone.utc)
+                now_utc = datetime.now(UTC)
                 hours = (now_utc - entry_utc).total_seconds() / 3600.0
                 logger.debug(f"[SELL-DAYS] {symbol}: held {hours:.2f}h")
                 if now_utc - entry_utc >= timedelta(days=int(sell_after_days)):
-                    logger.info(f"[SIM-SELL] {symbol} MAX HOLD DAYS {sell_after_days}d qty={qty} px=${current:.2f}")
+                    logger.info(
+                        f"[SIM-SELL] {symbol} MAX HOLD DAYS {sell_after_days}d qty={qty} px=${current:.2f}"
+                    )
                     broker_sell(symbol, qty, current)
                     _trail_clear(symbol)
                     continue
@@ -839,8 +966,11 @@ def check_exit_orders(settings) -> None:
                 broker_sell(symbol, qty, current)
                 _trail_clear(symbol)
                 continue
+
+
 # ─── Market hours helpers ────────────────────────────────────────────────
 POST_OPEN_BUFFER = timedelta(minutes=0)
+
 
 def market_is_open() -> bool:
     try:
@@ -849,16 +979,19 @@ def market_is_open() -> bool:
         if getattr(sched, "empty", True):
             return False
         row = sched.iloc[0]
-        open_dt  = row["market_open"].tz_convert(ET) + POST_OPEN_BUFFER
+        open_dt = row["market_open"].tz_convert(ET) + POST_OPEN_BUFFER
         close_dt = row["market_close"].tz_convert(ET)
         return open_dt <= now < close_dt
     except Exception:
         return False
 
+
 def seconds_until_open() -> float:
     try:
         now = datetime.now(ET)
-        sched = nyse.schedule(start_date=now.date(), end_date=now.date() + timedelta(days=7))
+        sched = nyse.schedule(
+            start_date=now.date(), end_date=now.date() + timedelta(days=7)
+        )
         for _, row in sched.iterrows():
             open_dt = row["market_open"].tz_convert(ET) + POST_OPEN_BUFFER
             if open_dt > now:
@@ -866,6 +999,7 @@ def seconds_until_open() -> float:
         return 24 * 3600.0
     except Exception:
         return 24 * 3600.0
+
 
 # ─── Price refresh ───────────────────────────────────────────────────────
 def refresh_holdings_prices() -> None:
@@ -881,9 +1015,13 @@ def refresh_holdings_prices() -> None:
             px = None
             if fetch_etrade_quote:
                 val = fetch_etrade_quote(symbol)
-                px = float(val.get("lastTrade") if isinstance(val, dict) else val or 0.0)
+                px = float(
+                    val.get("lastTrade") if isinstance(val, dict) else val or 0.0
+                )
             if px and px > 0:
-                conn.execute("UPDATE holdings SET last_price=? WHERE symbol=?;", (px, symbol))
+                conn.execute(
+                    "UPDATE holdings SET last_price=? WHERE symbol=?;", (px, symbol)
+                )
         except Exception:
             pass
     conn.commit()

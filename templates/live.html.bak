@@ -79,6 +79,19 @@
     <h2 class="text-warning mb-0 position-absolute start-50 translate-middle-x" style="width:fit-content;">
       Live Dashboard
     </h2>
+<!-- Since-start blurb row -->
+<div id="since-start-row" class="container-fluid" style="margin-top:8px;">
+  <div class="row">
+    <div class="col-12">
+      <p id="since-start-blurb" class="text-center"
+         style="margin:0; font-size:12px; color:#bbb;">
+      </p>
+      <p id="credits" class="text-center"
+         style="margin:2px 0 0; font-size:11px; color:#888;">
+      </p>
+    </div>
+  </div>
+</div>
 
     <!-- Right: Account type + E*TRADE status block (keep as you have it) -->
 	<div class="d-flex flex-column align-items-end" style="gap:6px; min-width: 220px;">
@@ -113,7 +126,8 @@
 			  <div>Buying Power</div><div id="cash-bp"   class="fw-semibold text-end"></div>
 			  <div>Equity Value</div><div id="cash-eq"   class="fw-semibold text-end"></div>
 			  <div>Settled Cash</div><div id="cash-sc"   class="fw-semibold text-end"></div>
-			  <div>Account</div>     <div id="cash-acct" class="fw-semibold text-end"></div>
+			  <div>Account</div> <div id="cash-acct" class="fw-semibold text-end"></div>
+
 			</div>
 
 			<style>
@@ -341,6 +355,25 @@ function updateDetailPanels(data){
   set('#pl-r',     fmtUsd(Number(m.realized_pnl || 0)));
   set('#pl-rpct',  fmtPct(Number(m.realized_pnl_pct || 0)));
 }
+function updateAbout(data) {
+  const a = (data && data.about) || {};
+  const cash = Number(a.start_cash ?? 0);
+  const pnl  = Number(a.since_pnl  ?? 0);
+  const pct  = Number(a.since_pct  ?? 0);
+  const when = a.start_date || "—";
+
+  const blurb = document.getElementById("since-start-blurb");
+  if (blurb) {
+    blurb.textContent =
+      `Started with $${cash.toFixed(2)} on ${when}. ` +
+      `This app has since made $${pnl.toFixed(2)} at ${pct.toFixed(2)}%.`;
+  }
+
+  const cred = document.getElementById("credits");
+  if (cred && Array.isArray(a.authors) && a.authors.length) {
+    cred.textContent = `Built by ${a.authors.join(" & ")}`;
+  }
+}
 
 /* ---------- main refresh ---------- */
 async function refreshLive() {
@@ -356,11 +389,15 @@ async function refreshLive() {
     const m  = d.metrics  || {};
     const a  = d.account  || {};
 
-    // Header + detail cards
-    updateHeaderKPIs(d);
-    const posEl = document.getElementById('kpi-posval');
-    if (posEl) posEl.textContent = `Positions Value ${fmtUsd(Number(m.positions_value || 0))}`;
-    updateDetailPanels(d);
+	// Header + detail cards
+	updateHeaderKPIs(d);
+	const posEl = document.getElementById('kpi-posval');
+	if (posEl) posEl.textContent = `Positions Value ${fmtUsd(Number(m.positions_value || 0))}`;
+	updateDetailPanels(d);
+
+	// NEW: show the blurb + credits
+	updateAbout(d);
+
 
     // PDT counter
     const pdt = m.daytrades_pdt5 || {};

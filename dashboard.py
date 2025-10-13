@@ -34,9 +34,11 @@ except Exception:
 
 ET = ZoneInfo("America/New_York")
 
+# --- standard imports ---
 import os
 import re
 import sys
+from datetime import timezone
 from functools import wraps
 from pathlib import Path
 
@@ -44,6 +46,12 @@ import pandas as pd
 from flask import Flask, Response, current_app, jsonify, redirect, render_template, request, url_for
 
 import services.label_config as label_config
+
+# --- DB paths (keep before any functions that use them) ---
+SIM_DB = os.path.join(os.getcwd(), "simulation.db")
+BACKTEST_DB = os.path.join(os.getcwd(), "backtest.db")
+# Prefer env override; default to your Windows path for live
+LIVE_DB = os.environ.get("LIVE_DB", r"C:\TradeAlerts\live.db")
 
 
 def mask_account_id(account_id: str) -> str:
@@ -121,16 +129,12 @@ def _compat_get_positions(*_args, **_kwargs):
 
 
 def parse_max_qty_from_msg(msg: str):
-    m = re.search(
-        r"maximum allowable quantity was estimated to be\s+(\d+)", msg or "", re.I
-    )
+    m = re.search(r"maximum allowable quantity was estimated to be\s+(\d+)", msg or "", re.I)
     return int(m.group(1)) if m else None
 
 
 def place_buy_with_preview_fallback(broker, symbol, qty, limit_px):
-    ok, err = broker.preview_buy(
-        symbol, qty, limit_px
-    )  # whatever your preview wrapper returns
+    ok, err = broker.preview_buy(symbol, qty, limit_px)  # whatever your preview wrapper returns
     if ok:
         return broker.place_buy(symbol, qty, limit_px)
 
@@ -163,9 +167,7 @@ def pick_qty(limit_px, acct, max_per_trade):
         _f(acct.get("cash_balance")),
         _f(acct.get("settled_cash")),
     ]
-    avail = (
-        min(c for c in candidates if c > 0) if any(c > 0 for c in candidates) else 0.0
-    )
+    avail = min(c for c in candidates if c > 0) if any(c > 0 for c in candidates) else 0.0
 
     # Safety buffer so tiny price wiggles or fees donâ€™t cause a preview reject
     buffer_dollars = 3.00
@@ -280,22 +282,8 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 
 # --- loud E*TRADE logging wrapper (module-scope; not inside live_status) ---
 _ET_LOG_WRAPPED = False
-from functools import lru_cache
 
 
-@lru_cache
-def _et():
-    from zoneinfo import ZoneInfo
-
-    return ZoneInfo("America/New_York")
-
-
-# ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------€
-# DROP-IN: FIFO realized P&L + row enrichment for trades
-# Returns: (enriched_trades, realized_today, realized_today_pct)
-# Each trade in `trades` should have: symbol, action ("BUY"/"SELL"), qty, price,
-# and one of time_utc / time / time_et (ISO or epoch ms).
-# ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------€
 def _fifo_realized_today(trades):
     import datetime as _dt
 
@@ -403,9 +391,7 @@ def _fifo_realized_today(trades):
         enriched.append(dict(t))
 
     realized_today_pct = (
-        round((realized_today / realized_basis * 100.0), 2)
-        if realized_basis > 0
-        else 0.0
+        round((realized_today / realized_basis * 100.0), 2) if realized_basis > 0 else 0.0
     )
     return enriched, round(realized_today, 2), realized_today_pct
 
@@ -481,9 +467,7 @@ def _etrade_log_wrap():
                 from flask import current_app
 
                 if current_app and current_app.logger:
-                    current_app.logger.info(
-                        "[E*TRADE.%s] OK -> %s", name, type(result).__name__
-                    )
+                    current_app.logger.info("[E*TRADE.%s] OK -> %s", name, type(result).__name__)
             except Exception:
                 pass
 
@@ -554,8 +538,6 @@ try:
         print(f"[CASH] MISMATCH: ledger=${ledger:.2f} stored=${stored:.2f}")
         # Optionally fix it right here:
         # set_cash(ledger)
-    else:
-        print(f"[CASH] OK: ${ledger:.2f} matches stored cash")
 except Exception as e:
     print(f"[CASH] check failed: {e}")
 
@@ -613,8 +595,6 @@ try:
         print(f"[CASH] MISMATCH: ledger=${ledger:.2f} stored=${stored:.2f}")
         # Optionally, resync:
         # set_cash(ledger)
-    else:
-        print(f"[CASH] OK: ledger matches stored (${ledger:.2f})")
 except Exception as e:
     print(f"[CASH] check failed: {e}")
 
@@ -663,15 +643,11 @@ def _to_ts(x) -> int:
     s = str(x).strip().replace("T", " ").replace("Z", "")
     try:
         return int(
-            datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=_TZ_ET).timestamp()
-            * 1000
+            datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=_TZ_ET).timestamp() * 1000
         )
     except Exception:
         try:
-            return int(
-                datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=_TZ_ET).timestamp()
-                * 1000
-            )
+            return int(datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=_TZ_ET).timestamp() * 1000)
         except Exception:
             return 0
 
@@ -805,9 +781,7 @@ def _to_dt_local(ts, tz="America/New_York"):
     # epoch sec/millis
     try:
         iv = int(str(ts))
-        return datetime.fromtimestamp(
-            iv / (1000 if iv > 10_000_000_000 else 1), tz=tzinfo
-        )
+        return datetime.fromtimestamp(iv / (1000 if iv > 10_000_000_000 else 1), tz=tzinfo)
     except Exception:
         pass
     s = str(ts).strip().replace("T", " ").replace("Z", "")
@@ -904,12 +878,7 @@ def _sum_realized_from_trades(trades, since_str=REALIZED_SINCE):
 
 def _get(path: str, params=None) -> dict:
     # path like "/portfolio.json"
-    return (
-        b.get_account(
-            path if path.startswith("/") else "/" + path.lstrip(), params or {}
-        )
-        or {}
-    )
+    return b.get_account(path if path.startswith("/") else "/" + path.lstrip(), params or {}) or {}
 
 
 def fetch_etrade_quote(symbol: str):
@@ -945,9 +914,7 @@ def debug_oauth():
             or os.getenv("ETRADE_API_KEY")
         ),
         "tok": last4(os.getenv("OAUTH_TOKEN") or os.getenv("ETRADE_OAUTH_TOKEN")),
-        "sec": last4(
-            os.getenv("OAUTH_TOKEN_SECRET") or os.getenv("ETRADE_OAUTH_TOKEN_SECRET")
-        ),
+        "sec": last4(os.getenv("OAUTH_TOKEN_SECRET") or os.getenv("ETRADE_OAUTH_TOKEN_SECRET")),
     }
 
 
@@ -1056,9 +1023,7 @@ def get_last_and_prev(symbol: str, fallback_price: float):
 
                 if isinstance(df.columns, pd.MultiIndex):
                     df.columns = df.columns.get_level_values(-1)
-                close_col = next(
-                    (c for c in df.columns if str(c).lower() == "close"), None
-                )
+                close_col = next((c for c in df.columns if str(c).lower() == "close"), None)
                 if close_col:
                     if last is None and len(df) >= 1:
                         last = float(df[close_col].iloc[-1])
@@ -1131,6 +1096,128 @@ def compute_realized_pnl(trades) -> float:
                 except (TypeError, ValueError):
                     pass
     return realized
+
+
+# --- Realized P&L buckets used by the Live dashboard -------------------------
+
+
+def realized_buckets_from_trades(trades):
+    """
+    Aggregate realized P&L into: week, last_week, month, all.
+    Uses SELL rows with 'pl' (realized P&L) and a cost basis to compute
+    pct = pnl / cost * 100.
+    Accepts any of these timestamp fields on each trade:
+      - time_ms (epoch ms, UTC)
+      - time_utc ("%Y-%m-%d %H:%M:%S", UTC)
+      - time (naive ET string "%Y-%m-%d %H:%M:%S")
+    """
+
+    def _et():
+        # your file already has _TZ_ET / ET equivalents; this keeps it self-contained
+        try:
+            from zoneinfo import ZoneInfo
+
+            return ZoneInfo("America/New_York")
+        except Exception:
+            return timezone(timedelta(hours=-4))  # crude fallback
+
+    now = datetime.now(_et())
+
+    # week starts Monday 00:00 ET
+    week_start = (now - timedelta(days=now.weekday())).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    last_week_start = week_start - timedelta(days=7)
+    last_week_end = week_start
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    acc = {
+        "week": {"pnl": 0.0, "cost": 0.0},
+        "last_week": {"pnl": 0.0, "cost": 0.0},
+        "month": {"pnl": 0.0, "cost": 0.0},
+        "all": {"pnl": 0.0, "cost": 0.0},
+    }
+
+    def _ts(t):
+        if t.get("time_ms"):
+            try:
+                return datetime.fromtimestamp(float(t["time_ms"]) / 1000.0, tz=UTC).astimezone(
+                    _et()
+                )
+            except Exception:
+                pass
+        if t.get("time_utc"):
+            try:
+                return (
+                    datetime.strptime(t["time_utc"], "%Y-%m-%d %H:%M:%S")
+                    .replace(tzinfo=UTC)
+                    .astimezone(_et())
+                )
+            except Exception:
+                pass
+        if t.get("time"):
+            try:
+                # treat as ET
+                return datetime.strptime(t["time"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=_et())
+            except Exception:
+                pass
+        return None
+
+    for tr in trades or []:
+        if (tr.get("action") or "").upper() != "SELL":
+            continue
+        ts = _ts(tr)
+        if ts is None:
+            continue
+
+        pnl = float(tr.get("pl") or 0.0)
+
+        # Prefer a gross notional if present; else price_paid * qty
+        amt = tr.get("amount")
+        if amt is not None:
+            try:
+                cost = abs(float(amt))
+            except Exception:
+                cost = 0.0
+        else:
+            try:
+                price_paid = float(tr.get("price_paid") or 0.0)
+                qty = float(tr.get("qty") or 0.0)
+                cost = abs(price_paid * qty)
+            except Exception:
+                cost = 0.0
+
+        acc["all"]["pnl"] += pnl
+        acc["all"]["cost"] += cost
+        if ts >= month_start:
+            acc["month"]["pnl"] += pnl
+            acc["month"]["cost"] += cost
+        if last_week_start <= ts < last_week_end:
+            acc["last_week"]["pnl"] += pnl
+            acc["last_week"]["cost"] += cost
+        if ts >= week_start:
+            acc["week"]["pnl"] += pnl
+            acc["week"]["cost"] += cost
+
+    def _out(key):
+        pnl = round(acc[key]["pnl"], 2)
+        pct = round((pnl / acc[key]["cost"] * 100.0), 2) if acc[key]["cost"] > 0 else 0.0
+        return {"pnl": pnl, "pct": pct}
+
+    return {
+        "week": _out("week"),
+        "last_week": _out("last_week"),
+        "month": _out("month"),
+        "all": _out("all"),
+    }
+
+
+# backward-compat wrapper (old code calls this name)
+def summarize_realized_buckets(trades):
+    return realized_buckets_from_trades(trades)
+
+
+# --- end helper ----------------------------------------------------------------
 
 
 def realized_pct(realized_pnl: float, starting_cash: float) -> float:
@@ -1419,9 +1506,7 @@ def extract_backtest_settings(args):
         single_entry_only="single_entry_only" in args,
         use_trailing_stop="use_trailing_stop" in args,
         trailing_stop_pct=float(args.get("trailing_stop_pct", 0.0)),
-        sell_after_days=int(args.get("sell_after_days"))
-        if args.get("sell_after_days")
-        else None,
+        sell_after_days=int(args.get("sell_after_days")) if args.get("sell_after_days") else None,
         stop_loss_pct=float(args.get("stop_loss_pct") or 0.0),
         take_profit_pct=float(args.get("take_profit_pct") or 0.0),
     )
@@ -1532,12 +1617,8 @@ def run_backtest_route():
     # 1) Build a BacktestSettings from the form
     settings = extract_backtest_settings(request.form)
     # 2) Override the two numeric fields directly
-    settings.starting_cash = float(
-        request.form.get("starting_cash", settings.starting_cash)
-    )
-    settings.max_per_trade = float(
-        request.form.get("max_per_trade", settings.max_per_trade)
-    )
+    settings.starting_cash = float(request.form.get("starting_cash", settings.starting_cash))
+    settings.max_per_trade = float(request.form.get("max_per_trade", settings.max_per_trade))
 
     # 3) Reset the backtest DB
     init_backtest_db()
@@ -1618,9 +1699,7 @@ def stop_scanner():
 def run_checkpoint():
     bat_path = os.path.join(os.getcwd(), "checkpoint.bat")  # Adjust path if needed
     try:
-        subprocess.Popen(
-            ["cmd.exe", "/c", "start", "cmd.exe", "/k", bat_path], shell=True
-        )
+        subprocess.Popen(["cmd.exe", "/c", "start", "cmd.exe", "/k", bat_path], shell=True)
         return redirect(url_for("index"))
     except Exception as e:
         return f"Error executing batch: {e}", 500
@@ -1682,9 +1761,7 @@ def export_backtest_pdf():
         fontSize=24,
         alignment=1,
     )
-    unicode_style = ParagraphStyle(
-        "Unicode", parent=styles["Normal"], fontName=unicode_font_name
-    )
+    unicode_style = ParagraphStyle("Unicode", parent=styles["Normal"], fontName=unicode_font_name)
 
     elems = []
 
@@ -1788,9 +1865,7 @@ def export_backtest_pdf():
     # 7) Finish and send
     doc.build(elems)
     buf.seek(0)
-    return send_file(
-        buf, mimetype="application/pdf", download_name="backtest_report.pdf"
-    )
+    return send_file(buf, mimetype="application/pdf", download_name="backtest_report.pdf")
 
 
 @app.route("/clear_all", methods=["POST"])
@@ -1820,9 +1895,7 @@ def clear_alert(id):
 @app.route("/launch_auth", methods=["POST"])
 def launch_auth():
     try:
-        subprocess.Popen(
-            ["start", "cmd", "/k", "python", "etrade_auth_flow.py"], shell=True
-        )
+        subprocess.Popen(["start", "cmd", "/k", "python", "etrade_auth_flow.py"], shell=True)
         flash("ðŸ”‘ E*TRADE Auth flow launched in new window.", "info")
     except Exception as e:
         flash(f"---Œ Error launching E*TRADE Auth: {e}", "danger")
@@ -1970,9 +2043,7 @@ def export_simulation():
             change = last_price - price_paid
             change_pct = (change / price_paid * 100.0) if price_paid else 0.0
             total_gain = change * qty
-            day_gain = (
-                total_gain  # TODO: replace with true day gain if you track prev_close
-            )
+            day_gain = total_gain  # TODO: replace with true day gain if you track prev_close
             value = last_price * qty
         except Exception as e:
             print(f"[EXPORT] Error for symbol {symbol}: {e}")
@@ -1993,13 +2064,9 @@ def export_simulation():
 
     # ---- Recompute unrealized P&L from holdings ----
     unrealized_pnl = round(sum(h.get("total_gain", 0.0) for h in holding_dicts), 2)
-    total_cost_basis = sum(
-        (h["qty"] or 0) * (h["price_paid"] or 0.0) for h in holding_dicts
-    )
+    total_cost_basis = sum((h["qty"] or 0) * (h["price_paid"] or 0.0) for h in holding_dicts)
     unrealized_pnl_pct = (
-        round((unrealized_pnl / total_cost_basis * 100.0), 2)
-        if total_cost_basis
-        else 0.0
+        round((unrealized_pnl / total_cost_basis * 100.0), 2) if total_cost_basis else 0.0
     )
 
     # ---- Build trade history & realized P&L ----
@@ -2045,9 +2112,7 @@ def export_simulation():
     try:
         from services.settings_schema import load_simulation_settings
 
-        _starting_cash = float(
-            getattr(load_simulation_settings(), "starting_cash", 0.0) or 0.0
-        )
+        _starting_cash = float(getattr(load_simulation_settings(), "starting_cash", 0.0) or 0.0)
     except Exception:
         start_cash = get_starting_cash_safe()
 
@@ -2140,9 +2205,7 @@ def start_scanner():
     t.start()
 
     flash("---–¶ï¸ Simulation started (DB nuked first)", "success")
-    return redirect(
-        url_for("simulation", starting_cash=starting_cash, max_per_trade=max_per_trade)
-    )
+    return redirect(url_for("simulation", starting_cash=starting_cash, max_per_trade=max_per_trade))
 
 
 # near the top of Dashboard.py
@@ -2302,9 +2365,7 @@ def simulation_view():
 
             # change from cost basis (what your Change / Change % columns show)
             change_from_cost = last - price_paid
-            change_from_cost_pct = (
-                (change_from_cost / price_paid * 100.0) if price_paid else 0.0
-            )
+            change_from_cost_pct = (change_from_cost / price_paid * 100.0) if price_paid else 0.0
 
             # day change = last - previous close (if we have prev)
             day_change = (last - prev_close) if prev_close is not None else 0.0
@@ -2364,9 +2425,7 @@ def simulation_view():
     start_cash = get_starting_cash_safe()
     realized_pnl_pct = (realized_pnl / start_cash * 100.0) if start_cash else 0.0
     total_buy_cost = sum(
-        (t.get("qty") or 0) * (t.get("price") or 0.0)
-        for t in history
-        if t.get("action") == "BUY"
+        (t.get("qty") or 0) * (t.get("price") or 0.0) for t in history if t.get("action") == "BUY"
     )
 
     # --- Realized P&L & % (from trade history; % uses starting cash) ---
@@ -2406,9 +2465,7 @@ def simulation_buy():
         quote_data = fetch_etrade_quote(symbol)
         if isinstance(quote_data, dict):
             # tweak these keys if your API returns different field names
-            price = float(
-                quote_data.get("lastTrade") or quote_data.get("closePrice") or 0
-            )
+            price = float(quote_data.get("lastTrade") or quote_data.get("closePrice") or 0)
         else:
             price = float(quote_data)
 
@@ -2455,9 +2512,7 @@ def simulation_sell():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-    return jsonify(
-        {"success": True, "cash": get_cash(), "realized_pl": get_realized_pl()}
-    ), 200
+    return jsonify({"success": True, "cash": get_cash(), "realized_pl": get_realized_pl()}), 200
 
 
 @app.route("/export_alerts")
@@ -2495,9 +2550,7 @@ def export_backtest():
     cur = conn.cursor()
 
     # 3) Grab the most recent run_id (order by started_at, not timestamp)
-    row = cur.execute(
-        "SELECT id FROM backtest_runs ORDER BY started_at DESC LIMIT 1"
-    ).fetchone()
+    row = cur.execute("SELECT id FROM backtest_runs ORDER BY started_at DESC LIMIT 1").fetchone()
     if not row:
         flash("---Œ No backtest run in the database to export.", "warning")
         return redirect(url_for("backtest_view"))
@@ -2526,9 +2579,7 @@ def export_backtest():
     # 5b) Dump the trades
     writer.writerow(["Symbol", "Date", "Type", "Price", "Qty", "P/L"])
     for t in trades:
-        writer.writerow(
-            [t["symbol"], t["date"], t["action"], t["price"], t["qty"], t["pnl"]]
-        )
+        writer.writerow([t["symbol"], t["date"], t["action"], t["price"], t["qty"], t["pnl"]])
 
     # 6) Return as an attachment
     return Response(
@@ -2547,12 +2598,8 @@ def check_cash_sync():
         ledger = get_cash_ledger()
         stored = get_cash()
         if abs(ledger - stored) > 0.01:
-            app.logger.warning(
-                f"[CASH] MISMATCH: ledger=${ledger:.2f} stored=${stored:.2f}"
-            )
+            app.logger.warning(f"[CASH] MISMATCH: ledger=${ledger:.2f} stored=${stored:.2f}")
             # Optional: set_cash(ledger)
-        else:
-            app.logger.info(f"[CASH] OK: ${ledger:.2f} matches stored cash")
     except Exception as e:
         app.logger.error(f"[CASH] check failed: {e}")
 
@@ -2613,9 +2660,7 @@ def index():
                 if isinstance(hist.columns, pd.MultiIndex):
                     hist.columns = hist.columns.get_level_values(-1)
                 hist.columns = [str(c) for c in hist.columns]
-                col_close = next(
-                    (c for c in hist.columns if c.lower() == "close"), None
-                )
+                col_close = next((c for c in hist.columns if c.lower() == "close"), None)
                 if col_close:
                     if len(hist) >= 1:
                         last_close = float(hist[col_close].iloc[-1])
@@ -2644,9 +2689,7 @@ def index():
                 "price_paid": float(avg_cost or 0.0),
                 "last_price": round(display_price, 2),
                 "change": round(gain_per_share, 2),  # since entry
-                "change_pct": round((gain_per_share / avg_cost * 100.0), 1)
-                if avg_cost
-                else 0.0,
+                "change_pct": round((gain_per_share / avg_cost * 100.0), 1) if avg_cost else 0.0,
                 "day_gain": round(change_day * int(qty or 0), 2),  # intraday P/L
                 "total_gain": round(gain_per_share * int(qty or 0), 2),
                 "value": round(display_price * int(qty or 0), 2),
@@ -2731,21 +2774,12 @@ def _normalize_positions_payload(payload) -> list[dict]:
 
     # Defensive unwrapping of common shapes
     root = payload or {}
-    if (
-        isinstance(root, dict)
-        and "positions" in root
-        and isinstance(root["positions"], dict)
-    ):
+    if isinstance(root, dict) and "positions" in root and isinstance(root["positions"], dict):
         root = root["positions"]
 
     pr = {}
     if isinstance(root, dict):
-        pr = (
-            root.get("PortfolioResponse")
-            or root.get("portfolio")
-            or root.get("Portfolio")
-            or {}
-        )
+        pr = root.get("PortfolioResponse") or root.get("portfolio") or root.get("Portfolio") or {}
 
     ap = pr.get("AccountPortfolio", [])
     if isinstance(ap, dict):
@@ -2849,17 +2883,11 @@ def _build_holdings_from_positions(positions):
         # day gain: prefer broker-provided, else (last - prev_close) * qty
         day_gain = 0.0
         try:
-            day_gain = float(
-                pos.get("todaysGainLoss") or pos.get("todaysGainLossBase") or 0.0
-            )
+            day_gain = float(pos.get("todaysGainLoss") or pos.get("todaysGainLossBase") or 0.0)
         except Exception:
             pass
         if not day_gain:
-            pc = (
-                pos.get("previous_close")
-                or pos.get("prev_close")
-                or pos.get("close_prev")
-            )
+            pc = pos.get("previous_close") or pos.get("prev_close") or pos.get("close_prev")
             try:
                 pc = float(pc)
                 if pc:
@@ -2958,9 +2986,7 @@ def live_view():
     # Account (safe normalization)
     try:
         raw_summary = get_account_summary() or {}
-        account = _normalize_account(
-            raw_summary if isinstance(raw_summary, dict) else {}
-        )
+        account = _normalize_account(raw_summary if isinstance(raw_summary, dict) else {})
     except Exception:
         account = {}
 
@@ -3023,9 +3049,7 @@ def live_view():
                 ):
                     return _original_et_get(norm, params)
 
-                aid = getattr(b, "_account_id_key", None) or getattr(
-                    b, "account_id_key", None
-                )
+                aid = getattr(b, "_account_id_key", None) or getattr(b, "account_id_key", None)
                 if aid:
                     return _original_et_get(f"/accounts/{aid}{norm}", params)
                 return _original_et_get(norm, params)
@@ -3065,6 +3089,12 @@ def live_view():
         holdings=holdings,
         trades=[],  # important: don't seed with SIM/history here
     )
+
+
+from datetime import timedelta
+from zoneinfo import ZoneInfo
+
+_TZ_ET = ZoneInfo("America/New_York")  # if not already defined at top-level
 
 
 # ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -3122,9 +3152,7 @@ def live_status():
         try:
             from services.trade_source import load_trades_merged
 
-            trades_rows = load_trades_merged(
-                days=days, start_iso=start_iso, max_count=max_count
-            )
+            trades_rows = load_trades_merged(days=days, start_iso=start_iso, max_count=max_count)
         except Exception:
             if log:
                 log.exception("[LIVE] trades merged failed")
@@ -3143,9 +3171,7 @@ def live_status():
             ident = (
                 account_identity() or {}
             )  # {'account_id', 'account_id_key', 'account_type_display', ...}
-            summ = (
-                get_account_summary() or {}
-            )  # may include 'ui' sub-dict with balances
+            summ = get_account_summary() or {}  # may include 'ui' sub-dict with balances
             ui = summ.get("ui") or {}
 
             acct_id = ident.get("account_id") or ui.get("account_id") or ""
@@ -3156,9 +3182,7 @@ def live_status():
                 "account_id": acct_id,  # numeric like "153737458"
                 "account_key": acct_key,  # opaque like "kW8L...C8iWA"
                 # Labels / type
-                "account_type": ident.get("account_type")
-                or ui.get("account_type")
-                or "",
+                "account_type": ident.get("account_type") or ui.get("account_type") or "",
                 "account_type_display": ident.get("account_type_display")
                 or ui.get("account_type_display")
                 or "",
@@ -3167,9 +3191,7 @@ def live_status():
                 or ui.get("marginBuyingPower")
                 or summ.get("buying_power")
                 or 0,
-                "equity_value": ui.get("netAccountValue")
-                or summ.get("equity_value")
-                or 0,
+                "equity_value": ui.get("netAccountValue") or summ.get("equity_value") or 0,
                 "settled_cash": ui.get("cashAvailableForInvestment")
                 or summ.get("settled_cash")
                 or 0,
@@ -3286,9 +3308,7 @@ def live_status():
                 ms = _to_ms_for_compare(ms_or_any)
                 if ms <= 0:
                     return ""
-                return _dt.datetime.fromtimestamp(ms / 1000.0, tz=_ET).strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
+                return _dt.datetime.fromtimestamp(ms / 1000.0, tz=_ET).strftime("%Y-%m-%d %H:%M:%S")
             except Exception:
                 return ""
 
@@ -3313,9 +3333,7 @@ def live_status():
 
             def visit(node):
                 if isinstance(node, dict):
-                    sym = node.get("symbol") or (node.get("Product") or {}).get(
-                        "symbol"
-                    )
+                    sym = node.get("symbol") or (node.get("Product") or {}).get("symbol")
                     last = prev = None
 
                     allblk = node.get("All") or node.get("all")
@@ -3415,22 +3433,30 @@ def live_status():
             Enrich trades with FIFO basis and compute day-trade stats.
             A 'day trade' = any SELL whose FIFO-closed shares all came from BUY lots
             opened on the same ET calendar day as the SELL.
-            Returns: enriched_trades, realized_today_val, realized_today_pct, daytrade_stats
+
+            Returns:
+                enriched_trades (list[dict]),
+                realized_today_val (float),
+                realized_today_pct (float),
+                daytrade_stats (dict) -> {"pdt5": {"dates": {YYYY-MM-DD: {"count": int}}, "total": int}}
             """
+            # ---------- setup ----------
             lots = {}  # sym -> [[qty, px, buy_date], ...]
             today_et = _dt.datetime.now(tz=_ET).date()
+
             realized_val = 0.0
             realized_basis = 0.0
             enriched = []
             daytrades = []  # {"date": date, "pl": float, "qty": int}
 
+            # Oldest -> newest for FIFO consumption
             chron = sorted(trades, key=lambda t: _to_ms_for_compare(t.get("time_ms")))
+
+            # ---------- FIFO enrich ----------
             for t in chron:
                 ts_ms = _to_ms_for_compare(t.get("time_ms"))
                 t_date = (
-                    _dt.datetime.fromtimestamp(ts_ms / 1000.0, tz=_ET).date()
-                    if ts_ms
-                    else today_et
+                    _dt.datetime.fromtimestamp(ts_ms / 1000.0, tz=_ET).date() if ts_ms else today_et
                 )
                 sym = (t.get("symbol") or "").upper()
                 side = (t.get("action") or t.get("side") or "").upper()
@@ -3457,6 +3483,7 @@ def live_status():
                 basis_cost = 0.0
                 basis_sh = 0
                 same_day = True
+
                 while remain > 0 and lots[sym]:
                     lot_qty, lot_px, lot_date = lots[sym][0]
                     take = min(remain, lot_qty)
@@ -3482,42 +3509,29 @@ def live_status():
                 if basis_sh > 0 and same_day:
                     daytrades.append({"date": t_date, "pl": pnl, "qty": basis_sh})
 
-                enriched.append(
-                    {**t, "price_paid": avg_basis, "pl": pnl, "pl_pct": pnl_pct}
-                )
+                enriched.append({**t, "price_paid": avg_basis, "pl": pnl, "pl_pct": pnl_pct})
 
-            enriched.sort(
-                key=lambda r: _to_ms_for_compare(r.get("time_ms")), reverse=True
-            )
+            # newest -> oldest for UI
+            enriched.sort(key=lambda r: _to_ms_for_compare(r.get("time_ms")), reverse=True)
 
-            realized_pct = (
-                (realized_val / realized_basis * 100.0) if realized_basis > 0 else 0.0
-            )
+            realized_pct = (realized_val / realized_basis * 100.0) if realized_basis > 0 else 0.0
 
-            # PDT stats (last 5 trading days)
-            from datetime import date, timedelta
-
-            def _today_et_date():
-                # you already compute ET timestamps elsewhere; keep it simple here
-                # assuming server clock is fine; if you have a tz helper, use it.
-                return date.today()
+            # ---------- PDT stats (last 5 trading days) ----------
+            from datetime import date
 
             def _is_trading_day(d: date) -> bool:
-                # Weekend filter is enough for your case (9/4 vs 9/22).
-                # If you want NYSE holidays toFP&Lo, you can add a small set here.
-                return d.weekday() < 5  # 0=Mon .. 4=Fri
+                return d.weekday() < 5  # Mon-Fri
 
             def _last_n_trading_days(n: int, end: date | None = None) -> list[date]:
-                end = end or _today_et_date()
-                days = []
-                cur = end
-                while len(days) < n:
+                end = end or today_et
+                out, cur = [], end
+                while len(out) < n:
                     if _is_trading_day(cur):
-                        days.append(cur)
+                        out.append(cur)
                     cur -= timedelta(days=1)
-                return list(reversed(days))  # oldest -> newest
+                return list(reversed(out))
 
-            # Build per-day counts from detected daytrades
+            # count daytrades per day
             by_date = {}
             for drec in daytrades:
                 k = drec["date"].isoformat()
@@ -3526,10 +3540,7 @@ def live_status():
                 if (drec.get("pl") or 0) > 0:
                     rec["profitable"] += 1
 
-            # Rolling window = last 5 trading days *from today*
             window = _last_n_trading_days(5)
-            window_keys = {d.isoformat() for d in window}
-
             pdt_total = 0
             pdt_map = {}
             for d in window:
@@ -3539,6 +3550,7 @@ def live_status():
                 pdt_total += c["count"]
 
             daytrade_stats = {"pdt5": {"dates": pdt_map, "total": pdt_total}}
+
             return (
                 enriched,
                 round(realized_val, 2),
@@ -3624,20 +3636,12 @@ def live_status():
                         prev_close = last - delta
 
                 # Value
-                value = (
-                    round((last or 0.0) * qty, 2)
-                    if (last is not None and qty)
-                    else None
-                )
+                value = round((last or 0.0) * qty, 2) if (last is not None and qty) else None
 
                 # Totals (vs. cost basis)
-                total_pl = (
-                    ((last - avg) * qty) if (last is not None and avg and qty) else None
-                )
+                total_pl = ((last - avg) * qty) if (last is not None and avg and qty) else None
                 total_pl_pct = (
-                    (((last - avg) / avg) * 100.0)
-                    if (last is not None and avg)
-                    else None
+                    (((last - avg) / avg) * 100.0) if (last is not None and avg) else None
                 )
 
                 # Day (vs. previous close)
@@ -3682,12 +3686,8 @@ def live_status():
                         "price_paid": round(avg, 4) if avg is not None else None,
                         # ---œ… what the Holdings table shows
                         "day_pl": round(day_pl, 2) if day_pl is not None else None,
-                        "day_pl_pct": round(day_pl_pct, 2)
-                        if day_pl_pct is not None
-                        else None,
-                        "total_pl": round(total_pl, 2)
-                        if total_pl is not None
-                        else None,
+                        "day_pl_pct": round(day_pl_pct, 2) if day_pl_pct is not None else None,
+                        "total_pl": round(total_pl, 2) if total_pl is not None else None,
                         "total_pl_pct": (
                             round(total_pl_pct, 2) if total_pl_pct is not None else None
                         ),
@@ -3713,12 +3713,8 @@ def live_status():
             )
 
             # Totals
-            total_pl = (
-                ((last - avg) * qty) if (last is not None and avg and qty) else None
-            )
-            total_pl_pct = (
-                ((last - avg) / avg * 100.0) if (last is not None and avg) else None
-            )
+            total_pl = ((last - avg) * qty) if (last is not None and avg and qty) else None
+            total_pl_pct = ((last - avg) / avg * 100.0) if (last is not None and avg) else None
 
             # Day (vs previous close)
             day_pl = (
@@ -3740,32 +3736,22 @@ def live_status():
                     "symbol": sym,
                     "qty": qty,
                     "last_price": round(last, 4) if last is not None else None,
-                    "last": round(last, 4)
-                    if last is not None
-                    else None,  # alias for template
+                    "last": round(last, 4) if last is not None else None,  # alias for template
                     "price_paid": round(avg, 4) if avg else None,
                     # what the template expects for holdings P&L:
                     "day_pl": round(day_pl, 2) if day_pl is not None else None,
-                    "day_pl_pct": round(day_pl_pct, 2)
-                    if day_pl_pct is not None
-                    else None,
+                    "day_pl_pct": round(day_pl_pct, 2) if day_pl_pct is not None else None,
                     "total_pl": round(total_pl, 2) if total_pl is not None else None,
-                    "total_pl_pct": round(total_pl_pct, 2)
-                    if total_pl_pct is not None
-                    else None,
+                    "total_pl_pct": round(total_pl_pct, 2) if total_pl_pct is not None else None,
                     # keep prior names so nothing else breaks
                     "change": round(change, 4) if avg else 0.0,
                     "change_pct": (change / avg * 100.0) if avg else 0.0,
-                    "value": round(last * qty, 2)
-                    if (last is not None and qty)
-                    else None,
+                    "value": round(last * qty, 2) if (last is not None and qty) else None,
                 }
             )
 
             unrealized = round(sum(f(r.get("total_gain")) for r in rows), 2)
-            cost_basis = round(
-                sum(f(r.get("price_paid")) * f(r.get("qty")) for r in rows), 2
-            )
+            cost_basis = round(sum(f(r.get("price_paid")) * f(r.get("qty")) for r in rows), 2)
             positions_value = round(sum(f(r.get("value")) for r in rows), 2)
             return rows, unrealized, cost_basis, positions_value
 
@@ -3790,12 +3776,7 @@ def live_status():
                 for p in pos:
                     prod = p.get("Product") or {}
                     sym = (prod.get("symbol") or p.get("symbol") or "").upper()
-                    qty = (
-                        p.get("quantity")
-                        or p.get("longQty")
-                        or p.get("positionQuantity")
-                        or 0
-                    )
+                    qty = p.get("quantity") or p.get("longQty") or p.get("positionQuantity") or 0
                     paid = (
                         p.get("pricePaid")
                         or p.get("avgPrice")
@@ -3817,12 +3798,8 @@ def live_status():
                         {
                             "symbol": sym,
                             "qty": qty,
-                            "price_paid": (
-                                float(paid) if paid not in (None, "") else None
-                            ),
-                            "last_price": (
-                                float(last) if last not in (None, "") else None
-                            ),
+                            "price_paid": (float(paid) if paid not in (None, "") else None),
+                            "last_price": (float(last) if last not in (None, "") else None),
                         }
                     )
             return rows
@@ -3838,9 +3815,7 @@ def live_status():
         try:
             holdings = _normalize_positions_payload(raw_positions)
             inv = {
-                r["symbol"]: float(r["qty"])
-                for r in holdings
-                if r.get("symbol") and r.get("qty")
+                r["symbol"]: float(r["qty"]) for r in holdings if r.get("symbol") and r.get("qty")
             }
         except Exception as e:
             _log("warning", "[LIVE] positions normalize error: %s", e)
@@ -3850,11 +3825,7 @@ def live_status():
         try:
             # symbols from current holdings
             syms = sorted(
-                {
-                    (r.get("symbol") or "").upper()
-                    for r in (holdings or [])
-                    if r.get("symbol")
-                }
+                {(r.get("symbol") or "").upper() for r in (holdings or []) if r.get("symbol")}
             )
             qmap: dict[str, dict[str, float]] = {}
 
@@ -3890,7 +3861,6 @@ def live_status():
               - 'YYYY-MM-DD HH:MM:SS' in time or time_et
               - ISO 8601 in time_utc
             """
-            from datetime import datetime, timezone
 
             val = (
                 trow.get("time_ms")
@@ -3904,9 +3874,7 @@ def live_status():
             try:
                 v = float(val)
                 ts_ms = v if v > 10_000_000_000 else v * 1000.0
-                return datetime.fromtimestamp(
-                    ts_ms / 1000.0, tz=timezone.utc
-                ).astimezone(_ET)
+                return datetime.fromtimestamp(ts_ms / 1000.0, tz=timezone.utc).astimezone(_TZ_ET)
             except Exception:
                 pass
             # string parse
@@ -3922,98 +3890,9 @@ def live_status():
                 dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
                 if dt.tzinfo is None:
                     dt = dt.replace(tzinfo=_ET)
-                return dt.astimezone(_ET)
+                return dt.astimezone(_TZ_ET)
             except Exception:
                 return None
-
-        def summarize_realized_buckets(trades: list[dict]) -> dict:
-            """
-            Expects SELL rows enriched with FIFO: pl, price_paid, qty.
-            Falls back to (price - price_paid) * qty when needed.
-            Returns dict with {week,last_week,month,all} -> {pnl,pct}.
-            """
-            from datetime import datetime, timedelta
-
-            today = datetime.now(_ET).date()
-            week_start = today - timedelta(days=today.weekday())
-            last_week_end = week_start - timedelta(days=1)
-            last_week_start = last_week_end - timedelta(days=6)
-            month_start = today.replace(day=1)
-
-            buckets = {
-                "week": {"pnl": 0.0, "basis": 0.0},
-                "last_week": {"pnl": 0.0, "basis": 0.0},
-                "month": {"pnl": 0.0, "basis": 0.0},
-                "all": {"pnl": 0.0, "basis": 0.0},
-            }
-
-            def add_row(dt_et, pnl, basis):
-                d = dt_et.date()
-                buckets["all"]["pnl"] += pnl
-                buckets["all"]["basis"] += basis
-                if d >= week_start:
-                    buckets["week"]["pnl"] += pnl
-                    buckets["week"]["basis"] += basis
-                if last_week_start <= d <= last_week_end:
-                    buckets["last_week"]["pnl"] += pnl
-                    buckets["last_week"]["basis"] += basis
-                if d >= month_start:
-                    buckets["month"]["pnl"] += pnl
-                    buckets["month"]["basis"] += basis
-
-            for t in trades or []:
-                if (t.get("action") or "").upper() != "SELL":
-                    continue
-                dt = _trade_dt_et(t)
-                if not dt:
-                    continue
-                qty = float(t.get("qty") or 0) or 0.0
-                pl = t.get("pl")
-                paid = t.get("price_paid")
-                px = t.get("price")
-                if pl is not None and paid is not None and qty > 0:
-                    pnl = float(pl)
-                    basis = float(paid) * qty
-                else:
-                    try:
-                        px = float(px)
-                        paid = float(paid)
-                        qty = float(qty)
-                        pnl = (px - paid) * qty
-                        basis = max(paid * qty, 0.0)
-                    except Exception:
-                        continue
-                add_row(dt, float(pnl), float(basis))
-
-            out = {}
-            for k, v in buckets.items():
-                pnl = round(v["pnl"], 2)
-                pct = round((pnl / v["basis"] * 100.0), 2) if v["basis"] > 0 else 0.0
-                out[k] = {"pnl": pnl, "pct": pct}
-            return out
-
-        def realized_buckets_from_trades(trades):
-            """
-            Aggregate realized P&L into: week, last_week, month, all.
-            Uses SELL rows with 'pl' (realized P&L) and an amount/cost basis
-            to compute a simple % = pnl / cost * 100.
-            """
-            # time windows (ET)
-            now = datetime.now(_et())
-            week_start = (now - timedelta(days=now.weekday())).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
-            last_week_start = week_start - timedelta(days=7)
-            last_week_end = week_start
-            month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-
-            # accumulators: pnl and cost basis (sum of absolute trade amounts)
-            acc = {
-                "week": {"pnl": 0.0, "cost": 0.0},
-                "last_week": {"pnl": 0.0, "cost": 0.0},
-                "month": {"pnl": 0.0, "cost": 0.0},
-                "all": {"pnl": 0.0, "cost": 0.0},
-            }
 
             def _ts(t):
                 # prefer ms ---†’ utc, then time_utc, then naive ET 'time'
@@ -4032,9 +3911,9 @@ def live_status():
                         pass
                 if t.get("time"):  # treat as ET
                     try:
-                        return datetime.strptime(
-                            t["time"], "%Y-%m-%d %H:%M:%S"
-                        ).replace(tzinfo=_et())
+                        return datetime.strptime(t["time"], "%Y-%m-%d %H:%M:%S").replace(
+                            tzinfo=_et()
+                        )
                     except Exception:
                         pass
                 return None
@@ -4075,11 +3954,7 @@ def live_status():
 
             def _out(k):
                 pnl = round(acc[k]["pnl"], 2)
-                pct = (
-                    round((pnl / acc[k]["cost"] * 100.0), 2)
-                    if acc[k]["cost"] > 0
-                    else 0.0
-                )
+                pct = round((pnl / acc[k]["cost"] * 100.0), 2) if acc[k]["cost"] > 0 else 0.0
                 return {"pnl": pnl, "pct": pct}
 
             return {
@@ -4237,10 +4112,7 @@ def live_status():
         positions_value = round(sum(_safe_float(h.get("value")) for h in holdings), 2)
 
         cost_basis_sum = round(
-            sum(
-                _safe_float(h.get("price_paid")) * _safe_float(h.get("qty"))
-                for h in holdings
-            ),
+            sum(_safe_float(h.get("price_paid")) * _safe_float(h.get("qty")) for h in holdings),
             2,
         )
 
@@ -4253,9 +4125,7 @@ def live_status():
             2,
         )
 
-        upct = (
-            round((unrealized / cost_basis_sum * 100.0), 2) if cost_basis_sum else 0.0
-        )
+        upct = round((unrealized / cost_basis_sum * 100.0), 2) if cost_basis_sum else 0.0
 
         # ---- Compute metrics from current rows / qmap fallback ----
         rows, unrealized, cost_basis, positions_value = _build_positions_table(
@@ -4339,8 +4209,9 @@ def live_status():
 
         # Optional: compute realized_buckets (week/last_week/month/all) if you have a helper
         try:
-            realized_buckets = realized_buckets_from_trades(trades_enriched_or_recent)
-            metrics["realized_buckets"] = realized_buckets
+            realized_buckets = summarize_realized_buckets(trades_enriched)
+            if "realized_buckets" not in metrics:
+                metrics["realized_buckets"] = realized_buckets
         except Exception:
             realized_buckets = {
                 "week": {"pnl": 0.0, "pct": 0.0},
@@ -4370,9 +4241,7 @@ def live_status():
             px = _to_f(t.get("price"))
 
             # Timestamp: prefer time_ms; else fall back to time/time_utc
-            ts_ms = _to_ms_for_compare(
-                t.get("time_ms") or t.get("time") or t.get("time_utc")
-            )
+            ts_ms = _to_ms_for_compare(t.get("time_ms") or t.get("time") or t.get("time_utc"))
             minute_bucket = int(ts_ms / 60000) if ts_ms else 0
             key = (minute_bucket, sym, side, qty, round(px or 0.0, 2))
             if key in seen:
@@ -4460,8 +4329,7 @@ def live_status():
                     if "Z" not in s and "+" not in s:
                         s += "Z"
                     return int(
-                        _dt.datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
-                        * 1000
+                        _dt.datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp() * 1000
                     )
                 except Exception:
                     return 0
@@ -4469,12 +4337,7 @@ def live_status():
             for t in get_trades() or []:
                 sym = (t.get("symbol") or "").upper()
                 act = (t.get("action") or "").upper()
-                ts = (
-                    t.get("time_ms")
-                    or t.get("time_utc")
-                    or t.get("time")
-                    or t.get("timestamp")
-                )
+                ts = t.get("time_ms") or t.get("time_utc") or t.get("time") or t.get("timestamp")
                 ms = _to_ms(ts)
                 if act == "SELL":
                     open_since.pop(sym, None)  # back to flat
@@ -4487,8 +4350,8 @@ def live_status():
             open_since = {}  # keep it safe
 
         # Enrich with FIFO, then normalize rounding
-        trades_enriched, realized_today, realized_today_pct, dt_stats = (
-            _fifo_enrich_and_daytrades(mapped)
+        trades_enriched, realized_today, realized_today_pct, dt_stats = _fifo_enrich_and_daytrades(
+            mapped
         )
 
         opened_map = _infer_open_times(holdings, trades_enriched)
@@ -4551,9 +4414,7 @@ def live_status():
                 h["open_time"] = opened  # legacy name the UI expects
         # --------------- Equity fallback ---------------
         if not account.get("equity_value"):
-            eq = round(
-                (account.get("settled_cash") or 0.0) + (positions_value or 0.0), 2
-            )
+            eq = round((account.get("settled_cash") or 0.0) + (positions_value or 0.0), 2)
             account["equity_value"] = eq
 
         # --------------- Payload -----------------------
@@ -4566,6 +4427,11 @@ def live_status():
             "ok": True,
             "days": days,
             "account": account,
+            "kpis": {
+                "realized": realized_buckets,  # <- week/last_week/month/all with pnl & pct
+                "realized_today": realized_today_val,
+                "realized_today_pct": realized_today_pct,
+            },
             "holdings": holdings,
             "trades": trades_enriched,
             "metrics": {
@@ -4590,16 +4456,28 @@ def live_status():
                 }
             )
 
+        # -------- account block --------
         ident = account_identity() or {}
         summ = get_account_summary() or {}
-        ui = (summ.get("ui") or {}) | {  # merge guarantees
-            "account_id": ident.get("account_id") or ui.get("account_id"),
-            "account_key": ident.get("account_id_key") or ui.get("account_key"),
-        }
+
+        base_ui = (summ.get("ui") or {}) if isinstance(summ.get("ui"), dict) else {}
+        acc_id = (
+            ident.get("account_id")
+            or base_ui.get("account_id")
+            or base_ui.get("accountId")
+            or summ.get("account_id")
+        )
+        acc_key = (
+            ident.get("account_id_key")
+            or base_ui.get("account_key")
+            or base_ui.get("accountIdKey")
+            or summ.get("account_key")
+        )
+        ui = {**base_ui, "account_id": acc_id, "account_key": acc_key}
 
         payload["account"] = {
-            "account_id": ui.get("account_id"),  # numeric
-            "account_key": ui.get("accountIdKey") or ui.get("account_key"),
+            "account_id": acc_id,
+            "account_key": acc_key,
             "account_type": ident.get("account_type"),
             "account_type_display": ident.get("account_type_display"),
             "buying_power": summ.get("buying_power") or 0,
@@ -4609,13 +4487,63 @@ def live_status():
         }
 
         # API health flag used by the green/red dot
+        acct = payload["account"]
         payload["etrade_ok"] = bool(
-            account.get("account_id")
-            or (account.get("equity_value") not in (None, 0))
-            or (account.get("buying_power") is not None)
+            acct.get("account_id")
+            or (acct.get("equity_value") not in (None, 0))
+            or (acct.get("buying_power") is not None)
             or bool(holdings)
             or bool(qmap)
         )
+
+        # -------- finalize realized from live.db (last word wins) --------
+        payload.setdefault("metrics", {})
+        payload.setdefault("kpis", {})
+        try:
+            import services.realized_buckets as rb
+
+            db_buckets = rb.realized_buckets_from_live_db(LIVE_DB)
+        except Exception as _e:
+            db_buckets = None
+            try:
+                current_app.logger.warning("[REALIZED] DB error: %s", _e)
+            except Exception:
+                pass
+
+        if db_buckets:
+            payload["metrics"]["realized_buckets"] = db_buckets
+            payload["kpis"]["realized"] = db_buckets
+            payload["metrics"]["realized_pnl"] = db_buckets["all"]["pnl"]
+            payload["metrics"]["realized_pnl_pct"] = db_buckets["all"]["pct"]
+            try:
+                current_app.logger.info(
+                    "[REALIZED] source=live.db all=$%.2f", db_buckets["all"]["pnl"]
+                )
+            except Exception:
+                pass
+
+        # ---- since-start blurb meta ----
+        import os
+
+        START_CASH = float(os.environ.get("START_CASH", "392.67"))  # your baseline
+        START_DATE = os.environ.get("START_DATE", "2025-08-22")
+        APP_NAME = os.environ.get("APP_NAME", "TradeAlerts")
+
+        about = {
+            "start_cash": START_CASH,
+            "start_date": START_DATE,
+            "since_pnl": payload["metrics"]
+            .get("realized_buckets", {})
+            .get("all", {})
+            .get("pnl", 0.0),
+            "since_pct": payload["metrics"]
+            .get("realized_buckets", {})
+            .get("all", {})
+            .get("pct", 0.0),
+            "app_name": APP_NAME,
+            "authors": ["Ben McCall", "Max"],
+        }
+        payload["about"] = about
 
         return payload
 
@@ -4635,11 +4563,7 @@ def live_quotes():
 
     from services import etrade_service as et
 
-    syms = [
-        s.strip().upper()
-        for s in (request.args.get("syms") or "").split(",")
-        if s.strip()
-    ]
+    syms = [s.strip().upper() for s in (request.args.get("syms") or "").split(",") if s.strip()]
     if not syms:
         return {"error": "pass ?syms=AAPL,MSFT"}
 
@@ -4651,9 +4575,7 @@ def live_quotes():
         out["multi_type"] = type(raw).__name__
         # Reuse the same parser as live_status:
         out["multi_qmap"] = (
-            lambda p: (
-                lambda _dig: _dig(p)
-            )  # inline small parser to avoid import cycles
+            lambda p: (lambda _dig: _dig(p))  # inline small parser to avoid import cycles
         )(None)  # stub (we return raw for inspection instead)
         out["raw_multi"] = raw  # let you inspect if needed
     except Exception as e:

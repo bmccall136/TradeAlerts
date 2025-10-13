@@ -1,0 +1,116 @@
+# _preview_probe_autoadapt.py
+import json, sys, traceback, inspect
+from datetime import datetime, time as dtime
+
+from services import etrade_service as et  # your wrapper
+
+SYMBOL = "HPQ"
+QTY    = 1
+SIDE   = "BUY"   # BUY/SELL
+
+ACC_KEY = "kW8LbkuGisPCK9Ey7C8iWA"   # your known account key
+ACC_NUM = None                      # put numeric ID here if you know it
+
+def now_session() -> str:
+    t = datetime.now().time()
+    return "REGULAR" if time(9,30) <= t <= time(16,0) else "EXTENDED"
+
+def glimpse(obj, n=1600):
+    try:
+        return json.dumps(obj, indent=2)[:n]
+    except Exception:
+        return str(obj)[:n]
+
+def extract_preview_id(resp: dict):
+    for fn in [
+        lambda r: (r.get("PreviewIds") or [None])[0],
+        lambda r: (r.get("previewIds") or [None])[0],
+        lambda r: (r.get("Order") or {}).get("previewIds", [None])[0],
+        lambda r: (r.get("order") or [{}])[0].get("previewId"),
+        lambda r: (r.get("Order") or [{}])[0].get("PreviewIds", [None])[0],
+    ]:
+        try:
+            pid = fn(resp)
+            if pid: return str(pid)
+        except Exception:
+            pass
+    return None
+
+def main():
+    f = et.preview_equity_order
+    sig = inspect.signature(f)
+    param_names = set(sig.parameters.keys())
+
+    print("=== preview_equity_order signature ===")
+    print(f"{f.__name__}{sig}\n")
+
+    # Synonym maps from "generic" to possible wrapper names
+    syn = {
+        "symbol":      ["symbol", "Symbol", "sym"],
+        "qty":         ["quantity", "qty", "shares", "Quantity"],
+        "side":        ["side", "orderAction", "action", "order_side", "OrderAction"],
+        "price_type":  ["priceType", "price_type", "orderType"],   # E*TRADE uses priceType='MARKET'/'LIMIT'
+        "mkt_sess":    ["marketSession", "market_session", "session"],
+        "limit_price": ["limitPrice", "limit_price", "price"],
+        "acc_key":     ["accountIdKey", "account_key", "accountKey"],
+        "acc_num":     ["accountId", "account_id"],
+        "tif":         ["timeInForce", "time_in_force", "tif"],
+    }
+
+    # helper to choose the first param name that exists in the function signature
+    def choose(keylist):
+        for k in keylist:
+            if k in param_names:
+                return k
+        return None
+
+    # build a kwargs dict that only contains names the function accepts
+    kwargs = {}
+    if (k := choose(syn["symbol"])):     kwargs[k] = SYMBOL
+    if (k := choose(syn["qty"])):        kwargs[k] = int(QTY)
+    if (k := choose(syn["side"])):       kwargs[k] = SIDE
+    if (k := choose(syn["price_type"])): kwargs[k] = "MARKET"
+    if (k := choose(syn["mkt_sess"])):   kwargs[k] = now_session()
+    if (k := choose(syn["tif"])):        kwargs[k] = "DAY"
+    # no limit price for MARKET
+
+    trials = []
+
+    # account key path
+    if (k := choose(syn["acc_key"])): trials.append(("account_key", {**kwargs, k: ACC_KEY}))
+    # numeric account path
+    if ACC_NUM and (k := choose(syn["acc_num"])): trials.append(("account_id", {**kwargs, k: ACC_NUM}))
+    # no-account (some wrappers infer default account)
+    trials.append(("no_account", kwargs.copy()))
+
+    got_any = False
+    for desc, kw in trials:
+        print(f"\n--- TRY {desc} with kwargs keys: {list(kw.keys())} ---")
+        try:
+            resp = f(**kw)
+            got_any = True
+            print("raw:", glimpse(resp))
+            pid = extract_preview_id(resp or {})
+            print("previewId:", pid)
+            msgs = (resp or {}).get("messages") or (resp or {}).get("Messages") or []
+            if msgs:
+                print("messages:", glimpse(msgs, 2000))
+            if pid:
+                print(f"\nOK via {desc} ✅")
+                sys.exit(0)
+        except TypeError as e:
+            # show which keyword caused issues
+            print(f"[TypeError] {e}")
+        except Exception as e:
+            print(f"[threw] {e.__class__.__name__}: {e}")
+            traceback.print_exc()
+
+    if not got_any:
+        print("\nNo preview responses (all calls threw). This can be AUTH or a strictly positional wrapper.")
+        sys.exit(3)
+
+    print("\nNo previewId in any response. See messages/raw above. ❌")
+    sys.exit(2)
+
+if __name__ == "__main__":
+    main()

@@ -27,7 +27,6 @@ except Exception:  # pragma: no cover
 
 # ─── DB paths ──────────────────────────────────────────────────────────────
 DB_PATH = Path(__file__).resolve().parent.parent / "simulation.db"
-print(f"▶︎ TradingHelpers loaded; simulation DB path is {DB_PATH.resolve()}")
 
 # Some modules expect a SIMULATION_DB from settings. We keep compatibility.
 try:
@@ -82,9 +81,7 @@ def _trail_get(symbol: str):
     """Return (peak, since) for trailing stop, or (None, None) if absent."""
     _ensure_trail_table()
     conn = _connect()
-    row = conn.execute(
-        "SELECT peak, since FROM trail_state WHERE symbol=?;", (symbol,)
-    ).fetchone()
+    row = conn.execute("SELECT peak, since FROM trail_state WHERE symbol=?;", (symbol,)).fetchone()
     conn.close()
     return (float(row[0]), row[1]) if row else (None, None)
 
@@ -213,9 +210,7 @@ def _migrate_trail_table() -> None:
         """
         )
     # Backfill any legacy NULLs (from pre-constraint rows)
-    conn.execute(
-        "UPDATE trail_state SET since = ? WHERE since IS NULL;", (_utcnow_iso(),)
-    )
+    conn.execute("UPDATE trail_state SET since = ? WHERE since IS NULL;", (_utcnow_iso(),))
     conn.commit()
     conn.close()
 
@@ -300,9 +295,7 @@ def check_if_position_open(symbol: str) -> bool:
 
 
 # Back-compat: expose fetch_intraday_vwap via trading_helpers
-def fetch_intraday_vwap(
-    symbol: str, date=None, tz=None, retries: int = 2, timeout: int = 10
-):
+def fetch_intraday_vwap(symbol: str, date=None, tz=None, retries: int = 2, timeout: int = 10):
     try:
         from services.data_fetch import fetch_intraday_vwap as _fiw
     except Exception as e:
@@ -387,9 +380,7 @@ def setup_simulation_db() -> None:
             )
             print(f"▶︎ Seeded simulation.db with starting cash = ${starting:.2f}")
         else:
-            cur.execute(
-                "INSERT OR IGNORE INTO state(id, cash, realized_pl) VALUES (1, 0.0, 0.0);"
-            )
+            cur.execute("INSERT OR IGNORE INTO state(id, cash, realized_pl) VALUES (1, 0.0, 0.0);")
 
     conn.commit()
     conn.close()
@@ -451,9 +442,7 @@ def get_last_and_prev(symbol: str, fallback_price: float):
         try:
             df = fetch_data_with_timeout(qsym, "2d")
             if df is not None:
-                close_col = next(
-                    (c for c in df.columns if str(c).lower() == "close"), None
-                )
+                close_col = next((c for c in df.columns if str(c).lower() == "close"), None)
                 if close_col is not None:
                     if last is None and len(df) >= 1:
                         last = float(df[close_col].iloc[-1])
@@ -478,9 +467,7 @@ except Exception:
 # ─── State accessors ───────────────────────────────────────────────────────
 def _ensure_state() -> None:
     conn = _connect()
-    conn.execute(
-        "INSERT OR IGNORE INTO state (id, cash, realized_pl) VALUES (1, 0.0, 0.0);"
-    )
+    conn.execute("INSERT OR IGNORE INTO state (id, cash, realized_pl) VALUES (1, 0.0, 0.0);")
     conn.commit()
     conn.close()
 
@@ -535,9 +522,7 @@ def get_trades(limit: int = 100) -> list[dict[str, Any]]:
 
 
 # ─── Holdings I/O ─────────────────────────────────────────────────────────
-def insert_or_update_holding(
-    symbol: str, qty: int, avg_cost: float, last_price: float
-) -> None:
+def insert_or_update_holding(symbol: str, qty: int, avg_cost: float, last_price: float) -> None:
     conn = _connect()
     cur = conn.cursor()
     cur.execute("SELECT qty, avg_cost FROM holdings WHERE symbol=?;", (symbol,))
@@ -566,9 +551,7 @@ def insert_or_update_holding(
 
 def get_holdings() -> list[tuple]:
     conn = _connect()
-    rows = conn.execute(
-        "SELECT symbol, qty, avg_cost, last_price FROM holdings;"
-    ).fetchall()
+    rows = conn.execute("SELECT symbol, qty, avg_cost, last_price FROM holdings;").fetchall()
     conn.close()
     return rows
 
@@ -577,9 +560,7 @@ def get_position(symbol: str) -> dict[str, Any] | None:
     """Compatibility: try settings.SIMULATION_DB first, then our DB_PATH."""
     path = Path(_SIM_DB_FROM_SETTINGS) if _SIM_DB_FROM_SETTINGS else _resolve_sim_db()
     conn = sqlite3.connect(path)
-    row = conn.execute(
-        "SELECT qty, last_price FROM holdings WHERE symbol=?;", (symbol,)
-    ).fetchone()
+    row = conn.execute("SELECT qty, last_price FROM holdings WHERE symbol=?;", (symbol,)).fetchone()
     conn.close()
     if row:
         return {"qty": int(row[0]), "last_price": float(row[1])}
@@ -595,9 +576,7 @@ def get_position_qty(symbol: str) -> int:
 
 def get_avg_cost(symbol: str) -> float:
     conn = _connect()
-    row = conn.execute(
-        "SELECT avg_cost FROM holdings WHERE symbol=?;", (symbol,)
-    ).fetchone()
+    row = conn.execute("SELECT avg_cost FROM holdings WHERE symbol=?;", (symbol,)).fetchone()
     conn.close()
     return float(row[0]) if row else 0.0
 
@@ -608,9 +587,7 @@ def get_cash_ledger() -> float:
     try:
         from services.simulation_service import load_simulation_settings
 
-        starting_cash = float(
-            getattr(load_simulation_settings(), "starting_cash", 0.0) or 0.0
-        )
+        starting_cash = float(getattr(load_simulation_settings(), "starting_cash", 0.0) or 0.0)
     except Exception:
         starting_cash = 0.0
 
@@ -791,9 +768,7 @@ def compute_qty(settings, price: float) -> int:
     return max(0, min(max_by_size, max_by_cash))
 
 
-def buy_stock(
-    symbol: str, qty: int, price: float, trade_time: str | None = None
-) -> bool:
+def buy_stock(symbol: str, qty: int, price: float, trade_time: str | None = None) -> bool:
     # Settlement guard (CASH accounts)
     acct_type = os.getenv("ACCOUNT_TYPE", "CASH")
     ok, reason = enforce_settlement_on_buy(
@@ -814,9 +789,7 @@ def buy_stock(
 
     set_cash(cash - cost)
     insert_trade(symbol, "BUY", float(price), int(qty), None, trade_time)
-    insert_or_update_holding(
-        symbol, int(qty), avg_cost=float(price), last_price=float(price)
-    )
+    insert_or_update_holding(symbol, int(qty), avg_cost=float(price), last_price=float(price))
     return True
 
 
@@ -838,9 +811,7 @@ def sell_stock(
 ) -> bool:
     # PDT guard (margin only)
     acct_type = os.getenv("ACCOUNT_TYPE", "CASH")
-    ok, reason = enforce_pdt_on_sell(
-        symbol, qty or 0, now=trade_time, account_type=acct_type
-    )
+    ok, reason = enforce_pdt_on_sell(symbol, qty or 0, now=trade_time, account_type=acct_type)
     if not ok:
         raise RuntimeError(f"[PDT] {reason}")
 
@@ -862,9 +833,7 @@ def sell_stock(
     pnl = (float(price) - float(avg)) * int(qty)
 
     insert_trade(symbol, "SELL", float(price), int(qty), float(pnl), trade_time)
-    insert_or_update_holding(
-        symbol, qty=-int(qty), avg_cost=float(avg), last_price=float(price)
-    )
+    insert_or_update_holding(symbol, qty=-int(qty), avg_cost=float(avg), last_price=float(price))
 
     # If closed, clear trail peak
     try:
@@ -894,16 +863,12 @@ def check_exit_orders(settings) -> None:
         # --- live price (fallback to last_price) ---
         try:
             val = fetch_etrade_quote(symbol) if fetch_etrade_quote else last_price
-            current = float(
-                val.get("lastTrade") if isinstance(val, dict) else val or 0.0
-            )
+            current = float(val.get("lastTrade") if isinstance(val, dict) else val or 0.0)
         except Exception:
             current = float(last_price or 0.0)
 
         pnl_pct = (
-            ((current - float(avg_cost)) / float(avg_cost) * 100.0)
-            if float(avg_cost)
-            else 0.0
+            ((current - float(avg_cost)) / float(avg_cost) * 100.0) if float(avg_cost) else 0.0
         )
 
         # --- STOP LOSS ---
@@ -989,9 +954,7 @@ def market_is_open() -> bool:
 def seconds_until_open() -> float:
     try:
         now = datetime.now(ET)
-        sched = nyse.schedule(
-            start_date=now.date(), end_date=now.date() + timedelta(days=7)
-        )
+        sched = nyse.schedule(start_date=now.date(), end_date=now.date() + timedelta(days=7))
         for _, row in sched.iterrows():
             open_dt = row["market_open"].tz_convert(ET) + POST_OPEN_BUFFER
             if open_dt > now:
@@ -1015,13 +978,9 @@ def refresh_holdings_prices() -> None:
             px = None
             if fetch_etrade_quote:
                 val = fetch_etrade_quote(symbol)
-                px = float(
-                    val.get("lastTrade") if isinstance(val, dict) else val or 0.0
-                )
+                px = float(val.get("lastTrade") if isinstance(val, dict) else val or 0.0)
             if px and px > 0:
-                conn.execute(
-                    "UPDATE holdings SET last_price=? WHERE symbol=?;", (px, symbol)
-                )
+                conn.execute("UPDATE holdings SET last_price=? WHERE symbol=?;", (px, symbol))
         except Exception:
             pass
     conn.commit()
