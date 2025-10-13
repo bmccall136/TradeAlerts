@@ -1,0 +1,34 @@
+# services/realized_pl.py
+import os, sqlite3
+from datetime import date, timedelta
+from zoneinfo import ZoneInfo
+
+ET = ZoneInfo("America/New_York")
+LIVE_DB = os.environ.get("LIVE_DB", r"C:\TradeAlerts\live.db")
+
+def _sum_between(start: date, end: date) -> float:
+    conn = sqlite3.connect(LIVE_DB)
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT COALESCE(SUM(gain),0.0)
+        FROM realized_trades
+        WHERE close_date BETWEEN ? AND ?
+    """, (start.isoformat(), end.isoformat()))
+    (v,) = cur.fetchone()
+    conn.close()
+    return round(float(v or 0.0), 2)
+
+def realized_buckets(today: date | None = None) -> dict[str, float]:
+    today = today or date.today()
+    monday = today - timedelta(days=today.weekday())
+    last_monday = monday - timedelta(days=7)
+    last_sunday = monday - timedelta(days=1)
+    mtd_start = today.replace(day=1)
+    since = date(2025, 8, 22)
+
+    return {
+        "This Week": _sum_between(monday, today),
+        "Last Week": _sum_between(last_monday, last_sunday),
+        "Month": _sum_between(mtd_start, today),
+        "Since 2025-08-22": _sum_between(since, today),
+    }
