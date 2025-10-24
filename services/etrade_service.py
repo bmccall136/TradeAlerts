@@ -99,6 +99,33 @@ def get_open_orders(account_id_key: str, days: int = 14) -> dict:
     # 3) last resort – bubble the error for visibility
     return _eget(f"/accounts/{account_id_key}/orders.json", params={"status": "OPEN"})
 
+# services/etrade_service.py (add)
+import time
+import requests
+
+def fetch_balances_resilient(sess, account_id_key: str, account_id_numeric: str, retries: int = 3):
+    urls = [
+        f"https://api.etrade.com/v1/accounts/{account_id_key}/balance.json?instType=BROKERAGE",
+        f"https://api.etrade.com/v1/accounts/{account_id_key}/balance.json",
+        f"https://api.etrade.com/v1/accounts/{account_id_numeric}/balance.json?instType=BROKERAGE",
+        f"https://api.etrade.com/v1/accounts/{account_id_numeric}/balance.json",
+    ]
+    last_err = None
+    for url in urls:
+        for attempt in range(retries):
+            try:
+                r = sess.get(url, timeout=15, headers={"Accept": "application/json"})
+                if r.status_code >= 500:
+                    raise requests.HTTPError(f"{r.status_code} {r.text}")
+                r.raise_for_status()
+                j = r.json() or {}
+                bal = j.get("BalanceResponse") or j.get("balanceResponse") or j
+                return bal
+            except Exception as e:
+                last_err = e
+                time.sleep(0.8 * (attempt + 1))  # light backoff
+        # try next URL form
+    raise RuntimeError(f"All balance endpoints failed; last error: {last_err}")
 
 def open_sell_qty_map(account_id_key: str) -> dict[str, float]:
     """
@@ -2083,6 +2110,35 @@ def _extract_last_price(qd: dict) -> float | None:
                 pass
     return None
 
+# wherever you compute funds
+def compute_cash_fields(bal: dict) -> tuple[float, float]:
+    # prefer buying power, then available, then settled
+    def _f(x): 
+        try: return float(x)
+        except: return None
+
+    fields = {
+        "cashBuyingPower": _f(bal.get("cashBuyingPower")),
+        "cashAvailableForWithdrawal": _f(bal.get("cashAvailableForWithdrawal")),
+        "settledCash": _f(bal.get("settledCash")),
+        "cashBalance": _f(bal.get("cashBalance")),
+    }
+    # Pick best estimates
+    buying_power = next((v for k,v in fields.items() if v is not None and k in ("cashBuyingPower","cashAvailableForWithdrawal")), None)
+    settled = next((v for k,v in fields.items() if v is not None and k in ("settledCash","cashAvailableForWithdrawal","cashBuyingPower","cashBalance")), None)
+    return (settled or 0.0, buying_power or 0.0)
+
+def get_funds():
+    sess = get_oauth_session()
+    ident = account_identity()
+    try:
+        bal = fetch_balances_resilient(sess, ident["account_id_key"], ident["account_id"])
+        settled, bp = compute_cash_fields(bal)
+        return settled, bp, bal
+    except Exception as e:
+        # fail CLOSED
+        log.error("BALANCES: %s", e)
+        return 0.0, 0.0, None
 
 def fetch_etrade_quote(symbols: str | Iterable[str]) -> float | dict[str, float] | None:
     """
@@ -2119,23 +2175,35 @@ def fetch_etrade_quote(symbols: str | Iterable[str]) -> float | dict[str, float]
 # ---------------- Portfolio / Balances (backwards-compatible API) ----------------
 
 
-def get_account_summary() -> dict:
-    aid = _primary_account_id()
-    r = _eget(f"/accounts/{aid}/balance.json", {"instType": "BROKERAGE"})
-    j = r.json() or {}
-    br = j.get("BalanceResponse") or j.get("balanceResponse") or {}
+# --- Portfolio / Balances (backwards-compatible API) ---
 
-    bp, settled = extract_funds(br)  # <-- single source of truth
+def get_account_summary(account_id_key: str | None = None) -> dict:
+    """
+    Return a normalized balances summary dict with:
+      - settled_cash (float)
+      - buying_power (float)
+      - raw (the raw BalanceResponse)
+    Tries both accountIdKey and numeric accountId + with/without instType.
+    """
+    # Resolve IDs
+    sess = get_oauth_session()
+    ident = account_identity()
+    aid_key = (account_id_key or ident.get("account_id_key") or "").strip()
+    aid_num = (ident.get("account_id") or "").strip()
 
-    out = dict(j)
-    try:
-        out["buying_power"] = float(bp or 0.0)
-    except Exception:
-        out["buying_power"] = 0.0
-    try:
-        out["settled_cash"] = float(settled or 0.0)
-    except Exception:
-        out["settled_cash"] = 0.0
+    # Fetch with retries/fallbacks
+    br = fetch_balances_resilient(sess, aid_key, aid_num)
+    if not isinstance(br, dict):
+        br = {}
+
+    # br is the BalanceResponse / balanceResponse block
+    settled, bp = compute_cash_fields(br)
+
+    out = {
+        "settled_cash": float(settled or 0.0),
+        "buying_power": float(bp or 0.0),
+        "raw": br,
+    }
     return out
 
 

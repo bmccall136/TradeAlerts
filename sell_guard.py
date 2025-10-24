@@ -626,14 +626,13 @@ def _opened_today(sym: str) -> bool:
     return False
 
 
-def eligible_symbols(acct_key: str, cfg: GuardSettings) -> list[tuple[str, int]]:
+def eligible_symbols(acct_key: str, cfg: GuardSettings) -> List[Tuple[str, int]]:
     block = set(map(str.upper, cfg.sg.get("blocklist") or []))
     force = set(map(str.upper, cfg.sg.get("force_symbols") or []))
-    fwe = bool(cfg.sg.get("force_without_entry", True))
+    fwe   = bool(cfg.sg.get("force_without_entry", True))
 
-    # 1) primary: get_positions (with/without key)
-    pos = None
-    err = None
+    # ---- fetch positions (with/without acct_key) ----
+    pos = None; err = None
     try:
         pos = et.get_positions(acct_key)
     except TypeError:
@@ -646,138 +645,76 @@ def eligible_symbols(acct_key: str, cfg: GuardSettings) -> list[tuple[str, int]]
 
     if err:
         LOG.warning("get_positions failed: %s", err)
+        return sorted([(s, 0) for s in force]) if (force and fwe) else []
+
     LOG.info("positions raw glimpse: %s", _glimpse(pos))
 
-    # --- normalize positions into rows (supports ALL shapes) ---
-    rows = []
+    def L(x):
+        return x if isinstance(x, list) else ([] if x is None else [x])
 
-    def _from_accountportfolio(pr):
-        ap = pr.get("AccountPortfolio") or []
-        if not isinstance(ap, list):
-            ap = [ap] if ap else []
-        tmp = []
-        for a in ap:
-            tmp.extend((a or {}).get("Position") or [])
-        return tmp
+    # ---- normalize to iterable of (symbol, qty_float) from Product/quantity ----
+    def _iter_positions(pobj):
+        if not isinstance(pobj, dict):
+            return
+        pr = pobj.get("PortfolioResponse") or {}
+        for ap in L(pr.get("AccountPortfolio")):
+            positions = (ap.get("Position") or ap.get("position")
+                         or ap.get("Positions") or ap.get("positions"))
+            for p in L(positions):
+                prod = p.get("Product") or p.get("product") or {}
+                sym  = (prod.get("symbol") or "").strip().upper()
+                if not sym:
+                    # fallback: description like "NAME (TICKER)"
+                    desc = (p.get("symbolDescription") or "").strip()
+                    if "(" in desc and desc.endswith(")"):
+                        tick = desc.split("(")[-1][:-1].strip()
+                        if tick:
+                            sym = tick.upper()
 
-    def _from_accounts_positionlist(pr):
-        accs = ((pr.get("Accounts") or {}).get("Account")) or []
-        if not isinstance(accs, list):
-            accs = [accs] if accs else []
-        tmp = []
-        for a in accs:
-            tmp.extend((a.get("PositionList") or {}).get("Position") or [])
-        return tmp
-
-    if isinstance(pos, dict):
-        # 1) Positions API
-        pr1 = pos.get("PositionsResponse")
-        if isinstance(pr1, dict):
-            rows = _parse_positions_any(pr1.get("Position") or [])
-
-        # 2) Portfolio API (your case)
-        if not rows:
-            pr2 = pos.get("PortfolioResponse")
-            if isinstance(pr2, dict):
-                tmp = _from_accountportfolio(pr2)
-                if tmp:
-                    rows = _parse_positions_any(tmp)
-                if not rows:
-                    tmp = _from_accounts_positionlist(pr2)
-                    if tmp:
-                        rows = _parse_positions_any(tmp)
-
-        # 3) Fallback
-        if not rows:
-            rows = _parse_positions_any(pos.get("Position") or [])
-
-    elif isinstance(pos, list):
-        rows = _parse_positions_any(pos)
-
-    # Harden blocklist
-    block = set((s or "").strip().upper() for s in (cfg.sg.get("blocklist") or []))
-    rows = [(s, q) for (s, q) in rows if (s or "").strip().upper() not in block]
-
-    LOG.info("parsed positions: %d sample=%s", len(rows), rows[:5])
-    # --- end normalize ---
-
-    # 2) fallback: portfolio-style endpoints if empty
-    if not rows:
-        for fn in ("get_portfolio", "get_positions_all", "get_account_positions"):
-            if hasattr(et, fn):
+                qty = (
+                    p.get("quantity") or p.get("qty")
+                    or p.get("longQty") or p.get("longQuantity")
+                    or p.get("positionQty") or p.get("positionQuantity") or 0
+                )
                 try:
-                    r = (
-                        getattr(et, fn)(acct_key)
-                        if fn != "get_positions_all"
-                        else getattr(et, fn)()
-                    )
-                    LOG.info("%s raw glimpse: %s", fn, _glimpse(r))
-                    # common shapes: {"PortfolioResponse":{"AccountPortfolio":[{"Position": [...]}]}}
-                    cand = []
-                    if isinstance(r, dict):
-                        pr = r.get("PortfolioResponse") or r.get("portfolio") or r
+                    q = float(qty or 0)
+                except Exception:
+                    q = 0.0
 
-                        # ✅ NEW: handle Accounts -> Account[] -> PositionList -> Position[]
-                        accs = (pr.get("Accounts", {}) or {}).get("Account", [])
-                        if isinstance(accs, list) and accs:
-                            tmp = []
-                            for acc in accs:
-                                plist = (acc.get("PositionList") or {}).get(
-                                    "Position", []
-                                ) or []
-                                if plist:
-                                    tmp.extend(plist)
-                            if tmp:
-                                cand = _parse_positions_any(tmp)
+                if sym and q > 0:
+                    yield sym, q
 
-                        # existing: AccountPortfolio shape (keep it)
-                        if not cand:
-                            ap = (
-                                pr.get("AccountPortfolio")
-                                if isinstance(pr, dict)
-                                else None
-                            ) or []
-                            if isinstance(ap, list) and ap:
-                                poslist = (
-                                    ap[0].get("Position")
-                                    if isinstance(ap[0], dict)
-                                    else []
-                                ) or []
-                                cand = _parse_positions_any(poslist)
+    rows = list(_iter_positions(pos))
+    LOG.info("normalized positions -> %s", rows)
 
-                        # existing: direct Position list
-                        if not cand:
-                            cand = _parse_positions_any(pr.get("Position") or [])
+    # ---- apply blocklist/force, dedupe, then floor to whole shares for selling ----
+    merged: Dict[str, float] = {}
 
-                    elif isinstance(r, list):
-                        cand = _parse_positions_any(r)
+    if fwe and force:
+        for s in sorted(force):
+            if s not in block:
+                merged[s] = 0.0
 
-                    rows = [(s, q) for (s, q) in cand if s not in block]
-                    if rows:
-                        break
-                except Exception as e:
-                    LOG.warning("%s failed: %s", fn, e)
+    for sym, q in rows:
+        if sym in block:
+            continue
+        merged[sym] = max(float(q), merged.get(sym, 0.0))
 
-    # 3) force list preference / without-entry option
-    if force:
-        forced = [(s, q) for (s, q) in rows if s in force]
-        if forced:
-            return forced
-        if fwe:
-            forced_rows = []
-            for s in force:
-                try:
-                    avail = int(round(available_to_sell(acct_key, s)))
-                    LOG.info("[FORCE] %s available_to_sell=%s", s, avail)
-                    if avail > 0 and s not in block:
-                        forced_rows.append((s, avail))
-                except Exception as e:
-                    LOG.warning("[FORCE] %s available_to_sell failed: %s", s, e)
-            if forced_rows:
-                return forced_rows
+    final: List[Tuple[str, int]] = []
+    skipped_fractional = {}
 
-    return rows
+    for s, q in sorted(merged.items()):
+        whole = int(q)  # sell API needs whole shares
+        if whole >= 1 or (fwe and s in force):
+            final.append((s, whole))
+        else:
+            skipped_fractional[s] = q
 
+    if skipped_fractional:
+        LOG.info("eligible_symbols: skipped fractional-only holdings (whole=0): %s", skipped_fractional)
+
+    LOG.info("eligible final -> %s", final)
+    return final
 
 def compute_order_params(
     symbol: str, cfg: GuardSettings

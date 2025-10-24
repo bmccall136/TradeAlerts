@@ -6,11 +6,11 @@
     "sell_window_start_et": "09:35",
     "sell_window_end_et":   "15:55",
 
-	"avoid_daytrades": true,
-    "min_hold_days": 1,
-    "min_hold_minutes": 390,
-    "allow_intraday_stoploss": false,
-	"pdt_allow_stop": false
+	"avoid_daytrades": false,
+    "min_hold_days": 0,
+    "min_hold_minutes": 0,
+    "allow_intraday_stoploss": true,
+	"pdt_allow_stop": false,
 
     "target_bps": 200,
     "stop_bps":   100,

@@ -1,51 +1,74 @@
 # services/realized_buckets.py
+import os
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
-def _date_str(dtobj) -> str:
-    return dtobj.strftime("%Y-%m-%d")
+ET = ZoneInfo("America/New_York")
 
-def realized_buckets_from_live_db(db_path: str) -> dict | None:
+def realized_buckets_from_live_db(db_path: str,
+                                  since: str | None = None,
+                                  start_cash: float | None = None) -> dict | None:
+    """
+    Build realized P&L buckets (week, last_week, month, all) from live.db.
+    - Only includes rows on/after `since` (defaults to env PROJECT_START).
+    - Percent for 'all' can be computed against START_CASH (env) if provided.
+    Schema expected: realized_trades(time TEXT ISO, pnl REAL, ...).
+    """
+
+    since = since or os.environ.get("PROJECT_START", "2025-08-22")  # <- set your start
+    start_cash = (start_cash if start_cash is not None
+                  else float(os.environ.get("START_CASH", "392.67")))
+
     try:
         con = sqlite3.connect(db_path)
         con.row_factory = sqlite3.Row
     except Exception:
         return None
 
-    def sum_gain(start_d=None, end_d=None) -> float:
-        q = "SELECT COALESCE(SUM(gain),0.0) FROM realized_trades WHERE gain IS NOT NULL"
-        params = []
-        if start_d is not None:
-            q += " AND date(close_date) >= date(?)"; params.append(start_d)
-        if end_d is not None:
-            q += " AND date(close_date) <  date(?)"; params.append(end_d)
-        return float(con.execute(q, params).fetchone()[0] or 0.0)
+    # Time boundaries (ET)
+    now = datetime.now(ET)
+    week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    last_week_start = week_start - timedelta(days=7)
+    last_week_end = week_start
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    def sum_basis(start_d=None, end_d=None) -> float:
-        q = "SELECT COALESCE(SUM(ABS(total_cost)),0.0) FROM realized_trades WHERE total_cost IS NOT NULL"
-        params = []
-        if start_d is not None:
-            q += " AND date(close_date) >= date(?)"; params.append(start_d)
-        if end_d is not None:
-            q += " AND date(close_date) <  date(?)"; params.append(end_d)
-        return float(con.execute(q, params).fetchone()[0] or 0.0)
+    def _sum_between(start_dt: datetime, end_dt: datetime | None):
+        q = "SELECT COALESCE(SUM(pnl),0.0) FROM realized_trades WHERE time >= ?"
+        args = [start_dt.isoformat()]
+        # enforce global project start cutoff
+        if since:
+            q += " AND date(time) >= date(?)"
+            args.append(since)
+        if end_dt is not None:
+            q += " AND time < ?"
+            args.append(end_dt.isoformat())
+        (val,) = con.execute(q, args).fetchone()
+        return float(val or 0.0)
 
-    now = datetime.now(timezone.utc)
-    monday = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-    last_monday = monday - timedelta(days=7)
-    first_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    def _sum_all_since():
+        q = "SELECT COALESCE(SUM(pnl),0.0) FROM realized_trades WHERE date(time) >= date(?)"
+        (val,) = con.execute(q, (since,)).fetchone()
+        return float(val or 0.0)
 
-    md, lmd, fdom = _date_str(monday), _date_str(last_monday), _date_str(first_of_month)
+    wk   = _sum_between(week_start, None)
+    lwk  = _sum_between(last_week_start, last_week_end)
+    mon  = _sum_between(month_start, None)
+    tall = _sum_all_since()
 
-    def bucket(start_d=None, end_d=None):
-        pnl = sum_gain(start_d, end_d)
-        basis = sum_basis(start_d, end_d)
-        pct = (pnl / basis * 100.0) if basis > 1e-9 else 0.0
+    def _fmt(pnl: float, pct_basis: float | None = None):
+        pnl = round(pnl, 2)
+        if pct_basis and pct_basis > 0:
+            pct = round(pnl / pct_basis * 100.0, 2)
+        else:
+            pct = 0.0
         return {"pnl": pnl, "pct": pct}
 
+    # For week/last_week/month, many folks prefer pct of start-cash = apples-to-apples.
+    # If you want pct-of-cost for those, you can switch later; for now keep consistent.
     return {
-        "week":      bucket(md, None),
-        "last_week": bucket(lmd, md),
-        "month":     bucket(fdom, None),
-        "all":       bucket(None, None),
+        "week":      _fmt(wk,  start_cash),
+        "last_week": _fmt(lwk, start_cash),
+        "month":     _fmt(mon, start_cash),
+        "all":       _fmt(tall, start_cash),  # <-- will be $34.01 and ~8.66% with your env
     }

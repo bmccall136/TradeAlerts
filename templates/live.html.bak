@@ -63,6 +63,121 @@
   .kpi-realized .rline > :nth-child(2){ min-width: 5.5rem; } /* $ amount column */
   .kpi-realized .rline > :nth-child(3){ min-width: 3.5rem; } /* % column */
 </style>
+<style>
+  .since-start-blurb{
+    font-size: 0.95rem;        /* was tiny; nudge up */
+    line-height: 1.3;
+    opacity: .9;
+    text-align: center;
+    margin-top: .35rem;
+  }
+  .since-start-credit{
+    font-size: 0.9rem;
+    opacity: .8;
+    text-align: center;
+  }
+  /* On wider screens, make it a bit larger */
+  @media (min-width: 992px){
+    .since-start-blurb{ font-size: 1.05rem; }
+    .since-start-credit{ font-size: 1rem; }
+  }
+</style>
+<style>
+  /* --- spacing / padding on the KPI cards --- */
+  .kpi-card { padding: 18px 20px; }
+
+  /* top blurb spacing */
+  .top-blurb { margin-top: 6px; margin-bottom: 12px; opacity: .95; }
+
+  /* subtle alignment for the realized rows (keeps columns neat) */
+  .kpi-realized .rline{
+    display:grid;
+    grid-template-columns: 1fr max-content max-content;
+    gap: .5rem 1rem;
+    align-items: baseline;
+  }
+  .kpi-realized .rline > :nth-child(2),
+  .kpi-realized .rline > :nth-child(3){
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi-realized .rline > :nth-child(2){ min-width: 5.5rem; } /* $ column */
+  .kpi-realized .rline > :nth-child(3){ min-width: 3.5rem; } /* % column */
+
+  /* --- color tokens --- */
+  :root{
+    --pos: #2fd27f;
+    --neg: #ff6b6b;
+    --zero: #b8b8b8;
+    --muted: #a0a0a0;
+  }
+  /* classes used by signClass() in your JS */
+  .text-pos { color: var(--pos) !important; }
+  .text-neg { color: var(--neg) !important; }
+  .text-zero{ color: var(--zero) !important; }
+
+  /* PDT counter chip hues (you already toggle .neg in JS when >=3) */
+  #dt_pdt5.neg { color: #ff9b2f; }
+  #dt_pdt5.pos { color: var(--pos); }
+
+  /* make the “Built by…” line a hair brighter if you want */
+  .built-by { color: #ddd; }
+</style>
+<style>
+  /* subtle breathing room above the header row */
+  .kpi-row { margin-top: .75rem; }
+
+  /* reused text colors */
+  .text-pos { color:#1db954 !important; }  /* green */
+  .text-neg { color:#ff5555 !important; }  /* red   */
+  .text-zero{ color:#b8b8b8 !important; }  /* gray  */
+
+  /* realized rows align + spacing */
+  .kpi-realized .rline{
+    display:grid;
+    grid-template-columns: 1fr max-content max-content;
+    gap:.25rem 1rem;
+    align-items:baseline;
+    padding: 2px 0;               /* tiny vertical padding */
+  }
+  .kpi-realized .rline > :nth-child(2),
+  .kpi-realized .rline > :nth-child(3){
+    text-align:right;
+    font-variant-numeric: tabular-nums;
+    min-width: 5.5rem;            /* $ column */
+  }
+  .kpi-realized .rline > :nth-child(3){ min-width: 3.75rem; } /* % column */
+</style>
+<style>
+  .since-blurb{ font-size:.95rem; letter-spacing:.2px; color:#d9d9d9; }
+  .since-blurb b{ color:#fff; }
+  .built-by{ font-size:.9rem; color:#aab0b6; }
+</style>
+<style>
+  .kpi-realized .rline{ padding: 2px 0; }           /* tiny vertical rhythm */
+  .text-pos{ color:#2ecc71 !important; }            /* you already use these */
+  .text-neg{ color:#ff6b6b !important; }
+  .text-zero{ color:#b8b8b8 !important; }
+</style>
+<style>
+  /* Centered hero blurb under the title */
+  .hero-blurb{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:6px;                 /* space between the two lines */
+    text-align:center;
+    padding:10px 0 22px;     /* top/bottom breathing room */
+    margin: 0 auto;          /* keep it centered across wide screens */
+    max-width: 1100px;       /* stops it from feeling too “wide” on 4k */
+    line-height: 1.15;
+  }
+  .hero-blurb .since { opacity:.92; }
+  .hero-blurb .by    { opacity:.80; font-size: 0.95rem; }
+  .hero-blurb .since { font-size:1.05rem; }
+  .hero-blurb .by    { font-size:1.0rem; }
+
+</style>
 
 <div class="container">
   <div class="d-flex justify-content-between align-items-start mb-4" style="min-height:54px; position:relative;">
@@ -70,27 +185,17 @@
     <!-- Left: (now empty to match layout spacing; you can remove entirely if desired) -->
     <div>
 <div class="kv">
-  <span class="label">Day trades (PDT, last 5 days)</span>
-  <span id="dt_pdt5" class="num">—</span>
 </div>
 	</div>
 
     <!-- Center: title (no badge) -->
-    <h2 class="text-warning mb-0 position-absolute start-50 translate-middle-x" style="width:fit-content;">
-      Live Dashboard
-    </h2>
-<!-- Since-start blurb row -->
-<div id="since-start-row" class="container-fluid" style="margin-top:8px;">
-  <div class="row">
-    <div class="col-12">
-      <p id="since-start-blurb" class="text-center"
-         style="margin:0; font-size:12px; color:#bbb;">
-      </p>
-      <p id="credits" class="text-center"
-         style="margin:2px 0 0; font-size:11px; color:#888;">
-      </p>
-    </div>
+<!-- Stats Blurb + Built-by (centered, two lines) -->
+<div class="hero-blurb">
+  <div class="since">
+    Started with <b id="about-start-cash">$392.67</b> on <b id="about-start-date">2025-08-22</b>.
+    This app has since made <b id="about-since-pnl">$34.01</b> at <b id="about-since-pct">8.66%</b>.
   </div>
+  <div class="by">Built by <b>Ben McCall &amp; Max</b></div>
 </div>
 
     <!-- Right: Account type + E*TRADE status block (keep as you have it) -->
@@ -159,36 +264,44 @@
 <div class="col-12 col-md-4">
   <div class="card bg-dark border-0 shadow-sm h-100">
     <div class="card-body kpi-card">
-      <div class="d-flex justify-content-between align-items-center">
-        <div class="text-uppercase small">Realized P&amp;L</div>
-        <div class="small">W / LW / M / All</div>
-      </div>
+		<div class="d-flex justify-content-between align-items-center">
+		  <div class="text-uppercase small">Realized P&amp;L</div>
+		  <div class="small">D / W / LW / M / All</div>
+		</div>
 
-      <div class="kpi-realized mt-2">
-        <div class="rline">
-          <span class="small">Week</span>
-          <span id="kpi-r-week" class="fw-semibold"></span>
-          <span id="kpi-r-week-pct" class="small"></span>
-        </div>
+		<div class="kpi-realized mt-2">
+		  <!-- NEW: Day row -->
+		  <div class="rline">
+			<span class="small">Day</span>
+			<span id="kpi-r-day" class="fw-semibold"></span>
+			<span id="kpi-r-day-pct" class="small"></span>
+		  </div>
 
-        <div class="rline mt-1">
-          <span class="small">Last Week</span>
-          <span id="kpi-r-lastweek" class="fw-semibold"></span>
-          <span id="kpi-r-lastweek-pct" class="small"></span>
-        </div>
+		  <div class="rline mt-1">
+			<span class="small">Week</span>
+			<span id="kpi-r-week" class="fw-semibold"></span>
+			<span id="kpi-r-week-pct" class="small"></span>
+		  </div>
 
-        <div class="rline mt-1">
-          <span class="small">Month</span>
-          <span id="kpi-r-month" class="fw-semibold"></span>
-          <span id="kpi-r-month-pct" class="small"></span>
-        </div>
+		  <div class="rline mt-1">
+			<span class="small">Last Week</span>
+			<span id="kpi-r-lastweek" class="fw-semibold"></span>
+			<span id="kpi-r-lastweek-pct" class="small"></span>
+		  </div>
 
-        <div class="rline mt-1">
-          <span class="small">All</span>
-          <span id="kpi-r-all" class="fw-semibold"></span>
-          <span id="kpi-r-all-pct" class="small"></span>
-        </div>
-      </div>
+		  <div class="rline mt-1">
+			<span class="small">Month</span>
+			<span id="kpi-r-month" class="fw-semibold"></span>
+			<span id="kpi-r-month-pct" class="small"></span>
+		  </div>
+
+		  <div class="rline mt-1">
+			<span class="small">All</span>
+			<span id="kpi-r-all" class="fw-semibold"></span>
+			<span id="kpi-r-all-pct" class="small"></span>
+		  </div>
+		</div>
+     </div>
     </div>
   </div>
 </div>
@@ -305,25 +418,25 @@ function updateHeaderKPIs(data) {
   if (pnlEl){ pnlEl.textContent = fmtUsd(Number(m.unrealized_pnl || 0)); pnlEl.className = `fs-3 fw-bold ${signClass(m.unrealized_pnl)}`; }
   if (pctEl){ pctEl.textContent = fmtPct(Number(m.unrealized_pnl_pct || 0)); pctEl.className = `small ${signClass(m.unrealized_pnl_pct)}`; }
 
+
   // Realized buckets (right)
-  const rb = m.realized_buckets || { week:{pnl:0,pct:0}, last_week:{pnl:0,pct:0}, month:{pnl:0,pct:0}, all:{pnl:0,pct:0} };
-  const wires = [
-    ["kpi-r-week", rb.week?.pnl],           ["kpi-r-week-pct", rb.week?.pct],
+	const rb = m.realized_buckets || {
+	  day:{pnl:0,pct:0}, week:{pnl:0,pct:0}, last_week:{pnl:0,pct:0}, month:{pnl:0,pct:0}, all:{pnl:0,pct:0}
+	};  const wires = [
+    ["kpi-r-day", rb.day?.pnl],             ["kpi-r-day-pct", rb.day?.pct]
+	["kpi-r-week", rb.week?.pnl],           ["kpi-r-week-pct", rb.week?.pct],
     ["kpi-r-lastweek", rb.last_week?.pnl],  ["kpi-r-lastweek-pct", rb.last_week?.pct],
     ["kpi-r-month", rb.month?.pnl],         ["kpi-r-month-pct", rb.month?.pct],
     ["kpi-r-all", rb.all?.pnl],             ["kpi-r-all-pct", rb.all?.pct],
   ];
-  for (let i=0;i<wires.length;i+=2){
-    const [idVal, val] = wires[i];
-    const [idPct, pct] = wires[i+1];
-    const vEl = document.getElementById(idVal);
-    const pEl = document.getElementById(idPct);
-    if (vEl){ vEl.textContent = fmtUsd(Number(val||0)); vEl.className = `fw-semibold ${signClass(val)}`; }
-    if (pEl){ pEl.textContent = fmtPct(Number(pct||0));  pEl.className = `small ${signClass(pct)}`; }
-  }
-}
-
-/* ---------- detail (cash & PnL) cards ---------- */
+	for (let i=0;i<wires.length;i+=2){
+	  const [idVal, val] = wires[i];
+	  const [idPct, pct] = wires[i+1];
+	  const vEl = document.getElementById(idVal);
+	  const pEl = document.getElementById(idPct);
+	  if (vEl){ vEl.textContent = fmtUsd(Number(val||0)); vEl.className = `fw-semibold ${signClass(val)}`; }
+	  if (pEl){ pEl.textContent = fmtPct(Number(pct||0));  pEl.className = `small ${signClass(pct)}`; }
+	}/* ---------- detail (cash & PnL) cards ---------- */
 function updateDetailPanels(data){
   const m  = data?.metrics || {};
   const a  = data?.account || {};
@@ -362,16 +475,23 @@ function updateAbout(data) {
   const pct  = Number(a.since_pct  ?? 0);
   const when = a.start_date || "—";
 
+  // Update the IDs that actually exist in the hero blurb
+  const sc = document.getElementById("about-start-cash");
+  const sd = document.getElementById("about-start-date");
+  const sp = document.getElementById("about-since-pnl");
+  const spc = document.getElementById("about-since-pct");
+
+  if (sc)  sc.textContent  = `$${cash.toFixed(2)}`;
+  if (sd)  sd.textContent  = when;
+  if (sp)  sp.textContent  = `$${pnl.toFixed(2)}`;
+  if (spc) spc.textContent = `${pct.toFixed(2)}%`;
+
+  // Backward-compat: if a single blurb element ever exists, populate it too
   const blurb = document.getElementById("since-start-blurb");
   if (blurb) {
     blurb.textContent =
       `Started with $${cash.toFixed(2)} on ${when}. ` +
       `This app has since made $${pnl.toFixed(2)} at ${pct.toFixed(2)}%.`;
-  }
-
-  const cred = document.getElementById("credits");
-  if (cred && Array.isArray(a.authors) && a.authors.length) {
-    cred.textContent = `Built by ${a.authors.join(" & ")}`;
   }
 }
 

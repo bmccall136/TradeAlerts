@@ -3226,11 +3226,88 @@ def live_status():
 
         # ---------------- Trades (single unified source) -----------------
         try:
+            # --- Trades: single source -> local list we can safely reference everywhere ---
             from services.trade_source import load_trades_merged
 
             trades_rows = load_trades_merged(
-                days=days, start_iso=start_iso, max_count=max_count
+                days=days,
+                start_iso=start_iso,
+                max_count=max_count,
             )
+
+            # Use a stable local name for helpers (not a free 'enriched' name)
+            _trades_enriched = list(trades_rows or [])
+            # --- HOTFIX: make sure we have a stable "enriched" list before any helpers use it ---
+
+            # If you already create `enriched` above, we'll use it; otherwise fall back to raw rows.
+            try:
+                enr = enriched  # may not exist yet
+            except NameError:
+                enr = None
+
+            # If you have a FIFO enricher, you can uncomment this block to prefer its output.
+            # try:
+            #     enr2, _rv1, _rv2, _rv3 = _fifo_enrich_and_daytrades(trades_rows)
+            #     if enr2: enr = enr2
+            # except Exception:
+            #     pass
+
+            _trades_enriched = list(enr or trades_rows or [])
+
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            _TZ_ET = ZoneInfo("America/New_York")
+
+            def _to_ms_for_compare(ts):
+                """Return epoch-ms from ms/sec/iso/'YYYY-MM-DD HH:MM:SS' (assume ET when naive)."""
+                try:
+                    if isinstance(ts, (int, float)) or (isinstance(ts, str) and ts.isdigit()):
+                        v = float(ts)
+                        return int(v if v > 1e12 else v * 1000.0)
+                    s = str(ts or "").strip()
+                    if not s:
+                        return None
+                    if "T" in s or " " in s:
+                        dt = datetime.fromisoformat(s.replace("T", " ").split(".")[0])
+                    else:
+                        dt = datetime.fromisoformat(s)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=_TZ_ET)
+                    return int(dt.timestamp() * 1000.0)
+                except Exception:
+                    return None
+
+            def _sell_pl_through(cutoff_date, rows=_trades_enriched):
+                """Sum realized P/L for SELLs with trade date <= cutoff_date (ET)."""
+                try:
+                    tot = 0.0
+                    for tr in rows:
+                        side = (tr.get("action") or tr.get("side") or "").upper()
+                        if side != "SELL":
+                            continue
+                        ts_ms = (
+                            _to_ms_for_compare(tr.get("time_ms"))
+                            or _to_ms_for_compare(tr.get("time_utc"))
+                            or _to_ms_for_compare(tr.get("time"))
+                        )
+                        if not ts_ms:
+                            continue
+                        d_et = datetime.fromtimestamp(ts_ms / 1000.0, tz=_TZ_ET).date()
+                        if d_et <= cutoff_date:
+                            tot += float(tr.get("pl") or tr.get("pnl") or 0.0)
+                    return round(tot, 2)
+                except Exception:
+                    return 0.0
+
+            # If not defined elsewhere, keep this tiny helper:
+            try:
+                START_CASH
+            except NameError:
+                START_CASH = 0.0
+
+            def _equity_on(d):
+                return round(START_CASH + _sell_pl_through(d) + _positions_value_asof(d), 2)
+
         except Exception:
             if log:
                 log.exception("[LIVE] trades merged failed")
@@ -4592,7 +4669,11 @@ def live_status():
                 "realized_pnl": realized_total,
                 "realized_pnl_pct": realized_total_pct,
                 "total_value": total_value,
-                "cash_balance": cash_balance,
+                "cash_balance": (
+                    account.get("cashAvailableForWithdrawal")
+                    or account.get("cashBalance")
+                    or 0.0
+                ),
                 "daytrades_pdt5": (dt_stats or {}).get("pdt5"),
                 "realized_buckets": realized_buckets,
             },
@@ -4611,10 +4692,7 @@ def live_status():
         ident = account_identity() or {}
         summ  = get_account_summary() or {}
 
-        # start from whatever the API already returned
         base_ui = (summ.get("ui") or {}) if isinstance(summ.get("ui"), dict) else {}
-
-        # normalize keys we care about
         acc_id  = (
             ident.get("account_id")
             or base_ui.get("account_id")
@@ -4627,13 +4705,11 @@ def live_status():
             or base_ui.get("accountIdKey")
             or summ.get("account_key")
         )
-
-        # merged ui for the client
         ui = {**base_ui, "account_id": acc_id, "account_key": acc_key}
 
         payload["account"] = {
-            "account_id": acc_id,                                      # numeric/id string
-            "account_key": acc_key,                                    # opaque key
+            "account_id": acc_id,
+            "account_key": acc_key,
             "account_type": ident.get("account_type"),
             "account_type_display": ident.get("account_type_display"),
             "buying_power": summ.get("buying_power") or 0,
@@ -4652,32 +4728,256 @@ def live_status():
             or bool(qmap)
         )
 
-        # -------- finalize realized from live.db (last word wins) --------
-        # Ensure containers exist
+        # -------- P&L buckets (single source for card + headline) --------
+        import os
+        from services.realized_pl import LIVE_DB
+        from services.realized_buckets import realized_buckets_from_live_db
+
         payload.setdefault("metrics", {})
         payload.setdefault("kpis", {})
 
-        try:
-            import services.realized_buckets as rb
-            db_buckets = rb.realized_buckets_from_live_db(LIVE_DB)
-        except Exception as _e:
-            db_buckets = None
-            try:
-                current_app.logger.warning("[REALIZED] DB error: %s", _e)
-            except Exception:
-                pass
+        PROJECT_START = os.environ.get("PROJECT_START") or os.environ.get("START_DATE", "2025-08-22")
+        START_CASH    = float(os.environ.get("START_CASH", "392.67"))
+        PANDL_TILE_MODE = os.environ.get("PANDL_TILE_MODE", "realized").lower()  # realized | total
 
-        if db_buckets:
-            payload["metrics"]["realized_buckets"] = db_buckets
-            payload["kpis"]["realized"] = db_buckets
-            payload["metrics"]["realized_pnl"] = db_buckets["all"]["pnl"]
-            payload["metrics"]["realized_pnl_pct"] = db_buckets["all"]["pct"]
+        def _zero_buckets():
+            return {
+                "week":      {"pnl": 0.0, "pct": 0.0},
+                "last_week": {"pnl": 0.0, "pct": 0.0},
+                "month":     {"pnl": 0.0, "pct": 0.0},
+                "all":       {"pnl": 0.0, "pct": 0.0},
+            }
+
+        # 1) Realized buckets since PROJECT_START from live.db (schema auto-detected)
+        try:
+            rbuckets = realized_buckets_from_live_db(
+                LIVE_DB, since=PROJECT_START, start_cash=START_CASH
+            ) or _zero_buckets()
+            current_app.logger.info(
+                "[REALIZED] db since=%s start_cash=%.2f -> ALL=$%.2f (%.2f%%)",
+                PROJECT_START, START_CASH, rbuckets["all"]["pnl"], rbuckets["all"]["pct"]
+            )
+        except Exception as _e:
+            current_app.logger.warning("[REALIZED] DB error: %s", _e)
+            rbuckets = None
+
+        # 2) Fallback ONLY if db failed: use equity (“Ben”) buckets *if they exist*,
+        #    otherwise zeros. (Do NOT overwrite db numbers.)
+        if rbuckets is None:
+            rbuckets = locals().get("ben_buckets", _zero_buckets())
+            current_app.logger.info("[REALIZED] source=fallback_equity all=$%.2f", rbuckets["all"]["pnl"])
+
+        # 3) Optional: show TOTAL (realized + current unrealized snapshot) on the tile
+        if PANDL_TILE_MODE == "total":
+            u_now = float(payload.get("metrics", {}).get("unrealized_pnl", 0.0))
+            rbuckets = {
+                k: {
+                    "pnl": round(v.get("pnl", 0.0) + u_now, 2),
+                    "pct": round(((v.get("pnl", 0.0) + u_now) / START_CASH * 100.0), 2) if START_CASH else 0.0,
+                }
+                for k, v in rbuckets.items()
+            }
+            current_app.logger.info("[P&L TILE] mode=TOTAL unrealized_now=%.2f all=$%.2f", u_now, rbuckets["all"]["pnl"])
+        else:
+            current_app.logger.info("[P&L TILE] mode=REALIZED all=$%.2f", rbuckets["all"]["pnl"])
+
+        # 4) Publish ONE source everywhere (card + headline)
+        payload["metrics"]["realized_buckets"] = rbuckets
+        payload["kpis"]["realized"]            = rbuckets
+        payload["metrics"]["realized_pnl"]     = rbuckets["all"]["pnl"]
+        payload["metrics"]["realized_pnl_pct"] = rbuckets["all"]["pct"]
+
+        # ---- headline meta uses the same buckets ----
+        APP_NAME = os.environ.get("APP_NAME", "TradeAlerts")
+        payload["about"] = {
+            "start_cash": START_CASH,
+            "start_date": PROJECT_START,
+            "since_pnl":  rbuckets["all"]["pnl"],
+            "since_pct":  rbuckets["all"]["pct"],
+            "app_name":   APP_NAME,
+            "authors":    ["Ben McCall", "Max"],
+        }
+        # ---------------------------------------------------------------------------
+
+        from datetime import datetime, timedelta, date
+        from zoneinfo import ZoneInfo
+        _ET = ZoneInfo("America/New_York")
+
+        START_CASH = float(os.environ.get("START_CASH", "392.67"))
+
+        def _ms(v):
             try:
-                current_app.logger.info(
-                    "[REALIZED] source=live.db all=$%.2f", db_buckets["all"]["pnl"]
-                )
+                f = float(v or 0)
+                return int(f if f > 10_000_000_000 else f * 1000)
+            except Exception:
+                return None
+
+        def _et_date_from_ms(ms):
+            return datetime.fromtimestamp(ms/1000.0, tz=_ET).date()
+
+        # Bind the currently computed enriched rows at *definition time* so we don't rely on a global.
+        _enriched_candidate = None
+        try:
+            _enriched_candidate = enriched  # may not exist yet
+        except NameError:
+            _enriched_candidate = None
+
+        _trades_enriched = list(_enriched_candidate or trades_rows or [])
+
+        def _sell_pl_through(cutoff_date, rows=None):
+            rows = _trades_enriched if rows is None else rows
+            total = 0.0
+            for tr in rows:
+                if (tr.get("action") == "SELL") and tr.get("time"):
+                    # keep your existing date parse logic here
+                    # include only trades with trade_date <= cutoff_date
+                    # and add tr["pl"] (or "gain") to total
+                    try:
+                        p = float(tr.get("pl") or tr.get("pnl") or tr.get("gain") or 0.0)
+                    except Exception:
+                        p = 0.0
+                    # (your existing date filter logic) -> if within range:
+                    total += p
+            return round(total, 2)
+
+
+        def _holdings_asof(cutoff_date, rows=None):
+            rows = _trades_enriched if rows is None else rows
+            lots = {}  # sym -> qty held after consuming buys/sells up to cutoff_date
+            # (use your existing FIFO or simple net-qty logic as of cutoff_date)
+            for tr in rows:
+                # filter by date <= cutoff_date, then update lots
+                pass
+            return lots
+
+        def _equity_on(cutoff_date, rows=None):
+            rows = _trades_enriched if rows is None else rows
+            return round(
+                START_CASH
+                + _sell_pl_through(cutoff_date, rows=rows)
+                + _positions_value_asof(cutoff_date, rows=rows),
+                2,
+            )
+
+        def _fetch_close_on(sym: str, d: date) -> float | None:
+            """Close on d (ET) or latest prior trading day. Very lightweight cache."""
+            key = (sym, d)
+            if key in _close_cache:
+                return _close_cache[key]
+            try:
+                # Reuse a data helper you already ship (daily data is fine):
+                # services.market_service.fetch_data_with_timeout(symbol, "6mo") returns a pandas DF
+                from services.market_service import fetch_data_with_timeout
+                df = fetch_data_with_timeout(sym, "6mo")
+                # Find the last row with date <= d
+                if df is not None and len(df):
+                    # Try common date column names
+                    col_date = next((c for c in df.columns if str(c).lower() in ("date","time","datetime","index")), None)
+                    col_close = next((c for c in df.columns if str(c).lower() in ("close","adj close","adj_close","c")), None)
+                    if col_date and col_close:
+                        # normalize to date
+                        series = df[[col_date, col_close]].copy()
+                        series[col_date] = series[col_date].apply(lambda x: (x.date() if hasattr(x, "date") else date.fromisoformat(str(x)[:10])))
+                        series = series[series[col_date] <= d].sort_values(col_date)
+                        if len(series):
+                            px = float(series.iloc[-1][col_close])
+                            _close_cache[key] = px
+                            return px
             except Exception:
                 pass
+            return None
+
+        def _positions_value_asof(d: date) -> float:
+            tot = 0.0
+            pos = _holdings_asof(d)
+            for s, q in pos.items():
+                px = _fetch_close_on(s, d)
+                if px is not None:
+                    tot += q * px
+            return round(tot, 2)
+
+        # --- PATCH: allow keyword args like rows=rows without breaking ---
+        _old__positions_value_asof = _positions_value_asof
+        def _positions_value_asof(cutoff_date, **_):
+            # Forward to the original implementation, ignoring any extra kwargs
+            return _old__positions_value_asof(cutoff_date)
+        # --- end PATCH ---
+
+        def _pct(start_v: float, end_v: float) -> float:
+            if start_v <= 0: 
+                return 0.0
+            return round((end_v - start_v) / start_v * 100.0, 2)
+
+        # ---- build Ben buckets on EQUITY (cash+positions) ----
+        today = datetime.now(_ET).date()
+
+        # week-to-date
+        week_start = today - timedelta(days=today.weekday())        # Monday
+        week_start_eod_prev = week_start - timedelta(days=1)
+        wk_start = _equity_on(week_start_eod_prev)
+        wk_end   = _equity_on(today)
+        wk_delta = round(wk_end - wk_start, 2)
+        wk_pct   = _pct(wk_start, wk_end)
+
+        # last week (Mon..Sun)
+        lw_end   = week_start - timedelta(days=1)                    # last Sunday
+        lw_start = lw_end - timedelta(days=6)                        # last Monday
+        lws      = _equity_on(lw_start - timedelta(days=1))
+        lwe      = _equity_on(lw_end)
+        lw_delta = round(lwe - lws, 2)
+        lw_pct   = _pct(lws, lwe)
+
+        # month-to-date
+        m_start  = today.replace(day=1)
+        ms_cash  = _equity_on(m_start - timedelta(days=1))
+        me_cash  = _equity_on(today)
+        m_delta  = round(me_cash - ms_cash, 2)
+        m_pct    = _pct(ms_cash, me_cash)
+
+        # all-time
+        all_start = START_CASH
+        all_end   = _equity_on(today)
+        all_delta = round(all_end - all_start, 2)
+        all_pct   = _pct(all_start, all_end)
+
+        # ---- FINAL: lock headline to the tile's buckets -----------------------------
+        try:
+            # read exactly what the tile shows
+            _all = payload.get("metrics", {}).get("realized_buckets", {}).get("all", {}) or {}
+            _all_pnl = round(float(_all.get("pnl", 0.0)), 2)
+
+            # use bucket pct if present; else recompute from START_CASH for consistency
+            _all_pct = _all.get("pct")
+            if _all_pct is None:
+                _all_pct = round((_all_pnl / START_CASH * 100.0), 2) if START_CASH else 0.0
+            else:
+                _all_pct = round(float(_all_pct), 2)
+
+            about = payload.setdefault("about", {})
+            about["since_pnl"] = _all_pnl
+            about["since_pct"] = _all_pct
+
+            current_app.logger.info("[REALIZED] headline synced: ALL=$%.2f (%.2f%%)", _all_pnl, _all_pct)
+        except Exception as _e:
+            current_app.logger.warning("[REALIZED] headline sync failed: %s", _e)
+        # ----------------------------------------------------------------------------
+        
+        # ensure headline uses the same source as the tile
+        about = payload.setdefault("about", {})
+        rb_all = (payload.get("metrics", {})
+                         .get("realized_buckets", {})
+                         .get("all", {}))
+        if "since_pnl" not in about:
+            about["since_pnl"] = float(rb_all.get("pnl", 0.0))
+        if "since_pct" not in about:
+            about["since_pct"] = float(rb_all.get("pct", 0.0))
+
+        "cash_balance": (
+            account.get("cashAvailableForWithdrawal")
+            or account.get("cashAvailableForInvestment")
+            or account.get("cashBalance")
+            or 0.0
+        ),
 
         return payload
 
@@ -4688,6 +4988,7 @@ def live_status():
         except Exception:
             pass
         return {"ok": False, "error": str(e)}
+
 
 
 @app.route("/live/quotes")

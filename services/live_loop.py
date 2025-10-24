@@ -271,13 +271,12 @@ def _extract_buying_power(acct: dict) -> float | None:
 
 def _pool_for_sizing(settled_cash, live_bp) -> tuple[float | None, str]:
     """
-    Use settled only if it's materially above the buffer; else fall back to BP.
+    GFV-SAFE: only settled cash counts for LIVE sizing.
+    No fallback to BP. If settled <= buffer, we don't buy.
     """
     if isinstance(settled_cash, (int, float)) and settled_cash > _BP_BUFFER:
         return float(settled_cash), "settled"
-    if isinstance(live_bp, (int, float)) and live_bp > 0:
-        return float(live_bp), "bp"
-    return None, "none"
+    return None, "settled"
 
 
 def run_live_loop(settings, symbols, broker_mode=None):
@@ -630,7 +629,7 @@ def run_live_loop(settings, symbols, broker_mode=None):
                 continue
 
             try:
-                resp = broker.buy(sym, qty, price)
+                resp = broker.buy(sym, qty, price_type="MARKET")
                 if not resp.get("ok"):
                     log.info("[LIVE] skip %s: %s", sym, resp.get("reason"))
                     continue
