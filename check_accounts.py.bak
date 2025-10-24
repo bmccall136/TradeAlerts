@@ -1,0 +1,15 @@
+# check_accounts.py
+from services.etrade_service import get_accounts, get_balances
+import json, pprint
+
+accounts = get_accounts()
+print("=== Accounts ===")
+pprint.pprint(accounts)
+
+print("\n=== Balances ===")
+for acct in accounts:
+    key = acct.get("accountIdKey")
+    name = acct.get("accountDesc")
+    print(f"\n--- {name} ({key}) ---")
+    bal = get_balances(key)
+    pprint.pprint(bal)
