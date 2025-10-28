@@ -80,5 +80,8 @@
   "order_term": "GOOD_UNTIL_CANCEL",
 
   "prefer_quotes": false,
-  "market_gate_on": true
+  "market_gate_on": true,
+  "realized_since": "2025-08-22",
+"realized_tz": "America/New_York"
+
 }

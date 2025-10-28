@@ -2432,6 +2432,9 @@ def simulation_view():
     )
 
     # 6) TRADE HISTORY
+    reason_code = (reason or {}).get("reason")
+    db.insert_realized(sym, qty, fill_price, gain, reason=reason_code)  # add column if not present
+
     history = []
     for t in get_trades():
         if isinstance(t, dict):
@@ -3134,8 +3137,6 @@ def live_view():
 
             b._et._get = _shimmed_get
             quotes = b._et.get_quotes_batch(symbols) or {}
-            qmap = broker.get_quotes_batch(syms)
-            current_app.logger.info("[LIVE] qmap keys: %s", sorted(list(qmap.keys())))
 
         def _lookup(qu: dict, sym: str):
             # handle BF-B vs BF.B, etc.

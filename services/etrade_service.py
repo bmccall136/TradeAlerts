@@ -62,6 +62,43 @@ _DOT_TICKER_FIXES = {
 
 # aliases so legacy calls don't blow up
 
+# === Market session helper (ET) ===
+from datetime import time as _time
+
+# --- session/term normalizers (tolerant of funky casing/aliases) ---
+def _norm_session(s: str | None) -> str:
+    m = (s or "REGULAR").strip().upper()
+    if m.startswith("EXT"):  # EXT, EXTENDED, AFTER_HOURS
+        return "EXTENDED"
+    if m in {"REG", "REGULAR"}:
+        return "REGULAR"
+    return "REGULAR"
+
+def _norm_term(t: str | None) -> str:
+    m = (t or "GOOD_FOR_DAY").strip().upper()
+    if m in {"GFD", "DAY", "GOOD_FOR_DAY"}:
+        return "GOOD_FOR_DAY"
+    if m in {"GTC"}:
+        return "GOOD_TILL_CANCEL"
+    return "GOOD_FOR_DAY"
+
+def market_session_for_now(use_extended: bool = False) -> str:
+    """
+    Returns 'REGULAR' during 09:30–16:00 ET.
+    If use_extended=True, returns 'EXTENDED' during 04:00–09:30 and 16:00–20:00 ET,
+    else 'REGULAR' outside those windows.
+    """
+    now_et = datetime.now(ET).time()
+    reg_open  = _time(9, 30)
+    reg_close = _time(16, 0)
+    ext_pre   = (_time(4, 0), reg_open)
+    ext_post  = (reg_close, _time(20, 0))
+
+    if reg_open <= now_et <= reg_close:
+        return "REGULAR"
+    if use_extended and (ext_pre[0] <= now_et < ext_pre[1] or ext_post[0] <= now_et <= ext_post[1]):
+        return "EXTENDED"
+    return "REGULAR"
 
 # ---------- OPEN ORDERS (robust) ----------
 def get_open_orders(account_id_key: str, days: int = 14) -> dict:
@@ -2177,35 +2214,125 @@ def fetch_etrade_quote(symbols: str | Iterable[str]) -> float | dict[str, float]
 
 # --- Portfolio / Balances (backwards-compatible API) ---
 
-def get_account_summary(account_id_key: str | None = None) -> dict:
+# services/etrade_service.py
+
+def get_account_summary(acct_key: str | None = None) -> dict:
     """
-    Return a normalized balances summary dict with:
-      - settled_cash (float)
-      - buying_power (float)
-      - raw (the raw BalanceResponse)
-    Tries both accountIdKey and numeric accountId + with/without instType.
+    Normalized account summary for the dashboard (cash-account safe).
+    Returns keys the UI expects:
+      - ui (raw-ish block)
+      - buying_power
+      - equity_value
+      - settled_cash
+      - available_to_withdraw
+      - cash_balance
     """
-    # Resolve IDs
-    sess = get_oauth_session()
-    ident = account_identity()
-    aid_key = (account_id_key or ident.get("account_id_key") or "").strip()
-    aid_num = (ident.get("account_id") or "").strip()
+    import logging
+    log = logging.getLogger("etrade_service")
 
-    # Fetch with retries/fallbacks
-    br = fetch_balances_resilient(sess, aid_key, aid_num)
-    if not isinstance(br, dict):
-        br = {}
+    # --- helpers -----------------------------------------------------
+    def _f(x):
+        """float(x) or None (never raises)."""
+        try:
+            if x is None:
+                return None
+            return float(x)
+        except Exception:
+            return None
 
-    # br is the BalanceResponse / balanceResponse block
-    settled, bp = compute_cash_fields(br)
+    def _f0(x, default=0.0):
+        """float(x) or default (0.0)."""
+        v = _f(x)
+        return default if v is None else v
 
-    out = {
-        "settled_cash": float(settled or 0.0),
-        "buying_power": float(bp or 0.0),
-        "raw": br,
-    }
-    return out
+    def _first_num(*vals, default=None):
+        """first floatable non-None among vals, else default."""
+        for v in vals:
+            fv = _f(v)
+            if fv is not None:
+                return fv
+        return default
 
+    try:
+        ident = account_identity() or {}
+        acct_key = acct_key or ident.get("account_id_key") or ""
+        acct_id  = ident.get("account_id") or ""
+
+        # Pull raw balances via your resilient helper
+        sess = get_oauth_session()
+        raw  = fetch_balances_resilient(sess, acct_key, acct_id) or {}
+
+        # Normalize to the common blocks
+        br   = raw.get("BalanceResponse") or raw.get("balanceResponse") or raw
+        comp = (
+            br.get("Computed")
+            or br.get("computed")
+            or br.get("ComputedBalances")
+            or br.get("BalanceComputed")
+            or {}
+        )
+
+        # ---- CASH-ONLY INTERPRETATION --------------------------------
+        # Buying power: prefer explicit cash buying power
+        buying_power = _first_num(
+            comp.get("cashBuyingPower"),
+            comp.get("dtCashBuyingPower"),
+            # fallbacks (kept last on purpose)
+            comp.get("availableFunds"),
+            comp.get("marginBuyingPower"),   # ignored for true cash acct, but harmless
+            default=0.0,
+        )
+
+        # Equity value: cash accounts may not have netAccountValue
+        equity_value = _first_num(
+            comp.get("netAccountValue"),
+            comp.get("accountBalance"),
+            comp.get("cashBalance"),
+            comp.get("netCash"),
+            default=0.0,
+        )
+
+        # Settled cash: prefer explicit settled/cash-available fields, then cashBalance
+        settled_cash = _first_num(
+            comp.get("cashAvailableForInvestment"),
+            comp.get("settledCashForInvestment"),
+            comp.get("cashAvailableForWithdrawal"),
+            comp.get("cashBalance"),
+            default=0.0,
+        )
+
+        # Available to withdraw: useful for UI; don’t force to 0 if missing
+        available_to_withdraw = _first_num(
+            comp.get("cashAvailableForWithdrawal"),
+            comp.get("cashBalance"),
+            default=None,
+        )
+
+        cash_balance = _first_num(comp.get("cashBalance"), default=None)
+
+        return {
+            "ui": br,  # keep the raw block for any extra fields the UI wants
+            "buying_power": _f0(buying_power, 0.0),
+            "equity_value": _f0(equity_value, 0.0),
+            "settled_cash": _f0(settled_cash, 0.0),
+            "available_to_withdraw": available_to_withdraw,
+            "cash_balance": cash_balance,
+        }
+
+    except Exception as e:
+        try:
+            log.error("[get_account_summary] failed: %s", e)
+        except Exception:
+            pass
+        # graceful empty summary (UI won’t crash)
+        return {
+            "ui": {},
+            "buying_power": 0.0,
+            "equity_value": 0.0,
+            "settled_cash": 0.0,
+            "available_to_withdraw": None,
+            "cash_balance": None,
+        }
 
 from datetime import timedelta
 
@@ -2269,10 +2396,14 @@ def preview_equity_order(
       - STOP_LIMIT: limitPrice = price, stopPrice = stop_price (both required)
       - TRAILING_*: set offsetType/offsetValue
     """
+    import time as _t
+
     action = (action or "BUY").upper()
     pt = (price_type or ("LIMIT" if price is not None else "MARKET")).upper()
+    session = _norm_session(market_session)
+    term    = _norm_term(order_term)
 
-    # --- IMPORTANT: map legacy callers that pass STOP trigger as "price"
+    # Map legacy callers that pass STOP trigger as "price"
     if pt in {"STOP", "STOP_MARKET"} and stop_price is None and price is not None:
         stop_price = float(price)
         price = None  # ensure we don't accidentally send limitPrice for STOP
@@ -2280,8 +2411,8 @@ def preview_equity_order(
     order: dict = {
         "allOrNone": False,
         "priceType": pt,
-        "orderTerm": order_term,
-        "marketSession": market_session,
+        "orderTerm": term,
+        "marketSession": session,          # REGULAR | EXTENDED
         "Instrument": [
             {
                 "Product": {"securityType": "EQ", "symbol": _normalize_symbol(symbol)},
@@ -2310,7 +2441,7 @@ def preview_equity_order(
     body = {
         "PreviewOrderRequest": {
             "orderType": "EQ",
-            "clientOrderId": client_order_id or f"live-{int(time.time()*1000)}",
+            "clientOrderId": client_order_id or f"live-{int(_t.time()*1000)}",
             "Order": [order],
         }
     }
@@ -2341,9 +2472,9 @@ def place_equity_order(preview_resp: dict, qty: int | None = None) -> dict:
         instr[0]["quantity"] = str(int(qty))
 
     order_min = {
-        "orderTerm": src.get("orderTerm") or "GOOD_FOR_DAY",
-        "priceType": src.get("priceType") or "MARKET",
-        "marketSession": src.get("marketSession") or "REGULAR",
+        "orderTerm": _norm_term(src.get("orderTerm")),
+        "priceType": (src.get("priceType") or "MARKET").upper(),
+        "marketSession": _norm_session(src.get("marketSession")),
         "allOrNone": bool(src.get("allOrNone", False)),
         "Instrument": instr,
     }
@@ -2364,7 +2495,6 @@ def place_equity_order(preview_resp: dict, qty: int | None = None) -> dict:
     place_body = {
         "PlaceOrderRequest": {
             "orderType": "EQ",
-            # Keep clientOrderId if the preview set one; else None is fine
             "clientOrderId": pr.get("clientOrderId"),
             "PreviewIds": [{"previewId": int(pid)}],
             "Order": [order_min],

@@ -1,4 +1,3 @@
-from __future__ import annotations
 # sell_guard.py
 # Guard that scans positions and places SELL orders for eligible holdings.
 # - Reads settings from SELL_GUARD_SETTINGS env var or .\sell_guard_settings.json
@@ -8,6 +7,7 @@ from __future__ import annotations
 #
 # Python 3.11+
 
+from __future__ import annotations
 
 import json
 import logging
@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 import datetime as _dt
+from typing import Any, List, Tuple, Dict
 
 try:
     from zoneinfo import ZoneInfo
@@ -87,6 +88,50 @@ def rand_id(prefix: str, n: int = 6) -> str:
 _PROTECT_STATE = {}  # sym -> {"hi": float}
 
 # ==== BEGIN: SELL GATES HELPERS ====
+
+def _normalize_positions(pos_obj) -> List[Dict[str, Any]]:
+    """
+    Flatten common E*TRADE position shapes to:
+    {symbol, quantity, available, entry_price, last}
+    """
+    out = []
+    def L(x): return x if isinstance(x, list) else ([] if x is None else [x])
+    if not isinstance(pos_obj, dict):
+        return out
+    pr = pos_obj.get("PortfolioResponse") or {}
+    for ap in L(pr.get("AccountPortfolio")):
+        positions = (ap.get("Position") or ap.get("position")
+                     or ap.get("Positions") or ap.get("positions"))
+        for p in L(positions):
+            prod = p.get("Product") or p.get("product") or {}
+            sym  = (prod.get("symbol") or "").strip().upper()
+            if not sym:
+                desc = (p.get("symbolDescription") or "").strip()
+                if "(" in desc and desc.endswith(")"):
+                    sym = desc.split("(")[-1][:-1].strip().upper()
+            qty = p.get("quantity") or p.get("qty") or p.get("longQty") or p.get("longQuantity") or 0
+            avail = p.get("available") or p.get("availableToSell") or qty
+            entry = p.get("pricePaid") or p.get("purchasePrice") or p.get("averagePrice") or 0
+            q = float(qty or 0)
+            if sym and q > 0:
+                quick = p.get("Quick") or {}
+                last  = quick.get("lastTrade") or 0
+                out.append({
+                    "symbol": sym,
+                    "quantity": q,
+                    "available": float(avail or 0),
+                    "entry_price": float(entry or 0),
+                    "last": float(last or 0),
+                })
+    return out
+
+
+def _entry_price_from_positions(pos_map: Dict[str, Dict[str, Any]], sym: str) -> float | None:
+    r = pos_map.get((sym or "").upper())
+    if not r:
+        return None
+    v = float(r.get("entry_price") or 0)
+    return v if v > 0 else None
 
 def _apply_sell_protection(sym: str, entry_px: float, last_px: float, opened_ts: float, now_ts: float, cfg: dict):
     """
@@ -227,7 +272,7 @@ def _minutes_since_last_buy_cached(sym: str, last_buy_ms_map: dict) -> float | N
     ms = last_buy_ms_map.get(symu)
     if ms is None:
         return None
-    dt_buy = _dt.datetime.fromtimestamp(ms / 1000.0, tz=ET)
+    dt_buy = _dt.datetime.fromtimestamp(ms / 1000.0, tz=ET or UTC)
     return max(0.0, (now_et() - dt_buy).total_seconds() / 60.0)
 
 # ==== END: SELL GATES HELPERS ====
@@ -405,11 +450,6 @@ def get_acct_key() -> str:
 
 # --- account & quotes ----------------------------------------------------------
 def available_to_sell(acct_key: str, symbol: str) -> float:
-    """
-    Return shares available to sell for SYMBOL (whole or fractional, caller will floor).
-    Prefer the etrade_service adapter if present; otherwise fall back to positions parse.
-    """
-    # Preferred: direct helper on your etrade wrapper
     if hasattr(et, "available_to_sell"):
         try:
             v = et.available_to_sell(acct_key, symbol)
@@ -417,42 +457,15 @@ def available_to_sell(acct_key: str, symbol: str) -> float:
         except Exception as e:
             LOG.warning("available_to_sell wrapper failed: %s", e)
 
-    # Fallback: scan positions and pull 'available'/'quantity'
     try:
         pos = et.get_positions(acct_key)
     except TypeError:
         pos = et.get_positions()
 
-    qty = 0.0
     for row in _normalize_positions(pos):
-        if (row.get("symbol") or "").upper().replace(" ", "") == symbol.upper():
-            # prefer 'available' then 'quantity'
-            qty = float(row.get("available") or row.get("quantity") or 0.0)
-            break
-    return qty
-
-
-def best_bid(symbol: str) -> float:
-    try:
-        if hasattr(et, "get_quote"):
-            q = et.get_quote(symbol) or {}
-            bb = (q.get("bid") or q.get("Bid") or q.get("bestBid") or 0.0)
-            return float(bb or 0.0)
-    except Exception as e:
-        LOG.warning("best_bid failed for %s: %s", symbol, e)
+        if row.get("symbol") == (symbol or "").upper():
+            return float(row.get("available") or row.get("quantity") or 0.0)
     return 0.0
-
-
-def last_trade(symbol: str) -> float:
-    try:
-        if hasattr(et, "get_quote"):
-            q = et.get_quote(symbol) or {}
-            lp = (q.get("last") or q.get("LastTrade") or q.get("lastPrice") or q.get("close") or 0.0)
-            return float(lp or 0.0)
-    except Exception as e:
-        LOG.warning("last_trade failed for %s: %s", symbol, e)
-    return 0.0
-
 
 def fetch_quote(symbol: str) -> dict[str, Any]:
     # prefer fast wrapper if present
@@ -846,26 +859,6 @@ def _parse_positions_any(arr):
     return out
 
 
-def _opened_today(sym: str) -> bool:
-    """Return True if there was a BUY for `sym` today (ET). Blocks day trades."""
-    try:
-        s = (sym or "").strip().upper()
-        # Adjust to your etrade_service: use whatever you have that returns today's transactions
-        tx = et.get_transactions(
-            start="today", end="today"
-        )  # <-- swap to your real fn if named differently
-        for t in tx or []:
-            if not isinstance(t, dict):
-                continue
-            tsym = (t.get("symbol") or t.get("securitySymbol") or "").strip().upper()
-            side = (t.get("transactionType") or t.get("side") or "").upper()
-            if tsym == s and "BUY" in side:
-                return True
-    except Exception:
-        LOG.exception("opened_today failed for %s", sym)
-    return False
-
-
 def eligible_symbols(acct_key: str, cfg: GuardSettings) -> List[Tuple[str, int]]:
     block = set(map(str.upper, cfg.sg.get("blocklist") or []))
     force = set(map(str.upper, cfg.sg.get("force_symbols") or []))
@@ -1026,8 +1019,6 @@ def main():
     last_placed: set[str] = set()
     heartbeat_next = time.time()
     throttle = max(1, int(cfg.throttle_ms / 1000))
-    from services.live_guardrails import record_entry
-    record_entry(symbol, qty, fill_price, time.time())
 
     while True:
         tnow = time.time()
@@ -1060,6 +1051,13 @@ def main():
             except Exception as e:
                 LOG.error("eligible_symbols failed: %s", e)
                 rows = []
+        # Build a quick symbol -> position row map (for entry price)
+        try:
+            _pos_obj = et.get_positions(acct_key)
+        except TypeError:
+            _pos_obj = et.get_positions()
+        _pos_rows = _normalize_positions(_pos_obj)
+        _pos_map = {r["symbol"]: r for r in _pos_rows}
 
         LOG.info(
             "candidates: %s",
@@ -1109,11 +1107,37 @@ def main():
             # if not _should_exit_by_price(s):
             #     LOG.info("[PRICE] %s not at stop/target -> skip", s)
             #     continue
+            # ---- 2a: Post-N-minute protection window with laddered trailing ----
+            entry_px = _entry_price_from_positions(_pos_map, s)
+            last_px  = last_trade(s)
+            now_ts   = time.time()
+            mins_since_buy = _minutes_since_last_buy_cached(s, _last_buy_ms_map)
+            opened_ts = (now_ts - mins_since_buy * 60.0) if (mins_since_buy is not None) else None
+
+            sell_reason = None
+
+            if entry_px and last_px and opened_ts:
+                decision = _apply_sell_protection(
+                    sym=s,
+                    entry_px=entry_px,
+                    last_px=last_px,
+                    opened_ts=opened_ts,
+                    now_ts=now_ts,
+                    cfg=cfg.sg,
+                )
+                if decision is None:
+                    LOG.info("[PROTECT] %s hold (no trigger); gain%% vs entry not at stop/trail", s)
+                    continue
+                sell_reason = decision.get("reason") or "PROTECT_TRIGGER"
+                LOG.info("[PROTECT] %s -> SELL (%s)", s, sell_reason)
+            else:
+                # We don't have enough info to evaluate exits safely -> skip this symbol
+                LOG.info("[PROTECT] %s missing entry/last/opened_ts; skipping until we can evaluate exits", s)
+                continue
+            # If entry or opened time is unknown, fall through to normal exits (your other gates)
 
             pt, limit_px = compute_order_params(s, cfg)
-            from services.live_guardrails import record_entry
-            record_entry(symbol, qty, fill_price, time.time())
-
+            
             LOG.info(
                 "[SG] %s -> free=%d -> place %s%s",
                 s,
