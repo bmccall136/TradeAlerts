@@ -62,6 +62,43 @@ _DOT_TICKER_FIXES = {
 
 # aliases so legacy calls don't blow up
 
+# === Market session helper (ET) ===
+from datetime import time as _time
+
+# --- session/term normalizers (tolerant of funky casing/aliases) ---
+def _norm_session(s: str | None) -> str:
+    m = (s or "REGULAR").strip().upper()
+    if m.startswith("EXT"):  # EXT, EXTENDED, AFTER_HOURS
+        return "EXTENDED"
+    if m in {"REG", "REGULAR"}:
+        return "REGULAR"
+    return "REGULAR"
+
+def _norm_term(t: str | None) -> str:
+    m = (t or "GOOD_FOR_DAY").strip().upper()
+    if m in {"GFD", "DAY", "GOOD_FOR_DAY"}:
+        return "GOOD_FOR_DAY"
+    if m in {"GTC"}:
+        return "GOOD_TILL_CANCEL"
+    return "GOOD_FOR_DAY"
+
+def market_session_for_now(use_extended: bool = False) -> str:
+    """
+    Returns 'REGULAR' during 09:30–16:00 ET.
+    If use_extended=True, returns 'EXTENDED' during 04:00–09:30 and 16:00–20:00 ET,
+    else 'REGULAR' outside those windows.
+    """
+    now_et = datetime.now(ET).time()
+    reg_open  = _time(9, 30)
+    reg_close = _time(16, 0)
+    ext_pre   = (_time(4, 0), reg_open)
+    ext_post  = (reg_close, _time(20, 0))
+
+    if reg_open <= now_et <= reg_close:
+        return "REGULAR"
+    if use_extended and (ext_pre[0] <= now_et < ext_pre[1] or ext_post[0] <= now_et <= ext_post[1]):
+        return "EXTENDED"
+    return "REGULAR"
 
 # ---------- OPEN ORDERS (robust) ----------
 def get_open_orders(account_id_key: str, days: int = 14) -> dict:
@@ -2175,25 +2212,127 @@ def fetch_etrade_quote(symbols: str | Iterable[str]) -> float | dict[str, float]
 # ---------------- Portfolio / Balances (backwards-compatible API) ----------------
 
 
-def get_account_summary() -> dict:
-    aid = _primary_account_id()
-    r = _eget(f"/accounts/{aid}/balance.json", {"instType": "BROKERAGE"})
-    j = r.json() or {}
-    br = j.get("BalanceResponse") or j.get("balanceResponse") or {}
+# --- Portfolio / Balances (backwards-compatible API) ---
 
-    bp, settled = extract_funds(br)  # <-- single source of truth
+# services/etrade_service.py
 
-    out = dict(j)
+def get_account_summary(acct_key: str | None = None) -> dict:
+    """
+    Normalized account summary for the dashboard (cash-account safe).
+    Returns keys the UI expects:
+      - ui (raw-ish block)
+      - buying_power
+      - equity_value
+      - settled_cash
+      - available_to_withdraw
+      - cash_balance
+    """
+    import logging
+    log = logging.getLogger("etrade_service")
+
+    # --- helpers -----------------------------------------------------
+    def _f(x):
+        """float(x) or None (never raises)."""
+        try:
+            if x is None:
+                return None
+            return float(x)
+        except Exception:
+            return None
+
+    def _f0(x, default=0.0):
+        """float(x) or default (0.0)."""
+        v = _f(x)
+        return default if v is None else v
+
+    def _first_num(*vals, default=None):
+        """first floatable non-None among vals, else default."""
+        for v in vals:
+            fv = _f(v)
+            if fv is not None:
+                return fv
+        return default
+
     try:
-        out["buying_power"] = float(bp or 0.0)
-    except Exception:
-        out["buying_power"] = 0.0
-    try:
-        out["settled_cash"] = float(settled or 0.0)
-    except Exception:
-        out["settled_cash"] = 0.0
-    return out
+        ident = account_identity() or {}
+        acct_key = acct_key or ident.get("account_id_key") or ""
+        acct_id  = ident.get("account_id") or ""
 
+        # Pull raw balances via your resilient helper
+        sess = get_oauth_session()
+        raw  = fetch_balances_resilient(sess, acct_key, acct_id) or {}
+
+        # Normalize to the common blocks
+        br   = raw.get("BalanceResponse") or raw.get("balanceResponse") or raw
+        comp = (
+            br.get("Computed")
+            or br.get("computed")
+            or br.get("ComputedBalances")
+            or br.get("BalanceComputed")
+            or {}
+        )
+
+        # ---- CASH-ONLY INTERPRETATION --------------------------------
+        # Buying power: prefer explicit cash buying power
+        buying_power = _first_num(
+            comp.get("cashBuyingPower"),
+            comp.get("dtCashBuyingPower"),
+            # fallbacks (kept last on purpose)
+            comp.get("availableFunds"),
+            comp.get("marginBuyingPower"),   # ignored for true cash acct, but harmless
+            default=0.0,
+        )
+
+        # Equity value: cash accounts may not have netAccountValue
+        equity_value = _first_num(
+            comp.get("netAccountValue"),
+            comp.get("accountBalance"),
+            comp.get("cashBalance"),
+            comp.get("netCash"),
+            default=0.0,
+        )
+
+        # Settled cash: prefer explicit settled/cash-available fields, then cashBalance
+        settled_cash = _first_num(
+            comp.get("cashAvailableForInvestment"),
+            comp.get("settledCashForInvestment"),
+            comp.get("cashAvailableForWithdrawal"),
+            comp.get("cashBalance"),
+            default=0.0,
+        )
+
+        # Available to withdraw: useful for UI; don’t force to 0 if missing
+        available_to_withdraw = _first_num(
+            comp.get("cashAvailableForWithdrawal"),
+            comp.get("cashBalance"),
+            default=None,
+        )
+
+        cash_balance = _first_num(comp.get("cashBalance"), default=None)
+
+        return {
+            "ui": br,  # keep the raw block for any extra fields the UI wants
+            "buying_power": _f0(buying_power, 0.0),
+            "equity_value": _f0(equity_value, 0.0),
+            "settled_cash": _f0(settled_cash, 0.0),
+            "available_to_withdraw": available_to_withdraw,
+            "cash_balance": cash_balance,
+        }
+
+    except Exception as e:
+        try:
+            log.error("[get_account_summary] failed: %s", e)
+        except Exception:
+            pass
+        # graceful empty summary (UI won’t crash)
+        return {
+            "ui": {},
+            "buying_power": 0.0,
+            "equity_value": 0.0,
+            "settled_cash": 0.0,
+            "available_to_withdraw": None,
+            "cash_balance": None,
+        }
 
 from datetime import timedelta
 
@@ -2257,10 +2396,14 @@ def preview_equity_order(
       - STOP_LIMIT: limitPrice = price, stopPrice = stop_price (both required)
       - TRAILING_*: set offsetType/offsetValue
     """
+    import time as _t
+
     action = (action or "BUY").upper()
     pt = (price_type or ("LIMIT" if price is not None else "MARKET")).upper()
+    session = _norm_session(market_session)
+    term    = _norm_term(order_term)
 
-    # --- IMPORTANT: map legacy callers that pass STOP trigger as "price"
+    # Map legacy callers that pass STOP trigger as "price"
     if pt in {"STOP", "STOP_MARKET"} and stop_price is None and price is not None:
         stop_price = float(price)
         price = None  # ensure we don't accidentally send limitPrice for STOP
@@ -2268,8 +2411,8 @@ def preview_equity_order(
     order: dict = {
         "allOrNone": False,
         "priceType": pt,
-        "orderTerm": order_term,
-        "marketSession": market_session,
+        "orderTerm": term,
+        "marketSession": session,          # REGULAR | EXTENDED
         "Instrument": [
             {
                 "Product": {"securityType": "EQ", "symbol": _normalize_symbol(symbol)},
@@ -2298,12 +2441,67 @@ def preview_equity_order(
     body = {
         "PreviewOrderRequest": {
             "orderType": "EQ",
-            "clientOrderId": client_order_id or f"live-{int(time.time()*1000)}",
+            "clientOrderId": client_order_id or f"live-{int(_t.time()*1000)}",
             "Order": [order],
         }
     }
     return _epost(f"/accounts/{account_id_key}/orders/preview.json", body)
 
+
+def place_equity_order(preview_resp: dict, qty: int | None = None) -> dict:
+    """Place an equity order from a successful preview, using the account KEY path
+    and a minimal order payload (no read-only fields). Preserves preview quantity
+    formatting (string)."""
+    aid_key = account_id_key()  # MUST be the key, not numeric id
+
+    pr = preview_resp.get("PreviewOrderResponse") or {}
+    if not pr or "Error" in preview_resp:
+        raise RuntimeError(f"preview failed: {preview_resp}")
+
+    orders = pr.get("Order") or []
+    if not orders:
+        raise RuntimeError(f"preview response missing Order: {preview_resp}")
+    src = orders[0]
+
+    instr = src.get("Instrument") or []
+    if not instr:
+        raise RuntimeError("preview missing Instrument")
+
+    # Preserve preview quantity formatting (string), allow override
+    if qty is not None:
+        instr[0]["quantity"] = str(int(qty))
+
+    order_min = {
+        "orderTerm": _norm_term(src.get("orderTerm")),
+        "priceType": (src.get("priceType") or "MARKET").upper(),
+        "marketSession": _norm_session(src.get("marketSession")),
+        "allOrNone": bool(src.get("allOrNone", False)),
+        "Instrument": instr,
+    }
+    if src.get("limitPrice"):
+        order_min["limitPrice"] = f"{float(src['limitPrice']):.2f}"
+    if src.get("stopPrice"):
+        order_min["stopPrice"] = f"{float(src['stopPrice']):.2f}"
+
+    # Robust previewId extraction
+    pid = pr.get("previewId")
+    if not pid:
+        pids = pr.get("PreviewIds") or pr.get("previewIds") or []
+        if isinstance(pids, list) and pids and isinstance(pids[0], dict):
+            pid = pids[0].get("previewId") or pids[0].get("id")
+    if not pid:
+        raise RuntimeError("previewId not found in preview response")
+
+    place_body = {
+        "PlaceOrderRequest": {
+            "orderType": "EQ",
+            "clientOrderId": pr.get("clientOrderId"),
+            "PreviewIds": [{"previewId": int(pid)}],
+            "Order": [order_min],
+        }
+    }
+    r = _epost(f"/accounts/{aid_key}/orders/place.json", place_body)
+    return r.json()
 
 def place_equity_order(preview_resp: dict, qty: int | None = None) -> dict:
     """Place an equity order from a successful preview, using the account KEY path

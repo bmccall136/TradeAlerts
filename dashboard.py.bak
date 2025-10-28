@@ -2432,6 +2432,9 @@ def simulation_view():
     )
 
     # 6) TRADE HISTORY
+    reason_code = (reason or {}).get("reason")
+    db.insert_realized(sym, qty, fill_price, gain, reason=reason_code)  # add column if not present
+
     history = []
     for t in get_trades():
         if isinstance(t, dict):
@@ -4308,7 +4311,12 @@ def live_status():
 
         # ---- Metrics scaffold (must exist before we assign to it) ----
         metrics = {
-            "cash_balance": float(account.get("settled_cash") or 0.0),
+            "cash_balance": float(
+                account.get("cashAvailableForWithdrawal")
+                or account.get("cashAvailableForInvestment")
+                or account.get("cashBalance")
+                or 0.0
+            ),
             "positions_value": 0.0,
             "total_value": 0.0,
             "unrealized_pnl": 0.0,
@@ -4318,6 +4326,7 @@ def live_status():
             "daytrades_pdt5": {"total": 0, "dates": {}},
             "realized_buckets": {
                 "week": {"pnl": 0.0, "pct": 0.0},
+                "last_week": {"pnl": 0.0, "pct": 0.0},
                 "month": {"pnl": 0.0, "pct": 0.0},
                 "all": {"pnl": 0.0, "pct": 0.0},
             },
@@ -4972,12 +4981,6 @@ def live_status():
         if "since_pct" not in about:
             about["since_pct"] = float(rb_all.get("pct", 0.0))
 
-        "cash_balance": (
-            account.get("cashAvailableForWithdrawal")
-            or account.get("cashAvailableForInvestment")
-            or account.get("cashBalance")
-            or 0.0
-        ),
 
         return payload
 

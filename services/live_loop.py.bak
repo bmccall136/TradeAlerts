@@ -1,18 +1,14 @@
-# services/live_loop.py  — revised
-# Changes (2025-08-28):
-# - Fetch balances once per iteration before scanning.
-# - Tolerant extraction of settled-cash / buying-power (handles E*TRADE variants).
-# - Prefer settled cash over BP for LIVE sizing; small buffer to avoid GFVs.
-# - Keep SIM behavior; optional LIVE T+N override via env.
-# - Avoid per-candidate balance calls; compute once per iteration.
 from __future__ import annotations
+import time as time_mod
 
 import logging
 import math
 import os
 import re
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import UTC
+import datetime as dt
+import time as time_mod
 from types import SimpleNamespace
 from typing import Any
 
@@ -338,14 +334,48 @@ def run_live_loop(settings, symbols, broker_mode=None):
     HEARTBEAT_SEC = float(getattr(settings, "scan_heartbeat_secs", 10.0))
     preload_history_yahoo(symbols, months=6)
 
+    import datetime as dt
+    import zoneinfo
+    ET = zoneinfo.ZoneInfo("America/New_York")
+
+    def _now_et():
+        return datetime.now(tz=ET)
+
+    def _within_run_window(now: datetime) -> bool:
+        # Run 08:00–23:55 ET to avoid the midnight deauth window
+        start = dt.time(8, 0)
+        stop  = dt.time(23, 55)
+        t = now.timetz()
+        return start <= t <= stop
+
+    def _sleep_until_8am_et():
+        now = _now_et()
+        tomorrow = (now + dt.timedelta(days=1)).date() if now.timetz() > dt.time(23, 55) else now.date()
+        wake = dt.datetime.combine(tomorrow, dt.time(8, 0), tzinfo=ET)
+        return max(1, int((wake - now).total_seconds()))
+
+    # --- replacement loop gate ---
     while True:
-        if settings.pause_when_market_closed and not _is_market_open():
-            wait = seconds_until_open()
-            log.info("[LIVE] Market closed — sleeping %.1fs", wait)
-            time.sleep(wait)
+        now = _now_et()
+
+        if not _within_run_window(now):
+            secs = _sleep_until_8am_et()
+            log.info("[LIVE] outside allowed window (08:00–23:55 ET); sleeping %ds", secs)
+            time_mod.sleep(secs)
             continue
 
-        iter_start = time.time()
+        # Only gate on REGULAR if the user asked to pause when closed
+        if settings.pause_when_market_closed and settings.market_session != "EXTENDED":
+            if not _is_market_open():
+                wait = seconds_until_open()
+                log.info("[LIVE] Market closed (REGULAR); sleeping %.1fs", wait)
+                time_mod.sleep(wait)
+                continue
+
+        # ... your normal scan/buy loop ...
+        time_mod.sleep(settings.scan_sleep_secs)
+
+        iter_start = time_mod.time()
         last_ping = iter_start
         log.info("[LIVE] 🔁 Starting scan loop iteration")
 
@@ -390,7 +420,7 @@ def run_live_loop(settings, symbols, broker_mode=None):
                 passed = False
                 triggered = None
 
-            now = time.time()
+            now = time_mod.time()
             if now - last_ping >= HEARTBEAT_SEC:
                 rate = scanned / max(now - iter_start, 1e-6)
                 remaining = max(total_syms - scanned, 0)
@@ -434,7 +464,7 @@ def run_live_loop(settings, symbols, broker_mode=None):
 
             candidates.append((sym, float(price), list(triggered or [])))
 
-        elapsed = time.time() - iter_start
+        elapsed = time_mod.time() - iter_start
         log.info(
             "[LIVE] summary: scanned=%d skipped=%d candidates=%d (%.1fs)",
             scanned,
@@ -445,7 +475,7 @@ def run_live_loop(settings, symbols, broker_mode=None):
 
         if not candidates:
             log.info("[LIVE] no candidates this round")
-            time.sleep(settings.poll_interval)
+            time_mod.sleep(settings.poll_interval)
             continue
 
         def _score(sym: str, price: float, triggered: list[str]) -> float:
@@ -491,18 +521,17 @@ def run_live_loop(settings, symbols, broker_mode=None):
                 ):
                     ts = t.get("trade_time")
                     try:
-                        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
-                        if dt.tzinfo is None:
-                            dt = dt.replace(tzinfo=UTC)
+                        ts_dt = dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                        if ts_dt.tzinfo is None:
+                            ts_dt = ts_dt.replace(tzinfo=UTC)
                     except Exception:
-                        dt = datetime.now(UTC)
-                    ev.append(
-                        {
-                            "time": dt,
-                            "price": float(t.get("price") or 0.0),
-                            "qty": int(float(t.get("qty") or 0)),
-                        }
-                    )
+                        ts_dt = dt.datetime.now(UTC)
+
+                    ev.append({
+                        "time": ts_dt,
+                        "price": float(t.get("price") or 0.0),
+                        "qty": int(float(t.get("qty") or 0)),
+                    })
             return sorted(ev, key=lambda e: e["time"])
 
         def _pyramid_ok(sym: str, price: float, qty: int, rules: dict[str, Any]):
@@ -530,10 +559,10 @@ def run_live_loop(settings, symbols, broker_mode=None):
                 reasons.append("distance")
 
             if rules.get("t_plus_settlement_days", 0) > 0 and pos.get("qty", 0) > 0:
-                earliest_next = first_buy_dt + timedelta(
+                earliest_next = first_buy_dt + dt.timedelta(
                     days=rules["t_plus_settlement_days"]
                 )
-                if datetime.now(UTC) < earliest_next:
+                if dt.datetime.now(UTC) < earliest_next:
                     reasons.append(f"t+{rules['t_plus_settlement_days']}")
 
             if (pos.get("qty", 0) + qty) > rules["max_position_qty"]:
@@ -545,7 +574,7 @@ def run_live_loop(settings, symbols, broker_mode=None):
             log.info(
                 "[GR] Buy gate closed (already bought today or an open position exists)"
             )
-            time.sleep(settings.poll_interval)
+            time_mod.sleep(settings.poll_interval)
             continue
         elif override_gate:
             log.warning(
@@ -629,7 +658,7 @@ def run_live_loop(settings, symbols, broker_mode=None):
                 continue
 
             try:
-                resp = broker.buy(sym, qty, price)
+                resp = broker.buy(sym, qty, price_type="MARKET")
                 if not resp.get("ok"):
                     log.info("[LIVE] skip %s: %s", sym, resp.get("reason"))
                     continue
@@ -653,4 +682,4 @@ def run_live_loop(settings, symbols, broker_mode=None):
             log.info(
                 "[LIVE] ranked selection found no purchasable candidates (all gated)"
             )
-        time.sleep(settings.poll_interval)
+        time_mod.sleep(settings.poll_interval)
