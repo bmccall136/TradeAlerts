@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+import json
+import logging
+import os
+import sys
+import time
+
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
+log = logging.getLogger("launcher")
+
+ROOT = os.path.abspath(os.path.dirname(__file__))
+SETTINGS_PATH = os.path.join(ROOT, "live_settings.json")
+SYMS_RAW = os.path.join(ROOT, "sp500_symbols.txt")
+SYMS_CLEAN = os.path.join(ROOT, "sp500_symbols_clean.txt")
+WIKI_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+
+
+def load_json(path):
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _norm_mode(v):
+    v = str(v or "SIM").strip().upper()
+    return "LIVE" if v in ("LIVE", "ETRADE", "REAL") else "SIM"
+
+
+def _refresh_sp500_if_stale(raw_path=SYMS_RAW, clean_path=SYMS_CLEAN, max_age_hours=24, force=False):
+    """Refresh the S&P 500 from Wikipedia into raw+clean files (clean replaces '.'->'-')."""
+    try:
+        need = force or (not os.path.exists(clean_path)) or (
+            time.time() - os.path.getmtime(clean_path) > max_age_hours * 3600
+        )
+        if not need:
+            age_hr = (time.time() - os.path.getmtime(clean_path)) / 3600
+            log.info("ℹ️  Using cached %s (%.1f h old)", clean_path, age_hr)
+            return
+
+        try:
+            import pandas as pd  # lazy import
+        except Exception as ie:
+            log.warning("⚠️  pandas not available (%s) — skipping S&P 500 refresh.", ie)
+            return
+
+        log.info("🌐 Refreshing S&P 500 symbols from Wikipedia…")
+        df = pd.read_html(WIKI_URL)[0]
+        syms_raw = (
+            df["Symbol"]
+            .astype(str)
+            .str.strip()
+            .tolist()
+        )
+        # Clean for Yahoo/E*TRADE usage (BRK.B -> BRK-B, BF.B -> BF-B, etc.)
+        syms_clean = sorted({s.replace(".", "-") for s in syms_raw})
+
+        # Write both files so all parts of your stack stay happy
+        with open(raw_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(sorted(set(syms_raw))))
+        with open(clean_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(syms_clean))
+
+        log.info("✅ Updated %s (%d) and %s (%d)", raw_path, len(syms_raw), clean_path, len(syms_clean))
+    except Exception as e:
+        log.warning("⚠️  Could not refresh S&P 500 list: %s", e)
+
+
+def main():
+    log.info("▶️  Live launcher starting…")
+
+    # Guardrails banner (optional env flags)
+    log.info("GUARDRAILS_ENABLED = %s", str(os.getenv("GUARDRAILS_ENABLED", "true")).lower())
+    log.info("LIVE_SAFE_MODE     = %s", str(os.getenv("LIVE_SAFE_MODE", "true")).lower())
+
+    data = load_json(SETTINGS_PATH)
+    raw_mode = data.get("broker_mode", "LIVE")
+    mode = _norm_mode(os.getenv("BROKER_MODE") or raw_mode)
+
+    # Auto-refresh S&P 500 universe (once/day), allow forcing with REFRESH_SP500_NOW=1
+    force_now = str(os.getenv("REFRESH_SP500_NOW", "0")).strip().lower() in ("1", "true")
+    _refresh_sp500_if_stale(SYMS_RAW, SYMS_CLEAN, max_age_hours=24, force=force_now)
+
+    # Load symbols via your existing helper (it expects the CLEAN file)
+    from services.market_service import get_symbols
+    symbols = get_symbols(SYMS_CLEAN)
+
+    from services.live_loop import run_live_loop
+
+    log.info("🔧 Using live settings from %s", SETTINGS_PATH)
+    log.info("▶️  Live loop starting (mode=%s)", mode)
+    log.info("📈 Universe size: %d (first 5: %s)", len(symbols), ", ".join(symbols[:5]) if symbols else "")
+    run_live_loop(data, symbols, broker_mode=mode)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

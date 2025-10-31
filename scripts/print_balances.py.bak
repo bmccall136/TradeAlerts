@@ -1,0 +1,8 @@
+# scripts/print_balances.py
+from services.broker import Broker
+b = Broker()
+bal = b.get_balances()
+print("BUYING POWER:", bal["buying_power"])
+print("SETTLED CASH:", bal["settled_cash"])
+print("EQUITY VALUE:", bal["equity_value"])
+print("POSITIONS  :", bal["positions_value"])

@@ -7,7 +7,10 @@ import os
 import re
 import time
 from datetime import UTC
+from zoneinfo import ZoneInfo
 import datetime as dt
+import time as time_mod
+ET = ZoneInfo("America/New_York")
 import time as time_mod
 from types import SimpleNamespace
 from typing import Any
@@ -339,7 +342,7 @@ def run_live_loop(settings, symbols, broker_mode=None):
     ET = zoneinfo.ZoneInfo("America/New_York")
 
     def _now_et():
-        return datetime.now(tz=ET)
+        return dt.datetime.now(tz=ET)
 
     def _within_run_window(now: datetime) -> bool:
         # Run 08:00–23:55 ET to avoid the midnight deauth window

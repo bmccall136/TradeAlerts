@@ -1,0 +1,102 @@
+import logging, os, json
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+from importlib import import_module
+
+et = None
+for n in ("services.etrade_service","etrade_service"):
+    try:
+        et = import_module(n)
+        break
+    except Exception:
+        pass
+
+def as_money(x): return f"${x:,.2f}"
+
+def dig(d,*p,default=None):
+    cur=d
+    for k in p:
+        if not isinstance(cur,dict): return default
+        cur = cur.get(k)
+    return cur if cur is not None else default
+
+def as_float(v):
+    try:
+        if v is None: return 0.0
+        if isinstance(v,(int,float)): return float(v)
+        if isinstance(v,str):
+            return float(v.replace("$","").replace(",","").strip())
+    except Exception: return 0.0
+    return 0.0
+
+def resolve_key():
+    env = os.environ.get("ACCOUNT_ID_KEY") or os.environ.get("ETRADE_ACCOUNT_ID_KEY")
+    if env: return env
+    if et:
+        for fn in ("get_primary_account","get_default_account","primary_account"):
+            f = getattr(et, fn, None)
+            if callable(f):
+                try:
+                    d=f()
+                    if isinstance(d,dict):
+                        for k in ("accountIdKey","account_id_key","key"):
+                            if d.get(k): return d[k]
+                except Exception: pass
+        f = getattr(et,"list_accounts",None)
+        if callable(f):
+            try:
+                arr=f()
+                if isinstance(arr,dict):
+                    arr=arr.get("Accounts") or arr.get("accounts") or arr.get("data") or []
+                for row in arr:
+                    if isinstance(row,dict) and row.get("accountIdKey"):
+                        return row["accountIdKey"]
+            except Exception: pass
+    return None
+
+def main():
+    ak = resolve_key()
+    logging.info("[A] account key: %s", ak or "NONE")
+    if not et or not ak:
+        logging.info("etrade_service or account key unavailable.")
+        return
+    b = {}
+    for fn in ("get_balances","get_balance","balance","fetch_balances"):
+        f = getattr(et, fn, None)
+        if callable(f):
+            try:
+                b = f(ak)
+                if isinstance(b, dict): break
+                if isinstance(b, (list,tuple)) and b and isinstance(b[-1], dict):
+                    b = b[-1]; break
+            except Exception as e:
+                logging.info("balances.%s failed: %s", fn, e)
+    if not isinstance(b,dict):
+        logging.info("balances not dict; type=%s", type(b).__name__)
+        return
+
+    fields = {
+        "availableToTrade": dig(b,"availableToTrade"),
+        "cashAvailableForInvestment": dig(b,"cashAvailableForInvestment"),
+        "Cash.availableToTrade": dig(b,"Cash","availableToTrade"),
+        "Cash.cashAvailableForInvestment": dig(b,"Cash","cashAvailableForInvestment"),
+        "BalanceResponse.availableToTrade": dig(b,"BalanceResponse","availableToTrade"),
+        "Computed.availableToTrade": dig(b,"Computed","availableToTrade"),
+        "buyingPower": dig(b,"buyingPower"),
+        "BalanceResponse.buyingPower": dig(b,"BalanceResponse","buyingPower"),
+        "settledCash": dig(b,"settledCash"),
+        "BalanceResponse.settledCash": dig(b,"BalanceResponse","settledCash"),
+        "positionsValue": dig(b,"positionsValue"),
+        "BalanceResponse.positionsValue": dig(b,"BalanceResponse","positionsValue"),
+    }
+    att = max(as_float(fields[k] or 0) for k in fields if "availableToTrade" in k)
+    bp  = max(as_float(fields[k] or 0) for k in fields if "buyingPower" in k)
+    sc  = max(as_float(fields[k] or 0) for k in fields if "settledCash" in k)
+    pv  = max(as_float(fields[k] or 0) for k in fields if "positionsValue" in k)
+
+    logging.info("[B] parsed: ATT=%s BP=%s SC=%s PV=%s",
+                 as_money(att), as_money(bp), as_money(sc), as_money(pv))
+    logging.info("[C] raw keys present: %s", ", ".join(k for k,v in fields.items() if v is not None))
+
+if __name__ == "__main__":
+    main()
