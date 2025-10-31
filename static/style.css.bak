@@ -39,7 +39,7 @@ select {
 
 /* keep sign colors working alongside the above */
 .text-pos{color:#41d17d}.text-neg{color:#ff5c5c}.text-zero{color:#aaaaaa}
-
+.kpi-cash-extra { font-variant-numeric: tabular-nums; }
 /* kill accidental link styling inside the cards */
 .kpi-card a { color:inherit; text-decoration:none; }
 .kpi-card a:hover { text-decoration:underline; }
@@ -716,4 +716,11 @@ h2 {
     white-space: nowrap;  /* Prevents wrapping text */
     overflow: hidden;     /* Keeps overflow hidden neatly */
     text-overflow: ellipsis; /* Adds ellipsis if too long */
+}
+/* Center the hero blurb under the header */
+#intro-blurb {
+  max-width: 980px;
+  margin: 8px auto 22px;   /* auto centers; small top/bottom spacing */
+  padding: 0 12px;         /* keeps it off the edges on mobile */
+  text-align: center;
 }

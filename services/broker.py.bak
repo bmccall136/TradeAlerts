@@ -719,20 +719,13 @@ class LiveBroker:
             return {"ok": False, "reason": "EXCEPTION", "error": str(e)}
 
         # Dig previewId
+        # --- Dig previewId (and adapt if missing) ---
         def _dig_preview_id(node) -> int | None:
             if isinstance(node, dict):
-                for k in (
-                    "previewId",
-                    "PreviewId",
-                    "preview_id",
-                    "PreviewID",
-                    "previewID",
-                ):
+                for k in ("previewId","PreviewId","preview_id","PreviewID","previewID"):
                     if k in node:
-                        try:
-                            return int(node[k])
-                        except Exception:
-                            pass
+                        try: return int(node[k])
+                        except Exception: pass
                 for v in node.values():
                     got = _dig_preview_id(v)
                     if got is not None:
@@ -744,23 +737,75 @@ class LiveBroker:
                         return got
             return None
 
+        def _maybe_numeric_account(node) -> str | None:
+            if not isinstance(node, dict): 
+                return None
+            por = node.get("PreviewOrderResponse") or node.get("previewOrderResponse") or {}
+            if isinstance(por, dict):
+                aid = por.get("accountId") or por.get("accountID")
+                if aid:
+                    return str(aid)
+            return None
+
+        def _extract_err(node) -> tuple[int|None, str|None]:
+            if not isinstance(node, dict):
+                return None, None
+            err = node.get("Error") or node.get("error")
+            if isinstance(err, dict):
+                code = err.get("code") or err.get("Code")
+                try: code = int(code) if code is not None else None
+                except Exception: pass
+                msg = err.get("message") or err.get("Message")
+                return code, (str(msg) if msg else None)
+            for k in ("message","Message","description"):
+                if isinstance(node.get(k), str):
+                    return None, node[k]
+            return None, None
+
         preview_id = _dig_preview_id(prev)
+
+        # If previewId missing, try numeric-account fallback (the trick we used before)
         if preview_id is None:
-            return {"ok": False, "reason": "PREVIEW_ID_MISSING", "resp": prev}
+            code, msg = _extract_err(prev)
+            if code == 1036:
+                return {"ok": False, "reason": "CLOSING_ONLY", "error": msg, "preview": prev}
+
+            acct_num = _maybe_numeric_account(prev)
+            if acct_num:
+                try:
+                    log.info("[LIVE] retry preview via numeric accountId=%s", acct_num)
+                    prev2 = self._et.preview_equity_order(acct_num, sym, q, px, action, **kw)
+                    preview_id = _dig_preview_id(prev2)
+                    if preview_id is None:
+                        c2, m2 = _extract_err(prev2)
+                        reason = "PREVIEW_ID_MISSING_NUMERIC"
+                        if c2 or m2: reason += f": code={c2} msg={m2}"
+                        return {"ok": False, "reason": reason, "preview": prev2}
+                    prev = prev2  # carry forward numeric-path preview
+                except Exception as e:
+                    return {"ok": False, "reason": "PREVIEW_FALLBACK_EXCEPTION", "error": str(e), "preview": prev}
+            else:
+                # No numeric hint given; surface any message we got
+                reason = "PREVIEW_ID_MISSING"
+                if msg: reason += f": {msg}"
+                return {"ok": False, "reason": reason, "preview": prev}
 
         # --- PLACE ---
         try:
-            placed = self._et.place_equity_order(
-                self._account_id_key, sym, q, px, action, preview_id, **kw
-            )
+            placed = self._et.place_equity_order(self._account_id_key, sym, q, px, action, preview_id, **kw)
         except Exception as e:
             log.exception("[LIVE] place error")
-            return {
-                "ok": False,
-                "reason": "EXCEPTION",
-                "error": str(e),
-                "preview": prev,
-            }
+            return {"ok": False, "reason": "EXCEPTION", "error": str(e), "preview": prev}
+
+        # Normalize success
+        if isinstance(placed, dict):
+            if placed.get("ok") is True:  # some wrappers echo ok
+                return {"ok": True, "resp": placed}
+            if not any(k in placed for k in ("error","Error","errors")):
+                return {"ok": True, "resp": placed}
+
+        return {"ok": False, "reason": "BROKER_REJECT", "resp": placed, "preview": prev}
+
 
         # Normalize success
         if isinstance(placed, dict):

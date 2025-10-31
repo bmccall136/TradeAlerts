@@ -717,3 +717,9 @@ h2 {
     overflow: hidden;     /* Keeps overflow hidden neatly */
     text-overflow: ellipsis; /* Adds ellipsis if too long */
 }
+/* Center the hero blurb under the header */
+.hero-blurb {
+  max-width: 980px;
+  margin: 8px auto 22px;   /* auto centers in non-flex too */
+  padding: 0 12px;         /* a little breathing room on narrow screens */
+}

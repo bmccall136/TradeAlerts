@@ -17,7 +17,6 @@ log = logging.getLogger("live_start")
 ROOT = os.path.abspath(os.path.dirname(__file__))
 DEFAULT_SETTINGS = os.path.join(ROOT, "live_settings.json")
 DEFAULT_SP500 = os.path.join(ROOT, "sp500_symbols.txt")  # one symbol per line
-SYMBOLS_FILE = r"C:\TradeAlerts\sp500_symbols.txt"
 
 
 def _read_json(path: str) -> dict:

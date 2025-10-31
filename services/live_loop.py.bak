@@ -629,7 +629,7 @@ def run_live_loop(settings, symbols, broker_mode=None):
                 continue
 
             try:
-                resp = broker.buy(sym, qty, price)
+                resp = broker.buy(sym, qty, price_type="MARKET")
                 if not resp.get("ok"):
                     log.info("[LIVE] skip %s: %s", sym, resp.get("reason"))
                     continue
