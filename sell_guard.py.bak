@@ -1,33 +1,3 @@
-
-from __future__ import annotations
-# --- Windows-safe logging shim: strip unsupported %f and set our own handler ---
-import logging, sys
-
-# If anyone sets a formatter with %f later, neuter it here
-_orig_formatTime = logging.Formatter.formatTime
-def _sg_formatTime(self, record, datefmt=None):
-    if datefmt and "%f" in datefmt:  # Windows strftime has no %f
-        datefmt = datefmt.replace("%f", "")
-    return _orig_formatTime(self, record, datefmt)
-logging.Formatter.formatTime = _sg_formatTime
-
-def _sg_init_logger():
-    fmt     = "%(asctime)s.%(msecs)03d %(levelname)s  %(name)s: %(message)s"
-    datefmt = "%Y-%m-%d %H:%M:%S"
-    # Kill any inherited/root handlers that might carry bad datefmt
-    for h in logging.root.handlers[:]:
-        logging.root.removeHandler(h)
-    log = logging.getLogger("sell-guard")
-    log.setLevel(logging.INFO)
-    log.handlers.clear()
-    h = logging.StreamHandler(sys.stdout)
-    h.setFormatter(logging.Formatter(fmt=fmt, datefmt=datefmt))
-    log.addHandler(h)
-    log.propagate = False
-    return log
-
-LOG = _sg_init_logger()
-
 # sell_guard.py
 # Guard that scans positions and places SELL orders for eligible holdings.
 # - Reads settings from SELL_GUARD_SETTINGS env var or .\sell_guard_settings.json
@@ -36,6 +6,9 @@ LOG = _sg_init_logger()
 # - MARKET by default, or marketable LIMIT from bid-1 tick when configured
 #
 # Python 3.11+
+
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -46,8 +19,6 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
-import datetime as _dt
-from typing import Any, List, Tuple, Dict
 
 try:
     from zoneinfo import ZoneInfo
@@ -111,247 +82,7 @@ def rand_id(prefix: str, n: int = 6) -> str:
         random.choice(string.ascii_lowercase + string.digits) for _ in range(n)
     )
     return f"{prefix}{sfx}"
-# Track post-protect high watermark for trailing, per symbol
-_PROTECT_STATE = {}  # sym -> {"hi": float}
 
-# ==== BEGIN: SELL GATES HELPERS ====
-
-def _normalize_positions(pos_obj) -> List[Dict[str, Any]]:
-    """
-    Flatten common E*TRADE position shapes to:
-    {symbol, quantity, available, entry_price, last}
-    """
-    out = []
-    def L(x): return x if isinstance(x, list) else ([] if x is None else [x])
-    if not isinstance(pos_obj, dict):
-        return out
-    pr = pos_obj.get("PortfolioResponse") or {}
-    for ap in L(pr.get("AccountPortfolio")):
-        positions = (ap.get("Position") or ap.get("position")
-                     or ap.get("Positions") or ap.get("positions"))
-        for p in L(positions):
-            prod = p.get("Product") or p.get("product") or {}
-            sym  = (prod.get("symbol") or "").strip().upper()
-            if not sym:
-                desc = (p.get("symbolDescription") or "").strip()
-                if "(" in desc and desc.endswith(")"):
-                    sym = desc.split("(")[-1][:-1].strip().upper()
-            qty = p.get("quantity") or p.get("qty") or p.get("longQty") or p.get("longQuantity") or 0
-            avail = p.get("available") or p.get("availableToSell") or qty
-            entry = p.get("pricePaid") or p.get("purchasePrice") or p.get("averagePrice") or 0
-            q = float(qty or 0)
-            if sym and q > 0:
-                quick = p.get("Quick") or {}
-                last  = quick.get("lastTrade") or 0
-                out.append({
-                    "symbol": sym,
-                    "quantity": q,
-                    "available": float(avail or 0),
-                    "entry_price": float(entry or 0),
-                    "last": float(last or 0),
-                })
-    return out
-
-
-def _entry_price_from_positions(pos_map: Dict[str, Dict[str, Any]], sym: str) -> float | None:
-    r = pos_map.get((sym or "").upper())
-    if not r:
-        return None
-    v = float(r.get("entry_price") or 0)
-    return v if v > 0 else None
-
-def _apply_sell_protection(sym: str, entry_px: float, last_px: float, opened_ts: float, now_ts: float, cfg: dict):
-    """
-    Enforce post-N-minutes protection:
-      - if gain < protect_min_gain_pct  -> hard stop at -1.0% (from entry)
-      - if gain >= protect_trail_arm_pct -> 3% trailing off session high since protection started
-    Returns a dict like {"action":"SELL", "reason":"..."} or None to keep holding.
-    """
-    sg = cfg.get("sell_guard", {}) if "sell_guard" in cfg else cfg
-
-    mins = float(sg.get("sell_protect_after_mins") or 0)
-    if mins <= 0:
-        return None
-
-    protect_min_gain = float(sg.get("protect_min_gain_pct", 1.5))
-    trail_arm_pct    = float(sg.get("protect_trail_arm_pct", 3.0))
-    trail_pct        = float(sg.get("protect_trail_pct", 3.0))
-    base_stop_bps    = float(sg.get("stop_bps", 100.0))  # fallback if you want -1.0% in bps
-
-    elapsed_min = max(0.0, (now_ts - opened_ts) / 60.0)
-    if elapsed_min < mins:
-        # Not in protection window yet; also reset any stale hi
-        _PROTECT_STATE.pop(sym, None)
-        return None
-
-    # pct helper
-    def _pct(cur, ref):
-        try:
-            return (cur - ref) / ref * 100.0
-        except Exception:
-            return 0.0
-
-    gain_pct = _pct(last_px, entry_px)
-
-    # 1) Not working enough -> enforce hard stop at -1.0% from entry
-    if gain_pct < protect_min_gain:
-        hard_stop_pct = -abs(base_stop_bps) / 100.0  # -1.0% when stop_bps=100
-        if gain_pct <= hard_stop_pct:
-            return {"action": "SELL", "reason": f"PROTECT_BASE_STOP({hard_stop_pct:.2f}%)", "gain_pct": round(gain_pct, 3)}
-        # else: above the stop, do nothing yet
-        return None
-
-    # 2) Working well -> laddered trailing off high since protection start
-    st = _PROTECT_STATE.get(sym)
-    if st is None:
-        st = {"hi": float(last_px)}
-        _PROTECT_STATE[sym] = st
-    if last_px > st["hi"]:
-        st["hi"] = float(last_px)
-
-    # Ladder: arm levels based on current gain
-    #  +3% → 3% trail,  +5% → 2.5% trail,  +8% → 2.0% trail (tweak as you like)
-    trail_pct_now = None
-    if gain_pct >= 8.0:
-        trail_pct_now = 2.0
-    elif gain_pct >= 5.0:
-        trail_pct_now = 2.5
-    elif gain_pct >= trail_arm_pct:  # e.g., 3.0
-        trail_pct_now = trail_pct     # e.g., 3.0
-
-    if trail_pct_now is not None:
-        trail_trigger = st["hi"] * (1.0 - trail_pct_now / 100.0)
-        if last_px <= trail_trigger:
-            return {
-                "action": "SELL",
-                "reason": f"PROTECT_TRAIL_LADDER({trail_pct_now:.2f}%)",
-                "gain_pct": round(gain_pct, 3)
-            }
-
-
-def _to_epoch_ms_any(ts):
-    """Accept ms, sec, or ISO; return epoch ms or None."""
-    try:
-        if ts is None:
-            return None
-        if isinstance(ts, (int, float)):
-            v = float(ts)
-            return int(v if v > 10_000_000_000 else v * 1000)
-        s = str(ts).strip()
-        if not s:
-            return None
-        if s.isdigit():
-            v = float(s)
-            return int(v if v > 10_000_000_000 else v * 1000)
-        # normalize ISO
-        s = s.replace(" ", "T")
-        if "Z" not in s and "+" not in s:
-            s += "Z"
-        from datetime import datetime as _dt
-        dt = _dt.fromisoformat(s.replace("Z", "+00:00"))
-        return int(dt.timestamp() * 1000)
-    except Exception:
-        return None
-
-
-def _cache_today_transactions():
-    """
-    Fetch today's transactions once; return (tx_today, buy_set, last_buy_ms_map).
-    buy_set: set of symbols bought today.
-    last_buy_ms_map: {SYM: last_buy_ms}
-    """
-    try:
-        tx = et.get_transactions(start="today", end="today") or []
-    except Exception:
-        tx = []
-
-    buy_set = set()
-    last_buy_ms = {}
-
-    for t in tx:
-        if not isinstance(t, dict):
-            continue
-        sym = (t.get("symbol") or t.get("securitySymbol") or "").strip().upper()
-        side = (t.get("transactionType") or t.get("side") or "").upper()
-        if not sym:
-            continue
-        if "BUY" in side:
-            buy_set.add(sym)
-            ms = (
-                _to_epoch_ms_any(t.get("time"))
-                or _to_epoch_ms_any(t.get("time_ms"))
-                or _to_epoch_ms_any(t.get("transactionDate"))
-            )
-            if ms is not None:
-                prev = last_buy_ms.get(sym)
-                if prev is None or ms > prev:
-                    last_buy_ms[sym] = ms
-
-    return tx, buy_set, last_buy_ms
-
-
-def _opened_today_cached(sym: str, buy_set: set) -> bool:
-    return (sym or "").strip().upper() in buy_set
-
-
-def _minutes_since_last_buy_cached(sym: str, last_buy_ms_map: dict) -> float | None:
-    symu = (sym or "").strip().upper()
-    ms = last_buy_ms_map.get(symu)
-    if ms is None:
-        return None
-    dt_buy = _dt.datetime.fromtimestamp(ms / 1000.0, tz=ET)
-    return max(0.0, (now_et() - dt_buy).total_seconds() / 60.0)
-
-# ==== END: SELL GATES HELPERS ====
-
-def _last_buy_time_et(sym: str):
-    """Return ET datetime of most-recent BUY for sym today, or None."""
-    try:
-        s = (sym or "").strip().upper()
-        tx = et.get_transactions(start="today", end="today") or []
-        best = None
-        for t in tx:
-            if not isinstance(t, dict): 
-                continue
-            tsym = (t.get("symbol") or t.get("securitySymbol") or "").strip().upper()
-            side = (t.get("transactionType") or t.get("side") or "").upper()
-            if tsym != s or "BUY" not in side:
-                continue
-            # accept ms, sec, or iso datetime
-            ts = t.get("time") or t.get("time_ms") or t.get("transactionDate")
-            ms = None
-            try:
-                if isinstance(ts, (int, float)):
-                    ms = int(ts if ts > 10_000_000_000 else ts * 1000)
-                elif isinstance(ts, str):
-                    if ts.isdigit():
-                        v = float(ts)
-                        ms = int(v if v > 10_000_000_000 else v * 1000)
-                    else:
-                        from datetime import datetime, timezone
-                        ts2 = ts.replace("Z", "+00:00").replace(" ", "T")
-                        dt = datetime.fromisoformat(ts2)
-                        if dt.tzinfo is None:
-                            dt = dt.replace(tzinfo=timezone.utc)
-                        ms = int(dt.timestamp() * 1000)
-            except Exception:
-                ms = None
-            if ms:
-                from datetime import datetime
-                dt = datetime.fromtimestamp(ms / 1000.0, tz=ET or UTC)
-                if best is None or dt > best:
-                    best = dt
-        return best
-    except Exception:
-        return None
-
-
-def _minutes_since_last_buy(sym: str) -> float | None:
-    dt = _last_buy_time_et(sym)
-    if not dt:
-        return None
-    delta = (now_et() - dt).total_seconds() / 60.0
-    return max(0.0, delta)
 
 # Conservative PDT helper: if we bought SYM today, selling it today would be a day trade
 def _opened_today(sym: str) -> bool:
@@ -383,18 +114,18 @@ DEFAULT_SETTINGS = {
     "use_extended_hours": False,
     "market_fallback_for": ["SELL_STOP", "TIMEOUT"],
     "max_place_attempts": 4,
-    # Sell-guard sub-config (defaults aligned to your JSON)
+    # Sell-guard sub-config (mirrors your JSON)
     "sell_guard": {
         "allow_intraday_stoploss": True,
-        "avoid_daytrades": False,
+        "avoid_daytrades": True,
         "blocklist": [],
-        "force_symbols": [],
-        "force_without_entry": False,     # <- match JSON
-        "limit_from": "bid",
-        "limit_offset_bps": 0,
+        "force_symbols": [],  # e.g. ["CZR"]
+        "force_without_entry": True,
+        "limit_from": "bid",  # "bid" or "last"
+        "limit_offset_bps": 0,  # 0 => marketable tick down
         "max_hold_mins": 1_000_000,
-        "min_hold_days": 0,               # <- match JSON
-        "min_hold_minutes": 15,           # <- match JSON
+        "min_hold_days": 1,
+        "min_hold_minutes": 390,
         "normalize_tick": 0.01,
         "sell_protect_after_mins": None,
         "sell_window_start_et": "09:35",
@@ -404,7 +135,6 @@ DEFAULT_SETTINGS = {
         "use_extended_hours": False,
         "circuit_fail_threshold": 2,
         "circuit_open_seconds": 480,
-        "market_fallback_for": ["SELL_STOP"],
     },
 }
 
@@ -475,24 +205,14 @@ def get_acct_key() -> str:
     raise RuntimeError("Could not determine account_id_key")
 
 
-# --- account & quotes ----------------------------------------------------------
 def available_to_sell(acct_key: str, symbol: str) -> float:
     if hasattr(et, "available_to_sell"):
         try:
-            v = et.available_to_sell(acct_key, symbol)
-            return float(v or 0.0)
-        except Exception as e:
-            LOG.warning("available_to_sell wrapper failed: %s", e)
-
-    try:
-        pos = et.get_positions(acct_key)
-    except TypeError:
-        pos = et.get_positions()
-
-    for row in _normalize_positions(pos):
-        if row.get("symbol") == (symbol or "").upper():
-            return float(row.get("available") or row.get("quantity") or 0.0)
+            return f(et.available_to_sell(acct_key, symbol), 0.0)
+        except Exception:
+            return 0.0
     return 0.0
+
 
 def fetch_quote(symbol: str) -> dict[str, Any]:
     # prefer fast wrapper if present
@@ -886,6 +606,26 @@ def _parse_positions_any(arr):
     return out
 
 
+def _opened_today(sym: str) -> bool:
+    """Return True if there was a BUY for `sym` today (ET). Blocks day trades."""
+    try:
+        s = (sym or "").strip().upper()
+        # Adjust to your etrade_service: use whatever you have that returns today's transactions
+        tx = et.get_transactions(
+            start="today", end="today"
+        )  # <-- swap to your real fn if named differently
+        for t in tx or []:
+            if not isinstance(t, dict):
+                continue
+            tsym = (t.get("symbol") or t.get("securitySymbol") or "").strip().upper()
+            side = (t.get("transactionType") or t.get("side") or "").upper()
+            if tsym == s and "BUY" in side:
+                return True
+    except Exception:
+        LOG.exception("opened_today failed for %s", sym)
+    return False
+
+
 def eligible_symbols(acct_key: str, cfg: GuardSettings) -> List[Tuple[str, int]]:
     block = set(map(str.upper, cfg.sg.get("blocklist") or []))
     force = set(map(str.upper, cfg.sg.get("force_symbols") or []))
@@ -905,73 +645,80 @@ def eligible_symbols(acct_key: str, cfg: GuardSettings) -> List[Tuple[str, int]]
 
     if err:
         LOG.warning("get_positions failed: %s", err)
-        return sorted([(s, 0) for s in force]) if (force and fwe) else []
+        # Still honor forced symbols (qty=0) if configured to do so
+        return sorted([(s, 0) for s in force]) if force and fwe else []
 
     LOG.info("positions raw glimpse: %s", _glimpse(pos))
 
-    def L(x):
-        return x if isinstance(x, list) else ([] if x is None else [x])
+    def _as_list(v):
+        if v is None:
+            return []
+        return v if isinstance(v, list) else [v]
 
-    # ---- normalize to iterable of (symbol, qty_float) from Product/quantity ----
+    # ---- normalize to iterable of (symbol, qty) ----
     def _iter_positions(pobj):
         if not isinstance(pobj, dict):
             return
-        pr = pobj.get("PortfolioResponse") or {}
-        for ap in L(pr.get("AccountPortfolio")):
-            positions = (ap.get("Position") or ap.get("position")
-                         or ap.get("Positions") or ap.get("positions"))
-            for p in L(positions):
-                prod = p.get("Product") or p.get("product") or {}
-                sym  = (prod.get("symbol") or "").strip().upper()
-                if not sym:
-                    # fallback: description like "NAME (TICKER)"
-                    desc = (p.get("symbolDescription") or "").strip()
-                    if "(" in desc and desc.endswith(")"):
-                        tick = desc.split("(")[-1][:-1].strip()
-                        if tick:
-                            sym = tick.upper()
-
-                qty = (
-                    p.get("quantity") or p.get("qty")
-                    or p.get("longQty") or p.get("longQuantity")
-                    or p.get("positionQty") or p.get("positionQuantity") or 0
+        pr = pobj.get("PortfolioResponse") or pobj.get("portfolioResponse") or {}
+        for ap in _as_list(pr.get("AccountPortfolio") or pr.get("accountPortfolio")):
+            positions = (
+                ap.get("Position") or ap.get("position")
+                or ap.get("Positions") or ap.get("positions")
+            )
+            for p in _as_list(positions):
+                inst = p.get("instrument") or p.get("Instrument") or {}
+                sym  = (
+                    inst.get("symbol") or p.get("symbol") or p.get("Symbol")
+                    or p.get("ProductId")  # sometimes present
                 )
+                # prefer long/open qty; fall back to generic qtys
+                qty  = (
+                    p.get("longQty") or p.get("longQuantity")
+                    or p.get("qty") or p.get("quantity")
+                    or p.get("positionQty") or p.get("positionQuantity")
+                    or 0
+                )
+                # filter by security type if present (keep equities only)
+                sec_type = (inst.get("securityType")
+                            or inst.get("type")
+                            or p.get("securityType"))
+                # Typical equity tags: "EQ", "EQUITY", sometimes None (treat None as OK)
+                is_equity = (sec_type is None) or (str(sec_type).upper() in {"EQ", "EQUITY", "STOCK"})
+
+                if not sym:
+                    continue
                 try:
                     q = float(qty or 0)
                 except Exception:
-                    q = 0.0
+                    continue
+                if q <= 0:
+                    continue
+                if not is_equity:
+                    continue
 
-                if sym and q > 0:
-                    yield sym, q
+                yield sym.strip().upper(), int(q)
 
     rows = list(_iter_positions(pos))
     LOG.info("normalized positions -> %s", rows)
 
-    # ---- apply blocklist/force, dedupe, then floor to whole shares for selling ----
-    merged: Dict[str, float] = {}
+    # ---- apply blocklist / force (and dedupe) ----
+    # Use a dict to ensure last write wins and to coalesce duplicates.
+    merged: Dict[str, int] = {}
 
+    # 1) forced first (qty may be 0)
     if fwe and force:
         for s in sorted(force):
             if s not in block:
-                merged[s] = 0.0
+                merged[s] = 0
 
-    for sym, q in rows:
+    # 2) actual held rows (overwrite forced qty=0 if held)
+    for sym, qty in rows:
         if sym in block:
             continue
-        merged[sym] = max(float(q), merged.get(sym, 0.0))
+        merged[sym] = int(qty)
 
-    final: List[Tuple[str, int]] = []
-    skipped_fractional = {}
-
-    for s, q in sorted(merged.items()):
-        whole = int(q)  # sell API needs whole shares
-        if whole >= 1 or (fwe and s in force):
-            final.append((s, whole))
-        else:
-            skipped_fractional[s] = q
-
-    if skipped_fractional:
-        LOG.info("eligible_symbols: skipped fractional-only holdings (whole=0): %s", skipped_fractional)
+    # 3) emit only symbols with qty>=0 (forced may be 0; keep that if fwe)
+    final = [(s, q) for s, q in sorted(merged.items()) if (q > 0 or (fwe and s in force))]
 
     LOG.info("eligible final -> %s", final)
     return final
@@ -1043,7 +790,7 @@ def main():
         sg=cfg_raw["sell_guard"],
     )
 
-    last_placed: set[str] = set()
+    last_placed: set[str] = set()  # symbols placed in this cycle
     heartbeat_next = time.time()
     throttle = max(1, int(cfg.throttle_ms / 1000))
 
@@ -1078,13 +825,6 @@ def main():
             except Exception as e:
                 LOG.error("eligible_symbols failed: %s", e)
                 rows = []
-        # Build a quick symbol -> position row map (for entry price)
-        try:
-            _pos_obj = et.get_positions(acct_key)
-        except TypeError:
-            _pos_obj = et.get_positions()
-        _pos_rows = _normalize_positions(_pos_obj)
-        _pos_map = {r["symbol"]: r for r in _pos_rows}
 
         LOG.info(
             "candidates: %s",
@@ -1094,70 +834,32 @@ def main():
         placed_any = False
         last_placed.clear()
 
-        # Cache today's transactions ONCE per scan cycle
-        _tx_today, _buy_today_set, _last_buy_ms_map = _cache_today_transactions()
-
         for s, have_qty in rows:
             if s in last_placed:
                 continue
-
             avail = int(round(available_to_sell(acct_key, s)))
             if avail <= 0:
                 LOG.info("%s: no available shares to sell", s)
                 continue
-
-            # ---- HOLD & PDT GATES (single source of truth) ----
-            sg = cfg.sg
-            min_hold_min   = int(sg.get("min_hold_minutes") or 0)
-            min_hold_days  = int(sg.get("min_hold_days") or 0)
-            avoid_dt       = bool(sg.get("avoid_daytrades", False))
-            intraday_stops = bool(sg.get("allow_intraday_stoploss", False))
-
-            # Simple PDT rule while testing: block all same-day exits if avoid_daytrades
-            if avoid_dt and _opened_today_cached(s, _buy_today_set):
-                LOG.info("[HOLD] %s opened today; avoid_daytrades on -> skip", s)
-                continue
-
-            # Minute hold buffer (only if we can detect a buy timestamp)
-            if min_hold_min > 0:
-                mins = _minutes_since_last_buy_cached(s, _last_buy_ms_map)
-                if mins is not None and mins < min_hold_min:
-                    LOG.info("[HOLD] %s held %.1f < %d min -> skip", s, mins, min_hold_min)
+            # PDT guard: block same-day sells if configured
+            if cfg.sg.get("avoid_daytrades", True):
+                # simplest policy: block all intraday sells if you don't allow intraday stops
+                if not cfg.sg.get("allow_intraday_stoploss", False) and _opened_today(
+                    s
+                ):
+                    LOG.info("[PDT] Skipping %s (opened today; avoid_daytrades on)", s)
                     continue
 
-            # Optional day hold: conservative same-day skip
-            if min_hold_days > 0 and _opened_today_cached(s, _buy_today_set):
-                LOG.info("[HOLD] %s same-day; min_hold_days=%d -> skip", s, min_hold_days)
-                continue
-
-            # (Optional) Add price-based exits here later:
-            # if not _should_exit_by_price(s):
-            #     LOG.info("[PRICE] %s not at stop/target -> skip", s)
-            #     continue
-            # ---- 2a: Post-N-minute protection window with laddered trailing ----
-            entry_px = _entry_price_from_positions(_pos_map, s)
-            last_px  = last_trade(s)  # robust getter you retained
-            now_ts   = time.time()
-            mins_since_buy = _minutes_since_last_buy_cached(s, _last_buy_ms_map)
-            opened_ts = (now_ts - mins_since_buy * 60.0) if (mins_since_buy is not None) else None
-
-            if entry_px and last_px and opened_ts:
-                decision = _apply_sell_protection(
-                    sym=s,
-                    entry_px=entry_px,
-                    last_px=last_px,
-                    opened_ts=opened_ts,
-                    now_ts=now_ts,
-                    cfg=cfg.sg,
-                )
-                if decision is None:
-                    LOG.info("[PROTECT] %s hold (no trigger); gain%% vs entry not at stop/trail", s)
-                    continue
-                LOG.info("[PROTECT] %s -> %s (%s)", s, decision.get("action"), decision.get("reason"))
-            # If entry or opened time is unknown, fall through to normal exits (your other gates)
+                # If you later want nuance (allow STOP but block TARGET), you can refine here
+                # once you compute a 'reason' for the exit.
 
             pt, limit_px = compute_order_params(s, cfg)
-            from services.live_guardrails import record_entry
+            # PDT guard: block same-day sells completely (both stop & target)
+            if cfg.sg.get("avoid_daytrades", True) and _opened_today(sym):
+                LOG.info("[PDT] Skipping %s (opened today; avoid_daytrades on)", sym)
+                continue
+
+            # If you later want nuance (allow STOP but block TARGET), we can refine here once you compute `reason`.
 
             LOG.info(
                 "[SG] %s -> free=%d -> place %s%s",

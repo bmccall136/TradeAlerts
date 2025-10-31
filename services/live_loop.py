@@ -1,17 +1,18 @@
+# services/live_loop.py  — revised
+# Changes (2025-08-28):
+# - Fetch balances once per iteration before scanning.
+# - Tolerant extraction of settled-cash / buying-power (handles E*TRADE variants).
+# - Prefer settled cash over BP for LIVE sizing; small buffer to avoid GFVs.
+# - Keep SIM behavior; optional LIVE T+N override via env.
+# - Avoid per-candidate balance calls; compute once per iteration.
 from __future__ import annotations
-import time as time_mod
 
 import logging
 import math
 import os
 import re
 import time
-from datetime import UTC
-from zoneinfo import ZoneInfo
-import datetime as dt
-import time as time_mod
-ET = ZoneInfo("America/New_York")
-import time as time_mod
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
@@ -28,9 +29,7 @@ from services.simulation_service import (
 )
 from services.trading_helpers import get_holdings, get_trades
 
-import logging
-LOG = logging.getLogger("live")
-log = LOG  # keep both names valid to satisfy any mixed usage
+log = logging.getLogger("live")
 
 _DEFAULTS = {
     "broker_mode": "LIVE",
@@ -339,48 +338,14 @@ def run_live_loop(settings, symbols, broker_mode=None):
     HEARTBEAT_SEC = float(getattr(settings, "scan_heartbeat_secs", 10.0))
     preload_history_yahoo(symbols, months=6)
 
-    import datetime as dt
-    import zoneinfo
-    ET = zoneinfo.ZoneInfo("America/New_York")
-
-    def _now_et():
-        return dt.datetime.now(tz=ET)
-
-    def _within_run_window(now: datetime) -> bool:
-        # Run 08:00–23:55 ET to avoid the midnight deauth window
-        start = dt.time(0, 0)
-        stop  = dt.time(23, 55)
-        t = now.timetz()
-        return start <= t <= stop
-
-    def _sleep_until_8am_et():
-        now = _now_et()
-        tomorrow = (now + dt.timedelta(days=1)).date() if now.timetz() > dt.time(23, 55) else now.date()
-        wake = dt.datetime.combine(tomorrow, dt.time(8, 0), tzinfo=ET)
-        return max(1, int((wake - now).total_seconds()))
-
-    # --- replacement loop gate ---
     while True:
-        now = _now_et()
-
-        if not _within_run_window(now):
-            secs = _sleep_until_8am_et()
-            log.info("[LIVE] outside allowed window (08:00–23:55 ET); sleeping %ds", secs)
-            time_mod.sleep(secs)
+        if settings.pause_when_market_closed and not _is_market_open():
+            wait = seconds_until_open()
+            log.info("[LIVE] Market closed — sleeping %.1fs", wait)
+            time.sleep(wait)
             continue
 
-        # Only gate on REGULAR if the user asked to pause when closed
-        if settings.pause_when_market_closed and settings.market_session != "EXTENDED":
-            if not _is_market_open():
-                wait = seconds_until_open()
-                log.info("[LIVE] Market closed (REGULAR); sleeping %.1fs", wait)
-                time_mod.sleep(wait)
-                continue
-
-        # ... your normal scan/buy loop ...
-        time_mod.sleep(settings.scan_sleep_secs)
-
-        iter_start = time_mod.time()
+        iter_start = time.time()
         last_ping = iter_start
         log.info("[LIVE] 🔁 Starting scan loop iteration")
 
@@ -394,23 +359,16 @@ def run_live_loop(settings, symbols, broker_mode=None):
         settled_cash = _extract_settled_cash(bal)
         live_bp = _extract_buying_power(bal)
 
-        # NEW — cash-account friendly (ATT wins)
-        try:
-            att = broker.get_available_to_trade()
-        except Exception as e:
-            LOG.warning("get_available_to_trade() failed: %s", e)
-            att = 0.0
-
-        usable = float(att or 0.0)
-        LOG.info("[LIVE] funds: using AvailableToTrade=$%.2f", usable)
-        budget = usable
-
-        # afford qty strictly from BP and per-trade cap
-        def _afford_qty(price: float, max_per_trade: float) -> int:
-            cash_cap = min(available_cash, float(max_per_trade or available_cash))
-            if price and price > 0:
-                return int(cash_cap // price)
-            return 0
+        # --- funds log (matches the sizing pool) ---
+        pool, src = _pool_for_sizing(settled_cash, live_bp)
+        if mode == "LIVE":
+            sc_str = (
+                f"${settled_cash:.2f}"
+                if isinstance(settled_cash, (int, float))
+                else "None"
+            )
+            bp_str = f"${live_bp:.2f}" if isinstance(live_bp, (int, float)) else "None"
+            log.info("[LIVE] funds: settled=%s, bp=%s (using=%s)", sc_str, bp_str, src)
 
         # --- candidate collection + logging budget ---
         cand_limit = sget(settings, "candidate_log_limit", None)  # env/JSON override ok
@@ -432,7 +390,7 @@ def run_live_loop(settings, symbols, broker_mode=None):
                 passed = False
                 triggered = None
 
-            now = time_mod.time()
+            now = time.time()
             if now - last_ping >= HEARTBEAT_SEC:
                 rate = scanned / max(now - iter_start, 1e-6)
                 remaining = max(total_syms - scanned, 0)
@@ -476,7 +434,7 @@ def run_live_loop(settings, symbols, broker_mode=None):
 
             candidates.append((sym, float(price), list(triggered or [])))
 
-        elapsed = time_mod.time() - iter_start
+        elapsed = time.time() - iter_start
         log.info(
             "[LIVE] summary: scanned=%d skipped=%d candidates=%d (%.1fs)",
             scanned,
@@ -487,7 +445,7 @@ def run_live_loop(settings, symbols, broker_mode=None):
 
         if not candidates:
             log.info("[LIVE] no candidates this round")
-            time_mod.sleep(settings.poll_interval)
+            time.sleep(settings.poll_interval)
             continue
 
         def _score(sym: str, price: float, triggered: list[str]) -> float:
@@ -508,35 +466,18 @@ def run_live_loop(settings, symbols, broker_mode=None):
         }
 
         def _affordable_qty(px: float, max_per_trade: float) -> int:
-            """
-            GFV-safe: only settled cash counts. If no settled pool, return 0.
-            Also respect max_per_trade as a cap, not a fallback.
-            """
             if not isinstance(px, (int, float)) or px <= 0:
                 return 0
-
-            # start with zero and only size from settled pool
-            cap = 0.0
-
-            # cap by max_per_trade if provided
-            try:
-                if max_per_trade not in (None, "", "NONE", "None", "INF", "Inf"):
-                    cap = float(max_per_trade)
-                else:
-                    cap = float("inf")
-            except Exception:
-                cap = float("inf")
-
-            # settled-only pool
-            pool, _ = _pool_for_sizing(settled_cash, live_bp)  # settled or None
-            if not isinstance(pool, (int, float)):
-                return 0  # no settled cash => no buy
-
-            # take the smaller of pool buffer and max_per_trade
-            cap = min(cap, pool - _BP_BUFFER)
+            cap = (
+                float(max_per_trade)
+                if isinstance(max_per_trade, (int, float))
+                else float("inf")
+            )
+            pool, _ = _pool_for_sizing(settled_cash, live_bp)
+            if isinstance(pool, (int, float)):
+                cap = min(cap, pool - _BP_BUFFER)
             if cap <= 0:
                 return 0
-
             return max(0, int(math.floor(cap / float(px))))
 
         # Pyramiding rules: SIM keeps t+2 by default; LIVE uses env override (default 0)
@@ -550,17 +491,18 @@ def run_live_loop(settings, symbols, broker_mode=None):
                 ):
                     ts = t.get("trade_time")
                     try:
-                        ts_dt = dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
-                        if ts_dt.tzinfo is None:
-                            ts_dt = ts_dt.replace(tzinfo=UTC)
+                        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=UTC)
                     except Exception:
-                        ts_dt = dt.datetime.now(UTC)
-
-                    ev.append({
-                        "time": ts_dt,
-                        "price": float(t.get("price") or 0.0),
-                        "qty": int(float(t.get("qty") or 0)),
-                    })
+                        dt = datetime.now(UTC)
+                    ev.append(
+                        {
+                            "time": dt,
+                            "price": float(t.get("price") or 0.0),
+                            "qty": int(float(t.get("qty") or 0)),
+                        }
+                    )
             return sorted(ev, key=lambda e: e["time"])
 
         def _pyramid_ok(sym: str, price: float, qty: int, rules: dict[str, Any]):
@@ -588,10 +530,10 @@ def run_live_loop(settings, symbols, broker_mode=None):
                 reasons.append("distance")
 
             if rules.get("t_plus_settlement_days", 0) > 0 and pos.get("qty", 0) > 0:
-                earliest_next = first_buy_dt + dt.timedelta(
+                earliest_next = first_buy_dt + timedelta(
                     days=rules["t_plus_settlement_days"]
                 )
-                if dt.datetime.now(UTC) < earliest_next:
+                if datetime.now(UTC) < earliest_next:
                     reasons.append(f"t+{rules['t_plus_settlement_days']}")
 
             if (pos.get("qty", 0) + qty) > rules["max_position_qty"]:
@@ -603,7 +545,7 @@ def run_live_loop(settings, symbols, broker_mode=None):
             log.info(
                 "[GR] Buy gate closed (already bought today or an open position exists)"
             )
-            time_mod.sleep(settings.poll_interval)
+            time.sleep(settings.poll_interval)
             continue
         elif override_gate:
             log.warning(
@@ -711,4 +653,4 @@ def run_live_loop(settings, symbols, broker_mode=None):
             log.info(
                 "[LIVE] ranked selection found no purchasable candidates (all gated)"
             )
-        time_mod.sleep(settings.poll_interval)
+        time.sleep(settings.poll_interval)
