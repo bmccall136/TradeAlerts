@@ -28,9 +28,7 @@ from services.simulation_service import (
 )
 from services.trading_helpers import get_holdings, get_trades
 
-import logging
-LOG = logging.getLogger("live")
-log = LOG  # keep both names valid to satisfy any mixed usage
+log = logging.getLogger("live")
 
 _DEFAULTS = {
     "broker_mode": "LIVE",
@@ -56,6 +54,28 @@ _BP_BUFFER = float(os.getenv("LIVE_BP_BUFFER", "5"))  # dollars cushion
 _LIVE_TPLUS_DAYS = int(os.getenv("LIVE_TPLUS_DAYS", "0") or 0)  # 0 = off
 
 # ── helpers ──────────────────────────────────────────────────────────────────
+
+def _select_funds_amount(settled: float, buying_power: float) -> tuple[float, str]:
+    """Decide which cash figure to use for sizing:
+    - If settled > 0, use settled (cash account safety).
+    - Else if buying_power > 0, use buying_power (your preference for cash acct with BP shown).
+    - Else 0.
+    Returns (amount, source_label).
+    """
+    try:
+        s = float(settled or 0.0)
+    except Exception:
+        s = 0.0
+    try:
+        bp = float(buying_power or 0.0)
+    except Exception:
+        bp = 0.0
+    if s > 0:
+        return s, 'settled'
+    if bp > 0:
+        return bp, 'bp'
+    return 0.0, 'settled'
+
 
 
 def _env_int(name: str, default: int | None = None) -> int | None:
@@ -348,7 +368,7 @@ def run_live_loop(settings, symbols, broker_mode=None):
 
     def _within_run_window(now: datetime) -> bool:
         # Run 08:00–23:55 ET to avoid the midnight deauth window
-        start = dt.time(0, 0)
+        start = dt.time(8, 0)
         stop  = dt.time(23, 55)
         t = now.timetz()
         return start <= t <= stop
@@ -394,23 +414,16 @@ def run_live_loop(settings, symbols, broker_mode=None):
         settled_cash = _extract_settled_cash(bal)
         live_bp = _extract_buying_power(bal)
 
-        # NEW — cash-account friendly (ATT wins)
-        try:
-            att = broker.get_available_to_trade()
-        except Exception as e:
-            LOG.warning("get_available_to_trade() failed: %s", e)
-            att = 0.0
-
-        usable = float(att or 0.0)
-        LOG.info("[LIVE] funds: using AvailableToTrade=$%.2f", usable)
-        budget = usable
-
-        # afford qty strictly from BP and per-trade cap
-        def _afford_qty(price: float, max_per_trade: float) -> int:
-            cash_cap = min(available_cash, float(max_per_trade or available_cash))
-            if price and price > 0:
-                return int(cash_cap // price)
-            return 0
+        # --- funds log (matches the sizing pool) ---
+        pool, src = _pool_for_sizing(settled_cash, live_bp)
+        if mode == "LIVE":
+            sc_str = (
+                f"${settled_cash:.2f}"
+                if isinstance(settled_cash, (int, float))
+                else "None"
+            )
+            bp_str = f"${live_bp:.2f}" if isinstance(live_bp, (int, float)) else "None"
+            log.info("[LIVE] funds: settled=%s, bp=%s (using=%s)", sc_str, bp_str, src)
 
         # --- candidate collection + logging budget ---
         cand_limit = sget(settings, "candidate_log_limit", None)  # env/JSON override ok

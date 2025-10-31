@@ -1,0 +1,35 @@
+
+import os, re, requests
+root = r"C:\TradeAlerts"
+url  = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+
+# Try pandas if present; otherwise do a simple HTML parse
+syms = []
+try:
+    import pandas as pd  # optional
+    print("[info] using pandas to read_html")
+    df = pd.read_html(url, flavor=None)[0]
+    syms = [str(s).strip() for s in df["Symbol"].tolist()]
+except Exception as e:
+    print(f"[warn] pandas path failed ({e}); using simple parser")
+    html = requests.get(url, timeout=20).text
+    m = re.search(r'<table[^>]*wikitable[^>]*>(.*?)</table>', html, re.S|re.I)
+    if m:
+        tbl = m.group(1)
+        rows = re.findall(r'<tr[^>]*>(.*?)</tr>', tbl, re.S|re.I)
+        for row in rows[1:]:
+            cells = re.findall(r'<t[hd][^>]*>(.*?)</t[hd]>', row, re.S|re.I)
+            if cells:
+                cell0 = re.sub('<[^<]+?>','', cells[0]).strip()
+                if cell0 and cell0 != "Symbol":
+                    syms.append(cell0)
+
+syms = sorted(set(syms))
+clean = sorted({s.replace('.', '-') for s in syms})
+
+with open(os.path.join(root, "sp500_symbols.txt"), "w", encoding="utf-8") as f:
+    f.write("\n".join(syms))
+with open(os.path.join(root, "sp500_symbols_clean.txt"), "w", encoding="utf-8") as f:
+    f.write("\n".join(clean))
+
+print(f"[done] wrote {len(syms)} symbols to sp500_symbols.txt and {len(clean)} to sp500_symbols_clean.txt")

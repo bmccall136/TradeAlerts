@@ -1,0 +1,75 @@
+{% extends "layout.html" %}
+{% macro render_node(name, value, prefix="") -%}
+  {%- set path = (prefix ~ '.' ~ name) if prefix else name -%}
+  {%- if value is mapping %}
+    <div class="section">
+      <h4 style="margin:14px 0 6px;color:#e6e6e6;opacity:.9;">{{ path }}</h4>
+      <div class="grid">
+      {%- for k, v in value.items() %}
+        {{ render_node(k, v, path) }}
+      {%- endfor %}
+      </div>
+    </div>
+  {%- elif value is boolean %}
+    <label class="fld">
+      <span>{{ path }}</span>
+      <input type="checkbox" name="{{ path }}" {% if value %}checked{% endif %}>
+    </label>
+  {%- elif value is number %}
+    <label class="fld">
+      <span>{{ path }}</span>
+      <input type="number" step="any" name="{{ path }}" value="{{ value }}">
+    </label>
+  {%- elif value is sequence and (value is not string) %}
+    <label class="fld fld-wide">
+      <span>{{ path }} (JSON)</span>
+      <textarea name="{{ path }}" rows="4">{{ value|tojson }}</textarea>
+    </label>
+  {%- elif value is mapping %}
+    {# handled above #}
+  {%- else %}
+    <label class="fld">
+      <span>{{ path }}</span>
+      <input type="text" name="{{ path }}" value="{{ value }}">
+    </label>
+  {%- endif %}
+{%- endmacro %}
+
+{% block content %}
+<div class="settings-card">
+  <h2 style="margin:0 0 10px 0;">{{ title }}</h2>
+
+  {% with messages = get_flashed_messages(category_filter=['ok']) %}
+    {% if messages %}
+      <div class="flash-ok">{{ messages[0] }}</div>
+    {% endif %}
+  {% endwith %}
+
+  <form method="post" action="{{ save_url }}">
+    {# top-level may be a flat dict or nested; render recursively #}
+    <div class="grid">
+      {% for k, v in settings.items() %}
+        {{ render_node(k, v, '') }}
+      {% endfor %}
+    </div>
+
+    <div style="margin-top:16px;">
+      <button class="btn-simulation">Save</button>
+    </div>
+  </form>
+</div>
+
+<style>
+.settings-card{
+  max-width:1100px;margin:18px auto;padding:16px;background:#161723;border-radius:12px;
+}
+.grid{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;
+}
+.fld{display:flex;flex-direction:column;gap:6px;background:#11131b;padding:10px;border-radius:8px;border:1px solid #262837;}
+.fld-wide{grid-column:1 / -1;}
+.fld > span{opacity:.9;font-size:.95rem;}
+.flash-ok{margin:8px 0;padding:8px 10px;border:1px solid #2e7d32;border-radius:6px;background:#102012;}
+@media (max-width: 920px){ .grid{grid-template-columns:1fr;} }
+</style>
+{% endblock %}
