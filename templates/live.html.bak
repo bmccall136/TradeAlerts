@@ -182,11 +182,10 @@
 <div class="container">
   <div class="d-flex justify-content-between align-items-start mb-4" style="min-height:54px; position:relative;">
 
-    <!-- Left: (now empty to match layout spacing; you can remove entirely if desired) -->
-    <div>
-<div class="kv">
+<!-- Left spacer -->
+<div style="min-width:220px;">
+  <div class="kv"></div>
 </div>
-	</div>
 
     <!-- Center: title (no badge) -->
 <!-- Stats Blurb + Built-by (centered, two lines) -->
@@ -419,24 +418,30 @@ function updateHeaderKPIs(data) {
   if (pctEl){ pctEl.textContent = fmtPct(Number(m.unrealized_pnl_pct || 0)); pctEl.className = `small ${signClass(m.unrealized_pnl_pct)}`; }
 
 
-  // Realized buckets (right)
-	const rb = m.realized_buckets || {
-	  day:{pnl:0,pct:0}, week:{pnl:0,pct:0}, last_week:{pnl:0,pct:0}, month:{pnl:0,pct:0}, all:{pnl:0,pct:0}
-	};  const wires = [
-    ["kpi-r-day", rb.day?.pnl],             ["kpi-r-day-pct", rb.day?.pct]
-	["kpi-r-week", rb.week?.pnl],           ["kpi-r-week-pct", rb.week?.pct],
-    ["kpi-r-lastweek", rb.last_week?.pnl],  ["kpi-r-lastweek-pct", rb.last_week?.pct],
-    ["kpi-r-month", rb.month?.pnl],         ["kpi-r-month-pct", rb.month?.pct],
-    ["kpi-r-all", rb.all?.pnl],             ["kpi-r-all-pct", rb.all?.pct],
-  ];
-	for (let i=0;i<wires.length;i+=2){
-	  const [idVal, val] = wires[i];
-	  const [idPct, pct] = wires[i+1];
-	  const vEl = document.getElementById(idVal);
-	  const pEl = document.getElementById(idPct);
-	  if (vEl){ vEl.textContent = fmtUsd(Number(val||0)); vEl.className = `fw-semibold ${signClass(val)}`; }
-	  if (pEl){ pEl.textContent = fmtPct(Number(pct||0));  pEl.className = `small ${signClass(pct)}`; }
-	}/* ---------- detail (cash & PnL) cards ---------- */
+// Realized buckets (right)
+const rb = m.realized_buckets || {
+  day:{pnl:0,pct:0}, week:{pnl:0,pct:0}, last_week:{pnl:0,pct:0}, month:{pnl:0,pct:0}, all:{pnl:0,pct:0}
+};
+
+const wires = [
+  ["kpi-r-day",       rb.day?.pnl],       ["kpi-r-day-pct",       rb.day?.pct],
+  ["kpi-r-week",      rb.week?.pnl],      ["kpi-r-week-pct",      rb.week?.pct],
+  ["kpi-r-lastweek",  rb.last_week?.pnl], ["kpi-r-lastweek-pct",  rb.last_week?.pct],
+  ["kpi-r-month",     rb.month?.pnl],     ["kpi-r-month-pct",     rb.month?.pct],
+  ["kpi-r-all",       rb.all?.pnl],       ["kpi-r-all-pct",       rb.all?.pct],
+];
+
+for (let i = 0; i < wires.length; i += 2) {
+  const [idVal, val] = wires[i];
+  const [idPct, pct] = wires[i + 1];
+  const vEl = document.getElementById(idVal);
+  const pEl = document.getElementById(idPct);
+  if (vEl) { vEl.textContent = fmtUsd(Number(val || 0)); vEl.className = `fw-semibold ${signClass(val)}`; }
+  if (pEl) { pEl.textContent = fmtPct(Number(pct || 0));  pEl.className = `small ${signClass(pct)}`; }
+}
+// <-- ADD THIS to close the function properly
+}
+/* ---------- detail (cash & PnL) cards ---------- */
 function updateDetailPanels(data){
   const m  = data?.metrics || {};
   const a  = data?.account || {};

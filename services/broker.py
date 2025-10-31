@@ -504,7 +504,7 @@ class LiveBroker:
                     self._pp_cache.update(ts=now, pp=float(v))
                     return self._pp_cache["pp"]
 
-            v = cash.get("settledCash")
+            v = cash.get("cashAvailableForInvestment")
             self._pp_cache.update(
                 ts=now, pp=(float(v) if isinstance(v, (int, float)) else None)
             )

@@ -357,16 +357,12 @@ def run_live_loop(settings, symbols, broker_mode=None):
             log.warning("[LIVE] account snapshot failed: %s", e)
 
         settled_cash = _extract_settled_cash(bal)
-        live_bp = _extract_buying_power(bal)
+        live_bp     = _extract_buying_power(bal)
 
         # --- funds log (matches the sizing pool) ---
         pool, src = _pool_for_sizing(settled_cash, live_bp)
         if mode == "LIVE":
-            sc_str = (
-                f"${settled_cash:.2f}"
-                if isinstance(settled_cash, (int, float))
-                else "None"
-            )
+            sc_str = f"${settled_cash:.2f}" if isinstance(settled_cash, (int, float)) else "None"
             bp_str = f"${live_bp:.2f}" if isinstance(live_bp, (int, float)) else "None"
             log.info("[LIVE] funds: settled=%s, bp=%s (using=%s)", sc_str, bp_str, src)
 
