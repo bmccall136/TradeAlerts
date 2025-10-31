@@ -198,314 +198,452 @@
   <div class="by">Built by <b>Ben McCall &amp; Max</b></div>
 </div>
 
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>TradeAlerts – Live</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
-  <style>
-    :root{
-      --bg:#0b0b0d; --panel:#1b1d21; --muted:#a9a9a9;
-      --txt:#f2f2f2; --hi:#ffeb3b;
-      --pos:#3bd67a; --neg:#ff5c5c;
-      --grid:#2a2d33;
-    }
-    html,body{background:var(--bg); color:var(--txt); font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial,"Noto Sans",sans-serif;}
-    a, .link { color: var(--hi); text-decoration: none; }
-    .topbar{padding:10px 14px; border-bottom:1px solid #15161a; position:sticky; top:0; z-index:5; background:rgba(11,11,13,.92); backdrop-filter: blur(3px);}
-    .brand{font-weight:700; letter-spacing:.5px;}
-    .rocket{filter:drop-shadow(0 0 6px rgba(255,235,59,.4))}
-    .dot{width:8px; height:8px; border-radius:50%; display:inline-block; margin-left:8px; background: #27d857; box-shadow:0 0 10px #27d857; vertical-align:middle;}
-    .panel{background:var(--panel); border-radius:10px; padding:16px; box-shadow:0 2px 10px rgba(0,0,0,.25)}
-    .kpi{min-height:92px;}
-    .muted{color:var(--muted)}
-    .table{--bs-table-bg:transparent; --bs-table-color:var(--txt);}
-    .table th, .table td{border-color:#2a2d33 !important;}
-    .th { color:#ffd84b; font-weight:600; letter-spacing:.25px; }
-    .text-pos{color:var(--pos) !important;}
-    .text-neg{color:var(--neg) !important;}
-    .mono{font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;}
-    /* Reliable center for the headline blurb */
-    .headline-wrap{position:relative; min-height:56px;}
-    .headline{
-      position:absolute; left:50%; transform:translateX(-50%);
-      top:0; text-align:center; white-space:nowrap;
-      font-size:.95rem; letter-spacing:.2px; color:#d9d9d9;
-      right:auto !important;
-    }
-    /* skinny separators inside left/right KPI */
-    .grid-mini{display:grid; grid-template-columns:1fr auto; gap:.25rem .75rem;}
-  </style>
-</head>
-<body>
-  <!-- top nav -->
-  <div class="topbar d-flex align-items-center justify-content-between">
-    <div class="d-flex align-items-center gap-3">
-      <div class="brand">
-        <span class="rocket">🚀</span>
-        <span>TradeAlerts</span>
-        <span class="rocket">🚀</span>
-      </div>
-      <div class="d-flex align-items-center gap-3 small">
-        <a href="/simulation" class="link">Simulation</a>
-        <a href="/backtest" class="link">Backtest</a>
-        <span class="fw-bold">Live</span>
-      </div>
-    </div>
-    <div class="small">
-      <span class="me-2">E*TRADE API</span><span class="dot" id="api-dot"></span>
-    </div>
-  </div>
+    <!-- Right: Account type + E*TRADE status block (keep as you have it) -->
+	<div class="d-flex flex-column align-items-end" style="gap:6px; min-width: 220px;">
+	  <div class="fw-bold" style="white-space: nowrap;">
+		Account type: {{ account.get('account_type_display') or account.get('account_type') or 'Cash' }}
+	  </div>
 
-  <!-- centered headline -->
-  <div class="container-fluid pt-2 headline-wrap">
-    <div class="headline">
-      <span id="about-line-1">
-        Started with <b class="mono" id="about-start-cash">$—</b> on <b id="about-start-date">—</b>.
-        This app has since made <b class="mono" id="about-since-pnl">$—</b> at <b id="about-since-pct">—</b>.
-      </span>
-      <div class="small">Built by Ben McCall &amp; Max</div>
-    </div>
-  </div>
+	  <!-- Add this single line for the badge; remove any server-side “Acct: …” lines -->
+	  <div class="small text-muted" style="white-space:nowrap;">Acct: <span id="acct-badge">—</span></div>
 
-  <!-- KPI tiles -->
-  <div class="container-fluid mt-3">
-    <div class="row g-3">
-      <!-- LEFT: Value -->
-      <div class="col-12 col-lg-4">
-        <div class="panel kpi h-100">
-          <div class="text-uppercase small mb-1">Value</div>
-          <div class="fs-2 fw-bold mono" id="kpi-value">—</div>
-          <div class="grid-mini mt-2 small">
-            <div>Buying Power</div><div class="mono text-end" id="kpi-bp">—</div>
-            <div>Value (BP + Positions)</div><div class="mono text-end" id="kpi-bpplus">—</div>
-            <div>Account</div><div class="mono text-end" id="kpi-acct">—</div>
-          </div>
-        </div>
-      </div>
-      <!-- CENTER: Unrealized P&L -->
-      <div class="col-12 col-lg-4">
-        <div class="panel kpi h-100 text-center">
-          <div class="text-uppercase small mb-1">P&amp;L (Unrealized)</div>
-          <div class="fs-2 fw-bold mono" id="kpi-upl">—</div>
-          <div class="small mono" id="kpi-upl-pct">—</div>
-          <div class="small mono text-muted mt-1" id="kpi-posval">—</div>
-        </div>
-      </div>
-      <!-- RIGHT: Realized buckets -->
-      <div class="col-12 col-lg-4">
-        <div class="panel kpi h-100">
-          <div class="d-flex justify-content-between">
-            <div class="text-uppercase small">Realized P&amp;L</div>
-            <div class="small">D / W / LW / M / All</div>
-          </div>
-          <div class="mt-2 small">
-            <div class="d-flex justify-content-between"><span>Day</span>  <span class="mono" id="rb-day">$0.00</span>  <span class="mono" id="rb-day-pct"   ></span></div>
-            <div class="d-flex justify-content-between"><span>Week</span> <span class="mono" id="rb-week">$0.00</span> <span class="mono" id="rb-week-pct"  ></span></div>
-            <div class="d-flex justify-content-between"><span>Last Week</span><span class="mono" id="rb-lw">$0.00</span> <span class="mono" id="rb-lw-pct"   ></span></div>
-            <div class="d-flex justify-content-between"><span>Month</span><span class="mono" id="rb-month">$0.00</span><span class="mono" id="rb-month-pct" ></span></div>
-            <div class="d-flex justify-content-between"><span>All</span>  <span class="mono" id="rb-all">$0.00</span>  <span class="mono" id="rb-all-pct"   ></span></div>
-          </div>
+	  <div class="status-block" style="background:#000;color:#ffd600;padding:8px;border-radius:6px;">
+		<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+		  <div>E*TRADE API</div>
+		  <div style="color:#39d353;">●</div>
+		</div>
+	  </div>
+	</div>
+  </div>
+</div>
+
+<!-- BEGIN: Header KPI Row -->
+<div class="container-fluid mt-2">
+  <div class="row g-3 align-items-stretch">
+    <!-- Cash (left) -->
+    <div class="col-12 col-md-4">
+      <div class="card bg-dark border-0 shadow-sm h-100">
+        <div class="card-body kpi-card d-flex flex-column justify-content-center">
+          <div class="text-uppercase small">Cash</div>
+          <div id="kpi-cash" class="fs-3 fw-bold"></div>
+			<div class="mt-2 small kpi-cash-extra">
+			<div class="cash-rows">
+			  <div>Buying Power</div><div id="cash-bp"   class="fw-semibold text-end"></div>
+			  <div>Equity Value</div><div id="cash-eq"   class="fw-semibold text-end"></div>
+			  <div>Settled Cash</div><div id="cash-sc"   class="fw-semibold text-end"></div>
+			  <div>Account</div> <div id="cash-acct" class="fw-semibold text-end"></div>
+
+			</div>
+
+			<style>
+			  .cash-rows{
+				display:grid;
+				grid-template-columns: 1fr auto;
+				column-gap:.75rem; row-gap:.25rem;
+				white-space:nowrap;
+			  }
+			</style>
+			</div>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- Holdings -->
-  <div class="container-fluid mt-4">
-    <div class="th mb-2">Holdings</div>
-    <div class="table-responsive">
-      <table class="table table-sm align-middle">
-        <thead>
-          <tr class="th">
-            <th>Symbol</th>
-            <th>Opened (ET)</th>
-            <th class="text-end">Last Price</th>
-            <th class="text-end">Qty</th>
-            <th class="text-end">Price Paid</th>
-            <th class="text-end">Day P&amp;L</th>
-            <th class="text-end">Day P&amp;L %</th>
-            <th class="text-end">Total P&amp;L</th>
-            <th class="text-end">Total P&amp;L %</th>
-            <th class="text-end">Value</th>
-          </tr>
-        </thead>
-        <tbody id="holdings-body"></tbody>
-      </table>
+    <!-- P&L (center) -->
+    <div class="col-12 col-md-4">
+      <div class="card bg-dark border-0 shadow-sm h-100 text-center">
+        <div class="card-body kpi-card d-flex flex-column justify-content-center">
+          <div class="text-uppercase small">P&amp;L (Unrealized)</div>
+          <div id="kpi-pnl" class="fs-3 fw-bold"></div>
+          <div id="kpi-pnl-pct" class="small"></div>
+		  <div id="kpi-posval" class="small text-muted mt-1"></div>
+        </div>
+      </div>
+    </div>
+
+<!-- Realized P&L buckets (right) -->
+<div class="col-12 col-md-4">
+  <div class="card bg-dark border-0 shadow-sm h-100">
+    <div class="card-body kpi-card">
+		<div class="d-flex justify-content-between align-items-center">
+		  <div class="text-uppercase small">Realized P&amp;L</div>
+		  <div class="small">D / W / LW / M / All</div>
+		</div>
+
+		<div class="kpi-realized mt-2">
+		  <!-- NEW: Day row -->
+		  <div class="rline">
+			<span class="small">Day</span>
+			<span id="kpi-r-day" class="fw-semibold"></span>
+			<span id="kpi-r-day-pct" class="small"></span>
+		  </div>
+
+		  <div class="rline mt-1">
+			<span class="small">Week</span>
+			<span id="kpi-r-week" class="fw-semibold"></span>
+			<span id="kpi-r-week-pct" class="small"></span>
+		  </div>
+
+		  <div class="rline mt-1">
+			<span class="small">Last Week</span>
+			<span id="kpi-r-lastweek" class="fw-semibold"></span>
+			<span id="kpi-r-lastweek-pct" class="small"></span>
+		  </div>
+
+		  <div class="rline mt-1">
+			<span class="small">Month</span>
+			<span id="kpi-r-month" class="fw-semibold"></span>
+			<span id="kpi-r-month-pct" class="small"></span>
+		  </div>
+
+		  <div class="rline mt-1">
+			<span class="small">All</span>
+			<span id="kpi-r-all" class="fw-semibold"></span>
+			<span id="kpi-r-all-pct" class="small"></span>
+		  </div>
+		</div>
+     </div>
     </div>
   </div>
+</div>
 
-  <!-- Recent Trades -->
-  <div class="container-fluid mt-4 mb-5">
-    <div class="th mb-2">Recent Trades</div>
-    <div class="table-responsive">
-      <table class="table table-sm align-middle">
-        <thead>
-          <tr class="th">
-            <th>Time (ET)</th>
-            <th>Symbol</th>
-            <th>Side</th>
-            <th class="text-end">Qty</th>
-            <th class="text-end">Price</th>
-            <th class="text-end">Price Paid</th>
-            <th class="text-end">P&amp;L</th>
-            <th class="text-end">P&amp;L %</th>
-          </tr>
-        </thead>
-        <tbody id="trades-body"></tbody>
-      </table>
-    </div>
-  </div>
+<!-- END: Summary Detail Row -->
+<!-- END: Header KPI Row -->
+<!-- ========================== -->
+<!-- Holdings (same table classes/order as Sim) -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="text-white mb-0">Holdings</h3>
+</div>
 
-  <script>
-    // ---------- helpers ----------
-    const $ = sel => document.querySelector(sel);
-    const fmtMoney = v => {
-      const n = Number(v);
-      if (!isFinite(n)) return '—';
-      return n < 0 ? `-$${Math.abs(n).toFixed(2)}` : `$${n.toFixed(2)}`;
-    };
-    const fmtPct = v => {
-      const n = Number(v);
-      if (!isFinite(n)) return '—';
-      return (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
-    };
-    const paint = (el, val) => {
-      const n = Number(val);
-      el.classList.remove('text-pos','text-neg');
-      if (isFinite(n)) el.classList.add(n > 0 ? 'text-pos' : (n < 0 ? 'text-neg' : ''));
-    };
+<div class="table-responsive">
+  <table class="table table-striped table-bordered alerts-table text-white">
+    <thead class="table-light">
+      <tr>
+        <th>Symbol</th>
+		<th>Opened (ET)</th>
+        <th>Last Price</th>
+        <th>Qty</th>
+        <th>Price Paid</th>
+        <th>Day P&L</th>
+        <th>Day P&L %</th>
+        <th>Total P&L</th>
+        <th>Total P&L %</th>
+        <th>Value</th>
+      </tr>
+    </thead>
+	<!-- Holdings -->
+	<tbody id="holdings-body"></tbody>
+	  </table>
+	</div>
 
-    // ---------- renderers ----------
-    function renderHoldings(rows){
-      const tb = $('#holdings-body');
-      tb.innerHTML = '';
-      (rows||[]).forEach(r=>{
-        const tr = document.createElement('tr');
-
-        const td = (txt, cls='')=>{
-          const el = document.createElement('td');
-          el.className = cls;
-          el.textContent = txt;
-          return el;
-        };
-
-        tr.append(
-          td(r.symbol || ''),
-          td(r.opened_et || r.open_time || ''),
-          td((r.last_price!=null? r.last_price.toFixed(2):'—'), 'text-end mono'),
-          td((r.qty!=null? r.qty:'—'), 'text-end mono'),
-          td((r.price_paid!=null? r.price_paid.toFixed(2):'—'), 'text-end mono'),
-
-          td((r.day_pl!=null? fmtMoney(r.day_pl):'—'), 'text-end mono'),
-          td((r.day_pl_pct!=null? fmtPct(r.day_pl_pct):'—'), 'text-end mono'),
-          td((r.total_pl!=null? fmtMoney(r.total_pl):'—'), 'text-end mono'),
-          td((r.total_pl_pct!=null? fmtPct(r.total_pl_pct):'—'), 'text-end mono'),
-          td((r.value!=null? fmtMoney(r.value):'—'), 'text-end mono'),
-        );
-
-        // paint the P/L cells
-        paint(tr.children[5], r.day_pl);
-        paint(tr.children[6], r.day_pl_pct);
-        paint(tr.children[7], r.total_pl);
-        paint(tr.children[8], r.total_pl_pct);
-
-        tb.appendChild(tr);
-      });
+<h3 class="section-title">Recent Trades</h3>
+<div class="table-responsive">
+  <table class="table table-striped table-bordered alerts-table text-white">
+	<thead class="table-light">
+	  <tr>
+		<th>Time (ET)</th>
+		<th>Symbol</th>
+		<th>Side</th>
+		<th>Qty</th>
+		<th>Price</th>
+		<th>Price Paid</th>
+		<th>P&L</th>
+		<th>P&L %</th>
+	  </tr>
+	</thead>
+    <tbody id="trades-body"></tbody>
+  </table>
+</div>
+<script>
+(() => {
+/* ---------- helpers ---------- */
+function preferNumericAccountId(a){
+  const num = (a?.account_id ?? a?.accountId ?? "").toString().trim();
+  const key = (a?.account_key ?? a?.accountIdKey ?? "").toString().trim();
+  if (/^\d{6,}$/.test(num)) return { show:num, type:'numeric' };
+  if (key)                  return { show:key, type:'key' };
+  return { show:"", type:'none' };
+}
+function maskAcctPretty(id){
+  const s = String(id||"");
+  if (!s) return "—";
+  if (/^\d+$/.test(s)) return "••••" + s.slice(-4);
+  if (s.length > 9)    return s.slice(0,4) + "…" + s.slice(-5);
+  return s;
+}
+function firstPositive(values){
+  for (const v of values){ const n = Number(v); if (Number.isFinite(n) && n > 0) return n; }
+  return null;
+}
+function set(sel, val){ const el = document.querySelector(sel); if (el) el.textContent = (val ?? '—'); }
+function money(x){ x = Number(x); return Number.isFinite(x) ? `$${x.toFixed(2)}` : '$0.00'; }
+function pct(x){ x = Number(x); return Number.isFinite(x) ? `${x.toFixed(2)}%` : '0.00%'; }
+function paintStatus(ok){ const dot = document.querySelector('.status-block > div > div:last-child'); if (dot) dot.style.color = ok ? '#39d353' : '#f05454'; }
+function colorize(el, num){
+  if (!el) return;
+  el.classList.remove('pos','neg');
+  const n = Number(num);
+  if (Number.isFinite(n)) { if (n > 0) el.classList.add('pos'); else if (n < 0) el.classList.add('neg'); }
+}
+function paintSign(sel, num){ colorize(document.querySelector(sel), num); }
+function fmtET(x){
+  try {
+    const ms = Number(x);
+    if (Number.isFinite(ms) && ms > 10_000_000_000) {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+      }).format(new Date(ms)).replace(',', '');
     }
+    const s = String(x || '').trim();
+    if (!s) return '—';
+    if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(s)) return s.replace('T',' ');
+    return s;
+  } catch { return String(x || '—'); }
+}
+function fmtUsd(x){ if (x==null) return '—'; const v=Number(x); return v<0?`-$${Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`:`$${v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`; }
+function fmtPct(x){ if (x==null) return '—'; return `${Number(x).toFixed(2)}%`; }
+function signClass(v){ const n=Number(v); if (!Number.isFinite(n)) return "text-zero"; return n>0?"text-pos":(n<0?"text-neg":"text-zero"); }
 
-    function renderTrades(rows){
-      const tb = $('#trades-body');
-      tb.innerHTML = '';
-      (rows||[]).forEach(r=>{
-        const tr = document.createElement('tr');
-        const td = (txt, cls='')=>{
-          const el = document.createElement('td');
-          el.className = cls;
-          el.textContent = txt;
-          return el;
-        };
-        tr.append(
-          td(r.time || ''),
-          td(r.symbol || ''),
-          td((r.action || '').toUpperCase()),
-          td((r.qty!=null? r.qty:'—'), 'text-end mono'),
-          td((r.price!=null? r.price.toFixed(2):'—'), 'text-end mono'),
-          td((r.price_paid!=null? r.price_paid.toFixed(2):'—'), 'text-end mono'),
-          td((r.pl!=null? fmtMoney(r.pl):'—'), 'text-end mono'),
-          td((r.pl_pct!=null? fmtPct(r.pl_pct):'—'), 'text-end mono'),
-        );
-        paint(tr.children[6], r.pl);
-        paint(tr.children[7], r.pl_pct);
-        tb.appendChild(tr);
-      });
+/* ---------- header KPIs ---------- */
+function updateHeaderKPIs(data) {
+  const m = (data && data.metrics) || {};
+
+  // Cash (left)
+  const cashEl = document.getElementById("kpi-cash");
+  if (cashEl) cashEl.textContent = fmtUsd(Number(m.cash_balance || 0));
+
+  // P&L (center) — unrealized
+  const pnlEl = document.getElementById("kpi-pnl");
+  const pctEl = document.getElementById("kpi-pnl-pct");
+  if (pnlEl){ pnlEl.textContent = fmtUsd(Number(m.unrealized_pnl || 0)); pnlEl.className = `fs-3 fw-bold ${signClass(m.unrealized_pnl)}`; }
+  if (pctEl){ pctEl.textContent = fmtPct(Number(m.unrealized_pnl_pct || 0)); pctEl.className = `small ${signClass(m.unrealized_pnl_pct)}`; }
+
+
+  // Realized buckets (right)
+	const rb = m.realized_buckets || {
+	  day:{pnl:0,pct:0}, week:{pnl:0,pct:0}, last_week:{pnl:0,pct:0}, month:{pnl:0,pct:0}, all:{pnl:0,pct:0}
+	};  const wires = [
+    ["kpi-r-day", rb.day?.pnl],             ["kpi-r-day-pct", rb.day?.pct]
+	["kpi-r-week", rb.week?.pnl],           ["kpi-r-week-pct", rb.week?.pct],
+    ["kpi-r-lastweek", rb.last_week?.pnl],  ["kpi-r-lastweek-pct", rb.last_week?.pct],
+    ["kpi-r-month", rb.month?.pnl],         ["kpi-r-month-pct", rb.month?.pct],
+    ["kpi-r-all", rb.all?.pnl],             ["kpi-r-all-pct", rb.all?.pct],
+  ];
+	for (let i=0;i<wires.length;i+=2){
+	  const [idVal, val] = wires[i];
+	  const [idPct, pct] = wires[i+1];
+	  const vEl = document.getElementById(idVal);
+	  const pEl = document.getElementById(idPct);
+	  if (vEl){ vEl.textContent = fmtUsd(Number(val||0)); vEl.className = `fw-semibold ${signClass(val)}`; }
+	  if (pEl){ pEl.textContent = fmtPct(Number(pct||0));  pEl.className = `small ${signClass(pct)}`; }
+	}/* ---------- detail (cash & PnL) cards ---------- */
+function updateDetailPanels(data){
+  const m  = data?.metrics || {};
+  const a  = data?.account || {};
+  const ui = a?.ui || {};
+
+  // Account badge + cash card “Account”
+  const { show:idToShow } = preferNumericAccountId(a);
+  const badge = document.getElementById('acct-badge');
+  if (badge){ badge.textContent = maskAcctPretty(idToShow); badge.title = idToShow; }
+  const acctEl = document.getElementById('cash-acct');
+  if (acctEl){ acctEl.textContent = (/^\d+$/.test(idToShow) ? idToShow : maskAcctPretty(idToShow)); acctEl.title = idToShow; }
+
+  // Cash details
+  const bp = firstPositive([ a.buying_power, a.available_funds, a.accountBalance?.marginBuyingPower, a.cash_balance, a.cash, a.settled_cash ]);
+  const aw = firstPositive([ ui.available_to_withdraw, a.available_to_withdraw, a.cashAvailableForWithdrawal, a.cashAvailableForInvestment, a.available_funds ]);
+  const eq = firstPositive([ a.equity_value, m.total_value ]);
+  const sc = firstPositive([ a.settled_cash, a.cash_balance, a.cash ]);
+
+  set('#cash-bp',  fmtUsd(bp ?? 0));
+  set('#cash-aw',  fmtUsd(aw ?? 0));
+  set('#cash-eq',  fmtUsd(eq ?? 0));
+  set('#cash-sc',  fmtUsd(sc ?? 0));
+
+  // P&L detail wiring (if you keep these extra spans)
+  set('#pl-total', fmtUsd(Number(m.total_value || 0)));
+  set('#pl-pos',   fmtUsd(Number(m.positions_value || 0)));
+  set('#pl-u',     fmtUsd(Number(m.unrealized_pnl || 0)));
+  set('#pl-upct',  fmtPct(Number(m.unrealized_pnl_pct || 0)));
+  set('#pl-r',     fmtUsd(Number(m.realized_pnl || 0)));
+  set('#pl-rpct',  fmtPct(Number(m.realized_pnl_pct || 0)));
+}
+function updateAbout(data) {
+  const a = (data && data.about) || {};
+  const cash = Number(a.start_cash ?? 0);
+  const pnl  = Number(a.since_pnl  ?? 0);
+  const pct  = Number(a.since_pct  ?? 0);
+  const when = a.start_date || "—";
+
+  // Update the IDs that actually exist in the hero blurb
+  const sc = document.getElementById("about-start-cash");
+  const sd = document.getElementById("about-start-date");
+  const sp = document.getElementById("about-since-pnl");
+  const spc = document.getElementById("about-since-pct");
+
+  if (sc)  sc.textContent  = `$${cash.toFixed(2)}`;
+  if (sd)  sd.textContent  = when;
+  if (sp)  sp.textContent  = `$${pnl.toFixed(2)}`;
+  if (spc) spc.textContent = `${pct.toFixed(2)}%`;
+
+  // Backward-compat: if a single blurb element ever exists, populate it too
+  const blurb = document.getElementById("since-start-blurb");
+  if (blurb) {
+    blurb.textContent =
+      `Started with $${cash.toFixed(2)} on ${when}. ` +
+      `This app has since made $${pnl.toFixed(2)} at ${pct.toFixed(2)}%.`;
+  }
+}
+
+/* ---------- main refresh ---------- */
+async function refreshLive() {
+  try {
+    const DEFAULT_START = '2025-08-22';
+    const start = localStorage.getItem('live_start') || DEFAULT_START;
+    const qs = new URLSearchParams({ start, debug: '1' });
+    const r = await fetch(`/live/status?${qs.toString()}`);
+    const d = await r.json();
+    if (!d || d.ok === false) { paintStatus(false); return; }
+    paintStatus(true);
+
+    const m  = d.metrics  || {};
+    const a  = d.account  || {};
+
+	// Header + detail cards
+	updateHeaderKPIs(d);
+	const posEl = document.getElementById('kpi-posval');
+	if (posEl) posEl.textContent = `Positions Value ${fmtUsd(Number(m.positions_value || 0))}`;
+	updateDetailPanels(d);
+
+	// NEW: show the blurb + credits
+	updateAbout(d);
+
+
+    // PDT counter
+    const pdt = m.daytrades_pdt5 || {};
+    const pdtTotal = Number(pdt.total || 0);
+    set('#dt_pdt5', `${pdtTotal} in last 5 days`);
+    const pdtEl = document.querySelector('#dt_pdt5');
+    if (pdtEl) { pdtEl.classList.remove('pos','neg'); if (pdtTotal >= 3) pdtEl.classList.add('neg'); }
+
+    // Buying power (fallback to last good value)
+    let bp = firstPositive([
+      a && a.buying_power, a && a.available_funds,
+      a && a.accountBalance && a.accountBalance.marginBuyingPower,
+      a && a.cash_balance, a && a.cash, a && a.settled_cash
+    ]);
+    if (bp == null) {
+      const last = Number(localStorage.getItem('bp_last') || '');
+      if (Number.isFinite(last) && last > 0) bp = last;
+    } else {
+      localStorage.setItem('bp_last', String(bp));
     }
+    set('#bp', money(bp ?? 0));
 
-    // ---------- main refresh ----------
-    async function refresh(){
-      try{
-        const res = await fetch('/live/status?debug=0', {cache:'no-store'});
-        const j = await res.json();
+    // Other summary bits if you keep them
+    set('#sc', money(a?.settled_cash));
+    set('#eq', money(firstPositive([a?.equity_value]) ?? ((a?.settled_cash || 0) + (m?.positions_value || 0))));
+    set('#utotal', money(m.total_value));
+    set('#posval', money(m.positions_value));
 
-        // API dot
-        $('#api-dot').style.background = j.etrade_ok ? '#27d857' : '#d82727';
-        $('#api-dot').style.boxShadow = j.etrade_ok ? '0 0 10px #27d857' : '0 0 10px #d82727';
+    // Tables
+    renderHoldings(d.holdings || []);
+    renderTrades(d.trades || []);
+  } catch (e) {
+    paintStatus(false);
+    console.error('refreshLive failed:', e);
+  }
+}
 
-        // headline/about
-        if (j.about){
-          $('#about-start-cash').textContent = fmtMoney(j.about.start_cash ?? '—');
-          $('#about-start-date').textContent = j.about.start_date ?? '—';
-          $('#about-since-pnl').textContent  = fmtMoney(j.about.since_pnl ?? '—');
-          $('#about-since-pct').textContent  = fmtPct(j.about.since_pct ?? '—');
-          paint($('#about-since-pnl'), j.about.since_pnl);
-          paint($('#about-since-pct'), j.about.since_pct);
-        }
+/* ---------- holdings table ---------- */
+function renderHoldings(rows) {
+  const tb = document.querySelector('#holdings-body');
+  if (!tb) return;
+  tb.innerHTML = '';
+  if (!rows.length){
+    tb.innerHTML = `<tr><td class="muted" colspan="10">No holdings.</td></tr>`;
+    return;
+  }
+  for (const h of rows){
+    const sym  = (h.symbol || '').toUpperCase();
+    const qty  = h.qty ?? 0;
+    const openedTxt = h.open_time ? String(h.open_time) : (h.open_time_ms ? fmtET(h.open_time_ms) : '—');
+    const lastNum = (h.last_price != null && !isNaN(Number(h.last_price))) ? Number(h.last_price) : null;
+    const lastTxt = (lastNum == null) ? '—' : money(lastNum);
+    const paidTxt = (h.price_paid != null) ? money(h.price_paid) : '—';
+    let value = h.value;
+    if (value == null && lastNum != null && Number.isFinite(qty)) value = lastNum * qty;
+    const valueTxt = (value == null) ? '—' : money(value);
+    const dpln = (h.day_pl != null)       ? Number(h.day_pl)       : null;
+    const dppn = (h.day_pl_pct != null)   ? Number(h.day_pl_pct)   : null;
+    const tpln = (h.total_pl != null)     ? Number(h.total_pl)     : null;
+    const tppn = (h.total_pl_pct != null) ? Number(h.total_pl_pct) : null;
 
-        // left tile (Value)
-        const acct = j.account || {};
-        const metrics = j.metrics || {};
-        const bp      = acct.buying_power ?? 0;
-        const posVal  = metrics.positions_value ?? 0;
-        $('#kpi-value').textContent = (posVal ? fmtMoney(posVal) : '—');
-        $('#kpi-bp').textContent    = fmtMoney(bp);
-        $('#kpi-bpplus').textContent= fmtMoney(bp + (posVal||0));
-        $('#kpi-acct').textContent  = (acct.account_key || acct.account_id || '—').toString().slice(-4);
+    tb.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td>${sym}</td>
+        <td>${openedTxt}</td>
+        <td>${lastTxt}</td>
+        <td>${qty}</td>
+        <td>${paidTxt}</td>
+        <td class="day-pl">${dpln!=null?money(dpln):'—'}</td>
+        <td class="day-pl-pct">${dppn!=null?pct(dppn):'—'}</td>
+        <td class="tot-pl">${tpln!=null?money(tpln):'—'}</td>
+        <td class="tot-pl-pct">${tppn!=null?pct(tppn):'—'}</td>
+        <td>${valueTxt}</td>
+      </tr>`);
+    const row = tb.lastElementChild;
+    colorize(row.querySelector('.day-pl'),     dpln);
+    colorize(row.querySelector('.day-pl-pct'), dppn);
+    colorize(row.querySelector('.tot-pl'),     tpln);
+    colorize(row.querySelector('.tot-pl-pct'), tppn);
+  }
+}
 
-        // center tile (Unrealized)
-        const upl = metrics.unrealized_pnl ?? 0;
-        const upct= metrics.unrealized_pnl_pct ?? 0;
-        $('#kpi-upl').textContent    = fmtMoney(upl);
-        $('#kpi-upl-pct').textContent= fmtPct(upct);
-        $('#kpi-posval').textContent = 'Positions Value ' + fmtMoney(posVal||0);
-        paint($('#kpi-upl'), upl);
-        paint($('#kpi-upl-pct'), upct);
-
-        // realized buckets tile
-        const rb = (metrics.realized_buckets || j.kpis?.realized) || {};
-        const setRB = (idV, idP, rec) => {
-          const v = rec?.pnl ?? 0, p = rec?.pct ?? 0;
-          $(idV).textContent = fmtMoney(v);
-          $(idP).textContent = fmtPct(p);
-          paint($(idV), v); paint($(idP), p);
-        };
-        setRB('#rb-day',   '#rb-day-pct',   rb.day   || j.kpis?.day);
-        setRB('#rb-week',  '#rb-week-pct',  rb.week  || j.kpis?.week);
-        setRB('#rb-lw',    '#rb-lw-pct',    rb.last_week || rb.lastWeek);
-        setRB('#rb-month', '#rb-month-pct', rb.month);
-        setRB('#rb-all',   '#rb-all-pct',   rb.all);
-
-        // tables
-        renderHoldings(j.holdings || []);
-        renderTrades(j.trades || []);
-      }catch(e){
-        console.error('refresh failed', e);
-      }
+/* ---------- trades table ---------- */
+function renderTrades(rows) {
+  const tb = document.querySelector('#trades-body');
+  if (!tb) return;
+  tb.innerHTML = '';
+  if (!rows || !rows.length) {
+    tb.innerHTML = `<tr><td class="muted" colspan="8">No trades yet</td></tr>`;
+    return;
+  }
+  for (const t of rows) {
+    const timeTxt = (t.time && String(t.time)) || (t.time_ms != null ? fmtET(t.time_ms) : '—');
+    const sym   = (t.symbol || '').toUpperCase();
+    const side  = t.action || '';
+    const qty   = Number.isFinite(+t.qty) ? +t.qty : 0;
+    let px    = (t.price      != null) ? Number(t.price)      : null;
+    let paid  = (t.price_paid != null) ? Number(t.price_paid) : null;
+    let pl    = (t.pl         != null) ? Number(t.pl)         : null;
+    let plpct = (t.pl_pct     != null) ? Number(t.pl_pct)     : null;
+    if (side === 'BUY') {
+      if (paid == null && px != null) paid = px;
+      if (pl == null)    pl = 0;
+      if (plpct == null) plpct = 0;
     }
+    tb.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td>${timeTxt}</td>
+        <td>${sym}</td>
+        <td>${side}</td>
+        <td>${qty}</td>
+        <td>${px==null?'—':money(px)}</td>
+        <td class="tr-paid">${paid==null?'—':money(paid)}</td>
+        <td class="tr-pl">${pl==null?'—':money(pl)}</td>
+        <td class="tr-pl-p">${plpct==null?'—':pct(plpct)}</td>
+      </tr>`);
+    const row = tb.lastElementChild;
+    if (row) { colorize(row.querySelector('.tr-pl'), pl); colorize(row.querySelector('.tr-pl-p'), plpct); }
+  }
+}
 
-    refresh();
-    setInterval(refresh, 30000);
-  </script>
-</body>
-</html>
+/* ---------- boot ---------- */
+document.addEventListener('DOMContentLoaded', () => {
+  refreshLive().catch(console.error);
+  setInterval(refreshLive, 30000);
+});
+})();
+</script>
 {% endblock %}

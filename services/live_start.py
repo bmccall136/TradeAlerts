@@ -1,129 +1,84 @@
 #!/usr/bin/env python3
+# live_start.py — drop-in launcher for LIVE mode
 import json
 import logging
 import os
 import sys
-import time
+from dataclasses import fields
 
+# --- Logging setup ---
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
-log = logging.getLogger("launcher")
+log = logging.getLogger("live_start")
 
+# --- Paths ---
 ROOT = os.path.abspath(os.path.dirname(__file__))
-SETTINGS_PATH = os.path.join(ROOT, "live_settings.json")
-SYMS_RAW = os.path.join(ROOT, "sp500_symbols.txt")
-SYMS_CLEAN = os.path.join(ROOT, "sp500_symbols_clean.txt")
-WIKI_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+DEFAULT_SETTINGS = os.path.join(ROOT, "live_settings.json")
+DEFAULT_SP500 = os.path.join(ROOT, "sp500_symbols.txt")  # one symbol per line
 
 
-def load_json(path):
+def _read_json(path: str) -> dict:
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
-def _norm_mode(v):
-    v = str(v or "SIM").strip().upper()
-    return "LIVE" if v in ("LIVE", "ETRADE", "REAL") else "SIM"
+def _load_symbols(path: str) -> list[str]:
+    # Fall back to C:\TradeAlerts\sp500_symbols.txt if relative one not found
+    candidates = [
+        path,
+        DEFAULT_SP500,
+        os.path.join("C:\\TradeAlerts", "sp500_symbols.txt"),
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            with open(p, encoding="utf-8") as f:
+                syms = [ln.strip().split(",")[0].upper() for ln in f if ln.strip()]
+            # de-dup while preserving order
+            seen, out = set(), []
+            for s in syms:
+                if s and s not in seen:
+                    seen.add(s)
+                    out.append(s)
+            return out
+    raise FileNotFoundError("Could not find sp500_symbols.txt in expected locations.")
 
 
-def _fetch_html(url: str) -> str:
-    import requests
-    hdrs = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:143.0) Gecko/20100101 Firefox/143.0",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Cache-Control": "no-cache",
-    }
-    r = requests.get(url, headers=hdrs, timeout=20)
-    r.raise_for_status()
-    return r.text
-
-
-def _parse_symbols(html: str):
-    # Try pandas on the fetched HTML (works even when direct read_html 403s)
-    try:
-        import pandas as pd  # type: ignore
-        from io import StringIO
-        dfs = pd.read_html(StringIO(html))
-        for df in dfs:
-            cols = [str(c).strip().lower() for c in df.columns.tolist()]
-            if "symbol" in cols:
-                # pick that column by exact name position
-                idx = cols.index("symbol")
-                col = df.columns[idx]
-                raw = [str(s).strip() for s in df[col].tolist()]
-                return sorted(set(raw))
-    except Exception:
-        pass
-
-    # Fallback: BeautifulSoup scrape
-    try:
-        from bs4 import BeautifulSoup  # type: ignore
-        soup = BeautifulSoup(html, "html.parser")
-        table = soup.select_one("table.wikitable")
-        syms = []
-        if table:
-            rows = table.select("tr")
-            for tr in rows[1:]:
-                tds = tr.find_all(["td", "th"])
-                if not tds:
-                    continue
-                cell = tds[0].get_text(strip=True)
-                if cell and cell.lower() != "symbol":
-                    syms.append(cell)
-        return sorted(set(syms))
-    except Exception:
-        return []
-
-
-def _refresh_sp500_if_stale(max_age_hours=24, force=False):
-    """Refresh S&P500 into raw+clean files (handles Wikipedia 403, no hard deps)."""
-    try:
-        need = force or (not os.path.exists(SYMS_CLEAN)) or (
-            time.time() - os.path.getmtime(SYMS_CLEAN) > max_age_hours * 3600
-        )
-        if not need:
-            age_hr = (time.time() - os.path.getmtime(SYMS_CLEAN)) / 3600
-            log.info("ℹ️  Using cached %s (%.1f h old)", SYMS_CLEAN, age_hr)
-            return
-
-        log.info("🌐 Refreshing S&P 500 symbols from Wikipedia…")
-        html = _fetch_html(WIKI_URL)
-        syms_raw = _parse_symbols(html)
-        if not syms_raw:
-            raise RuntimeError("parsed 0 symbols")
-
-        syms_clean = sorted({s.replace(".", "-") for s in syms_raw})
-        with open(SYMS_RAW, "w", encoding="utf-8") as f:
-            f.write("\n".join(sorted(set(syms_raw))))
-        with open(SYMS_CLEAN, "w", encoding="utf-8") as f:
-            f.write("\n".join(syms_clean))
-
-        log.info("✅ Updated %s (%d) and %s (%d)", SYMS_RAW, len(syms_raw), SYMS_CLEAN, len(syms_clean))
-    except Exception as e:
-        log.warning("⚠️  Could not refresh S&P 500 list: %s", e)
+def _filter_for_dataclass(dc_type, data: dict) -> dict:
+    # Keep only keys defined in the dataclass
+    keys = {f.name for f in fields(dc_type)}
+    return {k: v for k, v in data.items() if k in keys}
 
 
 def main():
-    log.info("▶️  Live launcher starting…")
-    log.info("GUARDRAILS_ENABLED = %s", str(os.getenv("GUARDRAILS_ENABLED", "true")).lower())
-    log.info("LIVE_SAFE_MODE     = %s", str(os.getenv("LIVE_SAFE_MODE", "true")).lower())
+    # 1) Load LIVE settings
+    settings_path = os.getenv("LIVE_SETTINGS_PATH", DEFAULT_SETTINGS)
+    if not os.path.exists(settings_path):
+        raise FileNotFoundError(f"live_settings.json not found at {settings_path}")
 
-    data = load_json(SETTINGS_PATH)
-    raw_mode = data.get("broker_mode", "LIVE")
-    mode = _norm_mode(os.getenv("BROKER_MODE") or raw_mode)
+    log.info("🔧 Using live settings from %s", os.path.basename(settings_path))
+    raw = _read_json(settings_path)
 
-    force_now = str(os.getenv("REFRESH_SP500_NOW", "0")).strip().lower() in ("1", "true")
-    _refresh_sp500_if_stale(max_age_hours=24, force=force_now)
+    # 2) Pull out broker mode (separate from SimulationSettings)
+    broker_mode = str(raw.pop("broker_mode", "LIVE")).upper() or "LIVE"
 
-    from services.market_service import get_symbols
-    symbols = get_symbols(SYMS_CLEAN)
+    # 3) Build SimulationSettings safely
+    from services.settings_schema import SimulationSettings
 
+    data = _filter_for_dataclass(SimulationSettings, raw)
+    settings = SimulationSettings(**data)
+
+    # 4) Load symbols
+    symbols_path = raw.get("symbols_path") or os.getenv("SP500_PATH") or DEFAULT_SP500
+    symbols = _load_symbols(symbols_path)
+    log.info("🧾 Loaded %d symbols. Preview: %s", len(symbols), symbols[:10])
+
+    # 5) Run loop
     from services.live_loop import run_live_loop
-    log.info("🔧 Using live settings from %s", SETTINGS_PATH)
-    log.info("▶️  Live loop starting (mode=%s)", mode)
-    log.info("📈 Universe size: %d (first 5: %s)", len(symbols), ", ".join(symbols[:5]) if symbols else "")
-    run_live_loop(data, symbols, broker_mode=mode)
+
+    log.info("▶️  Starting LIVE loop")
+    run_live_loop(settings, symbols, broker_mode=broker_mode)
 
 
 if __name__ == "__main__":

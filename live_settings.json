@@ -53,8 +53,7 @@
   "broker_mode": "etrade",
   "mode": "live",
   "scan_sleep_secs": 10,
-
-  "pause_when_market_closed": false,        
+  "pause_when_market_closed": true,
   "nuke_db": false,
 
   "poll_interval": 3.0,
@@ -77,12 +76,12 @@
   "stop_loss_pct": 0.0,
 
   "max_per_trade": 100.0,
-
-  "market_session": "EXTENDED",           
-  "order_term": "GOOD_FOR_DAY",            
+  "market_session": "REGULAR",
+  "order_term": "GOOD_UNTIL_CANCEL",
 
   "prefer_quotes": false,
   "market_gate_on": true,
   "realized_since": "2025-08-22",
-  "realized_tz": "America/New_York"
+"realized_tz": "America/New_York"
+
 }

@@ -1,322 +1,885 @@
+# sell_guard.py
+# Guard that scans positions and places SELL orders for eligible holdings.
+# - Reads settings from SELL_GUARD_SETTINGS env var or .\sell_guard_settings.json
+# - Uses etrade_service wrappers for preview/place
+# - Adaptive: retries venue 500/code 100 with fresh preview; falls back to numeric accountId
+# - MARKET by default, or marketable LIMIT from bid-1 tick when configured
+#
+# Python 3.11+
 
-import os
-import sys
-import time
+from __future__ import annotations
+
 import json
 import logging
-from typing import Any, Dict, List, Tuple, Optional
+import os
+import random
+import string
+import sys
+import time
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
 
-# --- Logging setup -----------------------------------------------------------
+try:
+    from zoneinfo import ZoneInfo
+
+    ET = ZoneInfo("America/New_York")
+except Exception:
+    ET = None
+
+# --- logging (no %f; include millis) ------------------------------------------
 LOG = logging.getLogger("sell-guard")
 LOG.setLevel(logging.INFO)
+for h in list(LOG.handlers):
+    LOG.removeHandler(h)
 _handler = logging.StreamHandler(sys.stdout)
-_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+_formatter = logging.Formatter(
+    fmt="%(asctime)s,%(msecs)03d %(levelname)s sell-guard: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+_handler.setFormatter(_formatter)
 LOG.addHandler(_handler)
 
-# --- Settings ---------------------------------------------------------------
-DEFAULT_SETTINGS_PATH = r"C:\TradeAlerts\sell_guard_settings.json"
+# --- local imports -------------------------------------------------------------
+HERE = os.path.abspath(os.path.dirname(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
 
-def load_settings() -> Dict[str, Any]:
-    # Env override (the launcher prints Using SELL_GUARD_SETTINGS=...)
-    path = os.environ.get("SELL_GUARD_SETTINGS", DEFAULT_SETTINGS_PATH)
+try:
+    from services import etrade_service as et
+except Exception as e:
+    LOG.error("could not import etrade_service: %s", e)
+    raise
+
+
+# --- small utils ---------------------------------------------------------------
+def j(x: Any) -> str:
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        return json.dumps(x, indent=2, sort_keys=True, default=str)
+    except Exception:
+        return str(x)
+
+
+def f(x, d=0.0):
+    try:
+        return float(x)
+    except Exception:
+        return d
+
+
+def now_et() -> datetime:
+    if ET:
+        return datetime.now(ET)
+    return datetime.now(UTC)
+
+
+def clamp(v, lo, hi):
+    return max(lo, min(hi, v))
+
+
+def rand_id(prefix: str, n: int = 6) -> str:
+    sfx = "".join(
+        random.choice(string.ascii_lowercase + string.digits) for _ in range(n)
+    )
+    return f"{prefix}{sfx}"
+
+
+# Conservative PDT helper: if we bought SYM today, selling it today would be a day trade
+def _opened_today(sym: str) -> bool:
+    try:
+        s = (sym or "").strip().upper()
+        # Adjust to your etrade_service API; many wrappers expose a transactions getter
+        tx = et.get_transactions(
+            start="today", end="today"
+        )  # use your real function name
+        for t in tx or []:
+            if not isinstance(t, dict):
+                continue
+            tsym = (t.get("symbol") or t.get("securitySymbol") or "").strip().upper()
+            side = (t.get("transactionType") or t.get("side") or "").upper()
+            if tsym == s and "BUY" in side:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+# --- config -------------------------------------------------------------------
+DEFAULT_SETTINGS = {
+    "mode": "live",
+    "normalize_tick": 0.01,
+    "sell_window_start_et": "09:35",
+    "sell_window_end_et": "15:55",
+    "throttle_ms": 30_000,
+    "use_extended_hours": False,
+    "market_fallback_for": ["SELL_STOP", "TIMEOUT"],
+    "max_place_attempts": 4,
+    # Sell-guard sub-config (mirrors your JSON)
+    "sell_guard": {
+        "allow_intraday_stoploss": True,
+        "avoid_daytrades": True,
+        "blocklist": [],
+        "force_symbols": [],  # e.g. ["CZR"]
+        "force_without_entry": True,
+        "limit_from": "bid",  # "bid" or "last"
+        "limit_offset_bps": 0,  # 0 => marketable tick down
+        "max_hold_mins": 1_000_000,
+        "min_hold_days": 1,
+        "min_hold_minutes": 390,
+        "normalize_tick": 0.01,
+        "sell_protect_after_mins": None,
+        "sell_window_start_et": "09:35",
+        "sell_window_end_et": "15:55",
+        "stop_bps": 100,
+        "target_bps": 200,
+        "use_extended_hours": False,
+        "circuit_fail_threshold": 2,
+        "circuit_open_seconds": 480,
+    },
+}
+
+
+def load_settings() -> dict[str, Any]:
+    path = os.environ.get("SELL_GUARD_SETTINGS") or os.path.join(
+        HERE, "sell_guard_settings.json"
+    )
+    LOG.info("Using SELL_GUARD_SETTINGS=%s", path)
+    try:
+        with open(path, encoding="utf-8") as f:
             cfg = json.load(f)
     except FileNotFoundError:
-        LOG.warning("Settings file not found at %s; using defaults", path)
+        LOG.warning("settings file not found; using defaults")
         cfg = {}
-    # Accept either top-level or nested under 'sell_guard'
-    sg = cfg.get("sell_guard", cfg)
-    # Minimal defaults consistent with user's preferences
-    return {
-        "sell_guard": {
-            "mode": sg.get("mode", "live"),
-            "use_extended_hours": bool(sg.get("use_extended_hours", True)),
-            "sell_window_start_et": sg.get("sell_window_start_et", "04:00"),
-            "sell_window_end_et": sg.get("sell_window_end_et", "20:00"),
-            "sell_protect_after_mins": int(sg.get("sell_protect_after_mins", 60)),
-            "protect_min_gain_pct": float(sg.get("protect_min_gain_pct", 1.5)),
-            "protect_trail_arm_pct": float(sg.get("protect_trail_arm_pct", 3.0)),
-            "protect_trail_pct": float(sg.get("protect_trail_pct", 3.0)),
-            "avoid_daytrades": bool(sg.get("avoid_daytrades", False)),
-            "min_hold_days": int(sg.get("min_hold_days", 0)),
-            "min_hold_minutes": int(sg.get("min_hold_minutes", 0)),
-            "allow_intraday_stoploss": bool(sg.get("allow_intraday_stoploss", True)),
-            "pdt_allow_stop": bool(sg.get("pdt_allow_stop", True)),
-            "target_bps": int(sg.get("target_bps", 200)),
-            "stop_bps": int(sg.get("stop_bps", 100)),
-            "max_hold_mins": int(sg.get("max_hold_mins", 100000)),
-            "limit_from": sg.get("limit_from", "bid"),
-            "limit_offset_bps": int(sg.get("limit_offset_bps", 0)),
-            "throttle_ms": int(sg.get("throttle_ms", 30000)),
-            "blocklist": list(sg.get("blocklist", [])),
-            "market_fallback_for": list(sg.get("market_fallback_for", ["SELL_STOP"])),
-            "circuit_open_seconds": int(sg.get("circuit_open_seconds", 480)),
-            "max_place_attempts": int(sg.get("max_place_attempts", 4)),
-            "normalize_tick": float(sg.get("normalize_tick", 0.01)),
-            "force_symbols": list(sg.get("force_symbols", [])),
-            "circuit_fail_threshold": int(sg.get("circuit_fail_threshold", 2)),
-            "force_without_entry": bool(sg.get("force_without_entry", False)),
-        }
-    }
+    # merge shallow
+    merged = {**DEFAULT_SETTINGS, **cfg}
+    # ensure nested sell_guard merges
+    sg = {**DEFAULT_SETTINGS["sell_guard"], **(merged.get("sell_guard") or {})}
+    merged["sell_guard"] = sg
+    return merged
 
-# --- E*TRADE adapters (robust shape handling) --------------------------------
-def _glimpse(obj: Any, maxlen: int = 300) -> str:
+
+# --- account & quotes ----------------------------------------------------------
+# --- Force-list probe ---------------------------------------------------------
+
+
+def force_probe_candidates(acct_key: str, cfg) -> list[tuple[str, int]]:
+    """
+    Return [(SYMBOL, QTY)] for any force-listed symbols that actually have
+    shares available_to_sell right now. Skips blocklist.
+    """
     try:
-        s = json.dumps(obj) if not isinstance(obj, str) else obj
-    except Exception:
-        s = str(obj)
-    return (s[:maxlen] + "…") if len(s) > maxlen else s
+        sg = cfg.sg  # your nested sell_guard dict
+    except AttributeError:
+        sg = {}
 
-def _iter_positions_tree(pos: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """
-    Normalize E*TRADE positions response to a flat list of dicts with keys:
-    symbol, qty, pricePaid, dateAcquired, accountId
-    Supports various 'PortfolioResponse' / 'AccountPortfolio' / 'Position' shapes.
-    """
-    out: List[Dict[str, Any]] = []
-    if not isinstance(pos, dict):
-        return out
-    root = pos.get("PortfolioResponse") or pos
-    acct_list = root.get("AccountPortfolio") if isinstance(root, dict) else None
-    if acct_list is None:
-        acct_list = root if isinstance(root, list) else []
+    block = set(map(str.upper, (sg.get("blocklist") or [])))
+    force = list(map(str.upper, (sg.get("force_symbols") or [])))
 
-    if not isinstance(acct_list, list):
-        acct_list = [acct_list]
-
-    for ap in acct_list:
-        if not isinstance(ap, dict):
+    out: list[tuple[str, int]] = []
+    for s in force:
+        if s in block:
             continue
-        account_id = ap.get("accountId") or ap.get("accountid") or ap.get("accountID")
-        positions = ap.get("Position") or ap.get("position") or []
-        if isinstance(positions, dict):
-            positions = [positions]
-        for pr in positions or []:
-            try:
-                sym = pr.get("symbolDescription") or pr.get("symbol") or pr.get("productId") or ""
-                qty = pr.get("quantity") or pr.get("qty") or 0
-                price_paid = pr.get("pricePaid") or pr.get("avgPrice") or pr.get("averagePrice") or None
-                acquired = pr.get("dateAcquired") or pr.get("openedDate") or None
-                out.append({
-                    "symbol": str(sym).strip().upper(),
-                    "qty": float(qty) if qty is not None else 0.0,
-                    "pricePaid": float(price_paid) if price_paid is not None else None,
-                    "dateAcquired": acquired,
-                    "accountId": account_id,
-                })
-            except Exception as e:
-                LOG.warning("skip malformed position: %s (%s)", _glimpse(pr), e)
+        try:
+            avail = int(round(available_to_sell(acct_key, s)))
+        except Exception as e:
+            LOG.warning("[FORCE] %s available_to_sell check failed: %s", s, e)
+            continue
+        LOG.info("[FORCE] %s available_to_sell=%s", s, avail)
+        if avail > 0:
+            out.append((s, avail))
     return out
 
-def _extract_last_px_from_quote(qd: Dict[str, Any]) -> Optional[float]:
-    """
-    Handle various E*TRADE quote shapes to get the last trade price.
-    """
-    if not isinstance(qd, dict):
-        return None
 
-    # Common known nests
-    q = qd.get("QuoteResponse") or qd.get("quoteResponse") or qd
-    data = q.get("QuoteData") or q.get("quoteData") or q.get("data") or q
-
-    # If data is a list, try the first
-    if isinstance(data, list) and data:
-        data = data[0]
-
-    # Some shapes have "All", some "Intraday", "Product"
-    for path in [
-        ("All", "lastTrade"),
-        ("all", "lastTrade"),
-        ("All", "last"),
-        ("Intraday", "lastTrade"),
-        ("intraday", "lastTrade"),
-        ("All", "adjustedFlag"),  # not a price, but keeps traversal safe
-    ]:
-        node = data.get(path[0]) if isinstance(data, dict) else None
-        if isinstance(node, dict):
-            val = node.get(path[1])
-            if isinstance(val, (int, float)):
-                return float(val)
-
-    # Direct candidates on data
-    for k in ("lastTrade", "last", "close", "previousClose", "lastPrice"):
-        val = data.get(k) if isinstance(data, dict) else None
-        if isinstance(val, (int, float)):
-            return float(val)
-
-    # Sometimes nested in 'quote' field or 'details'
-    quote = data.get("quote") if isinstance(data, dict) else None
-    if isinstance(quote, dict):
-        for k in ("lastTrade", "last", "lastPrice"):
-            val = quote.get(k)
-            if isinstance(val, (int, float)):
-                return float(val)
-
-    return None
-
-# --- External dependency (import only when used to keep script import-safe) --
-def get_positions_dict() -> Dict[str, Any]:
-    try:
-        from services import etrade_service as et  # type: ignore
-    except Exception as e:
-        LOG.error("could not import etrade_service: %s", e)
-        return {}
-    try:
-        # Prefer account key if env provided; else rely on etrade_service default
-        acct_key = os.environ.get("ETRADE_ACCOUNT_KEY") or None
-        if acct_key:
-            return et.get_positions(acct_key)  # type: ignore
-        return et.get_positions()  # type: ignore
-    except TypeError:
-        # Fallback for older signature
+def get_acct_key() -> str:
+    if hasattr(et, "get_account_id_key"):
         try:
-            return et.get_positions()  # type: ignore
-        except Exception as e:
-            LOG.error("get_positions failed: %s", e)
-            return {}
-    except Exception as e:
-        LOG.error("get_positions failed: %s", e)
+            k = et.get_account_id_key()
+            if k:
+                return str(k)
+        except Exception:
+            pass
+    if hasattr(et, "account_id_key"):
+        k = et.account_id_key
+        if k:
+            return str(k)
+    raise RuntimeError("Could not determine account_id_key")
+
+
+def available_to_sell(acct_key: str, symbol: str) -> float:
+    if hasattr(et, "available_to_sell"):
+        try:
+            return f(et.available_to_sell(acct_key, symbol), 0.0)
+        except Exception:
+            return 0.0
+    return 0.0
+
+
+def fetch_quote(symbol: str) -> dict[str, Any]:
+    # prefer fast wrapper if present
+    try:
+        q = et.fetch_etrade_quote(symbol)
+        if isinstance(q, dict):
+            return q
+    except Exception:
+        pass
+    try:
+        g = et.get_quote(symbol)
+        return g or {}
+    except Exception:
         return {}
 
-def get_last_price(symbol: str) -> Optional[float]:
-    try:
-        from services import etrade_service as et  # type: ignore
-    except Exception as e:
-        LOG.error("could not import etrade_service: %s", e)
-        return None
-    try:
-        qd = et.get_quote(symbol)  # type: ignore
-        px = _extract_last_px_from_quote(qd)
-        return px
-    except Exception as e:
-        LOG.warning("get_quote failed for %s: %s", symbol, e)
-        return None
 
-# --- Decision Logic ----------------------------------------------------------
-def decide_for_position(sg: Dict[str, Any], symbol: str, qty: float,
-                        entry_px: Optional[float],
-                        opened_ts: Optional[int],
-                        last_px: Optional[float]) -> Dict[str, Any]:
+def best_bid(symbol: str) -> float:
+    q = fetch_quote(symbol)
+    # common shapes
+    for src in (
+        q,
+        q.get("All") or {},
+        (q.get("QuoteResponse") or {}).get("QuoteData") or {},
+    ):
+        if isinstance(src, list):
+            src = src[0] if src else {}
+        if isinstance(src, dict):
+            for k in ("bid", "bidPrice", "bestBid"):
+                if k in src:
+                    return f(src[k], 0.0)
+    return 0.0
+
+
+def last_trade(symbol: str) -> float:
+    q = fetch_quote(symbol)
+    for src in (
+        q,
+        q.get("All") or {},
+        (q.get("QuoteResponse") or {}).get("QuoteData") or {},
+    ):
+        if isinstance(src, list):
+            src = src[0] if src else {}
+        if isinstance(src, dict):
+            for k in ("last", "lastPrice", "ltr", "lastTrade"):
+                if k in src:
+                    return f(src[k], 0.0)
+    return 0.0
+
+
+# --- preview/place core --------------------------------------------------------
+def _mk_min_order(
+    symbol, action, qty, qty_type, price_type, order_term, limit_price, market_session
+):
+    o = {
+        "orderTerm": order_term,
+        "priceType": price_type,
+        "Instrument": [
+            {
+                "Product": {"securityType": "EQ", "symbol": symbol},
+                "orderAction": action,
+                "quantityType": qty_type,
+                "quantity": int(qty),
+            }
+        ],
+    }
+    if market_session:
+        o["marketSession"] = market_session
+    if price_type == "LIMIT":
+        o["limitPrice"] = float(limit_price)
+    return o
+
+
+def _extract_core(prev: dict, qty_override: int | None):
+    pr = (prev or {}).get("PreviewOrderResponse") or {}
+    acct_num = str(pr.get("accountId") or "").strip()
+    if not acct_num:
+        # Some stacks omit top-level accountId; still usable for PreviewIds
+        acct_num = ""
+    orders = pr.get("Order") or []
+    if not orders:
+        raise RuntimeError("preview missing Order[]")
+    o0 = orders[0]
+    instrs = o0.get("Instrument") or []
+    if not instrs:
+        raise RuntimeError("preview missing Instrument[]")
+    i0 = instrs[0]
+    prod = i0.get("Product") or {}
+    symbol = str(prod.get("symbol") or "").strip()
+    if not symbol:
+        raise RuntimeError("preview missing Product.symbol")
+
+    qty = int(qty_override if qty_override is not None else i0.get("quantity") or 0)
+    if qty <= 0:
+        raise RuntimeError("invalid quantity for place")
+
+    price_type = o0.get("priceType") or "MARKET"
+    limit_price = o0.get("limitPrice") or None
+    order_term = o0.get("orderTerm") or "GOOD_FOR_DAY"
+    market_sess = o0.get("marketSession") or "REGULAR"
+    qty_type = i0.get("quantityType") or "QUANTITY"
+    action = i0.get("orderAction") or "SELL"
+    sym_desc = i0.get("symbolDescription") or ""
+
+    pid = pr.get("previewId")
+    if not pid:
+        pids = pr.get("PreviewIds") or pr.get("previewIds") or []
+        if isinstance(pids, list) and pids and isinstance(pids[0], dict):
+            pid = pids[0].get("previewId") or pids[0].get("id")
+    if not pid:
+        raise RuntimeError("previewId not found in preview")
+    pid_int = int(pid)
+    pid_str = str(pid_int)
+
+    return (
+        acct_num,
+        symbol,
+        action,
+        qty,
+        qty_type,
+        price_type,
+        limit_price,
+        order_term,
+        market_sess,
+        sym_desc,
+        pid_int,
+        pid_str,
+    )
+
+
+def _fresh_preview(acct_key, sym, qty, price_type, limit_or_none):
+    return et.preview_equity_order(
+        acct_key,
+        sym,
+        qty,
+        (limit_or_none if price_type == "LIMIT" else None),
+        action="SELL",
+        price_type=price_type,
+        order_term="GOOD_FOR_DAY",
+        market_session="REGULAR",
+    )
+
+
+def _place_variants(
+    prev: dict,
+    qty_override: int | None = None,
+    force_price_type: str | None = None,
+    force_limit: float | None = None,
+):
+    (
+        acct_num,
+        symbol,
+        action,
+        qty,
+        qty_type,
+        price_type,
+        limit_price,
+        order_term,
+        market_sess,
+        sym_desc,
+        pid_int,
+        pid_str,
+    ) = _extract_core(prev, qty_override)
+
+    if force_price_type:
+        price_type = force_price_type
+    if force_limit is not None:
+        limit_price = force_limit
+
+    coid = rand_id(prefix=f"{symbol.upper()}")
+
+    base_no_sess = _mk_min_order(
+        symbol,
+        action,
+        qty,
+        qty_type,
+        price_type,
+        order_term,
+        limit_price,
+        market_session=None,
+    )
+    base_with_sess = _mk_min_order(
+        symbol,
+        action,
+        qty,
+        qty_type,
+        price_type,
+        order_term,
+        limit_price,
+        market_session=market_sess,
+    )
+
+    # A) marketSession at order level (common)
+    yield (
+        acct_num,
+        {
+            "PlaceOrderRequest": {
+                "orderType": "EQ",
+                "clientOrderId": coid,
+                "PreviewIds": [{"previewId": pid_int}],
+                "Order": [dict(base_with_sess)],
+            }
+        },
+    )
+
+    # B) marketSession at top level (alt)
+    yield (
+        acct_num,
+        {
+            "PlaceOrderRequest": {
+                "orderType": "EQ",
+                "clientOrderId": coid,
+                "PreviewIds": [{"previewId": pid_int}],
+                "marketSession": market_sess,
+                "Order": [dict(base_no_sess)],
+            }
+        },
+    )
+
+
+def do_place_with_adaptive_variants(
+    acct_key: str,
+    sym: str,
+    qty: int,
+    price_type: str,
+    limit_or_none: float | None,
+    max_outer: int,
+    debug: bool = False,
+) -> bool:
     """
-    Returns a decision dict. No side-effects (no order placement).
+    Re-preview before each variant group to keep previewId ultra-fresh.
+    Try accountIdKey path first; if 500/code100, we refresh and retry.
+    If we have *numeric* acct from preview, we also try numeric path.
     """
-    # Normalize/fallbacks
-    ep = float(entry_px) if isinstance(entry_px, (int, float)) else None
-    lp = float(last_px) if isinstance(last_px, (int, float)) else None
+    for outer in range(1, max_outer + 1):
+        if debug:
+            LOG.info("[DBG] outer attempt %d: refreshing preview", outer)
+        prev = _fresh_preview(acct_key, sym, qty, price_type, limit_or_none)
 
-    if lp is None:
-        dec = {"symbol": symbol, "qty": qty, "entry": ep, "opened_ts": opened_ts, "last": None, "action": "SKIP_NO_LAST"}
-        LOG.info("[DECISION] %s SKIP_NO_LAST %s", symbol, json.dumps(dec))
-        return dec
+        # Build variants (will also give us numeric accountId, if present)
+        placed = False
+        numeric_path = None
+        for acct_num, body in _place_variants(
+            prev,
+            qty_override=qty,
+            force_price_type=price_type,
+            force_limit=limit_or_none,
+        ):
+            key_path = f"/accounts/{acct_key}/orders/place.json"
+            if acct_num:
+                numeric_path = f"/accounts/{acct_num}/orders/place.json"
 
-    if ep is None or ep <= 0:
-        dec = {"symbol": symbol, "qty": qty, "entry": ep, "opened_ts": opened_ts, "last": lp, "action": "SKIP_NO_ENTRY"}
-        LOG.info("[DECISION] %s SKIP_NO_ENTRY %s", symbol, json.dumps(dec))
-        return dec
+            # Try key path
+            try:
+                if debug:
+                    LOG.info("%s: POST %s\n%s", "market-orderlvl", key_path, j(body))
+                resp = et._epost(key_path, body)
+                LOG.info(
+                    "%s SELL placed (%s) orderId=%s",
+                    sym,
+                    price_type,
+                    (
+                        ((resp or {}).get("PlaceOrderResponse") or {})
+                        .get("OrderIds", [{}])[0]
+                        .get("orderId")
+                        if (resp or {}).get("PlaceOrderResponse")
+                        else "?"
+                    ),
+                )
+                return True
+            except Exception as e:
+                msg = str(e)
+                if (" 500:" in msg) or ("'code': 100" in msg) or ('"code": 100' in msg):
+                    LOG.warning(
+                        "Transient venue error; will refresh preview then retry (outer=%d)",
+                        outer,
+                    )
+                    break  # break variants; go outer refresh
+                # try numeric if we have it and this wasn’t a venue error
+                if numeric_path:
+                    try:
+                        if debug:
+                            LOG.info(
+                                "%s: POST %s\n%s",
+                                "market-orderlvl",
+                                numeric_path,
+                                j(body),
+                            )
+                        resp = et._epost(numeric_path, body)
+                        LOG.info(
+                            "%s SELL placed (%s) orderId=%s",
+                            sym,
+                            price_type,
+                            (
+                                ((resp or {}).get("PlaceOrderResponse") or {})
+                                .get("OrderIds", [{}])[0]
+                                .get("orderId")
+                                if (resp or {}).get("PlaceOrderResponse")
+                                else "?"
+                            ),
+                        )
+                        return True
+                    except Exception as e2:
+                        LOG.warning("numeric path failed: %s", e2)
+                # if neither worked, continue to next variant (we only have 2 core variants)
+        # small backoff between outer cycles
+        time.sleep(0.8 * outer)
 
-    gain_pct = (lp - ep) / ep * 100.0
-    LOG.info("[PROTECT] %s opened_ts=%s entry=%.4f last=%.4f", symbol, str(opened_ts), ep, lp)
+    return False
 
-    # Protection thresholds
-    trail_arm = float(sg.get("protect_trail_arm_pct", 3.0))
-    trail_pct = float(sg.get("protect_trail_pct", 3.0))
-    stop_bps  = int(sg.get("stop_bps", 100))
 
-    if gain_pct >= trail_arm:
-        dec = {
-            "symbol": symbol, "qty": qty, "entry": ep, "last": lp,
-            "gain_pct": round(gain_pct, 3),
-            "trail_arm": trail_arm, "trail_pct": trail_pct,
-            "stop_bps": stop_bps,
-            "action": "ARM_TRAIL",
-        }
-        LOG.info("[DECISION] %s ARM_TRAIL %s", symbol, json.dumps(dec))
-        return dec
+# --- eligibility & action ------------------------------------------------------
+@dataclass
+class GuardSettings:
+    sell_window_start_et: str
+    sell_window_end_et: str
+    throttle_ms: int
+    max_place_attempts: int
+    market_fallback_for: list[str]
+    use_extended_hours: bool
+    normalize_tick: float
+    sg: dict[str, Any]
 
-    # Below trail arm: do nothing for now (placeholder for stop/target logic)
-    dec = {"symbol": symbol, "qty": qty, "entry": ep, "last": lp, "gain_pct": round(gain_pct, 3), "action": "HOLD"}
-    LOG.info("[DECISION] %s HOLD %s", symbol, json.dumps(dec))
-    return dec
 
-# --- Main loop ---------------------------------------------------------------
-def main() -> None:
-    cfg = load_settings()
-    sg = cfg["sell_guard"]
+def _glimpse(obj):
+    try:
+        if isinstance(obj, dict):
+            return {"type": "dict", "keys": list(obj.keys())[:10]}
+        if isinstance(obj, list):
+            return {"type": "list", "len": len(obj)}
+        return str(obj)[:160]
+    except Exception:
+        return "<glimpse-failed>"
+
+
+def _parse_positions_any(arr):
+    out = []
+    if not isinstance(arr, list):
+        return out
+    for p in arr:
+        if not isinstance(p, dict):
+            continue
+        sym = (
+            p.get("symbolDescription")
+            or (p.get("Product") or {}).get("symbol")
+            or p.get("symbol")
+            or ""
+        )
+        qty = (
+            p.get("quantity")
+            or p.get("longQuantity")
+            or p.get("positionQty")
+            or p.get("qty")
+            or 0
+        )
+        # last price from any of the usual places
+        q = p.get("Quick") or {}
+        ins = p.get("Instrument") or {}
+        allf = p.get("All") or {}
+        last = (
+            q.get("lastTrade")
+            or ins.get("lastTrade")
+            or allf.get("extendedHourLastTrade")
+            or 0
+        )
+        entry = (
+            p.get("pricePaid") or p.get("purchasePrice") or p.get("averagePrice") or 0
+        )
+
+        try:
+            qty_f = float(qty or 0)
+        except:
+            qty_f = 0.0
+        try:
+            last_f = float(last or 0)
+        except:
+            last_f = 0.0
+        try:
+            entry_f = float(entry or 0)
+        except:
+            entry_f = 0.0
+
+        sym = (sym or "").strip().upper()
+        if sym and qty_f > 0:
+            pl_pct = (
+                ((last_f - entry_f) / entry_f * 100.0)
+                if (last_f > 0 and entry_f > 0)
+                else None
+            )
+            # return a 3-tuple so we don’t break callers
+            out.append((sym, int(qty_f), pl_pct))
+    return out
+
+
+def _opened_today(sym: str) -> bool:
+    """Return True if there was a BUY for `sym` today (ET). Blocks day trades."""
+    try:
+        s = (sym or "").strip().upper()
+        # Adjust to your etrade_service: use whatever you have that returns today's transactions
+        tx = et.get_transactions(
+            start="today", end="today"
+        )  # <-- swap to your real fn if named differently
+        for t in tx or []:
+            if not isinstance(t, dict):
+                continue
+            tsym = (t.get("symbol") or t.get("securitySymbol") or "").strip().upper()
+            side = (t.get("transactionType") or t.get("side") or "").upper()
+            if tsym == s and "BUY" in side:
+                return True
+    except Exception:
+        LOG.exception("opened_today failed for %s", sym)
+    return False
+
+
+def eligible_symbols(acct_key: str, cfg: GuardSettings) -> List[Tuple[str, int]]:
+    block = set(map(str.upper, cfg.sg.get("blocklist") or []))
+    force = set(map(str.upper, cfg.sg.get("force_symbols") or []))
+    fwe   = bool(cfg.sg.get("force_without_entry", True))
+
+    # ---- fetch positions (with/without acct_key) ----
+    pos = None; err = None
+    try:
+        pos = et.get_positions(acct_key)
+    except TypeError:
+        try:
+            pos = et.get_positions()
+        except Exception as e:
+            err = e
+    except Exception as e:
+        err = e
+
+    if err:
+        LOG.warning("get_positions failed: %s", err)
+        return sorted([(s, 0) for s in force]) if (force and fwe) else []
+
+    LOG.info("positions raw glimpse: %s", _glimpse(pos))
+
+    def L(x):
+        return x if isinstance(x, list) else ([] if x is None else [x])
+
+    # ---- normalize to iterable of (symbol, qty_float) from Product/quantity ----
+    def _iter_positions(pobj):
+        if not isinstance(pobj, dict):
+            return
+        pr = pobj.get("PortfolioResponse") or {}
+        for ap in L(pr.get("AccountPortfolio")):
+            positions = (ap.get("Position") or ap.get("position")
+                         or ap.get("Positions") or ap.get("positions"))
+            for p in L(positions):
+                prod = p.get("Product") or p.get("product") or {}
+                sym  = (prod.get("symbol") or "").strip().upper()
+                if not sym:
+                    # fallback: description like "NAME (TICKER)"
+                    desc = (p.get("symbolDescription") or "").strip()
+                    if "(" in desc and desc.endswith(")"):
+                        tick = desc.split("(")[-1][:-1].strip()
+                        if tick:
+                            sym = tick.upper()
+
+                qty = (
+                    p.get("quantity") or p.get("qty")
+                    or p.get("longQty") or p.get("longQuantity")
+                    or p.get("positionQty") or p.get("positionQuantity") or 0
+                )
+                try:
+                    q = float(qty or 0)
+                except Exception:
+                    q = 0.0
+
+                if sym and q > 0:
+                    yield sym, q
+
+    rows = list(_iter_positions(pos))
+    LOG.info("normalized positions -> %s", rows)
+
+    # ---- apply blocklist/force, dedupe, then floor to whole shares for selling ----
+    merged: Dict[str, float] = {}
+
+    if fwe and force:
+        for s in sorted(force):
+            if s not in block:
+                merged[s] = 0.0
+
+    for sym, q in rows:
+        if sym in block:
+            continue
+        merged[sym] = max(float(q), merged.get(sym, 0.0))
+
+    final: List[Tuple[str, int]] = []
+    skipped_fractional = {}
+
+    for s, q in sorted(merged.items()):
+        whole = int(q)  # sell API needs whole shares
+        if whole >= 1 or (fwe and s in force):
+            final.append((s, whole))
+        else:
+            skipped_fractional[s] = q
+
+    if skipped_fractional:
+        LOG.info("eligible_symbols: skipped fractional-only holdings (whole=0): %s", skipped_fractional)
+
+    LOG.info("eligible final -> %s", final)
+    return final
+
+def compute_order_params(
+    symbol: str, cfg: GuardSettings
+) -> tuple[str, float | None]:
+    """
+    Decide MARKET vs LIMIT and price.
+    By default we do MARKET. If limit_from='bid', set limit at (bid - tick) to make it marketable.
+    """
+    pt = "MARKET"
+    limit = None
+
+    limit_from = (cfg.sg.get("limit_from") or "").lower()
+    tick = float(cfg.sg.get("normalize_tick") or cfg.normalize_tick or 0.01) or 0.01
+    offset_bps = int(cfg.sg.get("limit_offset_bps") or 0)
+
+    if limit_from in ("bid", "last"):
+        ref = best_bid(symbol) if limit_from == "bid" else last_trade(symbol)
+        if ref > 0:
+            if offset_bps and offset_bps != 0:
+                # offset in basis points -> for SELL, price down slightly to cross
+                limit = max(0.01, round(ref * (1 - offset_bps / 10_000.0), 2))
+            else:
+                limit = max(0.01, round(ref - tick, 2))
+            pt = "LIMIT"
+    return pt, limit
+
+
+# --- main loop ----------------------------------------------------------------
+def main():
+    cfg_raw = load_settings()
     LOG.info("sell_guard starting…")
-    LOG.info("Settings: %s", json.dumps({"sell_guard": sg})[:300] + ("…" if len(json.dumps({"sell_guard": sg})) > 300 else ""))
+    LOG.info("Settings: %s", j(cfg_raw))
 
-    # Heartbeat & loop timing
-    throttle_ms = int(sg.get("throttle_ms", 30000))
+    acct_key = get_acct_key()
+    LOG.info("heartbeat: loop alive (account=%s)", acct_key)
+
+    # Lift to dataclass for convenience
+    cfg = GuardSettings(
+        sell_window_start_et=cfg_raw.get("sell_window_start_et")
+        or cfg_raw["sell_guard"].get("sell_window_start_et")
+        or "09:35",
+        sell_window_end_et=cfg_raw.get("sell_window_end_et")
+        or cfg_raw["sell_guard"].get("sell_window_end_et")
+        or "15:55",
+        throttle_ms=int(cfg_raw.get("throttle_ms") or 30_000),
+        max_place_attempts=int(
+            cfg_raw.get("max_place_attempts")
+            or cfg_raw["sell_guard"].get("max_place_attempts")
+            or 4
+        ),
+        market_fallback_for=list(
+            cfg_raw.get("market_fallback_for")
+            or cfg_raw["sell_guard"].get("market_fallback_for")
+            or []
+        ),
+        use_extended_hours=bool(
+            cfg_raw.get("use_extended_hours")
+            or cfg_raw["sell_guard"].get("use_extended_hours")
+            or False
+        ),
+        normalize_tick=float(
+            cfg_raw.get("normalize_tick")
+            or cfg_raw["sell_guard"].get("normalize_tick")
+            or 0.01
+        ),
+        sg=cfg_raw["sell_guard"],
+    )
+
+    last_placed: set[str] = set()  # symbols placed in this cycle
     heartbeat_next = time.time()
-
-    # Account hint for logs
-    account_hint = "UNKNOWN"
+    throttle = max(1, int(cfg.throttle_ms / 1000))
 
     while True:
-        now = time.time()
-        if now >= heartbeat_next:
-            LOG.info("heartbeat: loop alive (account=%s)", account_hint)
-            heartbeat_next = now + 30.0
+        tnow = time.time()
+        if tnow >= heartbeat_next:
+            LOG.info("heartbeat: loop alive (account=%s)", acct_key)
+            heartbeat_next = tnow + 30
 
-        # --- Fetch positions ---
+        # Window check (ET)
+        try:
+            etnow = now_et()
+            start_h, start_m = map(int, cfg.sell_window_start_et.split(":"))
+            end_h, end_m = map(int, cfg.sell_window_end_et.split(":"))
+            window_on = ((etnow.hour, etnow.minute) >= (start_h, start_m)) and (
+                (etnow.hour, etnow.minute) <= (end_h, end_m)
+            )
+        except Exception:
+            window_on = True
+
+        if not window_on and not cfg.use_extended_hours:
+            LOG.info("outside sell window; sleeping %ds", throttle)
+            time.sleep(throttle)
+            continue
+
         LOG.info("positions scan…")
-        pos = get_positions_dict()
-        if not pos:
-            LOG.warning("no positions payload; sleeping")
-            time.sleep(throttle_ms / 1000.0)
-            continue
+        rows = force_probe_candidates(acct_key, cfg)
 
-        LOG.info("positions raw glimpse: %s", _glimpse(pos))
+        if not rows:
+            try:
+                rows = eligible_symbols(acct_key, cfg)
+            except Exception as e:
+                LOG.error("eligible_symbols failed: %s", e)
+                rows = []
 
-        rows = _iter_positions_tree(pos)
-        # Capture account id if present
-        for r in rows:
-            if r.get("accountId"):
-                account_hint = str(r["accountId"])
-                break
+        LOG.info(
+            "candidates: %s",
+            ",".join(f"{s}x{q}" for s, q in rows) if rows else "(none)",
+        )
 
-        # Collapse to (symbol, qty)
-        collapsed: List[Tuple[str, float]] = []
-        for r in rows:
-            sym = r.get("symbol") or ""
-            qty = float(r.get("qty") or 0)
-            if not sym or qty <= 0:
+        placed_any = False
+        last_placed.clear()
+
+        for s, have_qty in rows:
+            if s in last_placed:
                 continue
-            collapsed.append((sym, qty))
+            avail = int(round(available_to_sell(acct_key, s)))
+            if avail <= 0:
+                LOG.info("%s: no available shares to sell", s)
+                continue
+            # PDT guard: block same-day sells if configured
+            if cfg.sg.get("avoid_daytrades", True):
+                # simplest policy: block all intraday sells if you don't allow intraday stops
+                if not cfg.sg.get("allow_intraday_stoploss", False) and _opened_today(
+                    s
+                ):
+                    LOG.info("[PDT] Skipping %s (opened today; avoid_daytrades on)", s)
+                    continue
 
-        # Log normalized/eligible
-        LOG.info("normalized positions -> %s", [(s, q) for s, q in collapsed])
-        eligible = [(s, int(q)) for s, q in collapsed if q > 0]
-        LOG.info("eligible final -> %s", eligible)
+                # If you later want nuance (allow STOP but block TARGET), you can refine here
+                # once you compute a 'reason' for the exit.
 
-        if not eligible:
-            time.sleep(throttle_ms / 1000.0)
-            continue
+            pt, limit_px = compute_order_params(s, cfg)
+            # PDT guard: block same-day sells completely (both stop & target)
+            if cfg.sg.get("avoid_daytrades", True) and _opened_today(sym):
+                LOG.info("[PDT] Skipping %s (opened today; avoid_daytrades on)", sym)
+                continue
 
-        # --- Evaluate each candidate (no orders here) ---
-        for sym, have_qty in eligible:
-            LOG.info("candidates: %sx%s", sym, have_qty)
+            # If you later want nuance (allow STOP but block TARGET), we can refine here once you compute `reason`.
 
-            # Inputs for decision: entry, opened_ts from rows; last via quote
-            entry_px: Optional[float] = None
-            opened_ts: Optional[int] = None
-            for r in rows:
-                if r.get("symbol") == sym:
-                    entry_px = r.get("pricePaid")
-                    opened_ts = r.get("dateAcquired")
-                    break
+            LOG.info(
+                "[SG] %s -> free=%d -> place %s%s",
+                s,
+                avail,
+                pt,
+                f" {limit_px:.2f}" if (pt == "LIMIT" and limit_px) else "",
+            )
 
-            last_px = get_last_price(sym)
+            ok = do_place_with_adaptive_variants(
+                acct_key=acct_key,
+                sym=s,
+                qty=avail,
+                price_type=pt,
+                limit_or_none=limit_px if pt == "LIMIT" else None,
+                max_outer=cfg.max_place_attempts,
+                debug=False,
+            )
+            if ok:
+                placed_any = True
+                last_placed.add(s)
+            else:
+                LOG.error("%s SELL failed (all variants)", s)
 
-            decide_for_position(sg, sym, float(have_qty), entry_px, opened_ts, last_px)
+        LOG.info("sleeping %ds", throttle)
+        time.sleep(throttle)
 
-        # Throttle between scans
-        time.sleep(throttle_ms / 1000.0)
 
 if __name__ == "__main__":
-    LOG.info("Using SELL_GUARD_SETTINGS=%s", os.environ.get("SELL_GUARD_SETTINGS", DEFAULT_SETTINGS_PATH))
-    try:
-        main()
-    except KeyboardInterrupt:
-        LOG.info("sell_guard stopped by user")
+    main()
