@@ -21,15 +21,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from dateutil.relativedelta import relativedelta
-from flask import jsonify
-try:
-    from services.etrade_service import get_account_summary, get_positions
-except Exception:
-    get_account_summary = None
-    get_positions = None
 
 from services.etrade_service import fetch_etrade_quote
-from services.simulation_service import load_simulation_settings
 from services.realized_buckets import realized_buckets_from_live_db
 
 NEED_AUTH_FLAG = Path("need_oauth.flag")
@@ -223,8 +216,6 @@ def always_json(f):
 # ---Load environment variables ------------------------------------------------------------------------------------------------------------------
 from dotenv import load_dotenv
 
-from services.backtest_service import run_full_backtest
-
 load_dotenv()
 # --- HOTFIX: unify env + signer and call E*TRADE directly --------------------
 import os
@@ -266,7 +257,6 @@ from flask import (
 from services.market_service import fetch_data_with_timeout, get_symbols
 from services.settings_schema import SimulationSettings, extract_simulation_settings
 from services.settings_service import load_settings, save_settings
-from services.simulation_service import run_simulation_loop, stop_simulation
 
 # ---------€ Service imports ------------------------------------------------------------------------------------------------------------------------------
 from services.trading_helpers import (
@@ -608,24 +598,6 @@ from requests_oauthlib import OAuth1Session
 
 print("LOADING settings_service.py from", __file__)
 stored = get_stored_cash()
-if abs(ledger - stored) > 0.01:
-    logger.warning(f"[CASH] mismatch: ledger ${ledger:.2f} vs stored ${stored:.2f}")
-from services.trading_helpers import get_cash_ledger, get_stored_cash
-
-try:
-    ledger = get_cash_ledger()
-    stored = get_stored_cash()  # <- not get_cash()
-    if abs(ledger - stored) > 0.01:
-        print(f"[CASH] MISMATCH: ledger=${ledger:.2f} stored=${stored:.2f}")
-        # Optionally, resync:
-        # set_cash(ledger)
-except Exception as e:
-    print(f"[CASH] check failed: {e}")
-
-# dashboard.py
-import os
-import sys
-from pathlib import Path
 
 from services.etrade_auth_helper import clear_need_auth_flag, save_tokens
 
@@ -1096,24 +1068,6 @@ def auth_etrade_reconnect():
         return (f"Failed to launch OAuth flow: {e}", 500)
 
 
-def _load_starting_cash_safe() -> float:
-    try:
-        from services.settings_schema import load_simulation_settings
-
-        val = float(getattr(load_simulation_settings(), "starting_cash", 0.0) or 0.0)
-        return max(val, 0.0)
-    except Exception:
-        # As a last resort you *can* fall back to a constant or 0.0.
-        # Avoid falling back to live `cash` because it drifts over time.
-        return 0.0
-
-
-# ---- Compatibility shims (legacy names still used in dashboard) ----
-def get_starting_cash_safe():
-    """Legacy alias -> use the new loader under the hood."""
-    return _load_starting_cash_safe()
-
-
 def get_realized_pl_sum():
     """Legacy alias -> compute realized P&L from the trade ledger."""
     return compute_realized_pnl(get_trades())
@@ -1557,7 +1511,6 @@ BACKTEST_DB = "backtest.db"
 
 from pathlib import Path
 
-from services.backtest_engine import run_full_backtest
 from services.risk_management import enforce_settlement, enforce_wash_sale
 from services.settings_schema import BacktestSettings, extract_backtest_settings
 
@@ -1758,9 +1711,6 @@ import os
 
 from flask import make_response
 from reportlab.lib.styles import getSampleStyleSheet
-
-from services.backtest_service import run_full_backtest
-
 
 @app.route("/export_backtest_pdf")
 def export_backtest_pdf():
@@ -2148,18 +2098,7 @@ def export_simulation():
     # Use the same calculation as the dashboard
     realized_pnl = compute_realized_pnl(trades)
 
-    start_cash = _load_starting_cash_safe()
     realized_pnl_pct = realized_pct(realized_pnl, start_cash)
-
-    # ---- Pull starting cash once (canonical source) ----
-    try:
-        from services.settings_schema import load_simulation_settings
-
-        _starting_cash = float(
-            getattr(load_simulation_settings(), "starting_cash", 0.0) or 0.0
-        )
-    except Exception:
-        start_cash = get_starting_cash_safe()
 
     # ---- Now that _starting_cash is set, compute realized % ----
     realized_pnl_pct = (realized_pnl / start_cash * 100.0) if start_cash else 0.0
@@ -2371,13 +2310,6 @@ def simulation_view():
             return str(ts).split(".")[0]
 
     # Load settings FIRST so it's available everywhere
-    try:
-        settings = load_simulation_settings()
-    except Exception as e:
-        print(f"[SIM] settings load failed: {e}")
-        from types import SimpleNamespace
-
-        settings = SimpleNamespace(starting_cash=1000.0)
 
     # 1) pull cash
     cash = get_cash()
@@ -2481,27 +2413,6 @@ def simulation_view():
 
     # --- Realized P&L & % (from trade history; % uses starting cash) ---
     realized_pnl = compute_realized_pnl(get_trades())
-
-    # prefer settings.starting_cash; fall back to loader
-    start_cash = float(getattr(settings, "starting_cash", 0.0) or 0.0)
-    if not start_cash:
-        start_cash = _load_starting_cash_safe()
-
-    realized_pnl_pct = realized_pct(realized_pnl, start_cash)
-
-    # 7) render
-    return render_template(
-        "simulation.html",
-        cash=cash,
-        unrealized_pnl=unrealized_pnl,
-        unrealized_pnl_pct=unrealized_pnl_pct,
-        realized_pnl=realized_pnl,
-        realized_pnl_pct=realized_pnl_pct,
-        holdings=holdings,
-        history=history,
-        settings=settings,
-    )
-
 
 @app.route("/simulation/buy", methods=["POST"])
 def simulation_buy():
@@ -2688,9 +2599,6 @@ def reconcile_cash():
 def index():
     setup_simulation_db()
 
-    # load settings
-
-    settings = load_simulation_settings()
 
     # --- Helper for formatting trade times (single definition) ---
     def format_trade_time(ts):
@@ -3182,99 +3090,1820 @@ _TZ_ET = ZoneInfo("America/New_York")  # if not already defined at top-level
 # ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 # LIVE STATUS (E*TRADE-only)
 # ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-from datetime import datetime
-
-def _f(x):
-    try:
-        return float(x)
-    except Exception:
-        return 0.0
-
-@app.route("/live/status", methods=["GET"])
+@app.route("/live/status")
+@always_json
 def live_status():
     """
-    Minimal, sturdy status for the Live tiles.
-    - Uses E*TRADE account summary + positions.
-    - Returns Buying Power (cash account), Positions Value, and Equity Value.
-    - Falls back to zeros if the API isn’t available so the UI never crashes.
+    Returns the JSON the Live UI expects.
+    Supports:
+      - ?start=YYYY-MM-DD (ET midnight lower bound; e.g. 2025-08-22)
+      - ?days=N (fallback lookback window; clamped)
+      - ?debug=1 (adds _debug block)
     """
-    needs_reconnect = False
-    account = {
-        "account_id_display": "—",
-        "account_type_display": "Cash",
-    }
-    kpis = {
-        "buying_power": 0.0,
-        "positions_value": 0.0,
-        "equity_value": 0.0,
-        "timestamp": datetime.utcnow().isoformat(timespec="seconds") + "Z",
-    }
-
-    # If the service layer isn’t importable, return safe defaults
-    if not (get_account_summary and get_positions):
-        return jsonify({"needs_reconnect": needs_reconnect, "account": account, "kpis": kpis})
-
     try:
-        # ----- Account -----
-        summary = get_account_summary() or {}
-        aid = (
-            summary.get("accountIdKey")
-            or summary.get("accountId")
-            or summary.get("account_id_key")
-            or summary.get("account_id")
-            or "—"
-        )
-        atype = (
-            summary.get("accountTypeDisplay")
-            or summary.get("accountType")
-            or summary.get("account_type")
-            or "Cash"
-        )
+        import datetime as _dt
+        import json
+        import os
 
-        # Your standard: prefer Buying Power for cash sizing
-        bp = (
-            summary.get("buying_power")
-            or (summary.get("balance") or {}).get("buyingPower")
-            or (summary.get("computed") or {}).get("buyingPower")
-            or 0.0
-        )
-        bp = _f(bp)
+        from flask import current_app, request
 
-        # ----- Positions value -----
-        pos_total = 0.0
+        from services import etrade_service as et
+
+        # E*TRADE logging wrap (safe to no-op)
         try:
-            positions = get_positions() or []
-            if isinstance(positions, dict):
-                positions = positions.get("positions") or positions.get("Position") or positions.get("data") or []
-            for p in positions:
-                mv = (
-                    p.get("marketValue")
-                    or (p.get("currentPrice") and p.get("qty") and _f(p["currentPrice"]) * _f(p["qty"]))
-                    or p.get("market_value")
-                    or 0.0
-                )
-                pos_total += _f(mv)
+            _etrade_log_wrap()
         except Exception:
             pass
 
-        equity = bp + pos_total
+        # ---------------- Timezone (ET) ----------------
+        try:
+            from zoneinfo import ZoneInfo as _ZoneInfo
+
+            _ET = _ZoneInfo("America/New_York")
+        except Exception:
+            _ET = _dt.timezone(_dt.timedelta(hours=-5))  # crude ET fallback
+
+        def _log(level, msg, *args):
+            try:
+                if log:
+                    getattr(log, level)(msg, *args)
+            except Exception:
+                pass
+
+        open_since: dict = {}
+        holdings: list = []
+        # ---------------- Query params -----------------
+        start_iso = (request.args.get("start") or "").strip()
+        days = request.args.get("days", type=int)
+        debug_level = int(request.args.get("debug") or 0)
+        max_count = int(request.args.get("max") or 5000)  # <- NEW
+
+        # ---------------- Trades (single unified source) -----------------
+        try:
+            # --- Trades: single source -> local list we can safely reference everywhere ---
+            from services.trade_source import load_trades_merged
+
+            trades_rows = load_trades_merged(
+                days=days,
+                start_iso=start_iso,
+                max_count=max_count,
+            )
+
+            # Use a stable local name for helpers (not a free 'enriched' name)
+            _trades_enriched = list(trades_rows or [])
+            # --- HOTFIX: make sure we have a stable "enriched" list before any helpers use it ---
+
+            # If you already create `enriched` above, we'll use it; otherwise fall back to raw rows.
+            try:
+                enr = enriched  # may not exist yet
+            except NameError:
+                enr = None
+
+            # If you have a FIFO enricher, you can uncomment this block to prefer its output.
+            # try:
+            #     enr2, _rv1, _rv2, _rv3 = _fifo_enrich_and_daytrades(trades_rows)
+            #     if enr2: enr = enr2
+            # except Exception:
+            #     pass
+
+            _trades_enriched = list(enr or trades_rows or [])
+
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            _TZ_ET = ZoneInfo("America/New_York")
+
+            def _to_ms_for_compare(ts):
+                """Return epoch-ms from ms/sec/iso/'YYYY-MM-DD HH:MM:SS' (assume ET when naive)."""
+                try:
+                    if isinstance(ts, (int, float)) or (isinstance(ts, str) and ts.isdigit()):
+                        v = float(ts)
+                        return int(v if v > 1e12 else v * 1000.0)
+                    s = str(ts or "").strip()
+                    if not s:
+                        return None
+                    if "T" in s or " " in s:
+                        dt = datetime.fromisoformat(s.replace("T", " ").split(".")[0])
+                    else:
+                        dt = datetime.fromisoformat(s)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=_TZ_ET)
+                    return int(dt.timestamp() * 1000.0)
+                except Exception:
+                    return None
+
+            def _sell_pl_through(cutoff_date, rows=_trades_enriched):
+                """Sum realized P/L for SELLs with trade date <= cutoff_date (ET)."""
+                try:
+                    tot = 0.0
+                    for tr in rows:
+                        side = (tr.get("action") or tr.get("side") or "").upper()
+                        if side != "SELL":
+                            continue
+                        ts_ms = (
+                            _to_ms_for_compare(tr.get("time_ms"))
+                            or _to_ms_for_compare(tr.get("time_utc"))
+                            or _to_ms_for_compare(tr.get("time"))
+                        )
+                        if not ts_ms:
+                            continue
+                        d_et = datetime.fromtimestamp(ts_ms / 1000.0, tz=_TZ_ET).date()
+                        if d_et <= cutoff_date:
+                            tot += float(tr.get("pl") or tr.get("pnl") or 0.0)
+                    return round(tot, 2)
+                except Exception:
+                    return 0.0
+
+            # If not defined elsewhere, keep this tiny helper:
+            try:
+                START_CASH
+            except NameError:
+                START_CASH = 0.0
+
+            def _equity_on(d):
+                return round(START_CASH + _sell_pl_through(d) + _positions_value_asof(d), 2)
+
+        except Exception:
+            if log:
+                log.exception("[LIVE] trades merged failed")
+            trades_rows = []
+
+        # NOTE:
+        #   - Do NOT recompute 'days' here (no 'start_s' / 'req_days').
+        #   - Do NOT call transactions_as_trades() or recent_executions_as_trades() anymore.
+        #   - All date math happens inside trade_source.load_trades_merged().
+
+        # ---------------- Helpers ----------------------
+        # services/live_status_helpers.py (or inline in your live status route)
+        from services.etrade_service import account_identity, get_account_summary
+
+        def build_account_for_ui() -> dict:
+            ident = (
+                account_identity() or {}
+            )  # {'account_id', 'account_id_key', 'account_type_display', ...}
+            summ = (
+                get_account_summary() or {}
+            )  # may include 'ui' sub-dict with balances
+            ui = summ.get("ui") or {}
+
+            acct_id = ident.get("account_id") or ui.get("account_id") or ""
+            acct_key = ident.get("account_id_key") or ui.get("account_key") or ""
+
+            return {
+                # IDs (correctly typed)
+                "account_id": acct_id,  # numeric like "153737458"
+                "account_key": acct_key,  # opaque like "kW8L...C8iWA"
+                # Labels / type
+                "account_type": ident.get("account_type")
+                or ui.get("account_type")
+                or "",
+                "account_type_display": ident.get("account_type_display")
+                or ui.get("account_type_display")
+                or "",
+                # Balances (pick first non-null among common fields)
+                "buying_power": ui.get("available_funds")
+                or ui.get("marginBuyingPower")
+                or summ.get("buying_power")
+                or 0,
+                "equity_value": ui.get("netAccountValue")
+                or summ.get("equity_value")
+                or 0,
+                "settled_cash": ui.get("cashAvailableForInvestment")
+                or summ.get("settled_cash")
+                or 0,
+                # keep the raw ui if you want
+                "ui": ui,
+            }
+
+        def _num(x):
+            """Best-effort float, else None."""
+            try:
+                return float(str(x).replace(",", "").strip())
+            except Exception:
+                return None
+
+        def _pick_last_prev(q):
+            """
+            Accepts q as either:
+              - simple dict like {'last': 123.4, 'prev': 122.0}, or
+              - raw-ish E*TRADE 'QuoteData' / 'All' shapes, or
+              - a bare number (last), or string.
+            Returns (last, prev) as floats or (None, None).
+            """
+            # bare number/string
+            if isinstance(q, (int, float, str)):
+                return (_num(q), None)
+
+            if not isinstance(q, dict):
+                return (None, None)
+
+            # normalized map already?
+            if "last" in q or "prev" in q:
+                return (_num(q.get("last")), _num(q.get("prev")))
+
+            # try common E*TRADE shapes
+            # 1) top-level 'All'
+            allb = q.get("All") or q.get("all") or {}
+            last = _num(allb.get("lastTrade") or allb.get("lastPrice"))
+            prev = _num(allb.get("previousClose") or allb.get("priorClose"))
+
+            # take extended-hours last if present
+            eh = allb.get("ExtendedHourQuoteDetail") or {}
+            eh_last = _num(eh.get("lastPrice"))
+            if eh_last is not None:
+                last = eh_last if eh_last is not None else last
+
+            # 2) sometimes values live at the top level
+            if last is None:
+                for k in ("lastTrade", "lastPrice", "close", "last"):
+                    v = q.get(k)
+                    nv = _num(v)
+                    if nv is not None:
+                        last = nv
+                        break
+
+            if prev is None:
+                for k in ("previousClose", "priorClose"):
+                    v = q.get(k)
+                    nv = _num(v)
+                    if nv is not None:
+                        prev = nv
+                        break
+
+            return (last, prev)
+
+        def _to_f(x):
+            try:
+                if x is None:
+                    return None
+                if isinstance(x, (int, float)):
+                    return float(x)
+                return float(str(x).replace(",", "").strip())
+            except Exception:
+                return None
+
+        def _safe_float(x, d=0.0):
+            try:
+                return float(x)
+            except Exception:
+                return float(d)
+
+        def _to_ms_for_compare(val) -> int:
+            """
+            Robust convert various time reps to epoch ms.
+            Accepts: epoch seconds, epoch ms, ISO (with/without Z), 'YYYY-MM-DD HH:MM:SS'.
+            """
+            try:
+                if val is None:
+                    return 0
+                # numeric?
+                if isinstance(val, (int, float)):
+                    v = float(val)
+                    return int(v if v > 10_000_000_000 else v * 1000)
+                s = str(val).strip()
+                if not s:
+                    return 0
+                # digits only?
+                if s.isdigit():
+                    v = float(s)
+                    return int(v if v > 10_000_000_000 else v * 1000)
+                # 'YYYY-MM-DD HH:MM:SS' -> ISO
+                if " " in s and "T" not in s:
+                    s = s.replace(" ", "T")
+                # add 'Z' if no tz
+                if "Z" not in s and "+" not in s:
+                    s += "Z"
+                dt = _dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+                return int(dt.timestamp() * 1000)
+            except Exception:
+                return 0
+
+        def _fmt_et(ms_or_any) -> str:
+            """Format a timestamp in ET as 'YYYY-MM-DD HH:MM:SS'."""
+            try:
+                ms = _to_ms_for_compare(ms_or_any)
+                if ms <= 0:
+                    return ""
+                return _dt.datetime.fromtimestamp(ms / 1000.0, tz=_ET).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+            except Exception:
+                return ""
+
+        def _dig_etrade_quotes_to_map(payload):
+            """
+            Parse E*TRADE quote payload -> {SYM: {'last': float, 'prev': float|None}}
+            Works across both multi-quote and single-quote shapes.
+            """
+            out = {}
+
+            def _put(sym, last, prev):
+                last_f = _to_f(last)
+                if sym and last_f is not None:
+                    key = str(sym).upper()
+                    rec = {"last": last_f, "prev": _to_f(prev)}
+                    out[key] = rec
+                    # dot/dash dual for tickers like BRK.B or BRK-B
+                    if "." in key:
+                        out[key.replace(".", "-")] = rec
+                    if "-" in key:
+                        out[key.replace("-", ".")] = rec
+
+            def visit(node):
+                if isinstance(node, dict):
+                    sym = node.get("symbol") or (node.get("Product") or {}).get(
+                        "symbol"
+                    )
+                    last = prev = None
+
+                    allblk = node.get("All") or node.get("all")
+                    intr = node.get("Intraday") or node.get("intraday")
+
+                    if isinstance(allblk, dict):
+                        last = allblk.get("lastTrade") or allblk.get("lastPrice")
+                        prev = allblk.get("previousClose") or allblk.get("priorClose")
+                        eh = allblk.get("ExtendedHourQuoteDetail") or {}
+                        eh_last = _to_f(eh.get("lastPrice"))
+                        if eh_last is not None:
+                            last = eh_last
+
+                    if last is None and isinstance(intr, dict):
+                        last = intr.get("lastTrade") or intr.get("lastPrice")
+
+                    if last is None:
+                        for k in ("lastTrade", "lastPrice", "close", "last"):
+                            v = node.get(k)
+                            if _to_f(v) is not None:
+                                last = v
+                                break
+
+                    if prev is None:
+                        for k in ("previousClose", "priorClose"):
+                            v = node.get(k)
+                            if _to_f(v) is not None:
+                                prev = v
+                                break
+
+                    if sym and last is not None:
+                        _put(sym, last, prev)
+                    for v in node.values():
+                        visit(v)
+                elif isinstance(node, (list, tuple)):
+                    for v in node:
+                        visit(v)
+
+            try:
+                if isinstance(payload, (bytes, bytearray)):
+                    payload = json.loads(payload.decode("utf-8", "ignore"))
+                elif isinstance(payload, str):
+                    payload = json.loads(payload)
+            except Exception:
+                pass
+
+            visit(payload or {})
+            return out
+
+        def _collect_holdings(raw_positions):
+            """Extract [{'symbol','qty','price_paid'}] from E*TRADE positions blob."""
+            out = []
+
+            def visit(n):
+                if isinstance(n, dict):
+                    prod = n.get("Product") or n.get("product") or {}
+                    sym = n.get("symbol") or prod.get("symbol")
+                    qty = (
+                        n.get("quantity")
+                        or n.get("qty")
+                        or n.get("positionQty")
+                        or n.get("longQty")
+                        or n.get("longQuantity")
+                        or n.get("positionQuantity")
+                    )
+                    avg = (
+                        n.get("pricePaid")
+                        or n.get("avgPrice")
+                        or n.get("averagePrice")
+                        or n.get("costPerShare")
+                        or n.get("costBasisPerShare")
+                    )
+                    if sym and qty:
+                        try:
+                            q = _safe_float(qty)
+                            if q > 0:
+                                out.append(
+                                    {
+                                        "symbol": str(sym).upper(),
+                                        "qty": q,
+                                        "price_paid": _to_f(avg),
+                                    }
+                                )
+                        except Exception:
+                            pass
+                    for v in n.values():
+                        visit(v)
+                elif isinstance(n, (list, tuple)):
+                    for v in n:
+                        visit(v)
+
+            visit(raw_positions or [])
+            return out
+
+        def _fifo_enrich_and_daytrades(trades):
+            """
+            Enrich trades with FIFO basis and compute day-trade stats.
+            A 'day trade' = any SELL whose FIFO-closed shares all came from BUY lots
+            opened on the same ET calendar day as the SELL.
+
+            Returns:
+                enriched_trades (list[dict]),
+                realized_today_val (float),
+                realized_today_pct (float),
+                daytrade_stats (dict) -> {"pdt5": {"dates": {YYYY-MM-DD: {"count": int}}, "total": int}}
+            """
+            # ---------- setup ----------
+            lots = {}  # sym -> [[qty, px, buy_date], ...]
+            today_et = _dt.datetime.now(tz=_ET).date()
+
+            realized_val = 0.0
+            realized_basis = 0.0
+            enriched = []
+            daytrades = []  # {"date": date, "pl": float, "qty": int}
+
+            # Oldest -> newest for FIFO consumption
+            chron = sorted(trades, key=lambda t: _to_ms_for_compare(t.get("time_ms")))
+
+            # ---------- FIFO enrich ----------
+            for t in chron:
+                ts_ms = _to_ms_for_compare(t.get("time_ms"))
+                t_date = (
+                    _dt.datetime.fromtimestamp(ts_ms / 1000.0, tz=_ET).date()
+                    if ts_ms else today_et
+                )
+                sym  = (t.get("symbol") or "").upper()
+                side = (t.get("action") or t.get("side") or "").upper()
+                qty  = int(_safe_float(t.get("qty")))
+                px   = _to_f(t.get("price"))
+
+                if not sym or qty <= 0 or (px or 0) <= 0:
+                    enriched.append({**t})
+                    continue
+
+                lots.setdefault(sym, [])
+
+                if side == "BUY":
+                    lots[sym].append([qty, px, t_date])
+                    enriched.append({**t, "price_paid": px, "pl": 0.0, "pl_pct": 0.0})
+                    continue
+
+                if side != "SELL":
+                    enriched.append({**t})
+                    continue
+
+                # SELL: consume FIFO; track if all matched lots are same-day
+                remain = qty
+                basis_cost = 0.0
+                basis_sh = 0
+                same_day = True
+
+                while remain > 0 and lots[sym]:
+                    lot_qty, lot_px, lot_date = lots[sym][0]
+                    take = min(remain, lot_qty)
+                    basis_cost += take * lot_px
+                    basis_sh   += take
+                    if lot_date != t_date:
+                        same_day = False
+                    lot_qty -= take
+                    remain  -= take
+                    if lot_qty == 0:
+                        lots[sym].pop(0)
+                    else:
+                        lots[sym][0][0] = lot_qty
+
+                avg_basis = (basis_cost / basis_sh) if basis_sh else 0.0
+                pnl       = (px - avg_basis) * basis_sh if basis_sh else 0.0
+                pnl_pct   = ((px / avg_basis - 1.0) * 100.0) if avg_basis else 0.0
+
+                if t_date == today_et:
+                    realized_val   += pnl
+                    realized_basis += avg_basis * basis_sh
+
+                if basis_sh > 0 and same_day:
+                    daytrades.append({"date": t_date, "pl": pnl, "qty": basis_sh})
+
+                enriched.append({**t, "price_paid": avg_basis, "pl": pnl, "pl_pct": pnl_pct})
+
+            # newest -> oldest for UI
+            enriched.sort(key=lambda r: _to_ms_for_compare(r.get("time_ms")), reverse=True)
+
+            realized_pct = (realized_val / realized_basis * 100.0) if realized_basis > 0 else 0.0
+
+            # ---------- PDT stats (last 5 trading days) ----------
+            from datetime import date, timedelta
+
+            def _is_trading_day(d: date) -> bool:
+                return d.weekday() < 5  # Mon-Fri
+
+            def _last_n_trading_days(n: int, end: date | None = None) -> list[date]:
+                end = end or today_et
+                out, cur = [], end
+                while len(out) < n:
+                    if _is_trading_day(cur):
+                        out.append(cur)
+                    cur -= timedelta(days=1)
+                return list(reversed(out))
+
+            # count daytrades per day
+            by_date = {}
+            for drec in daytrades:
+                k = drec["date"].isoformat()
+                rec = by_date.setdefault(k, {"count": 0, "profitable": 0})
+                rec["count"] += 1
+                if (drec.get("pl") or 0) > 0:
+                    rec["profitable"] += 1
+
+            window = _last_n_trading_days(5)
+            pdt_total = 0
+            pdt_map = {}
+            for d in window:
+                k = d.isoformat()
+                c = by_date.get(k, {"count": 0})
+                pdt_map[k] = {"count": c["count"]}
+                pdt_total += c["count"]
+
+            daytrade_stats = {"pdt5": {"dates": pdt_map, "total": pdt_total}}
+
+            return (
+                enriched,
+                round(realized_val, 2),
+                round(realized_pct, 2),
+                daytrade_stats,
+            )
+
+        # ------------------- Account + Positions + Quotes (robust) -------------------
+
+        from services import broker as _broker
+
+        b = _broker.get_broker("LIVE")
+
+        def _first_num(*vals):
+            for v in vals:
+                try:
+                    if v is not None:
+                        return float(v)
+                except Exception:
+                    pass
+            return None
+
+        def _build_positions_table(holdings, qmap, inv):
+            """
+            Returns (rows, unrealized, cost_basis, positions_value).
+            Populates last/prev_close via qmap when not present on holdings.
+            """
+            rows = []
+            qmap = qmap or {}
+
+            def _f(x):
+                try:
+                    return float(x or 0)
+                except Exception:
+                    return 0.0
+
+            def _first_num(*vals):
+                for v in vals:
+                    try:
+                        if v is not None:
+                            return float(v)
+                    except Exception:
+                        pass
+                return None
+
+            unrealized = 0.0
+            cost_basis = 0.0
+            positions_value = 0.0
+
+            for pos in holdings or []:
+                sym = (pos.get("symbol") or "").upper()
+                qty = int(_f(pos.get("qty")))
+                avg = _f(pos.get("price_paid")) or None
+
+                q = qmap.get(sym) or {}
+                allq = q.get("All") or {}
+                # last price from several places (incl. nested "All")
+                last = _first_num(
+                    pos.get("last_price"),
+                    q.get("last"),
+                    q.get("lastTrade"),
+                    q.get("close"),
+                    q.get("previous_close"),
+                    q.get("previousClose"),
+                    allq.get("lastTrade"),
+                    allq.get("last"),
+                )
+
+                # previous close (primary) + robust fallbacks
+                prev_close = _first_num(
+                    q.get("previous_close"),
+                    q.get("previousClose"),
+                    q.get("prev"),
+                    allq.get("previousClose"),
+                    allq.get("previousClosePrice"),
+                    allq.get("close"),
+                )
+
+                # if still missing, back-solve from changeClose
+                if prev_close in (None, 0) and last is not None:
+                    delta = _first_num(q.get("changeClose"), allq.get("changeClose"))
+                    if delta is not None:
+                        prev_close = last - delta
+
+                # Value
+                value = (
+                    round((last or 0.0) * qty, 2)
+                    if (last is not None and qty)
+                    else None
+                )
+
+                # Totals (vs. cost basis)
+                total_pl = (
+                    ((last - avg) * qty) if (last is not None and avg and qty) else None
+                )
+                total_pl_pct = (
+                    (((last - avg) / avg) * 100.0)
+                    if (last is not None and avg)
+                    else None
+                )
+
+                # Day (vs. previous close)
+                day_pl = (
+                    ((last - prev_close) * qty)
+                    if (last is not None and prev_close is not None and qty)
+                    else None
+                )
+                day_pl_pct = (
+                    (((last - prev_close) / prev_close) * 100.0)
+                    if (last is not None and prev_close not in (None, 0))
+                    else None
+                )
+                # Fallbacks if prev_close wasn't usable
+                if day_pl_pct is None:
+                    dpp = _first_num(
+                        q.get("changeClosePercentage"),
+                        allq.get("changeClosePercentage"),
+                    )
+                    if dpp is not None:
+                        day_pl_pct = float(dpp)
+
+                if day_pl is None:
+                    # If we have the absolute day change, multiply by qty
+                    dc = _first_num(q.get("changeClose"), allq.get("changeClose"))
+                    if dc is not None and qty:
+                        day_pl = float(dc) * qty
+                    # Or derive from pct if we have last
+                    elif day_pl_pct is not None and last is not None and qty:
+                        day_pl = (last * (day_pl_pct / 100.0)) * qty
+
+                # Legacy ------œchange/percent------ (kept so nothing else breaks)
+                change = (last - avg) if (last is not None and avg) else 0.0
+                change_pct = ((change / avg) * 100.0) if avg else 0.0
+
+                rows.append(
+                    {
+                        "symbol": sym,
+                        "qty": qty,
+                        "opened_et": pos.get("opened_et") or pos.get("open_time"),
+                        "last_price": round(last, 4) if last is not None else None,
+                        "price_paid": round(avg, 4) if avg is not None else None,
+                        # ---œ… what the Holdings table shows
+                        "day_pl": round(day_pl, 2) if day_pl is not None else None,
+                        "day_pl_pct": round(day_pl_pct, 2)
+                        if day_pl_pct is not None
+                        else None,
+                        "total_pl": round(total_pl, 2)
+                        if total_pl is not None
+                        else None,
+                        "total_pl_pct": (
+                            round(total_pl_pct, 2) if total_pl_pct is not None else None
+                        ),
+                        # keep existing fields
+                        "change": round(change, 4) if avg is not None else 0.0,
+                        "change_pct": change_pct,
+                        "value": value,
+                    }
+                )
+
+                if total_pl is not None:
+                    unrealized += total_pl
+                if avg is not None and qty:
+                    cost_basis += avg * qty
+                if value is not None:
+                    positions_value += value
+
+            return (
+                rows,
+                round(unrealized, 2),
+                round(cost_basis, 2),
+                round(positions_value, 2),
+            )
+
+            # Totals
+            total_pl = (
+                ((last - avg) * qty) if (last is not None and avg and qty) else None
+            )
+            total_pl_pct = (
+                ((last - avg) / avg * 100.0) if (last is not None and avg) else None
+            )
+
+            # Day (vs previous close)
+            day_pl = (
+                ((last - prev_close) * qty)
+                if (last is not None and prev_close is not None and qty)
+                else None
+            )
+            day_pl_pct = (
+                ((last - prev_close) / prev_close * 100.0)
+                if (last is not None and prev_close not in (None, 0))
+                else None
+            )
+
+            # Keep your existing change fields too (optional)
+            change = (last - avg) if (last is not None and avg) else 0.0
+
+            rows.append(
+                {
+                    "symbol": sym,
+                    "qty": qty,
+                    "last_price": round(last, 4) if last is not None else None,
+                    "last": round(last, 4)
+                    if last is not None
+                    else None,  # alias for template
+                    "price_paid": round(avg, 4) if avg else None,
+                    # what the template expects for holdings P&L:
+                    "day_pl": round(day_pl, 2) if day_pl is not None else None,
+                    "day_pl_pct": round(day_pl_pct, 2)
+                    if day_pl_pct is not None
+                    else None,
+                    "total_pl": round(total_pl, 2) if total_pl is not None else None,
+                    "total_pl_pct": round(total_pl_pct, 2)
+                    if total_pl_pct is not None
+                    else None,
+                    # keep prior names so nothing else breaks
+                    "change": round(change, 4) if avg else 0.0,
+                    "change_pct": (change / avg * 100.0) if avg else 0.0,
+                    "value": round(last * qty, 2)
+                    if (last is not None and qty)
+                    else None,
+                }
+            )
+
+            unrealized = round(sum(f(r.get("total_gain")) for r in rows), 2)
+            cost_basis = round(
+                sum(f(r.get("price_paid")) * f(r.get("qty")) for r in rows), 2
+            )
+            positions_value = round(sum(f(r.get("value")) for r in rows), 2)
+            return rows, unrealized, cost_basis, positions_value
+
+        # --------------- Positions / Holdings (direct via etrade_service) ----------
+
+        holdings: list[dict] = []
+        inv: dict[str, float] = {}
+        qmap: dict[str, dict] = {}
+
+        # tolerant normalizer for the raw E*TRADE portfolio blob
+        def _normalize_positions_payload(payload) -> list[dict]:
+            pr = (payload or {}).get("PortfolioResponse") or {}
+            aps = pr.get("AccountPortfolio") or []
+            if isinstance(aps, dict):
+                aps = [aps]
+
+            rows: list[dict] = []
+            for ap in aps:
+                pos = ap.get("Position") or []
+                if isinstance(pos, dict):
+                    pos = [pos]
+                for p in pos:
+                    prod = p.get("Product") or {}
+                    sym = (prod.get("symbol") or p.get("symbol") or "").upper()
+                    qty = (
+                        p.get("quantity")
+                        or p.get("longQty")
+                        or p.get("positionQuantity")
+                        or 0
+                    )
+                    paid = (
+                        p.get("pricePaid")
+                        or p.get("avgPrice")
+                        or p.get("averagePrice")
+                        or p.get("costPerShare")
+                        or p.get("costBasisPerShare")
+                    )
+                    last = (
+                        p.get("lastPrice")
+                        or (p.get("Quick") or {}).get("lastTrade")
+                        or (p.get("All") or {}).get("lastTrade")
+                    )
+                    try:
+                        qty = int(float(qty or 0))
+                    except Exception:
+                        qty = 0
+
+                    rows.append(
+                        {
+                            "symbol": sym,
+                            "qty": qty,
+                            "price_paid": (
+                                float(paid) if paid not in (None, "") else None
+                            ),
+                            "last_price": (
+                                float(last) if last not in (None, "") else None
+                            ),
+                        }
+                    )
+            return rows
+
+        # fetch raw positions directly from the service layer
+        try:
+            raw_positions = et.get_positions() or {}
+        except Exception as e:
+            _log("warning", "[LIVE] get_positions failed: %s", e)
+            raw_positions = {}
+
+        # build holdings rows + inventory map
+        try:
+            holdings = _normalize_positions_payload(raw_positions)
+            inv = {
+                r["symbol"]: float(r["qty"])
+                for r in holdings
+                if r.get("symbol") and r.get("qty")
+            }
+        except Exception as e:
+            _log("warning", "[LIVE] positions normalize error: %s", e)
+            holdings, inv = [], {}
+
+        # ---- Quotes: prefer helper; no placeholders, no extra calls ----
+        try:
+            # symbols from current holdings
+            syms = sorted(
+                {
+                    (r.get("symbol") or "").upper()
+                    for r in (holdings or [])
+                    if r.get("symbol")
+                }
+            )
+            qmap: dict[str, dict[str, float]] = {}
+
+            if syms:
+                # one batch call; do NOT call get_quotes() elsewhere in this path
+                try:
+                    qmap = et.get_quotes_map(syms) or {}
+                except Exception as e:
+                    _log("warning", "[LIVE] get_quotes_map error: %s", e)
+                    qmap = {}
+
+                # if you have any pre-fetched quote payload available locally, merge it here
+                # via _merge_quotes(payload, "local-payload")  (optional, safe no-op if none)
+        except Exception as e:
+            _log("warning", "[LIVE] quotes map failed: %s", e)
+            qmap = {}
+
+        from datetime import datetime, timedelta, timezone
+
+        # ---- Realized P&L buckets: Week / Last Week / Month / All -------------------
+        from zoneinfo import ZoneInfo
+
+        _ET = ZoneInfo("America/New_York")
+
+        from zoneinfo import ZoneInfo
+
+        _ET = ZoneInfo("America/New_York")
+
+        def _trade_dt_et(trow):
+            """
+            Returns an ET-aware datetime for a trade row. Supports:
+              - epoch ms/seconds in time_ms/time_utc
+              - 'YYYY-MM-DD HH:MM:SS' in time or time_et
+              - ISO 8601 in time_utc
+            """
+            from datetime import datetime, timezone
+
+            val = (
+                trow.get("time_ms")
+                or trow.get("time_utc")
+                or trow.get("time")
+                or trow.get("time_et")
+            )
+            if val is None:
+                return None
+            # epoch?
+            try:
+                v = float(val)
+                ts_ms = v if v > 10_000_000_000 else v * 1000.0
+                return datetime.fromtimestamp(
+                    ts_ms / 1000.0, tz=timezone.utc
+                ).astimezone(_TZ_ET)
+            except Exception:
+                pass
+            # string parse
+            s = str(val).strip().replace("T", " ")
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+                try:
+                    dt = datetime.strptime(s, fmt)
+                    return dt.replace(tzinfo=_ET)
+                except Exception:
+                    continue
+            # ISO with Z/offset
+            try:
+                dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=_ET)
+                return dt.astimezone(_TZ_ET)
+            except Exception:
+                return None
+
+
+            def _ts(t):
+                # prefer ms ---†’ utc, then time_utc, then naive ET 'time'
+                if t.get("time_ms"):
+                    return datetime.fromtimestamp(
+                        float(t["time_ms"]) / 1000.0, tz=timezone.utc
+                    ).astimezone(_et())
+                if t.get("time_utc"):
+                    try:
+                        return (
+                            datetime.strptime(t["time_utc"], "%Y-%m-%d %H:%M:%S")
+                            .replace(tzinfo=timezone.utc)
+                            .astimezone(_et())
+                        )
+                    except Exception:
+                        pass
+                if t.get("time"):  # treat as ET
+                    try:
+                        return datetime.strptime(
+                            t["time"], "%Y-%m-%d %H:%M:%S"
+                        ).replace(tzinfo=_et())
+                    except Exception:
+                        pass
+                return None
+
+            for tr in trades or []:
+                if (tr.get("action") != "SELL") or (tr.get("pl") is None):
+                    continue
+                ts = _ts(tr)
+                if ts is None:
+                    continue
+
+                pnl = float(tr.get("pl") or 0.0)
+                # If you store a gross notional in `amount`, use that as cost basis;
+                # otherwise fall back to price_paid * qty.
+                amt = tr.get("amount")
+                if amt is not None:
+                    cost = abs(float(amt))
+                else:
+                    price_paid = float(tr.get("price_paid") or 0.0)
+                    qty = float(tr.get("qty") or 0.0)
+                    cost = abs(price_paid * qty)
+
+                # all-time
+                acc["all"]["pnl"] += pnl
+                acc["all"]["cost"] += cost
+                # month to date
+                if ts >= month_start:
+                    acc["month"]["pnl"] += pnl
+                    acc["month"]["cost"] += cost
+                # last week (full prior week)
+                if last_week_start <= ts < last_week_end:
+                    acc["last_week"]["pnl"] += pnl
+                    acc["last_week"]["cost"] += cost
+                # this week to date
+                if ts >= week_start:
+                    acc["week"]["pnl"] += pnl
+                    acc["week"]["cost"] += cost
+
+            def _out(k):
+                pnl = round(acc[k]["pnl"], 2)
+                pct = (
+                    round((pnl / acc[k]["cost"] * 100.0), 2)
+                    if acc[k]["cost"] > 0
+                    else 0.0
+                )
+                return {"pnl": pnl, "pct": pct}
+
+            return {
+                "week": _out("week"),
+                "last_week": _out("last_week"),
+                "month": _out("month"),
+                "all": _out("all"),
+            }
+        def _merge_quotes(raw, tag: str):
+            if quotes_dbg is not None:
+
+                def _glimpse(obj):
+                    try:
+                        if isinstance(obj, dict):
+                            return {"type": "dict", "keys": list(obj.keys())[:8]}
+                        if isinstance(obj, (list, tuple)):
+                            return {"type": "list", "len": len(obj)}
+                        s = str(obj)
+                        return (s[:160] + "------¦") if len(s) > 160 else s
+                    except Exception:
+                        return "<glimpse-failed>"
+
+                quotes_dbg.append({"tag": tag, "glimpse": _glimpse(raw)})
+
+            parsed = _dig_etrade_quotes_to_map(raw) or {}
+            if parsed:
+                qmap.update(parsed)
+                return True
+            return False
+
+        def _infer_open_times(holdings, trades_rows):
+            """
+            For each symbol we currently hold (qty>0), walk its trades oldest->newest
+            and remember the first BUY after the last time size dropped to 0.
+            Returns {SYM: opened_time_display_ET}.
+            """
+            # index trades by symbol, oldest -> newest
+            by_sym: dict[str, list[dict]] = {}
+            for tr in sorted(
+                trades_rows or [],
+                key=lambda x: _to_ms_for_compare(
+                    x.get("time_ms") or x.get("time") or x.get("time_utc")
+                ),
+            ):
+                s = (tr.get("symbol") or "").upper()
+                if not s:
+                    continue
+                by_sym.setdefault(s, []).append(tr)
+
+            out: dict[str, str] = {}
+            for h in holdings or []:
+                s = (h.get("symbol") or "").upper()
+                qty_now = int(_safe_float(h.get("qty")) or 0)
+                if not s or qty_now <= 0:
+                    continue
+
+                pos = 0
+                opened_et = None  # string we’ll display in the UI
+                for tr in by_sym.get(s, []):
+                    side = (tr.get("action") or "").upper()
+                    q = int(_safe_float(tr.get("qty")) or 0)
+
+                    if side == "BUY":
+                        prev = pos
+                        pos += q
+                        if prev <= 0 and pos > 0:
+                            # prefer the already-formatted ET time if present
+                            opened_et = tr.get("time") or _fmt_et(
+                                tr.get("time_ms") or tr.get("time_utc")
+                            )
+                    elif side == "SELL":
+                        pos -= q
+                        if pos <= 0:
+                            opened_et = None  # flat; next BUY re-opens
+
+                # if we still hold shares, keep the last opened_et we saw
+                if pos > 0 and opened_et:
+                    out[s] = opened_et
+
+            return out
+
+        # ---- B# ---- Build the symbol request set from holdings + inv ----
+        syms = sorted(
+            {
+                *(
+                    str(r.get("symbol") or r.get("sym") or "").upper()
+                    for r in (holdings or [])
+                    if (r.get("symbol") or r.get("sym"))
+                ),
+                *{str(s).upper() for s in (inv or {}).keys()},
+            }
+        )
+        syms = [s for s in syms if s]  # drop empties
+
+        if syms:
+            _log("info", "[LIVE] requesting quotes for %s", syms)
+
+            # one batch call
+            try:
+                qmap = et.get_quotes_map(syms) if hasattr(et, "get_quotes_map") else {}
+            except Exception as e:
+                _log("warning", "[LIVE] get_quotes_map error: %s", e)
+                qmap = {}
+
+            # fallback: only fetch singles for missing symbols
+            missing = [s for s in syms if s not in qmap]
+            for s in missing:
+                try:
+                    raw = et.get_quote(s, detailFlag="ALL")
+                    _merge_quotes(raw, f"single:{s}")  # merges into qmap if parseable
+                except Exception as ee:
+                    _log("warning", "[LIVE] get_quote(%s) error: %s", s, ee)
+
+        # ---- Account balances/meta (via service) ----
+        try:
+            aid = et.account_id_key()
+            acct_raw = et.get_balances(aid) or {}
+        except Exception as e:
+            _log("warning", "[LIVE] balances fetch failed: %s", e)
+            acct_raw = {}
+
+        try:
+            account_norm = et._normalize_account(acct_raw) or {}
+        except Exception:
+            account_norm = {}
 
         account = {
-            "account_id_display": str(aid),
-            "account_type_display": str(atype),
+            "account_id": aid,
+            "account_key": aid,
+            "account_type": None,  # optional to fill elsewhere
+            "buying_power": account_norm.get("buying_power") or 0,
+            "available_to_withdraw": account_norm.get("available_to_withdraw") or 0,
+            "equity_value": account_norm.get("equity_value") or 0,
+            "settled_cash": account_norm.get("settled_cash") or 0,
         }
-        kpis = {
-            "buying_power": round(bp, 2),
-            "positions_value": round(pos_total, 2),
-            "equity_value": round(equity, 2),
-            "timestamp": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+
+        # ---- Metrics scaffold (must exist before we assign to it) ----
+        metrics = {
+            "cash_balance": float(
+                account.get("cashAvailableForWithdrawal")
+                or account.get("cashAvailableForInvestment")
+                or account.get("cashBalance")
+                or 0.0
+            ),
+            "positions_value": 0.0,
+            "total_value": 0.0,
+            "unrealized_pnl": 0.0,
+            "unrealized_pnl_pct": 0.0,
+            "realized_pnl": 0.0,
+            "realized_pnl_pct": 0.0,
+            "daytrades_pdt5": {"total": 0, "dates": {}},
+            "realized_buckets": {
+                "week": {"pnl": 0.0, "pct": 0.0},
+                "last_week": {"pnl": 0.0, "pct": 0.0},
+                "month": {"pnl": 0.0, "pct": 0.0},
+                "all": {"pnl": 0.0, "pct": 0.0},
+            },
         }
+        # ---- Rollups from holdings (safe even if holdings is empty) ----
+        positions_value = round(sum(_safe_float(h.get("value")) for h in holdings), 2)
+
+        cost_basis_sum = round(
+            sum(
+                _safe_float(h.get("price_paid")) * _safe_float(h.get("qty"))
+                for h in holdings
+            ),
+            2,
+        )
+
+        unrealized = round(
+            sum(
+                (_safe_float(h.get("last_price")) - _safe_float(h.get("price_paid")))
+                * _safe_float(h.get("qty"))
+                for h in holdings
+            ),
+            2,
+        )
+
+        upct = (
+            round((unrealized / cost_basis_sum * 100.0), 2) if cost_basis_sum else 0.0
+        )
+
+        # ---- Compute metrics from current rows / qmap fallback ----
+        rows, unrealized, cost_basis, positions_value = _build_positions_table(
+            holdings, qmap, inv
+        )  # your existing helper
+
+        metrics["positions_value"] = positions_value
+        if not metrics.get("cash_balance"):
+            metrics["cash_balance"] = account["settled_cash"] or 0
+        metrics["total_value"] = round(
+            (metrics["cash_balance"] or 0) + (metrics["positions_value"] or 0), 2
+        )
+        metrics["unrealized_pnl"] = unrealized
+        metrics["unrealized_pnl_pct"] = (
+            round((unrealized / cost_basis) * 100, 2) if cost_basis else 0
+        )
+
+        # ---- Debug fill-ins if you have a _debug dict ----
+        try:
+            _debug = _debug  # keep existing if present
+        except NameError:
+            _debug = {}
+        _debug.update(
+            {
+                "qmap_keys": sorted(list(qmap.keys())),
+                "requested": syms,
+                "cost_basis_sum": cost_basis,
+                "positions_value": positions_value,
+            }
+        )
+
+        # Expose for your final response assembly:
+        holdings = rows
+
+        # --------------- Trades (from merged source) ---------------
+        IGNORE = {
+            s.strip().upper()
+            for s in (os.getenv("LIVE_IGNORE_SYMBOLS") or "GEVO").split(",")
+            if s.strip()
+        }
+        mapped = []
+
+        for t in trades_rows or []:
+            sym = (t.get("symbol") or "").upper()
+            if not sym or sym in IGNORE:
+                continue
+
+            side = (t.get("side") or t.get("action") or "").upper()
+            if side.startswith("BUY"):
+                side = "BUY"
+            elif side.startswith("SELL"):
+                side = "SELL"
+
+            qty = int(_safe_float(t.get("qty")))
+            px = _to_f(t.get("price"))
+
+            ts_ms = _to_ms_for_compare(t.get("time_ms") or t.get("time"))
+            mapped.append(
+                {
+                    "time": _fmt_et(ts_ms),
+                    "time_ms": ts_ms,
+                    "time_utc": t.get("time") or "",
+                    "symbol": sym,
+                    "action": side,
+                    "qty": qty,
+                    "price": px,
+                    "amount": _to_f(t.get("amount")),
+                    "price_paid": _to_f(t.get("price_paid") or t.get("pricePaid")),
+                    "pl": _to_f(t.get("pl")),
+                    "pl_pct": _to_f(t.get("pl_pct")),
+                }
+            )
+
+        # newest -> oldest
+        mapped.sort(key=lambda r: _to_ms_for_compare(r.get("time_ms")), reverse=True)
+
+        # FIFO enrich + PDT stats + today's realized
+        enriched_trades, realized_today_val, realized_today_pct, daytrade_stats = (
+            _fifo_enrich_and_daytrades(mapped)
+        )
+
+        # Optional: compute realized_buckets (week/last_week/month/all) if you have a helper
+        try:
+            realized_buckets = summarize_realized_buckets(trades_enriched)
+            if "realized_buckets" not in metrics: metrics["realized_buckets"] = realized_buckets
+        except Exception:
+            realized_buckets = {
+                "week": {"pnl": 0.0, "pct": 0.0},
+                "last_week": {"pnl": 0.0, "pct": 0.0},  # <------” add
+                "month": {"pnl": 0.0, "pct": 0.0},
+                "all": {"pnl": 0.0, "pct": 0.0},
+            }
+
+        # Dedup + normalize trade rows
+        IGNORE = {
+            s.strip().upper()
+            for s in (os.getenv("LIVE_IGNORE_SYMBOLS") or "GEVO").split(",")
+            if s.strip()
+        }
+        seen, mapped = set(), []
+        seen, mapped = set(), []
+        for t in trades_rows or []:
+            sym = (t.get("symbol") or "").upper()
+            if sym in IGNORE:
+                continue
+            side = (t.get("side") or t.get("action") or "").upper()
+            if side.startswith("BUY"):
+                side = "BUY"
+            elif side.startswith("SELL"):
+                side = "SELL"
+            qty = int(_safe_float(t.get("qty")))
+            px = _to_f(t.get("price"))
+
+            # Timestamp: prefer time_ms; else fall back to time/time_utc
+            ts_ms = _to_ms_for_compare(
+                t.get("time_ms") or t.get("time") or t.get("time_utc")
+            )
+            minute_bucket = int(ts_ms / 60000) if ts_ms else 0
+            key = (minute_bucket, sym, side, qty, round(px or 0.0, 2))
+            if key in seen:
+                continue
+            seen.add(key)
+
+            mapped.append(
+                {
+                    "time": _fmt_et(ts_ms),  # ET display
+                    "time_ms": ts_ms,  # for sorting / filtering
+                    "time_utc": t.get("time") or t.get("time_utc") or "",
+                    "symbol": sym,
+                    "action": side,
+                    "qty": qty,
+                    "price": px,
+                    "amount": _to_f(t.get("amount")),
+                    # pass through P&L fields if service already computed
+                    "price_paid": _to_f(t.get("price_paid") or t.get("pricePaid")),
+                    "pl": _to_f(t.get("pl")),
+                    "pl_pct": _to_f(t.get("pl_pct")),
+                }
+            )
+
+        def _open_since_map(trades):
+            """
+            Build {SYM: earliest_open_lot_time_ms} from FIFO across BUY/SELL trades.
+            Uses trade['time_ms'] and trade['action'] ('BUY'/'SELL').
+            """
+            lots = {}  # sym -> list of [qty, px, time_ms]
+            for t in sorted(trades, key=lambda x: _to_ms_for_compare(x.get("time_ms"))):
+                sym = (t.get("symbol") or "").upper()
+                side = (t.get("action") or "").upper()
+                qty = int(_safe_float(t.get("qty")))
+                tms = _to_ms_for_compare(t.get("time_ms"))
+                px = _to_f(t.get("price"))
+                if not sym or qty <= 0:
+                    continue
+                lots.setdefault(sym, [])
+                if side == "BUY":
+                    lots[sym].append([qty, px, tms])
+                elif side == "SELL":
+                    remain = qty
+                    while remain > 0 and lots[sym]:
+                        lq, lpx, lts = lots[sym][0]
+                        take = min(remain, lq)
+                        lq -= take
+                        remain -= take
+                        if lq == 0:
+                            lots[sym].pop(0)
+                        else:
+                            lots[sym][0][0] = lq
+            # earliest remaining lot time for each symbol
+            out = {}
+            for sym, stk in lots.items():
+                if stk:
+                    out[sym] = min((r[2] or 0) for r in stk if r and len(r) >= 3)
+            return out
+
+        # --- always initialize so it's in scope even on failures
+        open_since = {}
+
+        try:
+            # use the chronological, pre-enriched list ("mapped") ------” that's enough
+            open_since = _open_since_map(mapped) if mapped else {}
+        except Exception as e:
+            _log("warning", "[LIVE] open_since_map failed: %s", e)
+            open_since = {}
+
+        # --- BEFORE you start enriching holdings, add: ---
+        open_since = {}  # make sure it exists even if we fail to build it
+
+        try:
+            import datetime as _dt
+
+            from services.trading_helpers import get_trades
+
+            def _to_ms(val):
+                try:
+                    if isinstance(val, (int, float)):
+                        v = float(val)
+                        return int(v if v > 10_000_000_000 else v * 1000)
+                    s = str(val or "")
+                    if " " in s and "T" not in s:
+                        s = s.replace(" ", "T")
+                    if "Z" not in s and "+" not in s:
+                        s += "Z"
+                    return int(
+                        _dt.datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
+                        * 1000
+                    )
+                except Exception:
+                    return 0
+
+            for t in get_trades() or []:
+                sym = (t.get("symbol") or "").upper()
+                act = (t.get("action") or "").upper()
+                ts = (
+                    t.get("time_ms")
+                    or t.get("time_utc")
+                    or t.get("time")
+                    or t.get("timestamp")
+                )
+                ms = _to_ms(ts)
+                if act == "SELL":
+                    open_since.pop(sym, None)  # back to flat
+                elif act == "BUY" and sym:
+                    open_since.setdefault(sym, ms)  # first BUY since flat
+        except Exception as e:
+            current_app.logger.warning(
+                "[LIVE] holdings enrichment failed building open_since: %s", e
+            )
+            open_since = {}  # keep it safe
+
+        # Enrich with FIFO, then normalize rounding
+        trades_enriched, realized_today, realized_today_pct, dt_stats = (
+            _fifo_enrich_and_daytrades(mapped)
+        )
+
+        opened_map = _infer_open_times(holdings, trades_enriched)
+        for h in holdings:
+            s = (h.get("symbol") or "").upper()
+            if s in opened_map:
+                opened = opened_map[s]
+                h["opened_et"] = opened
+                h["open_time"] = opened  # legacy key expected by UI
+
+        # Realized P&L buckets (now that SELL rows have FIFO price_paid)
+        try:
+            realized_buckets = summarize_realized_buckets(trades_enriched)
+        except Exception:
+            current_app.logger.exception("realized_buckets summarize failed")
+            realized_buckets = {
+                "week": {"pnl": 0.0, "pct": 0.0},
+                "last_week": {"pnl": 0.0, "pct": 0.0},
+                "month": {"pnl": 0.0, "pct": 0.0},
+                "all": {"pnl": 0.0, "pct": 0.0},
+            }
+
+        for t in trades_enriched:
+            if "price_paid" in t and t["price_paid"] is not None:
+                t["price_paid"] = round(_safe_float(t["price_paid"]) or 0.0, 2)
+            if "pl" in t and t["pl"] is not None:
+                t["pl"] = round(_safe_float(t["pl"]) or 0.0, 2)
+            if "pl_pct" in t and t["pl_pct"] is not None:
+                t["pl_pct"] = round(_safe_float(t["pl_pct"]) or 0.0, 2)
+
+        open_since = _open_since_map(mapped)  # or trades_enriched; mapped is fine
+
+        # --- NEW: realized over the whole lookback window (after start cutoff) ---
+        realized_total = round(
+            sum(
+                _safe_float(t.get("pl"))
+                for t in trades_enriched
+                if (t.get("action") == "SELL" and t.get("pl") is not None)
+            ),
+            2,
+        )
+
+        realized_basis_total = sum(
+            (_safe_float(t.get("price_paid")) or 0.0) * int(_safe_float(t.get("qty")))
+            for t in trades_enriched
+            if (t.get("action") == "SELL" and t.get("price_paid") is not None)
+        )
+
+        realized_total_pct = (
+            round((realized_total / realized_basis_total * 100.0), 2)
+            if realized_basis_total > 0
+            else 0.0
+        )
+
+        for h in holdings:
+            s = (h.get("symbol") or "").upper()
+            if s in opened_map:
+                opened = opened_map[s]
+                h["opened_et"] = opened  # new name you introduced
+                h["open_time"] = opened  # legacy name the UI expects
+        # --------------- Equity fallback ---------------
+        if not account.get("equity_value"):
+            eq = round(
+                (account.get("settled_cash") or 0.0) + (positions_value or 0.0), 2
+            )
+            account["equity_value"] = eq
+
+        # --------------- Payload -----------------------
+        cash_balance = float(
+            account.get("buying_power") or account.get("available_to_withdraw") or 0.0
+        )
+        total_value = round(positions_value + cash_balance, 2)
+
+        payload = {
+            "ok": True,
+            "days": days,
+            "account": account,
+            "kpis": {
+                "realized": realized_buckets,   # <- week/last_week/month/all with pnl & pct
+                "realized_today": realized_today_val,
+                "realized_today_pct": realized_today_pct,
+            },
+            "holdings": holdings,
+            "trades": trades_enriched,
+            "metrics": {
+                "positions_value": positions_value,
+                "unrealized_pnl": unrealized,
+                "unrealized_pnl_pct": upct,
+                "realized_pnl": realized_total,
+                "realized_pnl_pct": realized_total_pct,
+                "total_value": total_value,
+                "cash_balance": (
+                    account.get("cashAvailableForWithdrawal")
+                    or account.get("cashBalance")
+                    or 0.0
+                ),
+                "daytrades_pdt5": (dt_stats or {}).get("pdt5"),
+                "realized_buckets": realized_buckets,
+            },
+        }
+        if debug_level:
+            payload.setdefault("_debug", {})
+            payload["_debug"].update(
+                {
+                    "positions_count": len(holdings or []),
+                    "sample_position": (holdings[0] if holdings else {}),
+                    "qmap_keys": sorted(list(qmap.keys())),
+                }
+            )
+
+        # -------- account block --------
+        ident = account_identity() or {}
+        summ  = get_account_summary() or {}
+
+        base_ui = (summ.get("ui") or {}) if isinstance(summ.get("ui"), dict) else {}
+        acc_id  = (
+            ident.get("account_id")
+            or base_ui.get("account_id")
+            or base_ui.get("accountId")
+            or summ.get("account_id")
+        )
+        acc_key = (
+            ident.get("account_id_key")
+            or base_ui.get("account_key")
+            or base_ui.get("accountIdKey")
+            or summ.get("account_key")
+        )
+        ui = {**base_ui, "account_id": acc_id, "account_key": acc_key}
+
+        payload["account"] = {
+            "account_id": acc_id,
+            "account_key": acc_key,
+            "account_type": ident.get("account_type"),
+            "account_type_display": ident.get("account_type_display"),
+            "buying_power": summ.get("buying_power") or 0,
+            "settled_cash": summ.get("settled_cash") or 0,
+            "equity_value": summ.get("equity_value") or 0,
+            "ui": ui,
+        }
+
+        # API health flag used by the green/red dot
+        acct = payload["account"]
+        payload["etrade_ok"] = bool(
+            acct.get("account_id")
+            or (acct.get("equity_value") not in (None, 0))
+            or (acct.get("buying_power") is not None)
+            or bool(holdings)
+            or bool(qmap)
+        )
+
+        # -------- P&L buckets (single source for card + headline) --------
+        import os
+        from services.realized_pl import LIVE_DB
+        from services.realized_buckets import realized_buckets_from_live_db
+
+        payload.setdefault("metrics", {})
+        payload.setdefault("kpis", {})
+
+        PROJECT_START = os.environ.get("PROJECT_START") or os.environ.get("START_DATE", "2025-08-22")
+        START_CASH    = float(os.environ.get("START_CASH", "392.67"))
+        PANDL_TILE_MODE = os.environ.get("PANDL_TILE_MODE", "realized").lower()  # realized | total
+
+        def _zero_buckets():
+            return {
+                "week":      {"pnl": 0.0, "pct": 0.0},
+                "last_week": {"pnl": 0.0, "pct": 0.0},
+                "month":     {"pnl": 0.0, "pct": 0.0},
+                "all":       {"pnl": 0.0, "pct": 0.0},
+            }
+
+        # 1) Realized buckets since PROJECT_START from live.db (schema auto-detected)
+        try:
+            rbuckets = realized_buckets_from_live_db(
+                LIVE_DB, since=PROJECT_START, start_cash=START_CASH
+            ) or _zero_buckets()
+            current_app.logger.info(
+                "[REALIZED] db since=%s start_cash=%.2f -> ALL=$%.2f (%.2f%%)",
+                PROJECT_START, START_CASH, rbuckets["all"]["pnl"], rbuckets["all"]["pct"]
+            )
+        except Exception as _e:
+            current_app.logger.warning("[REALIZED] DB error: %s", _e)
+            rbuckets = None
+
+        # 2) Fallback ONLY if db failed: use equity (“Ben”) buckets *if they exist*,
+        #    otherwise zeros. (Do NOT overwrite db numbers.)
+        if rbuckets is None:
+            rbuckets = locals().get("ben_buckets", _zero_buckets())
+            current_app.logger.info("[REALIZED] source=fallback_equity all=$%.2f", rbuckets["all"]["pnl"])
+
+        # 3) Optional: show TOTAL (realized + current unrealized snapshot) on the tile
+        if PANDL_TILE_MODE == "total":
+            u_now = float(payload.get("metrics", {}).get("unrealized_pnl", 0.0))
+            rbuckets = {
+                k: {
+                    "pnl": round(v.get("pnl", 0.0) + u_now, 2),
+                    "pct": round(((v.get("pnl", 0.0) + u_now) / START_CASH * 100.0), 2) if START_CASH else 0.0,
+                }
+                for k, v in rbuckets.items()
+            }
+            current_app.logger.info("[P&L TILE] mode=TOTAL unrealized_now=%.2f all=$%.2f", u_now, rbuckets["all"]["pnl"])
+        else:
+            current_app.logger.info("[P&L TILE] mode=REALIZED all=$%.2f", rbuckets["all"]["pnl"])
+
+        # 4) Publish ONE source everywhere (card + headline)
+        payload["metrics"]["realized_buckets"] = rbuckets
+        payload["kpis"]["realized"]            = rbuckets
+        payload["metrics"]["realized_pnl"]     = rbuckets["all"]["pnl"]
+        payload["metrics"]["realized_pnl_pct"] = rbuckets["all"]["pct"]
+
+        # ---- headline meta uses the same buckets ----
+        APP_NAME = os.environ.get("APP_NAME", "TradeAlerts")
+        payload["about"] = {
+            "start_cash": START_CASH,
+            "start_date": PROJECT_START,
+            "since_pnl":  rbuckets["all"]["pnl"],
+            "since_pct":  rbuckets["all"]["pct"],
+            "app_name":   APP_NAME,
+            "authors":    ["Ben McCall", "Max"],
+        }
+        # ---------------------------------------------------------------------------
+
+        from datetime import datetime, timedelta, date
+        from zoneinfo import ZoneInfo
+        _ET = ZoneInfo("America/New_York")
+
+        START_CASH = float(os.environ.get("START_CASH", "392.67"))
+
+        def _ms(v):
+            try:
+                f = float(v or 0)
+                return int(f if f > 10_000_000_000 else f * 1000)
+            except Exception:
+                return None
+
+        def _et_date_from_ms(ms):
+            return datetime.fromtimestamp(ms/1000.0, tz=_ET).date()
+
+        # Bind the currently computed enriched rows at *definition time* so we don't rely on a global.
+        _enriched_candidate = None
+        try:
+            _enriched_candidate = enriched  # may not exist yet
+        except NameError:
+            _enriched_candidate = None
+
+        _trades_enriched = list(_enriched_candidate or trades_rows or [])
+
+        def _sell_pl_through(cutoff_date, rows=None):
+            rows = _trades_enriched if rows is None else rows
+            total = 0.0
+            for tr in rows:
+                if (tr.get("action") == "SELL") and tr.get("time"):
+                    # keep your existing date parse logic here
+                    # include only trades with trade_date <= cutoff_date
+                    # and add tr["pl"] (or "gain") to total
+                    try:
+                        p = float(tr.get("pl") or tr.get("pnl") or tr.get("gain") or 0.0)
+                    except Exception:
+                        p = 0.0
+                    # (your existing date filter logic) -> if within range:
+                    total += p
+            return round(total, 2)
+
+
+        def _holdings_asof(cutoff_date, rows=None):
+            rows = _trades_enriched if rows is None else rows
+            lots = {}  # sym -> qty held after consuming buys/sells up to cutoff_date
+            # (use your existing FIFO or simple net-qty logic as of cutoff_date)
+            for tr in rows:
+                # filter by date <= cutoff_date, then update lots
+                pass
+            return lots
+
+        def _equity_on(cutoff_date, rows=None):
+            rows = _trades_enriched if rows is None else rows
+            return round(
+                START_CASH
+                + _sell_pl_through(cutoff_date, rows=rows)
+                + _positions_value_asof(cutoff_date, rows=rows),
+                2,
+            )
+
+        def _fetch_close_on(sym: str, d: date) -> float | None:
+            """Close on d (ET) or latest prior trading day. Very lightweight cache."""
+            key = (sym, d)
+            if key in _close_cache:
+                return _close_cache[key]
+            try:
+                # Reuse a data helper you already ship (daily data is fine):
+                # services.market_service.fetch_data_with_timeout(symbol, "6mo") returns a pandas DF
+                from services.market_service import fetch_data_with_timeout
+                df = fetch_data_with_timeout(sym, "6mo")
+                # Find the last row with date <= d
+                if df is not None and len(df):
+                    # Try common date column names
+                    col_date = next((c for c in df.columns if str(c).lower() in ("date","time","datetime","index")), None)
+                    col_close = next((c for c in df.columns if str(c).lower() in ("close","adj close","adj_close","c")), None)
+                    if col_date and col_close:
+                        # normalize to date
+                        series = df[[col_date, col_close]].copy()
+                        series[col_date] = series[col_date].apply(lambda x: (x.date() if hasattr(x, "date") else date.fromisoformat(str(x)[:10])))
+                        series = series[series[col_date] <= d].sort_values(col_date)
+                        if len(series):
+                            px = float(series.iloc[-1][col_close])
+                            _close_cache[key] = px
+                            return px
+            except Exception:
+                pass
+            return None
+
+        def _positions_value_asof(d: date) -> float:
+            tot = 0.0
+            pos = _holdings_asof(d)
+            for s, q in pos.items():
+                px = _fetch_close_on(s, d)
+                if px is not None:
+                    tot += q * px
+            return round(tot, 2)
+
+        # --- PATCH: allow keyword args like rows=rows without breaking ---
+        _old__positions_value_asof = _positions_value_asof
+        def _positions_value_asof(cutoff_date, **_):
+            # Forward to the original implementation, ignoring any extra kwargs
+            return _old__positions_value_asof(cutoff_date)
+        # --- end PATCH ---
+
+        def _pct(start_v: float, end_v: float) -> float:
+            if start_v <= 0: 
+                return 0.0
+            return round((end_v - start_v) / start_v * 100.0, 2)
+
+        # ---- build Ben buckets on EQUITY (cash+positions) ----
+        today = datetime.now(_ET).date()
+
+        # week-to-date
+        week_start = today - timedelta(days=today.weekday())        # Monday
+        week_start_eod_prev = week_start - timedelta(days=1)
+        wk_start = _equity_on(week_start_eod_prev)
+        wk_end   = _equity_on(today)
+        wk_delta = round(wk_end - wk_start, 2)
+        wk_pct   = _pct(wk_start, wk_end)
+
+        # last week (Mon..Sun)
+        lw_end   = week_start - timedelta(days=1)                    # last Sunday
+        lw_start = lw_end - timedelta(days=6)                        # last Monday
+        lws      = _equity_on(lw_start - timedelta(days=1))
+        lwe      = _equity_on(lw_end)
+        lw_delta = round(lwe - lws, 2)
+        lw_pct   = _pct(lws, lwe)
+
+        # month-to-date
+        m_start  = today.replace(day=1)
+        ms_cash  = _equity_on(m_start - timedelta(days=1))
+        me_cash  = _equity_on(today)
+        m_delta  = round(me_cash - ms_cash, 2)
+        m_pct    = _pct(ms_cash, me_cash)
+
+        # all-time
+        all_start = START_CASH
+        all_end   = _equity_on(today)
+        all_delta = round(all_end - all_start, 2)
+        all_pct   = _pct(all_start, all_end)
+
+        # ---- FINAL: lock headline to the tile's buckets -----------------------------
+        try:
+            # read exactly what the tile shows
+            _all = payload.get("metrics", {}).get("realized_buckets", {}).get("all", {}) or {}
+            _all_pnl = round(float(_all.get("pnl", 0.0)), 2)
+
+            # use bucket pct if present; else recompute from START_CASH for consistency
+            _all_pct = _all.get("pct")
+            if _all_pct is None:
+                _all_pct = round((_all_pnl / START_CASH * 100.0), 2) if START_CASH else 0.0
+            else:
+                _all_pct = round(float(_all_pct), 2)
+
+            about = payload.setdefault("about", {})
+            about["since_pnl"] = _all_pnl
+            about["since_pct"] = _all_pct
+
+            current_app.logger.info("[REALIZED] headline synced: ALL=$%.2f (%.2f%%)", _all_pnl, _all_pct)
+        except Exception as _e:
+            current_app.logger.warning("[REALIZED] headline sync failed: %s", _e)
+        # ----------------------------------------------------------------------------
+        
+        # ensure headline uses the same source as the tile
+        about = payload.setdefault("about", {})
+        rb_all = (payload.get("metrics", {})
+                         .get("realized_buckets", {})
+                         .get("all", {}))
+        if "since_pnl" not in about:
+            about["since_pnl"] = float(rb_all.get("pnl", 0.0))
+        if "since_pct" not in about:
+            about["since_pct"] = float(rb_all.get("pct", 0.0))
+
+
+        return payload
+
 
     except Exception as e:
-        msg = str(e).lower()
-        needs_reconnect = any(x in msg for x in ["401", "403", "oauth", "token", "timed out", "service unavailable"])
+        try:
+            current_app.logger.exception("[LIVE] /live/status crashed")
+        except Exception:
+            pass
+        return {"ok": False, "error": str(e)}
 
-    return jsonify({"needs_reconnect": needs_reconnect, "account": account, "kpis": kpis})
+
 
 @app.route("/live/quotes")
 @always_json

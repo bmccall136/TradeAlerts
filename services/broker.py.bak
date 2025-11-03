@@ -504,7 +504,7 @@ class LiveBroker:
                     self._pp_cache.update(ts=now, pp=float(v))
                     return self._pp_cache["pp"]
 
-            v = cash.get("settledCash")
+            v = cash.get("cashAvailableForInvestment")
             self._pp_cache.update(
                 ts=now, pp=(float(v) if isinstance(v, (int, float)) else None)
             )
@@ -600,6 +600,18 @@ class LiveBroker:
         self._last_bp: float | None = None
         self._bp_ts: float = 0.0
         self._bp_ttl = int(os.getenv("LIVE_BP_TTL_SECONDS", "45"))
+    # --- BEGIN: BP-aware GFV check ---
+    require_settled = bool(getattr(settings, "require_settled_for_buys", False))
+    est_cost = float(qty) * float(last_price)
+
+    if require_settled:
+        sc = float(account_summary.get("settledCash", 0.0) or 0.0)
+        if sc < est_cost:
+            log.info("[LIVE] funds check failed (require_settled_for_buys=True)")
+            return {"ok": False, "reason": "GFV guard: not enough settled cash"}
+    else:
+        log.info("[LIVE] funds check skipped (using buying power)")
+    # --- END: BP-aware GFV check ---
 
     def get_buying_power(self, fresh: bool = False) -> float | None:
         if (

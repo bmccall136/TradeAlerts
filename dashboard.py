@@ -21,6 +21,12 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from dateutil.relativedelta import relativedelta
+from flask import jsonify
+try:
+    from services.etrade_service import get_account_summary, get_positions
+except Exception:
+    get_account_summary = None
+    get_positions = None
 
 from services.etrade_service import fetch_etrade_quote
 from services.simulation_service import load_simulation_settings
