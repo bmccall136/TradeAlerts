@@ -159,48 +159,6 @@ def load_settings() -> dict[str, Any]:
 
 
 # --- account & quotes ----------------------------------------------------------
-def coalesce_settings(cfg: dict) -> dict:
-    """
-    Migration shim: prefer nested sell_guard.* keys and
-    copy any old top-level keys into sell_guard if missing.
-    Then remove top-level window keys so the code can't read them.
-    """
-    sg = cfg.get("sell_guard", {})
-    if not isinstance(sg, dict):
-        sg = {}
-
-    # Keys we might have historically at top level
-    legacy_keys = [
-        "sell_window_start_et", "sell_window_end_et", "use_extended_hours",
-        "throttle_ms", "market_fallback_for", "max_place_attempts",
-        "normalize_tick", "mode"
-    ]
-
-    # Copy top-level → nested only if nested doesn’t already define it
-    for k in legacy_keys:
-        if k in cfg and k not in sg:
-            sg[k] = cfg[k]
-
-    # Now enforce a single source of truth
-    cfg["sell_guard"] = sg
-    for k in ["sell_window_start_et", "sell_window_end_et", "use_extended_hours"]:
-        cfg.pop(k, None)  # remove top-level gates so nothing can read them by mistake
-
-    return cfg
-with open(settings_path, "r", encoding="utf-8") as f:
-    cfg = json.load(f)
-
-cfg = coalesce_settings(cfg)
-
-# from here on, ALWAYS read from cfg["sell_guard"]
-sg = cfg["sell_guard"]
-
-# Example getters:
-start_et = sg.get("sell_window_start_et", "00:00")
-end_et   = sg.get("sell_window_end_et",   "23:59")
-use_ext  = sg.get("use_extended_hours", True)
-throttle = sg.get("throttle_ms", 30000) / 1000.0
-
 # --- Force-list probe ---------------------------------------------------------
 
 

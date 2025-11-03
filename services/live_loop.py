@@ -55,6 +55,25 @@ SAFE_MAX = int(os.getenv("LIVE_MAX_QTY", "0") or 0)
 _BP_BUFFER = float(os.getenv("LIVE_BP_BUFFER", "5"))  # dollars cushion
 _LIVE_TPLUS_DAYS = int(os.getenv("LIVE_TPLUS_DAYS", "0") or 0)  # 0 = off
 
+def _select_funds(summary: dict, settings: dict) -> tuple[float, str]:
+    """
+    Always use buying power for CASH accounts (E*TRADE reports settledCash=0).
+    Falls back safely if fields are missing.
+    """
+    acct_type = (settings.get("account_type") or "cash").lower()
+    s = summary or {}
+    # E*TRADE shapes vary; try both
+    bp = (s.get("buyingPower") or s.get("cashBuyingPower") or s.get("computed") or {}).get("buyingPower") if isinstance(s.get("computed"), dict) else s.get("buyingPower")
+    if bp is None:
+        bp = s.get("cashBuyingPower") if isinstance(s, dict) else 0.0
+    settled = s.get("settledCash") or 0.0
+
+    if acct_type == "cash":
+        use = float(bp or 0.0)
+        return max(0.0, use), "buying_power"
+    # margin or unknown → still prefer BP if present
+    use = float(bp if bp is not None else settled or 0.0)
+    return max(0.0, use), ("buying_power" if bp is not None else "settled")
 
 def _env_int(name: str, default: int | None = None) -> int | None:
     v = os.getenv(name)
