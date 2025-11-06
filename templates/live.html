@@ -223,14 +223,12 @@
     <div class="col-12 col-md-4">
       <div class="card bg-dark border-0 shadow-sm h-100">
         <div class="card-body kpi-card d-flex flex-column justify-content-center">
-          <div class="text-uppercase small">Cash</div>
+          <div class="text-uppercase small">VALUE</div>
           <div id="kpi-cash" class="fs-3 fw-bold"></div>
 			<div class="mt-2 small kpi-cash-extra">
 			<div class="cash-rows">
-			  <div>Buying Power</div><div id="cash-bp"   class="fw-semibold text-end"></div>
-			  <div>Equity Value</div><div id="cash-eq"   class="fw-semibold text-end"></div>
-			  <div>Settled Cash</div><div id="cash-sc"   class="fw-semibold text-end"></div>
-			  <div>Account</div> <div id="cash-acct" class="fw-semibold text-end"></div>
+			  <div>Buying Power</div><div id="kpi-bp"   class="fw-semibold text-end"></div>
+			  <div>Positions Value</div><div id="kpi-posval"   class="fw-semibold text-end"></div>
 
 			</div>
 
@@ -254,7 +252,7 @@
           <div class="text-uppercase small">P&amp;L (Unrealized)</div>
           <div id="kpi-pnl" class="fs-3 fw-bold"></div>
           <div id="kpi-pnl-pct" class="small"></div>
-		  <div id="kpi-posval" class="small text-muted mt-1"></div>
+		  <div id="kpi-pv-note" class="small text-muted mt-1"></div>
         </div>
       </div>
     </div>
@@ -354,235 +352,216 @@
 </div>
 <script>
 (() => {
-/* ---------- helpers ---------- */
+/* ===== helpers ===== */
+const POS = '#2ecc71', NEG = '#ff6b6b', ZERO = '#b8b8b8';
+
+function num(x){
+  if (x == null) return NaN;
+  if (typeof x === 'number') return x;
+  if (typeof x === 'string') return Number(x.replace(/[\$,]/g,'').trim());
+  return Number(x);
+}
 function preferNumericAccountId(a){
-  const num = (a?.account_id ?? a?.accountId ?? "").toString().trim();
-  const key = (a?.account_key ?? a?.accountIdKey ?? "").toString().trim();
-  if (/^\d{6,}$/.test(num)) return { show:num, type:'numeric' };
-  if (key)                  return { show:key, type:'key' };
+  const numId = (a?.account_id ?? a?.accountId ?? "").toString().trim();
+  const keyId = (a?.account_key ?? a?.accountIdKey ?? "").toString().trim();
+  if (/^\d{6,}$/.test(numId)) return { show:numId, type:'numeric' };
+  if (keyId)                  return { show:keyId, type:'key' };
   return { show:"", type:'none' };
 }
 function maskAcctPretty(id){
-  const s = String(id||"");
-  if (!s) return "—";
+  const s = String(id||""); if (!s) return "—";
   if (/^\d+$/.test(s)) return "••••" + s.slice(-4);
   if (s.length > 9)    return s.slice(0,4) + "…" + s.slice(-5);
   return s;
 }
-function firstPositive(values){
-  for (const v of values){ const n = Number(v); if (Number.isFinite(n) && n > 0) return n; }
-  return null;
-}
-function set(sel, val){ const el = document.querySelector(sel); if (el) el.textContent = (val ?? '—'); }
-function money(x){ x = Number(x); return Number.isFinite(x) ? `$${x.toFixed(2)}` : '$0.00'; }
-function pct(x){ x = Number(x); return Number.isFinite(x) ? `${x.toFixed(2)}%` : '0.00%'; }
-function paintStatus(ok){ const dot = document.querySelector('.status-block > div > div:last-child'); if (dot) dot.style.color = ok ? '#39d353' : '#f05454'; }
-function colorize(el, num){
+function set(sel,val){ const el=document.querySelector(sel); if (el) el.textContent=(val ?? '—'); }
+function money(x){ x=num(x); return Number.isFinite(x)?`$${x.toFixed(2)}`:'$0.00'; }
+function pct(x){ x=num(x); return Number.isFinite(x)?`${x.toFixed(2)}%`:'0.00%'; }
+function paintStatus(ok){ const dot=document.querySelector('.status-block > div > div:last-child'); if (dot) dot.style.color = ok ? '#39d353' : '#f05454'; }
+function setColor(el, numVal){
   if (!el) return;
-  el.classList.remove('pos','neg');
-  const n = Number(num);
-  if (Number.isFinite(n)) { if (n > 0) el.classList.add('pos'); else if (n < 0) el.classList.add('neg'); }
+  const n = num(numVal);
+  const c = (!Number.isFinite(n) || n === 0) ? ZERO : (n > 0 ? POS : NEG);
+  el.style.setProperty('color', c, 'important');
 }
-function paintSign(sel, num){ colorize(document.querySelector(sel), num); }
 function fmtET(x){
-  try {
-    const ms = Number(x);
-    if (Number.isFinite(ms) && ms > 10_000_000_000) {
-      return new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
-        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-      }).format(new Date(ms)).replace(',', '');
+  try{
+    const ms = num(x);
+    if (Number.isFinite(ms) && ms > 10_000_000_000){
+      return new Intl.DateTimeFormat('en-US',{
+        timeZone:'America/New_York', year:'numeric', month:'2-digit', day:'2-digit',
+        hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
+      }).format(new Date(ms)).replace(',','');
     }
-    const s = String(x || '').trim();
+    const s = String(x||'').trim();
     if (!s) return '—';
     if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(s)) return s.replace('T',' ');
     return s;
-  } catch { return String(x || '—'); }
+  }catch{ return String(x||'—'); }
 }
-function fmtUsd(x){ if (x==null) return '—'; const v=Number(x); return v<0?`-$${Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`:`$${v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`; }
-function fmtPct(x){ if (x==null) return '—'; return `${Number(x).toFixed(2)}%`; }
-function signClass(v){ const n=Number(v); if (!Number.isFinite(n)) return "text-zero"; return n>0?"text-pos":(n<0?"text-neg":"text-zero"); }
-
-/* ---------- header KPIs ---------- */
-function updateHeaderKPIs(data) {
-  const m = (data && data.metrics) || {};
-
-  // Cash (left)
-  const cashEl = document.getElementById("kpi-cash");
-  if (cashEl) cashEl.textContent = fmtUsd(Number(m.cash_balance || 0));
-
-  // P&L (center) — unrealized
-  const pnlEl = document.getElementById("kpi-pnl");
-  const pctEl = document.getElementById("kpi-pnl-pct");
-  if (pnlEl){ pnlEl.textContent = fmtUsd(Number(m.unrealized_pnl || 0)); pnlEl.className = `fs-3 fw-bold ${signClass(m.unrealized_pnl)}`; }
-  if (pctEl){ pctEl.textContent = fmtPct(Number(m.unrealized_pnl_pct || 0)); pctEl.className = `small ${signClass(m.unrealized_pnl_pct)}`; }
-
-
-// Realized buckets (right)
-const rb = m.realized_buckets || {
-  day:{pnl:0,pct:0}, week:{pnl:0,pct:0}, last_week:{pnl:0,pct:0}, month:{pnl:0,pct:0}, all:{pnl:0,pct:0}
-};
-
-const wires = [
-  ["kpi-r-day",       rb.day?.pnl],       ["kpi-r-day-pct",       rb.day?.pct],
-  ["kpi-r-week",      rb.week?.pnl],      ["kpi-r-week-pct",      rb.week?.pct],
-  ["kpi-r-lastweek",  rb.last_week?.pnl], ["kpi-r-lastweek-pct",  rb.last_week?.pct],
-  ["kpi-r-month",     rb.month?.pnl],     ["kpi-r-month-pct",     rb.month?.pct],
-  ["kpi-r-all",       rb.all?.pnl],       ["kpi-r-all-pct",       rb.all?.pct],
-];
-
-for (let i = 0; i < wires.length; i += 2) {
-  const [idVal, val] = wires[i];
-  const [idPct, pct] = wires[i + 1];
-  const vEl = document.getElementById(idVal);
-  const pEl = document.getElementById(idPct);
-  if (vEl) { vEl.textContent = fmtUsd(Number(val || 0)); vEl.className = `fw-semibold ${signClass(val)}`; }
-  if (pEl) { pEl.textContent = fmtPct(Number(pct || 0));  pEl.className = `small ${signClass(pct)}`; }
+function fmtUsd(x){ if (x==null) return '—'; const v=num(x); return v<0?`-$${Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`:`$${v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`; }
+function fmtPct(x){ if (x==null) return '—'; return `${num(x).toFixed(2)}%`; }
+function firstFinite(vals, {allowZero=true}={}){
+  for (const v of vals){
+    const n = num(v);
+    if (Number.isFinite(n) && (allowZero || n>0)) return n;
+  }
+  return NaN;
 }
-// <-- ADD THIS to close the function properly
+
+/* ===== resolvers: BP, Cash, NAV ===== */
+function resolveBP(data){
+  const a = data?.account || {};
+  const candidates = [
+    a.buying_power,
+    a.available_funds,
+    a.accountBalance?.marginBuyingPower,
+    a.cashAvailableForInvestment,
+    a.cash_balance,
+    a.cash,
+    a.settled_cash
+  ];
+  // Use first finite (including 0); persist if present.
+  const bp = firstFinite(candidates, {allowZero:true});
+  if (Number.isFinite(bp)){
+    localStorage.setItem('bp_last', String(bp));
+    return bp;
+  }
+  const last = num(localStorage.getItem('bp_last'));
+  return Number.isFinite(last) ? last : 0;
 }
-/* ---------- detail (cash & PnL) cards ---------- */
-function updateDetailPanels(data){
-  const m  = data?.metrics || {};
-  const a  = data?.account || {};
+
+function resolveCash(data){
+  const m = data?.metrics || {};
+  const a = data?.account || {};
+  let cash = firstFinite([ m.cash_balance, a.cash_balance, a.cash, a.settled_cash ], {allowZero:true});
+  const pos = num(m.positions_value || 0);
+  const nav = resolveNAV_strict(data); // try strict NAV first
+  if ((!Number.isFinite(cash)) && Number.isFinite(nav) && Number.isFinite(pos)){
+    cash = nav - pos;
+  }
+  return Number.isFinite(cash) ? cash : 0;
+}
+
+/* Try to read NAV directly from many possible fields; return NaN if none */
+function resolveNAV_strict(data){
+  const m = data?.metrics || {};
+  const a = data?.account || {};
+  const k = data?.kpis || {};
+  const direct = firstFinite([
+    m.net_account_value, m.net_value, m.nav, m.total_value, // metrics-side names
+    a.net_account_value, a.equity_value, a.total_value, a.nav, // account-side names
+    data?.nav, data?.etrade_nav, k?.etrade_nav               // top-level/other
+  ], {allowZero:true});
+  return Number.isFinite(direct) ? direct : NaN;
+}
+
+function resolveNAV(data){
+  // 1) Prefer any explicit NAV reported by server/etrade fields
+  const strict = resolveNAV_strict(data);
+  if (Number.isFinite(strict)) return strict;
+
+  // 2) Fallback: NAV ≈ cash balance + positions value
+  const m = data?.metrics || {};
+  const pos = num(m.positions_value || 0);
+  return resolveCash(data) + (Number.isFinite(pos) ? pos : 0);
+}
+
+/* ===== header KPIs ===== */
+function updateHeaderKPIs(d){
+  const m     = d?.metrics || {};
+  const pos   = num(m.positions_value || 0);
+  const nav   = resolveNAV(d);
+  const bp    = resolveBP(d);
+
+  // Left tile: Net Account Value (from E*TRADE when available)
+  set('#kpi-cash', fmtUsd(nav));
+  set('#kpi-bp',     fmtUsd(bp));
+  set('#kpi-posval', fmtUsd(pos));
+
+  // Center tile: Unrealized P&L
+  const uAmt = num(m.unrealized_pnl || 0);
+  const uPct = num(m.unrealized_pnl_pct || 0);
+  set('#kpi-pnl',     fmtUsd(uAmt));
+  set('#kpi-pnl-pct', fmtPct(uPct));
+  setColor(document.getElementById('kpi-pnl'), uAmt);
+  setColor(document.getElementById('kpi-pnl-pct'), uPct);
+
+  // Right tile: realized buckets (Day / Week / Last Week / Month)
+  const k  = d?.kpis || {};
+  const rb = m.realized_buckets || k.realized || {};
+  const rows = {
+    day:       { pnl: num(k.realized_today ?? 0),    pct: num(k.realized_today_pct ?? 0) },
+    week:      { pnl: num(rb?.week?.pnl ?? 0),       pct: num(rb?.week?.pct ?? 0) },
+    last_week: { pnl: num(rb?.last_week?.pnl ?? 0),  pct: num(rb?.last_week?.pct ?? 0) },
+    month:     { pnl: num(rb?.month?.pnl ?? 0),      pct: num(rb?.month?.pct ?? 0) },
+  };
+  const map = [
+    ['#kpi-r-day', rows.day.pnl, '#kpi-r-day-pct', rows.day.pct],
+    ['#kpi-r-week', rows.week.pnl, '#kpi-r-week-pct', rows.week.pct],
+    ['#kpi-r-lastweek', rows.last_week.pnl, '#kpi-r-lastweek-pct', rows.last_week.pct],
+    ['#kpi-r-month', rows.month.pnl, '#kpi-r-month-pct', rows.month.pct],
+  ];
+  for (const [aSel, aVal, pSel, pVal] of map){
+    set(aSel, fmtUsd(aVal));   setColor(document.querySelector(aSel), aVal);
+    set(pSel, fmtPct(pVal));   setColor(document.querySelector(pSel), pVal);
+  }
+
+  // "All" = NAV − START_CASH (project-to-date growth)
+  const startCash = num(d?.about?.start_cash || 0);
+  const allAmt = (Number.isFinite(nav) && Number.isFinite(startCash)) ? (nav - startCash) : 0;
+  const allPct = startCash > 0 ? (allAmt / startCash * 100) : 0;
+  set('#kpi-r-all', fmtUsd(allAmt));
+  set('#kpi-r-all-pct', fmtPct(allPct));
+  setColor(document.querySelector('#kpi-r-all'), allAmt);
+  setColor(document.querySelector('#kpi-r-all-pct'), allPct);
+}
+
+/* ===== detail panels ===== */
+function updateDetailPanels(d){
+  const m  = d?.metrics || {};
+  const a  = d?.account || {};
   const ui = a?.ui || {};
-
-  // Account badge + cash card “Account”
   const { show:idToShow } = preferNumericAccountId(a);
   const badge = document.getElementById('acct-badge');
   if (badge){ badge.textContent = maskAcctPretty(idToShow); badge.title = idToShow; }
-  const acctEl = document.getElementById('cash-acct');
-  if (acctEl){ acctEl.textContent = (/^\d+$/.test(idToShow) ? idToShow : maskAcctPretty(idToShow)); acctEl.title = idToShow; }
 
-  // Cash details
-  const bp = firstPositive([ a.buying_power, a.available_funds, a.accountBalance?.marginBuyingPower, a.cash_balance, a.cash, a.settled_cash ]);
-  const aw = firstPositive([ ui.available_to_withdraw, a.available_to_withdraw, a.cashAvailableForWithdrawal, a.cashAvailableForInvestment, a.available_funds ]);
-  const eq = firstPositive([ a.equity_value, m.total_value ]);
-  const sc = firstPositive([ a.settled_cash, a.cash_balance, a.cash ]);
+  const bp = resolveBP(d);
+  const aw = firstFinite([ ui.available_to_withdraw, a.available_to_withdraw, a.cashAvailableForWithdrawal, a.cashAvailableForInvestment, a.available_funds ], {allowZero:true});
+  const eq = firstFinite([ a.equity_value, m.total_value ], {allowZero:true});
+  const sc = firstFinite([ a.settled_cash, a.cash_balance, a.cash ], {allowZero:true});
 
   set('#cash-bp',  fmtUsd(bp ?? 0));
-  set('#cash-aw',  fmtUsd(aw ?? 0));
-  set('#cash-eq',  fmtUsd(eq ?? 0));
-  set('#cash-sc',  fmtUsd(sc ?? 0));
-
-  // P&L detail wiring (if you keep these extra spans)
-  set('#pl-total', fmtUsd(Number(m.total_value || 0)));
-  set('#pl-pos',   fmtUsd(Number(m.positions_value || 0)));
-  set('#pl-u',     fmtUsd(Number(m.unrealized_pnl || 0)));
-  set('#pl-upct',  fmtPct(Number(m.unrealized_pnl_pct || 0)));
-  set('#pl-r',     fmtUsd(Number(m.realized_pnl || 0)));
-  set('#pl-rpct',  fmtPct(Number(m.realized_pnl_pct || 0)));
-}
-function updateAbout(data) {
-  const a = (data && data.about) || {};
-  const cash = Number(a.start_cash ?? 0);
-  const pnl  = Number(a.since_pnl  ?? 0);
-  const pct  = Number(a.since_pct  ?? 0);
-  const when = a.start_date || "—";
-
-  // Update the IDs that actually exist in the hero blurb
-  const sc = document.getElementById("about-start-cash");
-  const sd = document.getElementById("about-start-date");
-  const sp = document.getElementById("about-since-pnl");
-  const spc = document.getElementById("about-since-pct");
-
-  if (sc)  sc.textContent  = `$${cash.toFixed(2)}`;
-  if (sd)  sd.textContent  = when;
-  if (sp)  sp.textContent  = `$${pnl.toFixed(2)}`;
-  if (spc) spc.textContent = `${pct.toFixed(2)}%`;
-
-  // Backward-compat: if a single blurb element ever exists, populate it too
-  const blurb = document.getElementById("since-start-blurb");
-  if (blurb) {
-    blurb.textContent =
-      `Started with $${cash.toFixed(2)} on ${when}. ` +
-      `This app has since made $${pnl.toFixed(2)} at ${pct.toFixed(2)}%.`;
-  }
+  set('#cash-aw',  fmtUsd(Number.isFinite(aw)?aw:0));
+  set('#cash-eq',  fmtUsd(Number.isFinite(eq)?eq:0));
+  set('#cash-sc',  fmtUsd(Number.isFinite(sc)?sc:0));
 }
 
-/* ---------- main refresh ---------- */
-async function refreshLive() {
-  try {
-    const DEFAULT_START = '2025-08-22';
-    const start = localStorage.getItem('live_start') || DEFAULT_START;
-    const qs = new URLSearchParams({ start, debug: '1' });
-    const r = await fetch(`/live/status?${qs.toString()}`);
-    const d = await r.json();
-    if (!d || d.ok === false) { paintStatus(false); return; }
-    paintStatus(true);
-
-    const m  = d.metrics  || {};
-    const a  = d.account  || {};
-
-	// Header + detail cards
-	updateHeaderKPIs(d);
-	const posEl = document.getElementById('kpi-posval');
-	if (posEl) posEl.textContent = `Positions Value ${fmtUsd(Number(m.positions_value || 0))}`;
-	updateDetailPanels(d);
-
-	// NEW: show the blurb + credits
-	updateAbout(d);
-
-
-    // PDT counter
-    const pdt = m.daytrades_pdt5 || {};
-    const pdtTotal = Number(pdt.total || 0);
-    set('#dt_pdt5', `${pdtTotal} in last 5 days`);
-    const pdtEl = document.querySelector('#dt_pdt5');
-    if (pdtEl) { pdtEl.classList.remove('pos','neg'); if (pdtTotal >= 3) pdtEl.classList.add('neg'); }
-
-    // Buying power (fallback to last good value)
-    let bp = firstPositive([
-      a && a.buying_power, a && a.available_funds,
-      a && a.accountBalance && a.accountBalance.marginBuyingPower,
-      a && a.cash_balance, a && a.cash, a && a.settled_cash
-    ]);
-    if (bp == null) {
-      const last = Number(localStorage.getItem('bp_last') || '');
-      if (Number.isFinite(last) && last > 0) bp = last;
-    } else {
-      localStorage.setItem('bp_last', String(bp));
-    }
-    set('#bp', money(bp ?? 0));
-
-    // Other summary bits if you keep them
-    set('#sc', money(a?.settled_cash));
-    set('#eq', money(firstPositive([a?.equity_value]) ?? ((a?.settled_cash || 0) + (m?.positions_value || 0))));
-    set('#utotal', money(m.total_value));
-    set('#posval', money(m.positions_value));
-
-    // Tables
-    renderHoldings(d.holdings || []);
-    renderTrades(d.trades || []);
-  } catch (e) {
-    paintStatus(false);
-    console.error('refreshLive failed:', e);
-  }
-}
-
-/* ---------- holdings table ---------- */
-function renderHoldings(rows) {
+/* ===== tables ===== */
+function renderHoldings(rows){
   const tb = document.querySelector('#holdings-body');
   if (!tb) return;
   tb.innerHTML = '';
-  if (!rows.length){
+  if (!rows?.length){
     tb.innerHTML = `<tr><td class="muted" colspan="10">No holdings.</td></tr>`;
     return;
   }
   for (const h of rows){
     const sym  = (h.symbol || '').toUpperCase();
     const qty  = h.qty ?? 0;
-    const openedTxt = h.open_time ? String(h.open_time) : (h.open_time_ms ? fmtET(h.open_time_ms) : '—');
-    const lastNum = (h.last_price != null && !isNaN(Number(h.last_price))) ? Number(h.last_price) : null;
+    const openedTxt = h.open_time ? String(h.open_time)
+                    : (h.open_time_ms ? fmtET(h.open_time_ms) : '—');
+    const lastNum = Number.isFinite(num(h.last_price)) ? num(h.last_price) : null;
     const lastTxt = (lastNum == null) ? '—' : money(lastNum);
     const paidTxt = (h.price_paid != null) ? money(h.price_paid) : '—';
     let value = h.value;
     if (value == null && lastNum != null && Number.isFinite(qty)) value = lastNum * qty;
     const valueTxt = (value == null) ? '—' : money(value);
-    const dpln = (h.day_pl != null)       ? Number(h.day_pl)       : null;
-    const dppn = (h.day_pl_pct != null)   ? Number(h.day_pl_pct)   : null;
-    const tpln = (h.total_pl != null)     ? Number(h.total_pl)     : null;
-    const tppn = (h.total_pl_pct != null) ? Number(h.total_pl_pct) : null;
+
+    const dpln = num(h.day_pl ?? 0);
+    const dppn = num(h.day_pl_pct ?? 0);
+    const tpln = num(h.total_pl ?? 0);
+    const tppn = num(h.total_pl_pct ?? 0);
 
     tb.insertAdjacentHTML('beforeend', `
       <tr>
@@ -591,43 +570,39 @@ function renderHoldings(rows) {
         <td>${lastTxt}</td>
         <td>${qty}</td>
         <td>${paidTxt}</td>
-        <td class="day-pl">${dpln!=null?money(dpln):'—'}</td>
-        <td class="day-pl-pct">${dppn!=null?pct(dppn):'—'}</td>
-        <td class="tot-pl">${tpln!=null?money(tpln):'—'}</td>
-        <td class="tot-pl-pct">${tppn!=null?pct(tppn):'—'}</td>
+        <td class="day-pl">${money(dpln)}</td>
+        <td class="day-pl-pct">${pct(dppn)}</td>
+        <td class="tot-pl">${money(tpln)}</td>
+        <td class="tot-pl-pct">${pct(tppn)}</td>
         <td>${valueTxt}</td>
       </tr>`);
     const row = tb.lastElementChild;
-    colorize(row.querySelector('.day-pl'),     dpln);
-    colorize(row.querySelector('.day-pl-pct'), dppn);
-    colorize(row.querySelector('.tot-pl'),     tpln);
-    colorize(row.querySelector('.tot-pl-pct'), tppn);
+    setColor(row.querySelector('.day-pl'),     dpln);
+    setColor(row.querySelector('.day-pl-pct'), dppn);
+    setColor(row.querySelector('.tot-pl'),     tpln);
+    setColor(row.querySelector('.tot-pl-pct'), tppn);
   }
 }
 
-/* ---------- trades table ---------- */
-function renderTrades(rows) {
+function renderTrades(rows){
   const tb = document.querySelector('#trades-body');
   if (!tb) return;
   tb.innerHTML = '';
-  if (!rows || !rows.length) {
+  if (!rows?.length){
     tb.innerHTML = `<tr><td class="muted" colspan="8">No trades yet</td></tr>`;
     return;
   }
-  for (const t of rows) {
-    const timeTxt = (t.time && String(t.time)) || (t.time_ms != null ? fmtET(t.time_ms) : '—');
+  for (const t of rows){
+    const timeTxt = (t.time && String(t.time)) || (t.time_ms!=null ? fmtET(t.time_ms) : '—');
     const sym   = (t.symbol || '').toUpperCase();
     const side  = t.action || '';
     const qty   = Number.isFinite(+t.qty) ? +t.qty : 0;
-    let px    = (t.price      != null) ? Number(t.price)      : null;
-    let paid  = (t.price_paid != null) ? Number(t.price_paid) : null;
-    let pl    = (t.pl         != null) ? Number(t.pl)         : null;
-    let plpct = (t.pl_pct     != null) ? Number(t.pl_pct)     : null;
-    if (side === 'BUY') {
-      if (paid == null && px != null) paid = px;
-      if (pl == null)    pl = 0;
-      if (plpct == null) plpct = 0;
-    }
+    const px    = (t.price      != null) ? num(t.price)      : null;
+    let   paid  = (t.price_paid != null) ? num(t.price_paid) : null;
+    let   pl    = num(t.pl ?? 0);
+    let   plpct = num(t.pl_pct ?? 0);
+    if (side === 'BUY' && paid == null && px != null) paid = px;
+
     tb.insertAdjacentHTML('beforeend', `
       <tr>
         <td>${timeTxt}</td>
@@ -636,15 +611,49 @@ function renderTrades(rows) {
         <td>${qty}</td>
         <td>${px==null?'—':money(px)}</td>
         <td class="tr-paid">${paid==null?'—':money(paid)}</td>
-        <td class="tr-pl">${pl==null?'—':money(pl)}</td>
-        <td class="tr-pl-p">${plpct==null?'—':pct(plpct)}</td>
+        <td class="tr-pl">${money(pl)}</td>
+        <td class="tr-pl-p">${pct(plpct)}</td>
       </tr>`);
     const row = tb.lastElementChild;
-    if (row) { colorize(row.querySelector('.tr-pl'), pl); colorize(row.querySelector('.tr-pl-p'), plpct); }
+    setColor(row.querySelector('.tr-pl'),   pl);
+    setColor(row.querySelector('.tr-pl-p'), plpct);
   }
 }
 
-/* ---------- boot ---------- */
+/* ===== main refresh ===== */
+async function refreshLive(){
+  try{
+    const start = localStorage.getItem('live_start') || '2025-08-22';
+    const qs = new URLSearchParams({ start, debug:'1' });
+    const r = await fetch(`/live/status?${qs.toString()}`);
+    const d = await r.json();
+
+    paintStatus(Boolean(d?.etrade_ok));
+    updateHeaderKPIs(d);
+    updateDetailPanels(d);
+    renderHoldings(d.holdings || []);
+    renderTrades(d.trades || []);
+
+    // PDT chip
+    const pdt = d?.metrics?.daytrades_pdt5 || {};
+    const pdtTotal = num(pdt.total || 0);
+    set('#dt_pdt5', `${pdtTotal} in last 5 days`);
+    const pdtEl = document.querySelector('#dt_pdt5');
+    if (pdtEl){ pdtEl.classList.remove('pos','neg'); if (pdtTotal >= 3) pdtEl.classList.add('neg'); }
+
+    // About footer
+    const a = d?.about || {};
+    set("#about-start-cash", `$${num(a.start_cash ?? 0).toFixed(2)}`);
+    set("#about-start-date", a.start_date || "—");
+    set("#about-since-pnl",  `$${num(a.since_pnl ?? 0).toFixed(2)}`);
+    set("#about-since-pct",  `${num(a.since_pct ?? 0).toFixed(2)}%`);
+  }catch(e){
+    paintStatus(false);
+    console.error('refreshLive failed:', e);
+  }
+}
+
+/* ===== boot ===== */
 document.addEventListener('DOMContentLoaded', () => {
   refreshLive().catch(console.error);
   setInterval(refreshLive, 30000);

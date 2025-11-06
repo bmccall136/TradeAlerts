@@ -431,6 +431,226 @@ def _safe_float(x):
 
 _TZ_ET = zoneinfo.ZoneInfo("America/New_York")
 
+# ======== [REALIZED BUCKETS HELPER] ========
+from datetime import datetime, date, time, timedelta
+import sqlite3
+try:
+    from zoneinfo import ZoneInfo
+    _ET = ZoneInfo("America/New_York")
+except Exception:
+    _ET = None  # crude fallback; we still format timestamps as text
+
+START_CASH = 392.67
+ALL_START_ET = date(2025, 8, 22)
+
+# If you already define LIVE_DB elsewhere, keep yours and delete the next line.
+LIVE_DB = r"C:\TradeAlerts\live.db"
+
+def _et_midnight(d: date):
+    if _ET:
+        return datetime.combine(d, time.min).replace(tzinfo=_ET)
+    return datetime.combine(d, time.min)
+
+def _et_end_of_day(d: date):
+    if _ET:
+        return datetime.combine(d, time.max).replace(tzinfo=_ET)
+    return datetime.combine(d, time.max)
+
+def _et_now():
+    if _ET:
+        return datetime.now(_ET)
+    return datetime.now()
+
+def _this_week_window(now_et: datetime):
+    # Mon 00:00 → now (Mon–Fri trading week style)
+    start = _et_midnight(now_et.date() - timedelta(days=now_et.weekday()))
+    return start, now_et
+
+def _last_week_window(now_et: datetime):
+    this_mon, _ = _this_week_window(now_et)
+    last_fri_end = this_mon - timedelta(microseconds=1)
+    last_mon = _et_midnight((last_fri_end - timedelta(days=last_fri_end.weekday())).date())
+    last_fri = _et_end_of_day((last_mon.date() + timedelta(days=4)))
+    return last_mon, last_fri
+
+def _month_window(now_et: datetime):
+    first = _et_midnight(now_et.replace(day=1).date())
+    return first, now_et
+
+def _all_window(now_et: datetime):
+    return _et_midnight(ALL_START_ET), now_et
+
+def _sum_gain_cost(rows):
+    g = c = 0.0
+    for r in rows:
+        try: g += float(r["gain"] or 0)
+        except: pass
+        try: c += float(r["total_cost"] or 0)
+        except: pass
+    return g, c
+
+def realized_buckets_from_live_db(db_path: str):
+    """
+    Shape:
+      {
+        "day": {"pnl": x, "pct": y},
+        "week": {"pnl": x, "pct": y},
+        "last_week": {"pnl": x, "pct": y},
+        "month": {"pnl": x, "pct": y},
+        "all": {"pnl": x, "pct": y}
+      }
+    Rules:
+      - Day/Week/LastWeek/Month: pct = Σgain / Σtotal_cost * 100
+      - All: pct = Σgain / START_CASH * 100
+      - Excludes symbol 'GEVO'
+      - Timezone ET (crude fallback if ZoneInfo missing)
+    """
+    now = _et_now()
+
+    windows = {
+        "day":       (_et_midnight(now.date()), now),
+        "week":      _this_week_window(now),
+        "last_week": _last_week_window(now),
+        "month":     _month_window(now),
+        "all":       _all_window(now),
+    }
+
+    def _query(start_dt, end_dt):
+        s = start_dt.strftime("%Y-%m-%d %H:%M:%S")
+        e = end_dt.strftime("%Y-%m-%d %H:%M:%S")
+        con = sqlite3.connect(db_path)
+        con.row_factory = sqlite3.Row
+        rows = con.execute("""
+            SELECT symbol, close_date, gain, total_cost
+            FROM realized_trades
+            WHERE symbol != 'GEVO'
+              AND close_date >= ? AND close_date <= ?
+        """, (s, e)).fetchall()
+        con.close()
+        return rows
+
+    out = {}
+    for key, (start_dt, end_dt) in windows.items():
+        rows = _query(start_dt, end_dt)
+        gain, cost = _sum_gain_cost(rows)
+        if key == "all":
+            pct = (gain / START_CASH * 100.0) if START_CASH > 0 else 0.0
+        else:
+            pct = (gain / cost * 100.0) if cost > 0 else 0.0
+        out[key] = {"pnl": round(gain, 2), "pct": round(pct, 2)}
+    return out
+# ======== [/REALIZED BUCKETS HELPER] ========
+
+    def pct_amt_cost(g, c):
+        return (g / c * 100.0) if c and c > 0 else 0.0
+
+    buckets = {
+        "day":       {"pnl": round(d_gain, 2),  "pct": round(pct_amt_cost(d_gain, d_cost), 2)},
+        "week":      {"pnl": round(w_gain, 2),  "pct": round(pct_amt_cost(w_gain, w_cost), 2)},
+        "last_week": {"pnl": round(lw_gain, 2), "pct": round(pct_amt_cost(lw_gain, lw_cost), 2)},
+        "month":     {"pnl": round(m_gain, 2),  "pct": round(pct_amt_cost(m_gain, m_cost), 2)},
+        "all":       {"pnl": round(a_gain, 2),  "pct": round((a_gain / START_CASH * 100.0) if START_CASH > 0 else 0.0, 2)},
+    }
+    return buckets
+
+# --- VALUE components: Buying Power + Positions Value ---
+def _safe_float(x, default=0.0):
+    try:
+        return float(x)
+    except Exception:
+        return default
+
+def fetch_buying_power():
+    """
+    Pull BP from your existing E*TRADE path.
+    Tries services.etrade_service first, then a broker wrapper as a fallback.
+    Returns float (0.0 on failure).
+    """
+    try:
+        # Preferred: your E*TRADE service
+        from services import etrade_service as et
+        bal = et.get_account_balances()  # adjust to your actual function
+        # Expecting something like {'buyingPower': ...} or nested
+        # Change the path below to your real structure:
+        return _safe_float(bal.get("buyingPower") or bal.get("marginBuyingPower") or 0.0)
+    except Exception:
+        pass
+    try:
+        # Fallback: generic broker wrapper
+        from services.broker import get_broker
+        br = get_broker()
+        b = br.get_balances()  # adjust to your real method
+        return _safe_float(b.get("buyingPower") or b.get("marginBuyingPower") or 0.0)
+    except Exception:
+        return 0.0
+
+def compute_positions_value():
+    """
+    Sum current positions market value.
+    Returns float (0.0 on failure).
+    """
+    try:
+        from services import etrade_service as et
+        positions = et.get_positions()  # adjust to your actual function
+        # Sum a sensible value field (marketValue / currentValue etc.)
+        total = 0.0
+        for p in positions or []:
+            # Adjust to your actual structure; keep robust fallbacks
+            mv = p.get("marketValue")
+            if mv is None:
+                # compute from qty * lastprice if needed
+                qty = _safe_float(p.get("quantity") or p.get("qty") or 0.0)
+                last = _safe_float(p.get("lastPrice") or p.get("price") or 0.0)
+                mv = qty * last
+            total += _safe_float(mv)
+        return round(total, 2)
+    except Exception:
+        return 0.0
+
+def compute_value_card() -> dict:
+    """
+    VALUE tile source of truth.
+    Returns:
+      {
+        "buying_power": float,
+        "positions_value": float,
+        "value": float   # = buying_power + positions_value
+      }
+    """
+    try:
+        # Live account summary (normalized) — this keeps us 100% on E*TRADE for cash
+        from services.etrade_service import get_account_summary
+        summ = get_account_summary() or {}
+        ui   = summ.get("ui") or {}
+
+        # BP first – for your cash account this is the number you want to show
+        bp = (
+            ui.get("available_funds")
+            or ui.get("marginBuyingPower")
+            or summ.get("buying_power")
+            or 0.0
+        )
+        bp = float(bp or 0.0)
+
+        # Positions value — reuse what the route already computed when possible
+        # (fallback to 0 if not yet computed in this code path)
+        try:
+            pv = float(locals().get("positions_value")    # computed earlier in live_status
+                        or globals().get("positions_value")
+                        or 0.0)
+        except Exception:
+            pv = 0.0
+
+        total = round(bp + pv, 2)
+        return {
+            "buying_power": round(bp, 2),
+            "positions_value": round(pv, 2),
+            "value": total,
+        }
+    except Exception:
+        # Safe fallback
+        return {"buying_power": 0.0, "positions_value": 0.0, "value": 0.0}
+# ======== [/REALIZED BUCKETS + VALUE HELPERS] ========
 
 def _to_dt_local(t, tz=None):
     tz = tz or _et()
@@ -4269,6 +4489,11 @@ def live_status():
             }
         )
         syms = [s for s in syms if s]  # drop empties
+        # ensure list, not set/tuple
+        if not isinstance(syms, list):
+            syms = list(syms)
+        # keep symbols stable
+        syms = [s for s in syms if s]
 
         if syms:
             _log("info", "[LIVE] requesting quotes for %s", syms)
@@ -4311,8 +4536,19 @@ def live_status():
             "equity_value": account_norm.get("equity_value") or 0,
             "settled_cash": account_norm.get("settled_cash") or 0,
         }
+        # ---------- LIVE METRICS (no early return; no early exit) ----------
+        # Build payload first so it's always defined
+        payload = {
+            "ok": True,
+            "days": days,
+            "account": account,
+            "holdings": [],
+            "trades": [],
+            "metrics": {},
+            "kpis": {},
+        }
 
-        # ---- Metrics scaffold (must exist before we assign to it) ----
+        # Start with a base metrics dict (DO NOT overwrite this later)
         metrics = {
             "cash_balance": float(
                 account.get("cashAvailableForWithdrawal")
@@ -4320,8 +4556,9 @@ def live_status():
                 or account.get("cashBalance")
                 or 0.0
             ),
-            "positions_value": 0.0,
-            "total_value": 0.0,
+            "buying_power": 0.0,           # filled below
+            "positions_value": 0.0,        # filled after we build rows
+            "total_value": 0.0,            # recomputed after positions_value
             "unrealized_pnl": 0.0,
             "unrealized_pnl_pct": 0.0,
             "realized_pnl": 0.0,
@@ -4334,6 +4571,22 @@ def live_status():
                 "all": {"pnl": 0.0, "pct": 0.0},
             },
         }
+
+        # VALUE card: derive buying_power from your summary (keep if available)
+        try:
+            from services.etrade_service import get_account_summary
+            summ = get_account_summary() or {}
+            ui = summ.get("ui") or {}
+            bp = float(ui.get("available_funds") or summ.get("buying_power") or 0.0)
+            metrics["buying_power"] = round(bp, 2)
+        except Exception:
+            metrics["buying_power"] = 0.0
+
+        # Realized buckets from DB (ok if this fails; defaults already present)
+        try:
+            metrics["realized_buckets"] = realized_buckets_from_live_db(LIVE_DB)
+        except Exception:
+            pass
         # ---- Rollups from holdings (safe even if holdings is empty) ----
         positions_value = round(sum(_safe_float(h.get("value")) for h in holdings), 2)
 
@@ -4985,6 +5238,8 @@ def live_status():
             about["since_pct"] = float(rb_all.get("pct", 0.0))
 
 
+        payload.setdefault("metrics", {})
+        payload["metrics"]["realized_buckets"] = payload.get("kpis", {}).get("realized", payload["metrics"].get("realized_buckets", {}))
         return payload
 
 

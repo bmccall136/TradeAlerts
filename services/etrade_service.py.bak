@@ -2175,23 +2175,35 @@ def fetch_etrade_quote(symbols: str | Iterable[str]) -> float | dict[str, float]
 # ---------------- Portfolio / Balances (backwards-compatible API) ----------------
 
 
-def get_account_summary() -> dict:
-    aid = _primary_account_id()
-    r = _eget(f"/accounts/{aid}/balance.json", {"instType": "BROKERAGE"})
-    j = r.json() or {}
-    br = j.get("BalanceResponse") or j.get("balanceResponse") or {}
+# --- Portfolio / Balances (backwards-compatible API) ---
 
-    bp, settled = extract_funds(br)  # <-- single source of truth
+def get_account_summary(account_id_key: str | None = None) -> dict:
+    """
+    Return a normalized balances summary dict with:
+      - settled_cash (float)
+      - buying_power (float)
+      - raw (the raw BalanceResponse)
+    Tries both accountIdKey and numeric accountId + with/without instType.
+    """
+    # Resolve IDs
+    sess = get_oauth_session()
+    ident = account_identity()
+    aid_key = (account_id_key or ident.get("account_id_key") or "").strip()
+    aid_num = (ident.get("account_id") or "").strip()
 
-    out = dict(j)
-    try:
-        out["buying_power"] = float(bp or 0.0)
-    except Exception:
-        out["buying_power"] = 0.0
-    try:
-        out["settled_cash"] = float(settled or 0.0)
-    except Exception:
-        out["settled_cash"] = 0.0
+    # Fetch with retries/fallbacks
+    br = fetch_balances_resilient(sess, aid_key, aid_num)
+    if not isinstance(br, dict):
+        br = {}
+
+    # br is the BalanceResponse / balanceResponse block
+    settled, bp = compute_cash_fields(br)
+
+    out = {
+        "settled_cash": float(settled or 0.0),
+        "buying_power": float(bp or 0.0),
+        "raw": br,
+    }
     return out
 
 
