@@ -376,15 +376,25 @@ def etrade_reconnect():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 # --- Checkpoint trigger (kept simple; returns ok:true) ---
+import os, subprocess, pathlib
+
+CHECKPOINT_BAT = r"C:\TradeAlerts\checkpoint.bat"  # must exist
+
 @app.route("/checkpoint", methods=["GET"])
 @always_json
 def run_checkpoint():
-    """
-    Keeps your checkpoint endpoint alive for the navbar button.
-    If you want it to actually run a script, replace the return below
-    with your call (e.g., subprocess to a PS script) and bubble up errors.
-    """
-    return {"ok": True}
+    try:
+        if not os.path.exists(CHECKPOINT_BAT):
+            return {"ok": False, "error": f"Missing {CHECKPOINT_BAT}"}, 404
+        # Launch without blocking the Flask thread
+        subprocess.Popen(
+            ["cmd.exe", "/c", "start", "", CHECKPOINT_BAT],
+            cwd=str(pathlib.Path(CHECKPOINT_BAT).parent),
+            creationflags=0x00000008  # CREATE_NEW_CONSOLE
+        )
+        return {"ok": True, "launched": CHECKPOINT_BAT}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}, 500
 
 # -----------------------------------------------------------------------------
 # Routes
