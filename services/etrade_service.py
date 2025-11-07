@@ -50,7 +50,15 @@ except Exception:
     zoneinfo = None
 
 from zoneinfo import ZoneInfo
+import os
+import json
+from requests_oauthlib import OAuth1Session
+from dotenv import load_dotenv
 
+load_dotenv("etrade.env")
+
+ETRADE_BASE_URL = "https://api.etrade.com"
+TOKEN_FILE = "etrade_tokens.json"
 ET = ZoneInfo("America/New_York")
 # Dot-ticker fixes + normalizer
 # --- symbol + traversal helpers ---
@@ -447,57 +455,56 @@ def get_balances(account_id_key: str) -> dict:
         params={"instType": "BROKERAGE", "realTimeNAV": "true"},
     )
 
+def get_default_account_id_key():
+    ident = account_identity()
+    key = ident.get("account_id_key")
+    if not key:
+        raise RuntimeError("No account_id_key in E*TRADE identity response")
+    return key
 
 # ---- Identity (numeric id + key + type) -------------------------------------
-def account_identity() -> dict:
+def account_identity():
     """
-    {
-      "account_id": "153737458",
-      "account_id_key": "kW8L…",
-      "account_type": "INDIVIDUAL",
-      "account_type_display": "Individual Brokerage"
-    }
+    Fetch primary E*TRADE account identity via /v1/accounts/list.json.
+    Returns a dict:
+      {
+        "account_id": ...,
+        "account_id_key": ...,
+        "account_type": ...,
+        "account_type_display": ...
+      }
     """
     sess = get_oauth_session()
-    r = sess.get("https://api.etrade.com/v1/accounts/list.json", timeout=15)
+    url = f"{ETRADE_BASE_URL}/v1/accounts/list.json"
+    r = sess.get(url, timeout=15)
     r.raise_for_status()
-    j = r.json() or {}
+    j = r.json()
+
     accounts = (
-        j.get("AccountListResponse", {}).get("Accounts", {}).get("Account", [])
-    ) or j.get("accounts", [])
-    if isinstance(accounts, dict):
-        accounts = [accounts]
-
-    key_wanted = account_id_key()
-    pick = None
-    for a in accounts:
-        if (a.get("accountIdKey") or a.get("accountIdKeyValue")) == key_wanted:
-            pick = a
-            break
-    if pick is None and accounts:
-        pick = accounts[0]
-
-    acct_id = (pick.get("accountId") or pick.get("accountIdValue") or "").strip()
-    acct_key = (pick.get("accountIdKey") or pick.get("accountIdKeyValue") or "").strip()
-    typ = (pick.get("accountType") or "").strip().upper()
-    typ_disp = (
-        pick.get("accountDesc")
-        or pick.get("accountTypeDesc")
-        or pick.get("displayName")
-        or typ
-        or "Brokerage"
+        j.get("AccountListResponse", {})
+         .get("Accounts", {})
+         .get("Account", [])
     )
 
+    if not accounts:
+        raise RuntimeError("No accounts returned from E*TRADE /v1/accounts/list.json")
+
+    # pick first margin/brokerage/individual, else first
+    pick = None
+    for a in accounts:
+        t = (a.get("accountType") or "").upper()
+        if "BROKERAGE" in t or "INDIVIDUAL" in t or "MARGIN" in t:
+            pick = a
+            break
+    if pick is None:
+        pick = accounts[0]
+
     return {
-        "account_id": acct_id,
-        "account_id_key": acct_key,
-        "account_type": typ or "BROKERAGE",
-        "account_type_display": typ_disp,
+        "account_id": pick.get("accountId"),
+        "account_id_key": pick.get("accountIdKey"),
+        "account_type": pick.get("accountType"),
+        "account_type_display": pick.get("accountDesc") or pick.get("accountType"),
     }
-
-
-# ---- Summary (raw + UI-normalized) ------------------------------------------
-
 
 def account_id_key() -> str:
     """
@@ -1577,65 +1584,120 @@ from datetime import timedelta
 _sess_cache = None
 
 
-def get_oauth_session():
-    """Return an OAuth-signed requests.Session (cached)."""
-    global _sess_cache
-    if _sess_cache is not None:
-        return _sess_cache
-    try:
-        # Use your existing live factory if you have it
-        from services.broker_live import get_oauth_session as _factory
+import os
+import json
+from requests_oauthlib import OAuth1Session
+from dotenv import load_dotenv
 
-        _sess_cache = _factory()
-        return _sess_cache
-    except Exception as e:
-        # No other safe fallback here—fail loudly so you know to wire it up
+load_dotenv("etrade.env")
+
+ETRADE_BASE_URL = "https://api.etrade.com"
+TOKEN_FILE = "etrade_tokens.json"
+
+
+def _load_tokens():
+    if not os.path.exists(TOKEN_FILE):
         raise RuntimeError(
-            "get_oauth_session(): no session factory found. "
-            "Expose services.broker_live.get_oauth_session() "
-            "or restore your previous session builder."
-        ) from e
+            "E*TRADE tokens not found. Run etrade_auth_flow.py or use the reconnect button."
+        )
+    with open(TOKEN_FILE, "r") as f:
+        return json.load(f)
 
 
-def account_id_key() -> str:
-    """
-    Return the E*TRADE accountIdKey used in URLs like
-    /v1/accounts/{accountIdKey}/....  No self-imports, no class dependency.
-    """
-    # 1) Environment variable (recommended)
-    aid = os.getenv("ETRADE_ACCOUNT_ID_KEY") or ""
-    if aid:
-        return aid
+def get_oauth_session():
+    consumer_key = os.getenv("ETRADE_API_KEY")
+    consumer_secret = os.getenv("ETRADE_API_SECRET")
+    if not consumer_key or not consumer_secret:
+        raise RuntimeError("Missing ETRADE_API_KEY / ETRADE_API_SECRET in etrade.env")
 
-    # 2) Try a helper you might already have
-    try:
-        aid = account_id_key() or ""
-        if aid:
-            return aid
-    except Exception:
-        pass
+    tokens = _load_tokens()
+    oauth_token = tokens.get("oauth_token")
+    oauth_token_secret = tokens.get("oauth_token_secret")
+    if not oauth_token or not oauth_token_secret:
+        raise RuntimeError("etrade_tokens.json missing oauth_token / oauth_token_secret")
 
-    # 3) Ask the API for the first account (requires OAuth session)
-    try:
-        sess = get_oauth_session()
-        r = sess.get("https://api.etrade.com/v1/accounts/list.json", timeout=15)
-        r.raise_for_status()
-        j = r.json() or {}
-        accounts = j.get("AccountListResponse", {}).get("Accounts", {}).get(
-            "Account", []
-        ) or j.get("accounts", [])
-        for a in accounts:
-            key = a.get("accountIdKey") or a.get("accountIdKeyValue")
-            if key:
-                return key
-    except Exception:
-        pass
-
-    raise RuntimeError(
-        "ETRADE_ACCOUNT_ID_KEY not found. Set it in the environment "
-        "or provide services.broker_live.get_account_id_key()."
+    return OAuth1Session(
+        consumer_key,
+        client_secret=consumer_secret,
+        resource_owner_key=oauth_token,
+        resource_owner_secret=oauth_token_secret,
     )
 
+
+def account_identity():
+    """
+    Fetch primary E*TRADE account identity via /v1/accounts/list.json.
+    Returns:
+      {
+        "account_id": ...,
+        "account_id_key": ...,
+        "account_type": ...,
+        "account_type_display": ...
+      }
+    """
+    sess = get_oauth_session()
+    url = f"{ETRADE_BASE_URL}/v1/accounts/list.json"
+    r = sess.get(url, timeout=15)
+    r.raise_for_status()
+    j = r.json()
+
+    accounts = (
+        j.get("AccountListResponse", {})
+         .get("Accounts", {})
+         .get("Account", [])
+    )
+
+    if not accounts:
+        raise RuntimeError("No accounts returned from E*TRADE /v1/accounts/list.json")
+
+    pick = None
+    for a in accounts:
+        t = (a.get("accountType") or "").upper()
+        if "BROKERAGE" in t or "INDIVIDUAL" in t or "MARGIN" in t:
+            pick = a
+            break
+    if pick is None:
+        pick = accounts[0]
+
+    return {
+        "account_id": pick.get("accountId"),
+        "account_id_key": pick.get("accountIdKey"),
+        "account_type": pick.get("accountType"),
+        "account_type_display": pick.get("accountDesc") or pick.get("accountType"),
+    }
+
+
+def get_default_account_id_key() -> str:
+    ident = account_identity()
+    key = ident.get("account_id_key")
+    if not key:
+        raise RuntimeError("No account_id_key in E*TRADE identity response")
+    return key
+
+
+def get_positions():
+    """
+    Return raw positions payload from E*TRADE.
+    dashboard.py will normalize via _normalize_positions_payload.
+    """
+    acct_key = get_default_account_id_key()
+    sess = get_oauth_session()
+
+    url = f"{ETRADE_BASE_URL}/v1/accounts/{acct_key}/portfolio.json"
+    params = {
+        "view": "QUICK",
+        "sortBy": "MARKET_VALUE",
+        "sortOrder": "DESC",
+        "count": 500,
+    }
+
+    r = sess.get(url, params=params, timeout=15)
+
+    if r.status_code == 204 or not (r.text or "").strip():
+        return {}
+
+    r.raise_for_status()
+    return r.json()
 
 # Optional alias if other code uses it
 get_account_id_key = account_id_key
@@ -2268,27 +2330,112 @@ def _json_or_empty(resp):
         return {}
 
 
+def get_default_account_id():
+    """
+    Returns the default E*TRADE account id from account_identity().
+    Handles both the new flat dict and the older nested response.
+    """
+    ident = account_identity()
+    if not ident:
+        raise RuntimeError("No accounts returned from E*TRADE")
+
+    # Case 1: new flat dict (what your debug shows)
+    if isinstance(ident, dict) and ident.get("account_id"):
+        return ident["account_id"]
+
+    # Case 2: older/alt shapes
+    accounts = []
+
+    # direct list
+    if isinstance(ident, list):
+        accounts = ident
+
+    # nested common legacy formats
+    if isinstance(ident, dict):
+        if "accounts" in ident:
+            accounts = ident["accounts"]
+        elif "AccountListResponse" in ident:
+            accounts = (
+                ident["AccountListResponse"]
+                .get("Accounts", {})
+                .get("Account", [])
+            )
+
+    if isinstance(accounts, dict):
+        accounts = [accounts]
+
+    if not accounts:
+        raise RuntimeError(f"No accounts returned from E*TRADE (raw={ident})")
+
+    # Prefer individual brokerage if present
+    for a in accounts:
+        if str(a.get("account_type", "")).upper().startswith("INDIVIDUAL"):
+            return a.get("account_id") or a.get("accountId")
+
+    # Fallback: first account with any id
+    for a in accounts:
+        if a.get("account_id") or a.get("accountId"):
+            return a.get("account_id") or a.get("accountId")
+
+    raise RuntimeError(f"No usable account id in E*TRADE identity (raw={ident})")
+
+import logging
+from requests_oauthlib import OAuth1Session
+import os
+from dotenv import load_dotenv
+
+load_dotenv("etrade.env")
+
+log = logging.getLogger(__name__)
+
+CONSUMER_KEY = os.getenv("ETRADE_API_KEY")
+CONSUMER_SECRET = os.getenv("ETRADE_API_SECRET")
+OAUTH_TOKEN = os.getenv("OAUTH_TOKEN")
+OAUTH_TOKEN_SECRET = os.getenv("OAUTH_TOKEN_SECRET")
+ETRADE_BASE_URL = "https://api.etrade.com"
+
+
+def _oauth_session():
+    """
+    Single place to create an authenticated E*TRADE session.
+    """
+    if not all([CONSUMER_KEY, CONSUMER_SECRET, OAUTH_TOKEN, OAUTH_TOKEN_SECRET]):
+        raise RuntimeError("Missing E*TRADE OAuth credentials (.env)")
+
+    return OAuth1Session(
+        CONSUMER_KEY,
+        client_secret=CONSUMER_SECRET,
+        resource_owner_key=OAUTH_TOKEN,
+        resource_owner_secret=OAUTH_TOKEN_SECRET,
+    )
+
+
 def get_positions():
-    acct = account_id_key()
+    """
+    Return raw positions payload from E*TRADE.
+
+    dashboard.py will normalize via _normalize_positions_payload,
+    so we just hand back the E*TRADE PortfolioResponse JSON.
+    """
+    acct_key = get_default_account_id_key()
     sess = get_oauth_session()
-    url = f"https://api.etrade.com/v1/accounts/{acct}/portfolio.json"
-    params = {"instType": "BROKERAGE"}
+
+    url = f"{ETRADE_BASE_URL}/v1/accounts/{acct_key}/portfolio.json"
+    params = {
+        "view": "QUICK",
+        "sortBy": "MARKET_VALUE",
+        "sortOrder": "DESC",
+        "count": 500,
+    }
+
     r = sess.get(url, params=params, timeout=15)
 
-    # E*TRADE sometimes returns empty/whitespace or 204; guard JSON parsing
+    # Guard: E*TRADE sometimes 204 or blank body
     if r.status_code == 204 or not (r.text or "").strip():
-        return []
+        return {}
+
     r.raise_for_status()
-    try:
-        j = r.json()
-    except ValueError:
-        return []  # be tolerant, return empty positions on bad payloads
-    return j
-
-
-# make sure you have at top of file:
-# import time
-
+    return r.json()
 
 def preview_equity_order(
     account_id_key: str,

@@ -1,91 +1,497 @@
 # -*- coding: utf-8 -*-
 """
-TradeAlerts – Dashboard (LIVE-focused)
+TradeAlerts – LIVE Dashboard
+
 - VALUE = Buying Power + Positions Value
+- Holdings & account info from services.etrade_service
 - Realized P&L buckets read from live.db (realized_trades)
-- All % = cumulative_gain / START_CASH
+- All % = cumulative_gain / LIVE_APP_STARTING_EQUITY
 - Day/Week/LW/Month % = gain / total_cost
-- Exclude GEVO; ET timezone; weeks are Mon–Fri; All since 2025-08-22
+- Exclude GEVO
+- ET timezone; weeks are Mon–Fri
+- "All" window since 2025-08-22
+
+This file exposes:
+- /live        : HTML shell
+- /live/status : JSON the Live UI expects
+- /auth/etrade/reconnect, /checkpoint helpers
 """
 
 from __future__ import annotations
 
 import os
 import sys
-import json
 import logging
 import sqlite3
 import threading
+import subprocess
+import pathlib
 from pathlib import Path
 from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Tuple
 
 from flask import (
-    Flask, jsonify, render_template, request, redirect, url_for, abort
+    Flask,
+    jsonify,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    current_app,
 )
 from dotenv import load_dotenv
 
-# ----- Ensure project root on sys.path -----
+# -----------------------------------------------------------------------------#
+# Path / env setup
+# -----------------------------------------------------------------------------#
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-# ----- Third-party helpers -----
+load_dotenv()
+
 try:
     from zoneinfo import ZoneInfo  # py3.9+
 except Exception:  # pragma: no cover
     from backports.zoneinfo import ZoneInfo  # type: ignore
 
-# ===== Load .env and configure =====
-load_dotenv()
-
-# ===== Constants (single source of truth) =====
 ET = ZoneInfo("America/New_York")
 
-SIM_DB      = os.path.join(ROOT, "simulation.db")
+# --- DB paths ---
+SIM_DB = os.path.join(ROOT, "simulation.db")
 BACKTEST_DB = os.path.join(ROOT, "backtest.db")
-LIVE_DB     = os.environ.get("LIVE_DB", r"C:\TradeAlerts\live.db")
+LIVE_DB = os.environ.get("LIVE_DB", os.path.join(ROOT, "live.db"))
 
-START_CASH     = float(os.environ.get("START_CASH", "392.67"))
-ALL_START_ET   = date(2025, 8, 22)
+# --- Live tracking config ---
+PROJECT_START_DATE = date(2025, 8, 22)
+LIVE_APP_STARTING_EQUITY = 367.76
+START_CASH = LIVE_APP_STARTING_EQUITY  # used for "All" realized %
+
 IGNORED_TICKERS = {"GEVO"}
 
-# OAuth helpers (prod)
-OAUTH_HOST = "https://api.etrade.com"
-REQUEST_TOKEN_URL = f"{OAUTH_HOST}/oauth/request_token"
-ACCESS_TOKEN_URL  = f"{OAUTH_HOST}/oauth/access_token"
-AUTHORIZE_URL     = "https://us.etrade.com/e/t/etws/authorize"
-
+# --- Auth / reconnect flags ---
 NEED_AUTH_FLAG = Path("need_oauth.flag")
 
-# ===== Flask app =====
+# --- Checkpoint script ---
+CHECKPOINT_BAT = r"C:\TradeAlerts\checkpoint.bat"  # adjust if needed
+
+# -----------------------------------------------------------------------------#
+# Flask app + logging
+# -----------------------------------------------------------------------------#
+
 app = Flask(__name__)
 
-# --- JSON helper (fixes NameError: always_json not defined) ---
-from functools import wraps
-from flask import jsonify
 
-from functools import wraps
-from flask import jsonify, current_app
+def setup_logging(app: Flask) -> None:
+    app.logger.setLevel(logging.INFO)
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.INFO)
+    ch.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)-8s %(name)s: %(message)s")
+    )
+    if not any(isinstance(h, logging.StreamHandler) for h in app.logger.handlers):
+        app.logger.addHandler(ch)
 
-from functools import wraps
-from flask import jsonify
+
+setup_logging(app)
+log = app.logger
+
+# -----------------------------------------------------------------------------#
+# Import service layer
+# -----------------------------------------------------------------------------#
+
+from services import etrade_service as et  # canonical E*TRADE wrapper
+
+try:
+    from services.trade_source import load_trades_merged
+except ImportError:
+    def load_trades_merged(
+        days: int | None = None,
+        start_iso: str | None = None,
+        max_count: int = 5000,
+    ):
+        return []
+
+# -----------------------------------------------------------------------------#
+# Helpers
+# -----------------------------------------------------------------------------#
+
 
 def always_json(f):
+    """Decorator: make view always return JSON + catch exceptions."""
+    from functools import wraps
+
     @wraps(f)
     def _wrap(*args, **kwargs):
         try:
             out = f(*args, **kwargs)
-            # If a view returns (dict|list), jsonify it.
             if isinstance(out, (dict, list)):
                 return jsonify(out)
             return out
         except Exception as e:
+            log.exception("always_json wrapped error: %s", e)
             return jsonify({"ok": False, "error": str(e)}), 500
+
     return _wrap
 
-# ---- Navbar helpers for Jinja (hide links if endpoints don't exist) ----
-from flask import current_app, url_for
+
+def _safe_float(x: Any, default: float = 0.0) -> float:
+    try:
+        if x is None:
+            return default
+        return float(x)
+    except Exception:
+        return default
+
+
+def _et_midnight(d: date) -> datetime:
+    return datetime.combine(d, datetime.min.time(), tzinfo=ET)
+
+
+def _et_eod(d: date) -> datetime:
+    return datetime.combine(d, datetime.max.time(), tzinfo=ET)
+
+
+def _normalize_account(summ: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Flatten/normalize account summary to a stable shape expected by the UI.
+    Tolerant of different shapes from etrade_service.
+    """
+    if not isinstance(summ, dict):
+        return {
+            "account_id": None,
+            "account_key": None,
+            "account_type": None,
+            "account_type_display": None,
+            "available_funds": 0.0,
+        }
+
+    ui = summ.get("ui") or {}
+
+    def g(*keys, default=None):
+        for k in keys:
+            if k in summ and summ[k] is not None:
+                return summ[k]
+            if k in ui and ui[k] is not None:
+                return ui[k]
+        return default
+
+    return {
+        "account_id": g("account_id", "accountId"),
+        "account_key": g("account_key", "accountIdKey", "account_id_key"),
+        "account_type": g("account_type", "accountType"),
+        "account_type_display": g("account_type_display", "accountTypeDesc"),
+        "available_funds": _safe_float(
+            g(
+                "available_funds",
+                "cashAvailableForInvestment",
+                "cashAvailable",
+                default=0.0,
+            )
+        ),
+    }
+
+
+def _normalize_positions_payload(raw: Any) -> List[Dict[str, Any]]:
+    """
+    Normalize E*TRADE positions into:
+        {symbol, qty, price_paid, last_price}
+    Accepts either:
+      - already-normalized rows, or
+      - raw E*TRADE portfolio JSON.
+    """
+    rows: List[Dict[str, Any]] = []
+    if not raw:
+        return rows
+
+    # Already normalized?
+    if (
+        isinstance(raw, list)
+        and raw
+        and isinstance(raw[0], dict)
+        and "symbol" in raw[0]
+    ):
+        for r in raw:
+            rows.append(
+                {
+                    "symbol": str(r.get("symbol", "")).upper(),
+                    "qty": _safe_float(r.get("qty"), 0.0),
+                    "price_paid": _safe_float(r.get("price_paid"), 0.0),
+                    "last_price": _safe_float(r.get("last_price"), 0.0),
+                }
+            )
+        return rows
+
+    # Raw E*TRADE shape
+    try:
+        pr = raw.get("PortfolioResponse", {}).get("AccountPortfolio", [])
+        if isinstance(pr, dict):
+            pr = [pr]
+        for acct in pr:
+            for pos in acct.get("Position", []):
+                sym = str(
+                    pos.get("symbolDescription")
+                    or pos.get("symbol")
+                    or ""
+                ).upper()
+                if not sym:
+                    continue
+
+                qty = _safe_float(pos.get("quantity"), 0.0)
+                paid = _safe_float(
+                    pos.get("pricePaid")
+                    or pos.get("costPerShare")
+                    or pos.get("averagePrice")
+                    or 0.0
+                )
+                last = _safe_float(
+                    (pos.get("Quick") or {}).get("lastTrade")
+                    or (pos.get("All") or {}).get("lastTrade")
+                    or pos.get("lastTrade")
+                    or 0.0
+                )
+                rows.append(
+                    {
+                        "symbol": sym,
+                        "qty": qty,
+                        "price_paid": paid,
+                        "last_price": last,
+                    }
+                )
+    except Exception as e:
+        log.exception("normalize positions failed: %s", e)
+
+    return rows
+
+
+def _build_holdings_from_positions(
+    pos_rows: List[Dict[str, Any]]
+) -> Tuple[List[Dict[str, Any]], float]:
+    """
+    From normalized positions rows, compute holdings rows with:
+      symbol, qty, price_paid, last_price, value,
+      day_pl, day_pl_pct, total_pl, total_pl_pct.
+
+    Returns (holdings, positions_value).
+    """
+    holdings: List[Dict[str, Any]] = []
+    positions_value = 0.0
+
+    for r in pos_rows:
+        sym = str(r.get("symbol", "")).upper()
+        if not sym or sym in IGNORED_TICKERS:
+            continue
+
+        qty = _safe_float(r.get("qty"), 0.0)
+        paid = _safe_float(r.get("price_paid"), 0.0)
+        last = _safe_float(r.get("last_price"), 0.0)
+
+        value = round(qty * last, 2)
+        positions_value += value
+
+        cost = qty * paid
+        total_pl = round(value - cost, 2) if qty else 0.0
+        total_pl_pct = round((total_pl / cost) * 100.0, 2) if cost > 0 else 0.0
+
+        # day_pl are 0 unless you wire in prevClose; keep placeholders.
+        day_pl = 0.0
+        day_pl_pct = 0.0
+
+        holdings.append(
+            {
+                "symbol": sym,
+                "qty": qty,
+                "price_paid": round(paid, 4),
+                "last_price": round(last, 4),
+                "value": value,
+                "day_pl": day_pl,
+                "day_pl_pct": day_pl_pct,
+                "total_pl": total_pl,
+                "total_pl_pct": total_pl_pct,
+            }
+        )
+
+    return holdings, round(positions_value, 2)
+
+
+def compute_value_card(
+    account_ui: Dict[str, Any], holdings_rows: List[Dict[str, Any]]
+) -> Dict[str, float]:
+    """VALUE tile: Buying Power + Positions Value."""
+    bp = _safe_float(account_ui.get("available_funds"), 0.0)
+    pv = round(sum(_safe_float(h.get("value"), 0.0) for h in holdings_rows), 2)
+    return {
+        "buying_power": round(bp, 2),
+        "positions_value": pv,
+        "value": round(bp + pv, 2),
+    }
+
+
+def realized_buckets_from_live_db(db_path: str) -> Dict[str, Dict[str, float]]:
+    """
+    Aggregate realized_trades into time buckets.
+
+    Returns:
+      {
+        "day":       {"pnl": ..., "pct": ...},
+        "week":      {"pnl": ..., "pct": ...},
+        "last_week": {"pnl": ..., "pct": ...},
+        "month":     {"pnl": ..., "pct": ...},
+        "all":       {"pnl": ..., "pct": ...},
+      }
+
+    Rules:
+      - Day/Week/LW/Month: pct = gain / total_cost * 100
+      - All:               pct = cumulative_gain / START_CASH * 100
+      - Exclude GEVO
+      - "All" since PROJECT_START_DATE
+    """
+    skeleton = {
+        k: {"pnl": 0.0, "pct": 0.0}
+        for k in ("day", "week", "last_week", "month", "all")
+    }
+    if not os.path.exists(db_path):
+        return skeleton
+
+    now = datetime.now(ET)
+
+    def q_window(start: datetime, end: datetime) -> List[sqlite3.Row]:
+        s = start.strftime("%Y-%m-%d %H:%M:%S")
+        e = end.strftime("%Y-%m-%d %H:%M:%S")
+        con = sqlite3.connect(db_path)
+        con.row_factory = sqlite3.Row
+        try:
+            rows = con.execute(
+                """
+                SELECT symbol, gain, total_cost, close_date
+                FROM realized_trades
+                WHERE symbol != 'GEVO'
+                  AND close_date BETWEEN ? AND ?
+                """,
+                (s, e),
+            ).fetchall()
+        finally:
+            con.close()
+        return rows
+
+    def acc(rows: List[sqlite3.Row]) -> Tuple[float, float]:
+        g = c = 0.0
+        for r in rows:
+            try:
+                g += float(r["gain"] or 0.0)
+            except Exception:
+                pass
+            try:
+                c += float(r["total_cost"] or 0.0)
+            except Exception:
+                pass
+        return g, c
+
+    # Windows
+    day_start = _et_midnight(now.date())
+    week_start = _et_midnight(now.date() - timedelta(days=now.weekday()))
+    last_week_end = week_start - timedelta(seconds=1)
+    last_week_start = _et_midnight(
+        last_week_end.date() - timedelta(days=last_week_end.weekday())
+    )
+    last_week_final = _et_eod(last_week_start.date() + timedelta(days=4))
+    month_start = _et_midnight(now.replace(day=1).date())
+    all_start = _et_midnight(PROJECT_START_DATE)
+
+    windows = {
+        "day": (day_start, now),
+        "week": (week_start, now),
+        "last_week": (last_week_start, last_week_final),
+        "month": (month_start, now),
+        "all": (all_start, now),
+    }
+
+    out: Dict[str, Dict[str, float]] = {}
+    for key, (ws, we) in windows.items():
+        rows = q_window(ws, we)
+        g, c = acc(rows)
+        if key == "all":
+            pct = (g / START_CASH * 100.0) if START_CASH > 0 else 0.0
+        else:
+            pct = (g / c * 100.0) if c > 0 else 0.0
+        out[key] = {"pnl": round(g, 2), "pct": round(pct, 2)}
+
+    # Merge with skeleton to ensure all keys exist
+    skeleton.update(out)
+    return skeleton
+
+# -----------------------------------------------------------------------------#
+# E*TRADE auth / reconnect helpers
+# -----------------------------------------------------------------------------#
+
+
+def _etrade_log_wrap() -> None:
+    """Sync NEED_AUTH_FLAG with et.need_oauth if the wrapper exposes it."""
+    try:
+        if getattr(et, "need_oauth", False):
+            NEED_AUTH_FLAG.write_text("1", encoding="utf-8")
+        else:
+            if NEED_AUTH_FLAG.exists():
+                NEED_AUTH_FLAG.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+@app.route("/auth/etrade/reconnect", methods=["GET"])
+def etrade_reconnect():
+    """
+    Launch auth_shortcut.py in a new console so user can complete PIN flow.
+    """
+    try:
+        exe = sys.executable
+        script = os.path.join(ROOT, "auth_shortcut.py")
+        if not os.path.exists(script):
+            return jsonify({"ok": False, "error": "auth_shortcut.py not found"}), 404
+
+        if os.name == "nt":
+            # Windows: spawn new console
+            subprocess.Popen(
+                [exe, "-u", script],
+                creationflags=subprocess.CREATE_NEW_CONSOLE,
+                cwd=ROOT,
+            )
+        else:
+            # *nix: background thread
+            threading.Thread(
+                target=lambda: os.system(f"{exe} -u {script} &"),
+                daemon=True,
+            ).start()
+
+        return jsonify({"ok": True})
+    except Exception as e:
+        log.exception("etrade_reconnect failed: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+# -----------------------------------------------------------------------------#
+# Checkpoint trigger
+# -----------------------------------------------------------------------------#
+
+
+@app.route("/checkpoint", methods=["GET"])
+@always_json
+def run_checkpoint():
+    try:
+        if not os.path.exists(CHECKPOINT_BAT):
+            return {"ok": False, "error": f"Missing {CHECKPOINT_BAT}"}
+        subprocess.Popen(
+            ["cmd.exe", "/c", "start", "", CHECKPOINT_BAT],
+            cwd=str(pathlib.Path(CHECKPOINT_BAT).parent),
+            creationflags=0x00000008,  # CREATE_NEW_CONSOLE
+        )
+        return {"ok": True, "launched": CHECKPOINT_BAT}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+# -----------------------------------------------------------------------------#
+# Jinja / navbar helpers
+# -----------------------------------------------------------------------------#
+
 
 @app.context_processor
 def _inject_nav_flags():
@@ -98,21 +504,18 @@ def _inject_nav_flags():
     has_back = "backtest_view" in vfs
     has_checkpoint = "run_checkpoint" in vfs
 
-    # Prefer real endpoint if present; otherwise fall back to path
-    auth_endpoint = None
-    for cand in ("etrade_auth", "etrade_reconnect"):
-        if cand in vfs:
-            auth_endpoint = cand
-            break
+    # Auth URL: prefer reconnect endpoint
     try:
-        auth_url = url_for(auth_endpoint) if auth_endpoint else "/etrade/auth"
+        auth_url = url_for("etrade_reconnect")
     except Exception:
-        auth_url = "/etrade/auth"
+        auth_url = "/auth/etrade/reconnect"
 
-    try:
-        checkpoint_url = url_for("run_checkpoint") if has_checkpoint else None
-    except Exception:
-        checkpoint_url = None
+    checkpoint_url = None
+    if has_checkpoint:
+        try:
+            checkpoint_url = url_for("run_checkpoint")
+        except Exception:
+            checkpoint_url = "/checkpoint"
 
     return {
         "HAS_SIM": has_sim,
@@ -122,290 +525,21 @@ def _inject_nav_flags():
         "CHECKPOINT_URL": checkpoint_url,
     }
 
-# --- Jinja helpers so layout.html can know which endpoints exist ---
-from flask import current_app
-
-@app.context_processor
-def _inject_endpoint_flags():
-    try:
-        vfs = set(current_app.view_functions.keys())
-    except Exception:
-        vfs = set()
-    return {
-        "HAS_SIM": "simulation_view" in vfs,
-        "HAS_BACK": "backtest_view" in vfs,
-    }
-
-# ===== Logging (single setup) =====
-def setup_logging(app: Flask) -> None:
-    app.logger.setLevel(logging.INFO)
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.INFO)
-    ch.setFormatter(logging.Formatter("%(asctime)s %(levelname)-8s %(name)s: %(message)s"))
-    if not any(isinstance(h, logging.StreamHandler) for h in app.logger.handlers):
-        app.logger.addHandler(ch)
-
-setup_logging(app)
-log = app.logger
-
-# ===== Service-layer imports (existing modules in your project) =====
-# These must already exist in C:\TradeAlerts\services\
-from services import etrade_service as et  # your canonical E*TRADE wrapper
-from services.trade_source import load_trades_merged  # merged recent trades for the table
-
-# -----------------------------------------------------------------------------
-# Helpers
-# -----------------------------------------------------------------------------
-
-def _safe_float(x: Any, default: float = 0.0) -> float:
-    try:
-        if x is None: return default
-        return float(x)
-    except Exception:
-        return default
-
-def _et_midnight(d: date) -> datetime:
-    return datetime.combine(d, datetime.min.time(), tzinfo=ET)
-
-def _et_eod(d: date) -> datetime:
-    return datetime.combine(d, datetime.max.time(), tzinfo=ET)
-
-def _normalize_account(summ: Dict[str, Any]) -> Dict[str, Any]:
-    """Flatten/normalize account summary so UI logic is stable."""
-    ui = summ.get("ui") or {}
-    out = {
-        "account_id":       summ.get("account_id") or ui.get("account_id"),
-        "account_key":      summ.get("account_key") or ui.get("account_key"),
-        "account_type":     summ.get("account_type") or ui.get("account_type"),
-        "account_type_display": summ.get("account_type_display") or ui.get("account_type_display"),
-        # We treat available_funds as 'Buying Power' for a cash account
-        "available_funds":  _safe_float(ui.get("available_funds", ui.get("cashAvailableForInvestment", 0))),
-    }
-    return out
-
-def _normalize_positions_payload(raw: Any) -> List[Dict[str, Any]]:
-    """
-    Accept E*TRADE positions payload and normalize to rows:
-    {symbol, qty, price_paid, last_price}
-    """
-    rows: List[Dict[str, Any]] = []
-    if not raw:
-        return rows
-
-    # Support both raw E*TRADE shape and already-normalized rows.
-    if isinstance(raw, list) and raw and "symbol" in raw[0]:
-        # already normalized
-        for r in raw:
-            rows.append({
-                "symbol": str(r.get("symbol", "")).upper(),
-                "qty":    _safe_float(r.get("qty"), 0.0),
-                "price_paid": _safe_float(r.get("price_paid"), 0.0),
-                "last_price": _safe_float(r.get("last_price"), 0.0),
-                "open_time": r.get("open_time"),
-            })
-        return rows
-
-    # Fallback: E*TRADE raw positions format
-    try:
-        positions = raw.get("PortfolioResponse", {}).get("AccountPortfolio", [])
-        if isinstance(positions, dict):
-            positions = [positions]
-        for acct in positions:
-            for pos in acct.get("Position", []):
-                sym = str(pos.get("symbolDescription") or pos.get("symbol") or "").upper()
-                qty = _safe_float(pos.get("quantity"), 0.0)
-                # E*TRADE gives an average price
-                paid = _safe_float(pos.get("pricePaid"), 0.0)
-                last = _safe_float(
-                    pos.get("Quick") and pos["Quick"].get("lastTrade") or
-                    pos.get("All") and pos["All"].get("lastTrade") or
-                    pos.get("lastTrade"), 0.0
-                )
-                rows.append({
-                    "symbol": sym, "qty": qty, "price_paid": paid, "last_price": last, "open_time": None
-                })
-    except Exception as e:
-        log.exception("normalize positions failed: %s", e)
-    return rows
-
-def _build_holdings_from_positions(pos_rows: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], float]:
-    """
-    Build holdings rows with 'value' and basic gains; return (rows, positions_value)
-    Day gain requires a proper 'change' (last - prevClose); if missing we leave day_gain=0.
-    """
-    out: List[Dict[str, Any]] = []
-    pv = 0.0
-    for r in pos_rows:
-        sym  = str(r.get("symbol", "")).upper()
-        qty  = _safe_float(r.get("qty"), 0.0)
-        paid = _safe_float(r.get("price_paid"), 0.0)
-        last = _safe_float(r.get("last_price"), 0.0)
-        value = round(qty * last, 2)
-        pv += value
-
-        total_gain = round((last - paid) * qty, 2) if qty else 0.0
-
-        out.append({
-            "symbol": sym,
-            "qty": qty,
-            "price_paid": round(paid, 4),
-            "last_price": round(last, 4),
-            "value": value,
-            "total_gain": total_gain,
-        })
-    return out, round(pv, 2)
-
-def compute_value_card(account_ui: Dict[str, Any], holdings_rows: List[Dict[str, Any]]) -> Dict[str, float]:
-    """Left KPI: VALUE = Buying Power + Positions Value (only those two rows)."""
-    bp = _safe_float(account_ui.get("available_funds"), 0.0)
-    pv = round(sum(_safe_float(h.get("value"), 0.0) for h in holdings_rows), 2)
-    return {
-        "buying_power": round(bp, 2),
-        "positions_value": pv,
-        "value": round(bp + pv, 2),
-    }
-
-def realized_buckets_from_live_db(db_path: str) -> Dict[str, Dict[str, float]]:
-    """
-    Read realized_trades and produce:
-      {key: {"pnl": amt, "pct": percent}}
-    Rules:
-      - Day/Week/LW/Month: percent = sum(gain)/sum(total_cost) * 100
-      - All:               percent = cumulative_gain/START_CASH * 100
-      - Exclude GEVO
-      - ET timezone; week is Mon–Fri; All since 2025-08-22
-    """
-    now = datetime.now(ET)
-
-    def q_window(start: datetime, end: datetime) -> List[sqlite3.Row]:
-        s = start.strftime("%Y-%m-%d %H:%M:%S")
-        e = end.strftime("%Y-%m-%d %H:%M:%S")
-        con = sqlite3.connect(db_path); con.row_factory = sqlite3.Row
-        try:
-            rows = con.execute("""
-                SELECT symbol, gain, total_cost, close_date
-                FROM realized_trades
-                WHERE symbol != 'GEVO' AND close_date BETWEEN ? AND ?
-            """, (s, e)).fetchall()
-        finally:
-            con.close()
-        return rows
-
-    def acc(rows: List[sqlite3.Row]) -> Tuple[float, float]:
-        g = c = 0.0
-        for r in rows:
-            try: g += float(r["gain"] or 0.0)
-            except: pass
-            try: c += float(r["total_cost"] or 0.0)
-            except: pass
-        return g, c
-
-    day_start  = _et_midnight(now.date())
-    week_start = _et_midnight(now.date() - timedelta(days=now.weekday()))
-    # last week Mon 00:00:00 .. Fri 23:59:59
-    last_week_end = week_start - timedelta(microseconds=1)
-    last_week_start = _et_midnight((last_week_end.date() - timedelta(days=last_week_end.weekday())))
-    month_start = _et_midnight(now.replace(day=1).date())
-    all_start   = _et_midnight(ALL_START_ET)
-
-    windows = {
-        "day":       (day_start, now),
-        "week":      (week_start, now),
-        "last_week": (last_week_start, _et_eod(last_week_start.date() + timedelta(days=4))),
-        "month":     (month_start, now),
-        "all":       (all_start, now),
-    }
-
-    out: Dict[str, Dict[str, float]] = {}
-    for key, (ws, we) in windows.items():
-        rows = q_window(ws, we)
-        g, c = acc(rows)
-        if key == "all":
-            pct = (g / START_CASH * 100.0) if START_CASH > 0 else 0.0
-        else:
-            pct = (g / c * 100.0) if c > 0 else 0.0
-        out[key] = {"pnl": round(g, 2), "pct": round(pct, 2)}
-    return out
-
-# -----------------------------------------------------------------------------
-# E*TRADE reconnect helpers
-# -----------------------------------------------------------------------------
-
-def _etrade_log_wrap() -> None:
-    """
-    Mark need_oauth.flag if the last E*TRADE call indicated expired tokens.
-    Your etrade_service should set a sticky flag or raise on 401/403.
-    """
-    try:
-        if getattr(et, "need_oauth", False):
-            NEED_AUTH_FLAG.write_text("1", encoding="utf-8")
-        else:
-            if NEED_AUTH_FLAG.exists():
-                NEED_AUTH_FLAG.unlink(missing_ok=True)  # py3.8+: ignore if missing
-    except Exception:
-        pass
-
-@app.route("/auth/etrade/launch")
-@always_json
-def etrade_auth_launch():
-    try:
-        import auth_shortcut as _auth
-        ok, err = _auth.launch()
-        return {"ok": ok, "error": err}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-@app.route("/auth/etrade/reconnect", methods=["GET"])
-def etrade_reconnect():
-    """
-    Convenience: launch your auth_shortcut.py in a new console for the PIN flow.
-    """
-    try:
-        exe = sys.executable
-        script = os.path.join(ROOT, "auth_shortcut.py")
-        if os.name == "nt":
-            # New console on Windows
-            os.spawnl(os.P_NOWAIT, exe, exe, "-u", script)
-        else:
-            threading.Thread(target=lambda: os.system(f"{exe} -u {script} &")).start()
-        return jsonify({"ok": True})
-    except Exception as e:
-        log.exception("reconnect failed: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-# --- Checkpoint trigger (kept simple; returns ok:true) ---
-import os, subprocess, pathlib
-
-CHECKPOINT_BAT = r"C:\TradeAlerts\checkpoint.bat"  # must exist
-
-@app.route("/checkpoint", methods=["GET"])
-@always_json
-def run_checkpoint():
-    try:
-        if not os.path.exists(CHECKPOINT_BAT):
-            return {"ok": False, "error": f"Missing {CHECKPOINT_BAT}"}, 404
-        # Launch without blocking the Flask thread
-        subprocess.Popen(
-            ["cmd.exe", "/c", "start", "", CHECKPOINT_BAT],
-            cwd=str(pathlib.Path(CHECKPOINT_BAT).parent),
-            creationflags=0x00000008  # CREATE_NEW_CONSOLE
-        )
-        return {"ok": True, "launched": CHECKPOINT_BAT}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}, 500
-
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------#
 # Routes
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------#
+
 
 @app.route("/")
 def index():
     return redirect(url_for("live_view"))
 
+
 @app.route("/live")
 def live_view():
     """
-    Server-render first paint. JS will immediately call /live/status to fill the tiles.
+    Initial HTML shell. JS immediately calls /live/status.
+    Tolerant of upstream errors.
     """
     try:
         _etrade_log_wrap()
@@ -420,15 +554,16 @@ def live_view():
 
     return render_template("live.html", account=account, holdings=holdings)
 
+
 @app.route("/live/status")
 def live_status():
     """
-    Returns the JSON the Live UI expects.
+    JSON API consumed by live.html JS.
     """
     try:
         _etrade_log_wrap()
 
-        # ---------- Account & positions ----------
+        # ----- Account & positions -----
         acct_summary = et.get_account_summary() or {}
         account = _normalize_account(acct_summary)
 
@@ -436,28 +571,68 @@ def live_status():
         pos_rows = _normalize_positions_payload(raw_positions)
         holdings, positions_value = _build_holdings_from_positions(pos_rows)
 
-        # ---------- KPI: VALUE ----------
+        # ----- VALUE tile -----
         value_obj = compute_value_card(account, holdings)
 
-        # ---------- KPI: REALIZED ----------
+        # ----- REALIZED buckets -----
         realized_obj = realized_buckets_from_live_db(LIVE_DB)
 
-        # ---------- Trades (table) ----------
+        # ----- Unrealized P&L from holdings -----
+        total_cost = sum(
+            _safe_float(h.get("price_paid")) * _safe_float(h.get("qty"))
+            for h in holdings
+        )
+        unrealized_pnl = round(positions_value - total_cost, 2) if total_cost else 0.0
+        unrealized_pnl_pct = (
+            round((unrealized_pnl / total_cost) * 100.0, 2)
+            if total_cost > 0
+            else 0.0
+        )
+
+        # ----- Metrics blob (for JS helpers) -----
+        metrics = {
+            "positions_value": positions_value,
+            "buying_power": value_obj["buying_power"],
+            "net_account_value": value_obj["value"],
+            "unrealized_pnl": unrealized_pnl,
+            "unrealized_pnl_pct": unrealized_pnl_pct,
+            "realized_buckets": realized_obj,
+        }
+
+        # ----- About (for hero blurb & 'All' calc) -----
+        nav = value_obj["value"]
+        since_pnl = round(nav - LIVE_APP_STARTING_EQUITY, 2)
+        since_pct = (
+            round((since_pnl / LIVE_APP_STARTING_EQUITY) * 100.0, 2)
+            if LIVE_APP_STARTING_EQUITY > 0
+            else 0.0
+        )
+        about = {
+            "start_cash": LIVE_APP_STARTING_EQUITY,
+            "start_date": PROJECT_START_DATE.isoformat(),
+            "since_pnl": since_pnl,
+            "since_pct": since_pct,
+        }
+
+        # ----- Trades table -----
         start = request.args.get("start", "").strip()
         days = request.args.get("days", type=int)
         max_count = request.args.get("max", default=5000, type=int)
-
         trades = load_trades_merged(days=days, start_iso=start, max_count=max_count) or []
 
         needs_reconnect = NEED_AUTH_FLAG.exists()
+        etrade_ok = not needs_reconnect  # simple, but good enough for the dot
 
         payload = {
             "ok": True,
+            "etrade_ok": etrade_ok,
             "account": account,
             "value": value_obj,
+            "metrics": metrics,
             "realized": realized_obj,
             "holdings": holdings,
             "trades": trades,
+            "about": about,
             "needs_reconnect": needs_reconnect,
         }
         return jsonify(payload), 200
@@ -467,10 +642,9 @@ def live_status():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------#
 # Entrypoint
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------#
 
 if __name__ == "__main__":
-    # Bind on all interfaces; debug on for dev
     app.run(host="0.0.0.0", port=5000, debug=True)
