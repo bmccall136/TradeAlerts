@@ -68,21 +68,19 @@ from flask import jsonify
 from functools import wraps
 from flask import jsonify, current_app
 
-def always_json(fn):
-    @wraps(fn)
+from functools import wraps
+from flask import jsonify
+
+def always_json(f):
+    @wraps(f)
     def _wrap(*args, **kwargs):
         try:
-            out = fn(*args, **kwargs)
-            # If the view returned a tuple (payload, status), pass it through
-            if isinstance(out, tuple):
-                payload, *rest = out
-                return jsonify(payload), *rest
-            return jsonify(out)
+            out = f(*args, **kwargs)
+            # If a view returns (dict|list), jsonify it.
+            if isinstance(out, (dict, list)):
+                return jsonify(out)
+            return out
         except Exception as e:
-            try:
-                current_app.logger.exception("always_json error")
-            except Exception:
-                pass
             return jsonify({"ok": False, "error": str(e)}), 500
     return _wrap
 
