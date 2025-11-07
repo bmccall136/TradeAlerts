@@ -1,663 +1,435 @@
 {% extends "layout.html" %}
 {% block content %}
 <style>
-  /* Realized P&L rows: label | amount | percent  */
-  .kpi-realized .rline{
-    display: grid;
-    grid-template-columns: 60px minmax(80px, 1fr) 56px; /* tweak widths if you like */
-    column-gap: 12px;
-    align-items: baseline;
-  }
-  /* right-align numbers and keep monospaced digits for clean columns */
-  .kpi-realized .rline span:nth-child(2),
-  .kpi-realized .rline span:nth-child(3){
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-  /* tiny nudge so the amount sits “two spaces” to the right of label */
-  .kpi-realized .rline span:nth-child(2){ padding-left: 8px; }
-
-  /* slightly dim labels if you want */
-  .kpi-realized .rline span:first-child{ opacity: .85; }
-
-  /* compact a bit on narrow screens */
-  @media (max-width: 576px){
-    .kpi-realized .rline{
-      grid-template-columns: 52px minmax(72px, 1fr) 52px;
-      column-gap: 8px;
-    }
-  }
-</style>
-<style>
-  /* Realized P&L aligned columns */
-  .kpi-realized .rline{
-    display:flex;
-    align-items:baseline;
-    gap:.5rem;
-  }
-  .kpi-realized .lbl{
-    min-width:60px;        /* “Week/Month/All” column */
-  }
-  .kpi-realized .amt{
-    margin-left:auto;      /* pushes numbers to a shared column */
-    width:80px;            /* fixed width keeps $ aligned across rows */
-    text-align:right;
-  }
-  .kpi-realized .pct{
-    width:56px;            /* shared width for % column */
-    text-align:right;
-    color:#b8b8b8;
-  }
-  /* Align value & % columns; keep labels flexible */
-  .kpi-realized .rline{
-  display:grid;
-  grid-template-columns: 1fr max-content max-content;
-  gap: .5rem 1rem;
-  align-items: baseline;
-  }
-  .kpi-realized .rline > :nth-child(2),
-  .kpi-realized .rline > :nth-child(3){
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  }
-  .kpi-realized .rline > :nth-child(2){ min-width: 5.5rem; } /* $ amount column */
-  .kpi-realized .rline > :nth-child(3){ min-width: 3.5rem; } /* % column */
-</style>
-<style>
-  .since-start-blurb{
-    font-size: 0.95rem;        /* was tiny; nudge up */
-    line-height: 1.3;
-    opacity: .9;
-    text-align: center;
-    margin-top: .35rem;
-  }
-  .since-start-credit{
-    font-size: 0.9rem;
-    opacity: .8;
-    text-align: center;
-  }
-  /* On wider screens, make it a bit larger */
-  @media (min-width: 992px){
-    .since-start-blurb{ font-size: 1.05rem; }
-    .since-start-credit{ font-size: 1rem; }
-  }
-</style>
-<style>
-  /* --- spacing / padding on the KPI cards --- */
   .kpi-card { padding: 18px 20px; }
-
-  /* top blurb spacing */
   .top-blurb { margin-top: 6px; margin-bottom: 12px; opacity: .95; }
 
-  /* subtle alignment for the realized rows (keeps columns neat) */
-  .kpi-realized .rline{
-    display:grid;
-    grid-template-columns: 1fr max-content max-content;
-    gap: .5rem 1rem;
-    align-items: baseline;
-  }
-  .kpi-realized .rline > :nth-child(2),
-  .kpi-realized .rline > :nth-child(3){
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-  .kpi-realized .rline > :nth-child(2){ min-width: 5.5rem; } /* $ column */
-  .kpi-realized .rline > :nth-child(3){ min-width: 3.5rem; } /* % column */
-
-  /* --- color tokens --- */
   :root{
-    --pos: #2fd27f;
+    --pos: #2ecc71;
     --neg: #ff6b6b;
     --zero: #b8b8b8;
-    --muted: #a0a0a0;
   }
-  /* classes used by signClass() in your JS */
   .text-pos { color: var(--pos) !important; }
   .text-neg { color: var(--neg) !important; }
   .text-zero{ color: var(--zero) !important; }
 
-  /* PDT counter chip hues (you already toggle .neg in JS when >=3) */
-  #dt_pdt5.neg { color: #ff9b2f; }
-  #dt_pdt5.pos { color: var(--pos); }
-
-  /* make the “Built by…” line a hair brighter if you want */
-  .built-by { color: #ddd; }
-</style>
-<style>
-  /* subtle breathing room above the header row */
-  .kpi-row { margin-top: .75rem; }
-
-  /* reused text colors */
-  .text-pos { color:#1db954 !important; }  /* green */
-  .text-neg { color:#ff5555 !important; }  /* red   */
-  .text-zero{ color:#b8b8b8 !important; }  /* gray  */
-
-  /* realized rows align + spacing */
   .kpi-realized .rline{
     display:grid;
     grid-template-columns: 1fr max-content max-content;
     gap:.25rem 1rem;
     align-items:baseline;
-    padding: 2px 0;               /* tiny vertical padding */
+    padding: 2px 0;
   }
   .kpi-realized .rline > :nth-child(2),
   .kpi-realized .rline > :nth-child(3){
     text-align:right;
     font-variant-numeric: tabular-nums;
-    min-width: 5.5rem;            /* $ column */
   }
-  .kpi-realized .rline > :nth-child(3){ min-width: 3.75rem; } /* % column */
-</style>
-<style>
-  .since-blurb{ font-size:.95rem; letter-spacing:.2px; color:#d9d9d9; }
-  .since-blurb b{ color:#fff; }
-  .built-by{ font-size:.9rem; color:#aab0b6; }
-</style>
-<style>
-  .kpi-realized .rline{ padding: 2px 0; }           /* tiny vertical rhythm */
-  .text-pos{ color:#2ecc71 !important; }            /* you already use these */
-  .text-neg{ color:#ff6b6b !important; }
-  .text-zero{ color:#b8b8b8 !important; }
-</style>
-<style>
-  /* Centered hero blurb under the title */
+  .kpi-realized .rline > :nth-child(2){ min-width: 5.5rem; }
+  .kpi-realized .rline > :nth-child(3){ min-width: 3.75rem; }
+
   .hero-blurb{
     display:flex;
     flex-direction:column;
     align-items:center;
-    gap:6px;                 /* space between the two lines */
+    gap:6px;
     text-align:center;
-    padding:10px 0 22px;     /* top/bottom breathing room */
-    margin: 0 auto;          /* keep it centered across wide screens */
-    max-width: 1100px;       /* stops it from feeling too “wide” on 4k */
-    line-height: 1.15;
+    padding:10px 0 22px;
+    margin:0 auto;
+    max-width:1100px;
+    line-height:1.15;
   }
-  .hero-blurb .since { opacity:.92; }
-  .hero-blurb .by    { opacity:.80; font-size: 0.95rem; }
-  .hero-blurb .since { font-size:1.05rem; }
-  .hero-blurb .by    { font-size:1.0rem; }
+  .hero-blurb .since { opacity:.92; font-size:1.05rem; }
+  .hero-blurb .by    { opacity:.80; font-size:1rem; }
+  .dot-green { color:#39d353; }
+  .dot-red   { color:#ff4d4d; }
 
+  .cash-rows{
+    display:grid;
+    grid-template-columns: 1fr auto;
+    column-gap:.75rem;
+    row-gap:.25rem;
+    white-space:nowrap;
+  }
 </style>
 
 <div class="container">
   <div class="d-flex justify-content-between align-items-start mb-4" style="min-height:54px; position:relative;">
+    <!-- Left spacer -->
+    <div style="min-width:220px;">
+      <div class="kv"></div>
+    </div>
 
-<!-- Left spacer -->
-<div style="min-width:220px;">
-  <div class="kv"></div>
-</div>
+    <!-- Center: hero blurb (values filled by JS) -->
+    <div class="hero-blurb mx-auto text-center">
+      <div class="since">
+        Started with <b id="about-start-cash">$0.00</b> on <b id="about-start-date">—</b>.
+        This app has since made <b id="about-since-pnl">$0.00</b> at
+        <b id="about-since-pct">0.00%</b>.
+      </div>
+      <div class="by">Built by <b>Ben McCall &amp; Max</b></div>
+    </div>
 
-    <!-- Center: title (no badge) -->
-<!-- Stats Blurb + Built-by (centered) -->
-<div class="hero-blurb mx-auto text-center">
-  <div class="since">
-    Started with <b id="about-start-cash">$392.67</b> on <b id="about-start-date">2025-08-22</b>.
-    This app has since made <b id="about-since-pnl">$34.01</b> at <b id="about-since-pct">8.66%</b>.
+    <!-- Right: account + E*TRADE API status -->
+    <div class="d-flex flex-column align-items-end" style="gap:6px; min-width: 220px;">
+      <div class="fw-bold" style="white-space: nowrap;">
+        Account type:
+        {{ account.get('account_type_display') or account.get('account_type') or 'Cash' }}
+      </div>
+      <div class="small text-muted" style="white-space:nowrap;">
+        Acct: <span id="acct-badge">—</span>
+      </div>
+      <div class="status-block" style="background:#000;color:#ffd600;padding:8px;border-radius:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+          <div>E*TRADE API</div>
+          <div id="etrade-dot" class="dot dot-red">●</div>
+        </div>
+      </div>
+    </div>
   </div>
-  <div class="by">Built by <b>Ben McCall &amp; Max</b></div>
 </div>
 
-    <!-- Right: Account type + E*TRADE status block (keep as you have it) -->
-	<div class="d-flex flex-column align-items-end" style="gap:6px; min-width: 220px;">
-	  <div class="fw-bold" style="white-space: nowrap;">
-		Account type: {{ account.get('account_type_display') or account.get('account_type') or 'Cash' }}
-	  </div>
-
-	  <!-- Add this single line for the badge; remove any server-side “Acct: …” lines -->
-	  <div class="small text-muted" style="white-space:nowrap;">Acct: <span id="acct-badge">—</span></div>
-
-	  <div class="status-block" style="background:#000;color:#ffd600;padding:8px;border-radius:6px;">
-		<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-		  <div>E*TRADE API</div>
-		  <div style="color:#39d353;">●</div>
-		</div>
-	  </div>
-	</div>
-  </div>
-</div>
-
-<!-- BEGIN: Header KPI Row -->
+<!-- KPI Row -->
 <div class="container-fluid mt-2">
   <div class="row g-3 align-items-stretch">
-    <!-- Cash (left) -->
+    <!-- VALUE -->
     <div class="col-12 col-md-4">
       <div class="card bg-dark border-0 shadow-sm h-100">
         <div class="card-body kpi-card d-flex flex-column justify-content-center">
           <div class="text-uppercase small">VALUE</div>
           <div id="kpi-cash" class="fs-3 fw-bold"></div>
-			<div class="mt-2 small kpi-cash-extra">
-			<div class="cash-rows">
-			  <div>Buying Power</div><div id="kpi-bp"   class="fw-semibold text-end"></div>
-			  <div>Positions Value</div><div id="kpi-posval"   class="fw-semibold text-end"></div>
-
-			</div>
-
-			<style>
-			  .cash-rows{
-				display:grid;
-				grid-template-columns: 1fr auto;
-				column-gap:.75rem; row-gap:.25rem;
-				white-space:nowrap;
-			  }
-			</style>
-			</div>
+          <div class="mt-2 small kpi-cash-extra">
+            <div class="cash-rows">
+              <div>Buying Power</div><div id="kpi-bp" class="fw-semibold text-end"></div>
+              <div>Positions Value</div><div id="kpi-posval" class="fw-semibold text-end"></div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- P&L (center) -->
+    <!-- Unrealized P&L -->
     <div class="col-12 col-md-4">
       <div class="card bg-dark border-0 shadow-sm h-100 text-center">
         <div class="card-body kpi-card d-flex flex-column justify-content-center">
           <div class="text-uppercase small">P&amp;L (Unrealized)</div>
           <div id="kpi-pnl" class="fs-3 fw-bold"></div>
           <div id="kpi-pnl-pct" class="small"></div>
-		  <div id="kpi-pv-note" class="small text-muted mt-1"></div>
+          <div id="kpi-pv-note" class="small text-muted mt-1"></div>
         </div>
       </div>
     </div>
 
-<!-- Realized P&L buckets (right) -->
-<div class="col-12 col-md-4">
-  <div class="card bg-dark border-0 shadow-sm h-100">
-    <div class="card-body kpi-card">
-		<div class="d-flex justify-content-between align-items-center">
-		  <div class="text-uppercase small">Realized P&amp;L</div>
-		  <div class="small">D / W / LW / M / All</div>
-		</div>
-
-		<div class="kpi-realized mt-2">
-		  <!-- NEW: Day row -->
-		  <div class="rline">
-			<span class="small">Day</span>
-			<span id="kpi-r-day" class="fw-semibold"></span>
-			<span id="kpi-r-day-pct" class="small"></span>
-		  </div>
-
-		  <div class="rline mt-1">
-			<span class="small">Week</span>
-			<span id="kpi-r-week" class="fw-semibold"></span>
-			<span id="kpi-r-week-pct" class="small"></span>
-		  </div>
-
-		  <div class="rline mt-1">
-			<span class="small">Last Week</span>
-			<span id="kpi-r-lastweek" class="fw-semibold"></span>
-			<span id="kpi-r-lastweek-pct" class="small"></span>
-		  </div>
-
-		  <div class="rline mt-1">
-			<span class="small">Month</span>
-			<span id="kpi-r-month" class="fw-semibold"></span>
-			<span id="kpi-r-month-pct" class="small"></span>
-		  </div>
-
-		  <div class="rline mt-1">
-			<span class="small">All</span>
-			<span id="kpi-r-all" class="fw-semibold"></span>
-			<span id="kpi-r-all-pct" class="small"></span>
-		  </div>
-		</div>
-     </div>
+    <!-- Realized P&L buckets -->
+    <div class="col-12 col-md-4">
+      <div class="card bg-dark border-0 shadow-sm h-100">
+        <div class="card-body kpi-card">
+          <div class="d-flex justify-content-between align-items-center">
+            <div class="text-uppercase small">Realized P&amp;L</div>
+            <div class="small">D / W / LW / M / All</div>
+          </div>
+          <div class="kpi-realized mt-2">
+            <div class="rline">
+              <span class="small">Day</span>
+              <span id="kpi-r-day" class="fw-semibold"></span>
+              <span id="kpi-r-day-pct" class="small"></span>
+            </div>
+            <div class="rline">
+              <span class="small">Week</span>
+              <span id="kpi-r-week" class="fw-semibold"></span>
+              <span id="kpi-r-week-pct" class="small"></span>
+            </div>
+            <div class="rline">
+              <span class="small">Last Week</span>
+              <span id="kpi-r-lastweek" class="fw-semibold"></span>
+              <span id="kpi-r-lastweek-pct" class="small"></span>
+            </div>
+            <div class="rline">
+              <span class="small">Month</span>
+              <span id="kpi-r-month" class="fw-semibold"></span>
+              <span id="kpi-r-month-pct" class="small"></span>
+            </div>
+            <div class="rline">
+              <span class="small">All</span>
+              <span id="kpi-r-all" class="fw-semibold"></span>
+              <span id="kpi-r-all-pct" class="small"></span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- END: Summary Detail Row -->
-<!-- END: Header KPI Row -->
-<!-- ========================== -->
-<!-- Holdings (same table classes/order as Sim) -->
-<div class="d-flex justify-content-between align-items-center mb-3">
+<!-- Holdings -->
+<div class="d-flex justify-content-between align-items-center mb-3 mt-4">
   <h3 class="text-white mb-0">Holdings</h3>
 </div>
-
 <div class="table-responsive">
   <table class="table table-striped table-bordered alerts-table text-white">
     <thead class="table-light">
       <tr>
         <th>Symbol</th>
-		<th>Opened (ET)</th>
+        <th>Opened (ET)</th>
         <th>Last Price</th>
         <th>Qty</th>
         <th>Price Paid</th>
-        <th>Day P&L</th>
-        <th>Day P&L %</th>
-        <th>Total P&L</th>
-        <th>Total P&L %</th>
+        <th>Day P&amp;L</th>
+        <th>Day P&amp;L %</th>
+        <th>Total P&amp;L</th>
+        <th>Total P&amp;L %</th>
         <th>Value</th>
       </tr>
     </thead>
-	<!-- Holdings -->
-	<tbody id="holdings-body"></tbody>
-	  </table>
-	</div>
+    <tbody id="holdings-body"></tbody>
+  </table>
+</div>
 
-<h3 class="section-title">Recent Trades</h3>
+<!-- Recent Trades -->
+<h3 class="section-title mt-4">Recent Trades</h3>
 <div class="table-responsive">
   <table class="table table-striped table-bordered alerts-table text-white">
-	<thead class="table-light">
-	  <tr>
-		<th>Time (ET)</th>
-		<th>Symbol</th>
-		<th>Side</th>
-		<th>Qty</th>
-		<th>Price</th>
-		<th>Price Paid</th>
-		<th>P&L</th>
-		<th>P&L %</th>
-	  </tr>
-	</thead>
+    <thead class="table-light">
+      <tr>
+        <th>Time (ET)</th>
+        <th>Symbol</th>
+        <th>Side</th>
+        <th>Qty</th>
+        <th>Price</th>
+        <th>Price Paid</th>
+        <th>P&amp;L</th>
+        <th>P&amp;L %</th>
+      </tr>
+    </thead>
     <tbody id="trades-body"></tbody>
   </table>
 </div>
+
 <script>
 (() => {
-/* ===== helpers ===== */
-const POS = '#2ecc71', NEG = '#ff6b6b', ZERO = '#b8b8b8';
+  const POS = '#2ecc71', NEG = '#ff6b6b', ZERO = '#b8b8b8';
 
-function num(x){
-  if (x == null) return NaN;
-  if (typeof x === 'number') return x;
-  if (typeof x === 'string') return Number(x.replace(/[\$,]/g,'').trim());
-  return Number(x);
-}
-function preferNumericAccountId(a){
-  const numId = (a?.account_id ?? a?.accountId ?? "").toString().trim();
-  const keyId = (a?.account_key ?? a?.accountIdKey ?? "").toString().trim();
-  if (/^\d{6,}$/.test(numId)) return { show:numId, type:'numeric' };
-  if (keyId)                  return { show:keyId, type:'key' };
-  return { show:"", type:'none' };
-}
-function maskAcctPretty(id){
-  const s = String(id||""); if (!s) return "—";
-  if (/^\d+$/.test(s)) return "••••" + s.slice(-4);
-  if (s.length > 9)    return s.slice(0,4) + "…" + s.slice(-5);
-  return s;
-}
-function set(sel,val){ const el=document.querySelector(sel); if (el) el.textContent=(val ?? '—'); }
-function money(x){ x=num(x); return Number.isFinite(x)?`$${x.toFixed(2)}`:'$0.00'; }
-function pct(x){ x=num(x); return Number.isFinite(x)?`${x.toFixed(2)}%`:'0.00%'; }
-function paintStatus(ok){ const dot=document.querySelector('.status-block > div > div:last-child'); if (dot) dot.style.color = ok ? '#39d353' : '#f05454'; }
-function setColor(el, numVal){
-  if (!el) return;
-  const n = num(numVal);
-  const c = (!Number.isFinite(n) || n === 0) ? ZERO : (n > 0 ? POS : NEG);
-  el.style.setProperty('color', c, 'important');
-}
-function fmtET(x){
-  try{
-    const ms = num(x);
-    if (Number.isFinite(ms) && ms > 10_000_000_000){
-      return new Intl.DateTimeFormat('en-US',{
-        timeZone:'America/New_York', year:'numeric', month:'2-digit', day:'2-digit',
-        hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
-      }).format(new Date(ms)).replace(',','');
-    }
-    const s = String(x||'').trim();
-    if (!s) return '—';
-    if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(s)) return s.replace('T',' ');
-    return s;
-  }catch{ return String(x||'—'); }
-}
-function fmtUsd(x){ if (x==null) return '—'; const v=num(x); return v<0?`-$${Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`:`$${v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`; }
-function fmtPct(x){ if (x==null) return '—'; return `${num(x).toFixed(2)}%`; }
-function firstFinite(vals, {allowZero=true}={}){
-  for (const v of vals){
-    const n = num(v);
-    if (Number.isFinite(n) && (allowZero || n>0)) return n;
-  }
-  return NaN;
-}
-
-/* ===== resolvers: BP, Cash, NAV ===== */
-function resolveBP(data){
-  const a = data?.account || {};
-  const candidates = [
-    a.buying_power,
-    a.available_funds,
-    a.accountBalance?.marginBuyingPower,
-    a.cashAvailableForInvestment,
-    a.cash_balance,
-    a.cash,
-    a.settled_cash
-  ];
-  // Use first finite (including 0); persist if present.
-  const bp = firstFinite(candidates, {allowZero:true});
-  if (Number.isFinite(bp)){
-    localStorage.setItem('bp_last', String(bp));
-    return bp;
-  }
-  const last = num(localStorage.getItem('bp_last'));
-  return Number.isFinite(last) ? last : 0;
-}
-
-function resolveCash(data){
-  const m = data?.metrics || {};
-  const a = data?.account || {};
-  let cash = firstFinite([ m.cash_balance, a.cash_balance, a.cash, a.settled_cash ], {allowZero:true});
-  const pos = num(m.positions_value || 0);
-  const nav = resolveNAV_strict(data); // try strict NAV first
-  if ((!Number.isFinite(cash)) && Number.isFinite(nav) && Number.isFinite(pos)){
-    cash = nav - pos;
-  }
-  return Number.isFinite(cash) ? cash : 0;
-}
-
-/* Try to read NAV directly from many possible fields; return NaN if none */
-function resolveNAV_strict(data){
-  const m = data?.metrics || {};
-  const a = data?.account || {};
-  const k = data?.kpis || {};
-  const direct = firstFinite([
-    m.net_account_value, m.net_value, m.nav, m.total_value, // metrics-side names
-    a.net_account_value, a.equity_value, a.total_value, a.nav, // account-side names
-    data?.nav, data?.etrade_nav, k?.etrade_nav               // top-level/other
-  ], {allowZero:true});
-  return Number.isFinite(direct) ? direct : NaN;
-}
-
-function resolveNAV(data){
-  // 1) Prefer any explicit NAV reported by server/etrade fields
-  const strict = resolveNAV_strict(data);
-  if (Number.isFinite(strict)) return strict;
-
-  // 2) Fallback: NAV ≈ cash balance + positions value
-  const m = data?.metrics || {};
-  const pos = num(m.positions_value || 0);
-  return resolveCash(data) + (Number.isFinite(pos) ? pos : 0);
-}
-
-/* ===== header KPIs ===== */
-function updateHeaderKPIs(d){
-  const m     = d?.metrics || {};
-  const pos   = num(m.positions_value || 0);
-  const nav   = resolveNAV(d);
-  const bp    = resolveBP(d);
-
-  // Left tile: Net Account Value (from E*TRADE when available)
-  set('#kpi-cash', fmtUsd(nav));
-  set('#kpi-bp',     fmtUsd(bp));
-  set('#kpi-posval', fmtUsd(pos));
-
-  // Center tile: Unrealized P&L
-  const uAmt = num(m.unrealized_pnl || 0);
-  const uPct = num(m.unrealized_pnl_pct || 0);
-  set('#kpi-pnl',     fmtUsd(uAmt));
-  set('#kpi-pnl-pct', fmtPct(uPct));
-  setColor(document.getElementById('kpi-pnl'), uAmt);
-  setColor(document.getElementById('kpi-pnl-pct'), uPct);
-
-  // Right tile: realized buckets (Day / Week / Last Week / Month)
-  const k  = d?.kpis || {};
-  const rb = m.realized_buckets || k.realized || {};
-  const rows = {
-    day:       { pnl: num(k.realized_today ?? 0),    pct: num(k.realized_today_pct ?? 0) },
-    week:      { pnl: num(rb?.week?.pnl ?? 0),       pct: num(rb?.week?.pct ?? 0) },
-    last_week: { pnl: num(rb?.last_week?.pnl ?? 0),  pct: num(rb?.last_week?.pct ?? 0) },
-    month:     { pnl: num(rb?.month?.pnl ?? 0),      pct: num(rb?.month?.pct ?? 0) },
+  const num = x => {
+    if (x == null) return NaN;
+    if (typeof x === 'number') return x;
+    if (typeof x === 'string') return Number(x.replace(/[\$,]/g,'').trim());
+    return Number(x);
   };
-  const map = [
-    ['#kpi-r-day', rows.day.pnl, '#kpi-r-day-pct', rows.day.pct],
-    ['#kpi-r-week', rows.week.pnl, '#kpi-r-week-pct', rows.week.pct],
-    ['#kpi-r-lastweek', rows.last_week.pnl, '#kpi-r-lastweek-pct', rows.last_week.pct],
-    ['#kpi-r-month', rows.month.pnl, '#kpi-r-month-pct', rows.month.pct],
-  ];
-  for (const [aSel, aVal, pSel, pVal] of map){
-    set(aSel, fmtUsd(aVal));   setColor(document.querySelector(aSel), aVal);
-    set(pSel, fmtPct(pVal));   setColor(document.querySelector(pSel), pVal);
-  }
 
-  // "All" = NAV − START_CASH (project-to-date growth)
-  const startCash = num(d?.about?.start_cash || 0);
-  const allAmt = (Number.isFinite(nav) && Number.isFinite(startCash)) ? (nav - startCash) : 0;
-  const allPct = startCash > 0 ? (allAmt / startCash * 100) : 0;
-  set('#kpi-r-all', fmtUsd(allAmt));
-  set('#kpi-r-all-pct', fmtPct(allPct));
-  setColor(document.querySelector('#kpi-r-all'), allAmt);
-  setColor(document.querySelector('#kpi-r-all-pct'), allPct);
-}
+  const set = (sel,val) => {
+    const el = document.querySelector(sel);
+    if (el) el.textContent = (val ?? '—');
+  };
 
-/* ===== detail panels ===== */
-function updateDetailPanels(d){
-  const m  = d?.metrics || {};
-  const a  = d?.account || {};
-  const ui = a?.ui || {};
-  const { show:idToShow } = preferNumericAccountId(a);
-  const badge = document.getElementById('acct-badge');
-  if (badge){ badge.textContent = maskAcctPretty(idToShow); badge.title = idToShow; }
+  const money = x => {
+    x = num(x);
+    return Number.isFinite(x) ? `$${x.toFixed(2)}` : '$0.00';
+  };
 
-  const bp = resolveBP(d);
-  const aw = firstFinite([ ui.available_to_withdraw, a.available_to_withdraw, a.cashAvailableForWithdrawal, a.cashAvailableForInvestment, a.available_funds ], {allowZero:true});
-  const eq = firstFinite([ a.equity_value, m.total_value ], {allowZero:true});
-  const sc = firstFinite([ a.settled_cash, a.cash_balance, a.cash ], {allowZero:true});
+  const pct = x => {
+    x = num(x);
+    return Number.isFinite(x) ? `${x.toFixed(2)}%` : '0.00%';
+  };
 
-  set('#cash-bp',  fmtUsd(bp ?? 0));
-  set('#cash-aw',  fmtUsd(Number.isFinite(aw)?aw:0));
-  set('#cash-eq',  fmtUsd(Number.isFinite(eq)?eq:0));
-  set('#cash-sc',  fmtUsd(Number.isFinite(sc)?sc:0));
-}
+  const setColor = (el, v) => {
+    if (!el) return;
+    const n = num(v);
+    const c = (!Number.isFinite(n) || n === 0)
+      ? ZERO
+      : (n > 0 ? POS : NEG);
+    el.style.setProperty('color', c, 'important');
+  };
 
-/* ===== tables ===== */
-function renderHoldings(rows){
-  const tb = document.querySelector('#holdings-body');
-  if (!tb) return;
-  tb.innerHTML = '';
-  if (!rows?.length){
-    tb.innerHTML = `<tr><td class="muted" colspan="10">No holdings.</td></tr>`;
-    return;
-  }
-  for (const h of rows){
-    const sym  = (h.symbol || '').toUpperCase();
-    const qty  = h.qty ?? 0;
-    const openedTxt = h.open_time ? String(h.open_time)
-                    : (h.open_time_ms ? fmtET(h.open_time_ms) : '—');
-    const lastNum = Number.isFinite(num(h.last_price)) ? num(h.last_price) : null;
-    const lastTxt = (lastNum == null) ? '—' : money(lastNum);
-    const paidTxt = (h.price_paid != null) ? money(h.price_paid) : '—';
-    let value = h.value;
-    if (value == null && lastNum != null && Number.isFinite(qty)) value = lastNum * qty;
-    const valueTxt = (value == null) ? '—' : money(value);
+  const fmtET = x => {
+    try{
+      const ms = num(x);
+      if (Number.isFinite(ms) && ms > 10_000_000_000){
+        return new Intl.DateTimeFormat('en-US', {
+          timeZone:'America/New_York',
+          year:'numeric',month:'2-digit',day:'2-digit',
+          hour:'2-digit',minute:'2-digit',second:'2-digit',
+          hour12:false
+        }).format(new Date(ms)).replace(',','');
+      }
+      const s = String(x||'').trim();
+      if (!s) return '—';
+      if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(s)) return s.replace('T',' ');
+      return s;
+    }catch{ return '—'; }
+  };
 
-    const dpln = num(h.day_pl ?? 0);
-    const dppn = num(h.day_pl_pct ?? 0);
-    const tpln = num(h.total_pl ?? 0);
-    const tppn = num(h.total_pl_pct ?? 0);
+  const maskAcctPretty = id => {
+    const s = String(id||"");
+    if (!s) return "—";
+    if (/^\d+$/.test(s)) return "••••" + s.slice(-4);
+    if (s.length > 9)    return s.slice(0,4) + "…" + s.slice(-5);
+    return s;
+  };
 
-    tb.insertAdjacentHTML('beforeend', `
-      <tr>
-        <td>${sym}</td>
-        <td>${openedTxt}</td>
-        <td>${lastTxt}</td>
-        <td>${qty}</td>
-        <td>${paidTxt}</td>
-        <td class="day-pl">${money(dpln)}</td>
-        <td class="day-pl-pct">${pct(dppn)}</td>
-        <td class="tot-pl">${money(tpln)}</td>
-        <td class="tot-pl-pct">${pct(tppn)}</td>
-        <td>${valueTxt}</td>
-      </tr>`);
-    const row = tb.lastElementChild;
-    setColor(row.querySelector('.day-pl'),     dpln);
-    setColor(row.querySelector('.day-pl-pct'), dppn);
-    setColor(row.querySelector('.tot-pl'),     tpln);
-    setColor(row.querySelector('.tot-pl-pct'), tppn);
-  }
-}
+  const preferNumericAccountId = a => {
+    const numId = (a?.account_id ?? a?.accountId ?? "").toString().trim();
+    const keyId = (a?.account_key ?? a?.accountIdKey ?? "").toString().trim();
+    if (/^\d{6,}$/.test(numId)) return { show:numId };
+    if (keyId)                  return { show:keyId };
+    return { show:"" };
+  };
 
-function renderTrades(rows){
-  const tb = document.querySelector('#trades-body');
-  if (!tb) return;
-  tb.innerHTML = '';
-  if (!rows?.length){
-    tb.innerHTML = `<tr><td class="muted" colspan="8">No trades yet</td></tr>`;
-    return;
-  }
-  for (const t of rows){
-    const timeTxt = (t.time && String(t.time)) || (t.time_ms!=null ? fmtET(t.time_ms) : '—');
-    const sym   = (t.symbol || '').toUpperCase();
-    const side  = t.action || '';
-    const qty   = Number.isFinite(+t.qty) ? +t.qty : 0;
-    const px    = (t.price      != null) ? num(t.price)      : null;
-    let   paid  = (t.price_paid != null) ? num(t.price_paid) : null;
-    let   pl    = num(t.pl ?? 0);
-    let   plpct = num(t.pl_pct ?? 0);
-    if (side === 'BUY' && paid == null && px != null) paid = px;
+  const paintStatus = ok => {
+    const dot = document.getElementById('etrade-dot');
+    if (!dot) return;
+    dot.classList.remove('dot-red','dot-green');
+    dot.classList.add(ok ? 'dot-green' : 'dot-red');
+  };
 
-    tb.insertAdjacentHTML('beforeend', `
-      <tr>
-        <td>${timeTxt}</td>
-        <td>${sym}</td>
-        <td>${side}</td>
-        <td>${qty}</td>
-        <td>${px==null?'—':money(px)}</td>
-        <td class="tr-paid">${paid==null?'—':money(paid)}</td>
-        <td class="tr-pl">${money(pl)}</td>
-        <td class="tr-pl-p">${pct(plpct)}</td>
-      </tr>`);
-    const row = tb.lastElementChild;
-    setColor(row.querySelector('.tr-pl'),   pl);
-    setColor(row.querySelector('.tr-pl-p'), plpct);
-  }
-}
+  const renderHoldings = rows => {
+    const tb = document.getElementById('holdings-body');
+    if (!tb) return;
+    tb.innerHTML = '';
+    if (!rows || !rows.length){
+      tb.innerHTML = `<tr><td colspan="10" class="text-muted">No holdings.</td></tr>`;
+      return;
+    }
+    for (const h of rows){
+      const sym   = (h.symbol || '').toUpperCase();
+      const qty   = h.qty ?? 0;
+      const last  = h.last_price;
+      const paid  = h.price_paid;
+      const value = h.value;
+      const dpl   = h.day_pl ?? 0;
+      const dplp  = h.day_pl_pct ?? 0;
+      const tpl   = h.total_pl ?? 0;
+      const tplp  = h.total_pl_pct ?? 0;
 
-/* ===== main refresh ===== */
-async function refreshLive(){
-  try{
+      tb.insertAdjacentHTML('beforeend', `
+        <tr>
+          <td>${sym}</td>
+          <td>—</td>
+          <td>${money(last)}</td>
+          <td>${qty}</td>
+          <td>${money(paid)}</td>
+          <td class="day-pl">${money(dpl)}</td>
+          <td class="day-pl-pct">${pct(dplp)}</td>
+          <td class="tot-pl">${money(tpl)}</td>
+          <td class="tot-pl-pct">${pct(tplp)}</td>
+          <td>${money(value)}</td>
+        </tr>`);
+      const row = tb.lastElementChild;
+      setColor(row.querySelector('.day-pl'), dpl);
+      setColor(row.querySelector('.day-pl-pct'), dplp);
+      setColor(row.querySelector('.tot-pl'), tpl);
+      setColor(row.querySelector('.tot-pl-pct'), tplp);
+    }
+  };
+
+  const renderTrades = rows => {
+    const tb = document.getElementById('trades-body');
+    if (!tb) return;
+    tb.innerHTML = '';
+    if (!rows || !rows.length){
+      tb.innerHTML = `<tr><td colspan="8" class="text-muted">No trades yet.</td></tr>`;
+      return;
+    }
+    for (const t of rows){
+      const time = t.time_ms != null ? fmtET(t.time_ms) : (t.time || '—');
+      const sym  = (t.symbol || '').toUpperCase();
+      const side = t.action || '';
+      const qty  = t.qty ?? 0;
+      const px   = t.price != null ? money(t.price) : '—';
+      const paid = t.price_paid != null ? money(t.price_paid) : '—';
+      const pl   = t.pl != null ? money(t.pl) : '$0.00';
+      const plp  = t.pl_pct != null ? pct(t.pl_pct) : '0.00%';
+
+      tb.insertAdjacentHTML('beforeend', `
+        <tr>
+          <td>${time}</td>
+          <td>${sym}</td>
+          <td>${side}</td>
+          <td>${qty}</td>
+          <td>${px}</td>
+          <td class="tr-paid">${paid}</td>
+          <td class="tr-pl">${pl}</td>
+          <td class="tr-pl-p">${plp}</td>
+        </tr>`);
+      const row = tb.lastElementChild;
+      setColor(row.querySelector('.tr-pl'), t.pl ?? 0);
+      setColor(row.querySelector('.tr-pl-p'), t.pl_pct ?? 0);
+    }
+  };
+
+  const updateKPIs = d => {
+    const m = d.metrics || {};
+    const about = d.about || {};
+    const account = d.account || {};
+
+    // VALUE tile
+    const nav = num(m.net_account_value ?? d.value?.value ?? 0);
+    const bp  = num(m.buying_power ?? d.value?.buying_power ?? 0);
+    const pv  = num(m.positions_value ?? d.value?.positions_value ?? 0);
+    set('#kpi-cash',   money(nav));
+    set('#kpi-bp',     money(bp));
+    set('#kpi-posval', money(pv));
+
+    // Unrealized P&L
+    const uAmt = num(m.unrealized_pnl ?? 0);
+    const uPct = num(m.unrealized_pnl_pct ?? 0);
+    set('#kpi-pnl',     money(uAmt));
+    set('#kpi-pnl-pct', pct(uPct));
+    setColor(document.querySelector('#kpi-pnl'), uAmt);
+    setColor(document.querySelector('#kpi-pnl-pct'), uPct);
+
+    // Realized buckets
+    const rb = m.realized_buckets || d.realized || {};
+    const map = [
+      ['day',       '#kpi-r-day',       '#kpi-r-day-pct'],
+      ['week',      '#kpi-r-week',      '#kpi-r-week-pct'],
+      ['last_week', '#kpi-r-lastweek',  '#kpi-r-lastweek-pct'],
+      ['month',     '#kpi-r-month',     '#kpi-r-month-pct'],
+      ['all',       '#kpi-r-all',       '#kpi-r-all-pct'],
+    ];
+    for (const [key, aSel, pSel] of map){
+      const row = rb[key] || {pnl:0,pct:0};
+      set(aSel, money(row.pnl));
+      set(pSel, pct(row.pct));
+      setColor(document.querySelector(aSel), row.pnl);
+      setColor(document.querySelector(pSel), row.pct);
+    }
+
+    // Hero blurb / about
+    set('#about-start-cash', `$${num(about.start_cash ?? 0).toFixed(2)}`);
+    set('#about-start-date', about.start_date || '—');
+    set('#about-since-pnl',  `$${num(about.since_pnl ?? 0).toFixed(2)}`);
+    set('#about-since-pct',  `${num(about.since_pct ?? 0).toFixed(2)}%`);
+
+    // Account badge
+    const { show } = preferNumericAccountId(account);
+    const badge = document.getElementById('acct-badge');
+    if (badge){
+      badge.textContent = maskAcctPretty(show);
+      badge.title = show || '';
+    }
+  };
+
+  const refreshLive = async () => {
     const start = localStorage.getItem('live_start') || '2025-08-22';
     const qs = new URLSearchParams({ start, debug:'1' });
     const r = await fetch(`/live/status?${qs.toString()}`);
     const d = await r.json();
 
-    paintStatus(Boolean(d?.etrade_ok));
-    updateHeaderKPIs(d);
-    updateDetailPanels(d);
+    const ok = !!(d.ok && !d.needs_reconnect);
+    paintStatus(ok);
+
+    if (!d.ok) return;
+
+    updateKPIs(d);
     renderHoldings(d.holdings || []);
     renderTrades(d.trades || []);
+  };
 
-    // PDT chip
-    const pdt = d?.metrics?.daytrades_pdt5 || {};
-    const pdtTotal = num(pdt.total || 0);
-    set('#dt_pdt5', `${pdtTotal} in last 5 days`);
-    const pdtEl = document.querySelector('#dt_pdt5');
-    if (pdtEl){ pdtEl.classList.remove('pos','neg'); if (pdtTotal >= 3) pdtEl.classList.add('neg'); }
-
-    // About footer
-    const a = d?.about || {};
-    set("#about-start-cash", `$${num(a.start_cash ?? 0).toFixed(2)}`);
-    set("#about-start-date", a.start_date || "—");
-    set("#about-since-pnl",  `$${num(a.since_pnl ?? 0).toFixed(2)}`);
-    set("#about-since-pct",  `${num(a.since_pct ?? 0).toFixed(2)}%`);
-  }catch(e){
-    paintStatus(false);
-    console.error('refreshLive failed:', e);
-  }
-}
-
-/* ===== boot ===== */
-document.addEventListener('DOMContentLoaded', () => {
-  refreshLive().catch(console.error);
-  setInterval(refreshLive, 30000);
-});
+  document.addEventListener('DOMContentLoaded', () => {
+    refreshLive().catch(console.error);
+    setInterval(() => refreshLive().catch(console.error), 30000);
+  });
 })();
 </script>
+
 {% endblock %}

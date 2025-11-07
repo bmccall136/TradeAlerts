@@ -176,6 +176,8 @@
   .hero-blurb .by    { opacity:.80; font-size: 0.95rem; }
   .hero-blurb .since { font-size:1.05rem; }
   .hero-blurb .by    { font-size:1.0rem; }
+  .dot-green { color:#39d353; }   /* success */
+  .dot-red   { color:#ff4d4d; }   /* needs reconnect */
 
 </style>
 
@@ -206,10 +208,12 @@
 	  <!-- Add this single line for the badge; remove any server-side “Acct: …” lines -->
 	  <div class="small text-muted" style="white-space:nowrap;">Acct: <span id="acct-badge">—</span></div>
 
-	  <div class="status-block" style="background:#000;color:#ffd600;padding:8px;border-radius:6px;">
-		<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-		  <div>E*TRADE API</div>
-		  <div style="color:#39d353;">●</div>
+		<div class="status-block" style="background:#000;color:#ffd600;padding:8px;border-radius:6px;">
+		  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+			<div>E*TRADE API</div>
+			<!-- add id="etrade-dot" so JS can target it -->
+			<div id="etrade-dot" class="dot dot-red">●</div>
+		  </div>
 		</div>
 	  </div>
 	</div>
@@ -352,13 +356,20 @@
 </div>
 <script>
 (() => {
-/* -------- helpers -------- */
+/* ===== helpers ===== */
 const POS = '#2ecc71', NEG = '#ff6b6b', ZERO = '#b8b8b8';
+
+function num(x){
+  if (x == null) return NaN;
+  if (typeof x === 'number') return x;
+  if (typeof x === 'string') return Number(x.replace(/[\$,]/g,'').trim());
+  return Number(x);
+}
 function preferNumericAccountId(a){
-  const num = (a?.account_id ?? a?.accountId ?? "").toString().trim();
-  const key = (a?.account_key ?? a?.accountIdKey ?? "").toString().trim();
-  if (/^\d{6,}$/.test(num)) return { show:num, type:'numeric' };
-  if (key)                  return { show:key, type:'key' };
+  const numId = (a?.account_id ?? a?.accountId ?? "").toString().trim();
+  const keyId = (a?.account_key ?? a?.accountIdKey ?? "").toString().trim();
+  if (/^\d{6,}$/.test(numId)) return { show:numId, type:'numeric' };
+  if (keyId)                  return { show:keyId, type:'key' };
   return { show:"", type:'none' };
 }
 function maskAcctPretty(id){
@@ -367,21 +378,19 @@ function maskAcctPretty(id){
   if (s.length > 9)    return s.slice(0,4) + "…" + s.slice(-5);
   return s;
 }
-function firstPositive(vals){ for (const v of vals){ const n=Number(v); if (Number.isFinite(n)&&n>0) return n; } return null; }
 function set(sel,val){ const el=document.querySelector(sel); if (el) el.textContent=(val ?? '—'); }
-function money(x){ x=Number(x); return Number.isFinite(x)?`$${x.toFixed(2)}`:'$0.00'; }
-function pct(x){ x=Number(x); return Number.isFinite(x)?`${x.toFixed(2)}%`:'0.00%'; }
+function money(x){ x=num(x); return Number.isFinite(x)?`$${x.toFixed(2)}`:'$0.00'; }
+function pct(x){ x=num(x); return Number.isFinite(x)?`${x.toFixed(2)}%`:'0.00%'; }
 function paintStatus(ok){ const dot=document.querySelector('.status-block > div > div:last-child'); if (dot) dot.style.color = ok ? '#39d353' : '#f05454'; }
-function setColor(el, num){
+function setColor(el, numVal){
   if (!el) return;
-  const n = Number(num);
+  const n = num(numVal);
   const c = (!Number.isFinite(n) || n === 0) ? ZERO : (n > 0 ? POS : NEG);
-  // beat .text-white !important
   el.style.setProperty('color', c, 'important');
 }
 function fmtET(x){
   try{
-    const ms = Number(x);
+    const ms = num(x);
     if (Number.isFinite(ms) && ms > 10_000_000_000){
       return new Intl.DateTimeFormat('en-US',{
         timeZone:'America/New_York', year:'numeric', month:'2-digit', day:'2-digit',
@@ -394,83 +403,103 @@ function fmtET(x){
     return s;
   }catch{ return String(x||'—'); }
 }
-function fmtUsd(x){ if (x==null) return '—'; const v=Number(x); return v<0?`-$${Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`:`$${v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`; }
-function fmtPct(x){ if (x==null) return '—'; return `${Number(x).toFixed(2)}%`; }
+function fmtUsd(x){ if (x==null) return '—'; const v=num(x); return v<0?`-$${Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`:`$${v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`; }
+function fmtPct(x){ if (x==null) return '—'; return `${num(x).toFixed(2)}%`; }
+function firstFinite(vals, {allowZero=true}={}){
+  for (const v of vals){
+    const n = num(v);
+    if (Number.isFinite(n) && (allowZero || n>0)) return n;
+  }
+  return NaN;
+}
 
-/* -------- helpers: cash/BP/NAV resolvers -------- */
+/* ===== resolvers: BP, Cash, NAV ===== */
 function resolveBP(data){
   const a = data?.account || {};
   const candidates = [
-    a.buying_power, a.available_funds, a.accountBalance?.marginBuyingPower,
-    a.cashAvailableForInvestment, a.cash_balance, a.cash, a.settled_cash
-  ].map(Number).filter(v => Number.isFinite(v));
-
-  // If API gave a number (even 0), use it and persist.
-  if (candidates.length){
-    const bp = candidates[0];
+    a.buying_power,
+    a.available_funds,
+    a.accountBalance?.marginBuyingPower,
+    a.cashAvailableForInvestment,
+    a.cash_balance,
+    a.cash,
+    a.settled_cash
+  ];
+  // Use first finite (including 0); persist if present.
+  const bp = firstFinite(candidates, {allowZero:true});
+  if (Number.isFinite(bp)){
     localStorage.setItem('bp_last', String(bp));
     return bp;
   }
-  // Only fall back to cache when API gave us nothing.
-  const last = Number(localStorage.getItem('bp_last'));
+  const last = num(localStorage.getItem('bp_last'));
   return Number.isFinite(last) ? last : 0;
 }
 
 function resolveCash(data){
   const m = data?.metrics || {};
   const a = data?.account || {};
-  // Cash balance only (not BP)
-  let cash = firstPositive([ m.cash_balance, a.cash_balance, a.cash, a.settled_cash ]);
-  // If all zeros/null, fall back to NAV - positions when NAV provided
-  const pos = Number(m.positions_value || 0);
-  const nav = Number(m.net_account_value || 0);
-  if ((cash == null || cash === 0) && Number.isFinite(nav) && nav > 0 && Number.isFinite(pos)) {
+  let cash = firstFinite([ m.cash_balance, a.cash_balance, a.cash, a.settled_cash ], {allowZero:true});
+  const pos = num(m.positions_value || 0);
+  const nav = resolveNAV_strict(data); // try strict NAV first
+  if ((!Number.isFinite(cash)) && Number.isFinite(nav) && Number.isFinite(pos)){
     cash = nav - pos;
   }
   return Number.isFinite(cash) ? cash : 0;
 }
 
-function resolveNAV(data){
+/* Try to read NAV directly from many possible fields; return NaN if none */
+function resolveNAV_strict(data){
   const m = data?.metrics || {};
-  const pos = Number(m.positions_value || 0);
-  // Prefer server-provided NAV
-  if (m.net_account_value != null && Number.isFinite(Number(m.net_account_value))) {
-    return Number(m.net_account_value);
-  }
-  // Fallback: NAV ≈ cash balance + positions value
-  return resolveCash(data) + pos;
+  const a = data?.account || {};
+  const k = data?.kpis || {};
+  const direct = firstFinite([
+    m.net_account_value, m.net_value, m.nav, m.total_value, // metrics-side names
+    a.net_account_value, a.equity_value, a.total_value, a.nav, // account-side names
+    data?.nav, data?.etrade_nav, k?.etrade_nav               // top-level/other
+  ], {allowZero:true});
+  return Number.isFinite(direct) ? direct : NaN;
 }
 
-/* -------- header KPIs (NAV + sub-rows; All = NAV - START_CASH) -------- */
+function resolveNAV(data){
+  // 1) Prefer any explicit NAV reported by server/etrade fields
+  const strict = resolveNAV_strict(data);
+  if (Number.isFinite(strict)) return strict;
+
+  // 2) Fallback: NAV ≈ cash balance + positions value
+  const m = data?.metrics || {};
+  const pos = num(m.positions_value || 0);
+  return resolveCash(data) + (Number.isFinite(pos) ? pos : 0);
+}
+
+/* ===== header KPIs ===== */
 function updateHeaderKPIs(d){
   const m     = d?.metrics || {};
-  const pos   = Number(m.positions_value || 0);
+  const pos   = num(m.positions_value || 0);
   const nav   = resolveNAV(d);
   const bp    = resolveBP(d);
 
-  // Left tile: Net Account Value
+  // Left tile: Net Account Value (from E*TRADE when available)
   set('#kpi-cash', fmtUsd(nav));
   set('#kpi-bp',     fmtUsd(bp));
   set('#kpi-posval', fmtUsd(pos));
 
   // Center tile: Unrealized P&L
-  const uAmt = Number(m.unrealized_pnl || 0);
-  const uPct = Number(m.unrealized_pnl_pct || 0);
+  const uAmt = num(m.unrealized_pnl || 0);
+  const uPct = num(m.unrealized_pnl_pct || 0);
   set('#kpi-pnl',     fmtUsd(uAmt));
   set('#kpi-pnl-pct', fmtPct(uPct));
   setColor(document.getElementById('kpi-pnl'), uAmt);
   setColor(document.getElementById('kpi-pnl-pct'), uPct);
 
-  // Right tile: realized buckets for Day/Week/Last Week/Month (unchanged)
+  // Right tile: realized buckets (Day / Week / Last Week / Month)
   const k  = d?.kpis || {};
   const rb = m.realized_buckets || k.realized || {};
   const rows = {
-    day:       { pnl: Number(k.realized_today ?? 0),       pct: Number(k.realized_today_pct ?? 0) },
-    week:      { pnl: Number(rb?.week?.pnl ?? 0),          pct: Number(rb?.week?.pct ?? 0) },
-    last_week: { pnl: Number(rb?.last_week?.pnl ?? 0),     pct: Number(rb?.last_week?.pct ?? 0) },
-    month:     { pnl: Number(rb?.month?.pnl ?? 0),         pct: Number(rb?.month?.pct ?? 0) },
+    day:       { pnl: num(k.realized_today ?? 0),    pct: num(k.realized_today_pct ?? 0) },
+    week:      { pnl: num(rb?.week?.pnl ?? 0),       pct: num(rb?.week?.pct ?? 0) },
+    last_week: { pnl: num(rb?.last_week?.pnl ?? 0),  pct: num(rb?.last_week?.pct ?? 0) },
+    month:     { pnl: num(rb?.month?.pnl ?? 0),      pct: num(rb?.month?.pct ?? 0) },
   };
-
   const map = [
     ['#kpi-r-day', rows.day.pnl, '#kpi-r-day-pct', rows.day.pct],
     ['#kpi-r-week', rows.week.pnl, '#kpi-r-week-pct', rows.week.pct],
@@ -482,18 +511,17 @@ function updateHeaderKPIs(d){
     set(pSel, fmtPct(pVal));   setColor(document.querySelector(pSel), pVal);
   }
 
-  // NEW: "All" = NAV - START_CASH
-  const startCash = Number(d?.about?.start_cash || 0);
+  // "All" = NAV − START_CASH (project-to-date growth)
+  const startCash = num(d?.about?.start_cash || 0);
   const allAmt = (Number.isFinite(nav) && Number.isFinite(startCash)) ? (nav - startCash) : 0;
   const allPct = startCash > 0 ? (allAmt / startCash * 100) : 0;
-
   set('#kpi-r-all', fmtUsd(allAmt));
   set('#kpi-r-all-pct', fmtPct(allPct));
   setColor(document.querySelector('#kpi-r-all'), allAmt);
   setColor(document.querySelector('#kpi-r-all-pct'), allPct);
 }
 
-/* -------- detail (acct badge + cash lines if present) -------- */
+/* ===== detail panels ===== */
 function updateDetailPanels(d){
   const m  = d?.metrics || {};
   const a  = d?.account || {};
@@ -503,17 +531,17 @@ function updateDetailPanels(d){
   if (badge){ badge.textContent = maskAcctPretty(idToShow); badge.title = idToShow; }
 
   const bp = resolveBP(d);
-  const aw = firstPositive([ ui.available_to_withdraw, a.available_to_withdraw, a.cashAvailableForWithdrawal, a.cashAvailableForInvestment, a.available_funds ]);
-  const eq = firstPositive([ a.equity_value, m.total_value ]);
-  const sc = firstPositive([ a.settled_cash, a.cash_balance, a.cash ]);
+  const aw = firstFinite([ ui.available_to_withdraw, a.available_to_withdraw, a.cashAvailableForWithdrawal, a.cashAvailableForInvestment, a.available_funds ], {allowZero:true});
+  const eq = firstFinite([ a.equity_value, m.total_value ], {allowZero:true});
+  const sc = firstFinite([ a.settled_cash, a.cash_balance, a.cash ], {allowZero:true});
 
   set('#cash-bp',  fmtUsd(bp ?? 0));
-  set('#cash-aw',  fmtUsd(aw ?? 0));
-  set('#cash-eq',  fmtUsd(eq ?? 0));
-  set('#cash-sc',  fmtUsd(sc ?? 0));
+  set('#cash-aw',  fmtUsd(Number.isFinite(aw)?aw:0));
+  set('#cash-eq',  fmtUsd(Number.isFinite(eq)?eq:0));
+  set('#cash-sc',  fmtUsd(Number.isFinite(sc)?sc:0));
 }
 
-/* -------- holdings table -------- */
+/* ===== tables ===== */
 function renderHoldings(rows){
   const tb = document.querySelector('#holdings-body');
   if (!tb) return;
@@ -527,17 +555,17 @@ function renderHoldings(rows){
     const qty  = h.qty ?? 0;
     const openedTxt = h.open_time ? String(h.open_time)
                     : (h.open_time_ms ? fmtET(h.open_time_ms) : '—');
-    const lastNum = (h.last_price != null && !isNaN(Number(h.last_price))) ? Number(h.last_price) : null;
+    const lastNum = Number.isFinite(num(h.last_price)) ? num(h.last_price) : null;
     const lastTxt = (lastNum == null) ? '—' : money(lastNum);
     const paidTxt = (h.price_paid != null) ? money(h.price_paid) : '—';
     let value = h.value;
     if (value == null && lastNum != null && Number.isFinite(qty)) value = lastNum * qty;
     const valueTxt = (value == null) ? '—' : money(value);
 
-    const dpln = Number(h.day_pl ?? 0);
-    const dppn = Number(h.day_pl_pct ?? 0);
-    const tpln = Number(h.total_pl ?? 0);
-    const tppn = Number(h.total_pl_pct ?? 0);
+    const dpln = num(h.day_pl ?? 0);
+    const dppn = num(h.day_pl_pct ?? 0);
+    const tpln = num(h.total_pl ?? 0);
+    const tppn = num(h.total_pl_pct ?? 0);
 
     tb.insertAdjacentHTML('beforeend', `
       <tr>
@@ -560,7 +588,6 @@ function renderHoldings(rows){
   }
 }
 
-/* -------- trades table -------- */
 function renderTrades(rows){
   const tb = document.querySelector('#trades-body');
   if (!tb) return;
@@ -574,10 +601,10 @@ function renderTrades(rows){
     const sym   = (t.symbol || '').toUpperCase();
     const side  = t.action || '';
     const qty   = Number.isFinite(+t.qty) ? +t.qty : 0;
-    const px    = (t.price      != null) ? Number(t.price)      : null;
-    let   paid  = (t.price_paid != null) ? Number(t.price_paid) : null;
-    let   pl    = Number(t.pl ?? 0);
-    let   plpct = Number(t.pl_pct ?? 0);
+    const px    = (t.price      != null) ? num(t.price)      : null;
+    let   paid  = (t.price_paid != null) ? num(t.price_paid) : null;
+    let   pl    = num(t.pl ?? 0);
+    let   plpct = num(t.pl_pct ?? 0);
     if (side === 'BUY' && paid == null && px != null) paid = px;
 
     tb.insertAdjacentHTML('beforeend', `
@@ -597,7 +624,7 @@ function renderTrades(rows){
   }
 }
 
-/* -------- main refresh -------- */
+/* ===== main refresh ===== */
 async function refreshLive(){
   try{
     const start = localStorage.getItem('live_start') || '2025-08-22';
@@ -613,29 +640,43 @@ async function refreshLive(){
 
     // PDT chip
     const pdt = d?.metrics?.daytrades_pdt5 || {};
-    const pdtTotal = Number(pdt.total || 0);
+    const pdtTotal = num(pdt.total || 0);
     set('#dt_pdt5', `${pdtTotal} in last 5 days`);
     const pdtEl = document.querySelector('#dt_pdt5');
     if (pdtEl){ pdtEl.classList.remove('pos','neg'); if (pdtTotal >= 3) pdtEl.classList.add('neg'); }
 
     // About footer
     const a = d?.about || {};
-    set("#about-start-cash", `$${Number(a.start_cash ?? 0).toFixed(2)}`);
+    set("#about-start-cash", `$${num(a.start_cash ?? 0).toFixed(2)}`);
     set("#about-start-date", a.start_date || "—");
-    set("#about-since-pnl",  `$${Number(a.since_pnl ?? 0).toFixed(2)}`);
-    set("#about-since-pct",  `${Number(a.since_pct ?? 0).toFixed(2)}%`);
+    set("#about-since-pnl",  `$${num(a.since_pnl ?? 0).toFixed(2)}`);
+    set("#about-since-pct",  `${num(a.since_pct ?? 0).toFixed(2)}%`);
   }catch(e){
     paintStatus(false);
     console.error('refreshLive failed:', e);
   }
 }
 
-/* -------- boot -------- */
+/* ===== boot ===== */
 document.addEventListener('DOMContentLoaded', () => {
   refreshLive().catch(console.error);
   setInterval(refreshLive, 30000);
 });
 })();
+</script>
+<script>
+async function pingApiDot(){
+  try{
+    const r = await fetch('/live/status');
+    const j = await r.json();
+    const dot = document.getElementById('etrade-dot');
+    if(!dot) return;
+    dot.classList.remove('dot-red','dot-green');
+    dot.classList.add((j.ok && !j.needs_reconnect) ? 'dot-green' : 'dot-red');
+  }catch(_){}  // keep UI calm
+}
+pingApiDot();
+setInterval(pingApiDot, 30000);
 </script>
 
 {% endblock %}
