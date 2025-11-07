@@ -105,70 +105,49 @@ import requests
 # --- ADD THIS near other imports/helpers ---
 from typing import Any
 
+# --- ADD near your other helpers ---
+from typing import Any
+
 def _safen(d: Any, *path, default=None, cast=float):
-    """Safe numeric extractor through nested dict/list with optional cast."""
     try:
         for p in path:
-            if isinstance(d, list):
-                d = d[p]  # if p is an index
-            else:
-                d = d.get(p)
-        if d is None: 
-            return default
-        return cast(d)
+            d = d[p] if isinstance(d, list) else d.get(p)
+        return default if d is None else cast(d)
     except Exception:
         return default
 
-
-# --- ADD THIS function somewhere near your other account helpers ---
 def get_account_nav(session=None):
     """
-    Return E*TRADE Net Account Value as a float.
-    Uses accountIdKey path first; falls back to numeric account id if needed.
-    Sets realTimeNAV=Y so we get current NAV.
+    Return E*TRADE Net Account Value (real-time).
+    Prefers accountIdKey, falls back to numeric id.
     """
-    sess = session or get_session()  # your existing auth/session helper
-    acct = get_primary_account()     # should return dict with accountIdKey / accountId
-    key  = (acct or {}).get("accountIdKey")
-    num  = (acct or {}).get("accountId")
-
+    sess = session or get_session()
+    acct = get_primary_account() or {}
+    key  = acct.get("accountIdKey")
+    num  = acct.get("accountId")
     params = {"instType": "BROKERAGE", "realTimeNAV": "Y"}
 
-    # Prefer accountIdKey path
-    try:
-        if key:
-            resp = sess.get(f"/v1/accounts/{key}/balance", params=params)
-            j = resp.json()
-            # Try multiple known shapes (E*TRADE returns a few variants...)
-            nav = (
-                _safen(j, "BalanceResponse", "response", "netAccountValue") or
-                _safen(j, "BalanceResponse", "response", "accountBalance", 0, "netAccountValue") or
-                _safen(j, "balanceResponse", "netAccountValue") or
-                _safen(j, "AccountBalanceResponse", "netAccountValue")
-            )
-            if nav is not None:
-                return float(nav)
-    except Exception:
-        pass
+    def _extract(j):
+        return (
+            _safen(j, "BalanceResponse", "response", "netAccountValue") or
+            _safen(j, "BalanceResponse", "response", "accountBalance", 0, "netAccountValue") or
+            _safen(j, "balanceResponse", "netAccountValue") or
+            _safen(j, "AccountBalanceResponse", "netAccountValue")
+        )
 
-    # Fallback to numeric account id path
-    try:
-        if num:
-            resp = sess.get(f"/v1/accounts/{num}/balance", params=params)
-            j = resp.json()
-            nav = (
-                _safen(j, "BalanceResponse", "response", "netAccountValue") or
-                _safen(j, "BalanceResponse", "response", "accountBalance", 0, "netAccountValue") or
-                _safen(j, "balanceResponse", "netAccountValue") or
-                _safen(j, "AccountBalanceResponse", "netAccountValue")
-            )
-            if nav is not None:
-                return float(nav)
-    except Exception:
-        pass
-
-    # If everything fails, return None so caller can decide on fallback
+    if key:
+        try:
+            j = sess.get(f"/v1/accounts/{key}/balance", params=params).json()
+            nav = _extract(j)
+            if nav is not None: return float(nav)
+        except Exception:
+            pass
+    if num:
+        j = sess.get(f"/v1/accounts/{num}/balance", params=params).json()
+        nav = _extract(j)
+        if nav is not None: return float(nav)
     return None
+
 
 def fetch_balances_resilient(sess, account_id_key: str, account_id_numeric: str, retries: int = 3):
     urls = [
