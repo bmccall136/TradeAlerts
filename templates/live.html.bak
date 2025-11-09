@@ -457,34 +457,28 @@
       setColor(document.querySelector(pctSel), row.pct);
     }
 
-    // --- Hero blurb "Since Start" (realized all) ---
-    const all = realized.all || { pnl: 0, pct: 0 };
-    set('#about-start-cash', money(START_CASH));
-    set('#about-start-date', START_DATE);
-    set('#about-since-pnl',  money(all.pnl));
-    set('#about-since-pct',  pct(all.pct));
+	// --- Hero blurb "Since Start" (NAV-based total gain) ---
+	let navGain = num(metrics.total_gain_nav);
+	let navGainPct = num(metrics.total_gain_nav_pct);
 
-    // --- NEW: Since Start (NAV-based total gain) ---
-    let navGain = num(metrics.total_gain_nav);
-    let navGainPct = num(metrics.total_gain_nav_pct);
+	// Fallback if backend missing
+	if (!Number.isFinite(navGain) || !Number.isFinite(navGainPct)) {
+	  if (Number.isFinite(nav) && START_CASH > 0) {
+		navGain = nav - START_CASH;
+		navGainPct = (navGain / START_CASH) * 100;
+	  } else {
+		navGain = 0;
+		navGainPct = 0;
+	  }
+	}
 
-    if (!Number.isFinite(navGain) || !Number.isFinite(navGainPct)) {
-      if (Number.isFinite(nav) && START_CASH > 0) {
-        navGain = nav - START_CASH;
-        navGainPct = (navGain / START_CASH) * 100;
-      } else {
-        navGain = 0;
-        navGainPct = 0;
-      }
-    }
+	set('#about-start-cash', money(START_CASH));
+	set('#about-start-date', START_DATE);
+	set('#about-since-pnl',  money(navGain));
+	set('#about-since-pct',  pct(navGainPct));
+	setColor(document.querySelector('#about-since-pnl'), navGain);
+	setColor(document.querySelector('#about-since-pct'), navGainPct);
 
-    // These only apply if you have elements:
-    // <span id="kpi-since-nav"></span>
-    // <span id="kpi-since-nav-pct"></span>
-    set('#kpi-since-nav',     money(navGain));
-    set('#kpi-since-nav-pct', pct(navGainPct));
-    setColor(document.querySelector('#kpi-since-nav'), navGain);
-    setColor(document.querySelector('#kpi-since-nav-pct'), navGainPct);
 
     // --- Account badge ---
     const { show } = preferNumericAccountId(account);

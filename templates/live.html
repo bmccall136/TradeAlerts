@@ -70,22 +70,39 @@
       <div class="by">Built by <b>Ben McCall &amp; Max</b></div>
     </div>
 
-    <!-- Right: account + E*TRADE API status -->
-    <div class="d-flex flex-column align-items-end" style="gap:6px; min-width: 220px;">
-      <div class="fw-bold" style="white-space: nowrap;">
-        Account type:
-        {{ account.get('account_type_display') or account.get('account_type') or 'Cash' }}
-      </div>
-      <div class="small text-muted" style="white-space:nowrap;">
-        Acct: <span id="acct-badge">—</span>
-      </div>
-      <div class="status-block" style="background:#000;color:#ffd600;padding:8px;border-radius:6px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-          <div>E*TRADE API</div>
-          <div id="etrade-dot" class="dot dot-red">●</div>
-        </div>
-      </div>
-    </div>
+	<!-- Right: account + E*TRADE API status -->
+	<div class="d-flex flex-column align-items-end" style="gap:6px; min-width: 220px;">
+	  {% set acct = account or {} %}
+	  {% set raw_type = (acct.get('account_type') or '') %}
+	  {% set acct_label = 'Cash Acct.' %}
+
+	  {% if raw_type in ['CASH', 'CASH_ACCOUNT'] %}
+		{% set acct_label = 'Cash Acct.' %}
+	  {% elif raw_type in ['MARGIN', 'MARGIN_ACCOUNT'] %}
+		{% set acct_label = 'Margin Acct.' %}
+	  {% elif raw_type == 'PDT_ACCOUNT' %}
+		{% set acct_label = 'Cash (PDT)' %}
+	  {% elif raw_type %}
+		{# Fallback: prettify anything unknown from E*TRADE #}
+		{% set acct_label = raw_type|replace('_', ' ')|title %}
+	  {% endif %}
+
+	  <div class="fw-bold" style="white-space: nowrap;">
+		Account type: {{ acct_label }}
+	  </div>
+
+	  <div class="small text-muted" style="white-space:nowrap;">
+		Acct: <span id="acct-badge">—</span>
+	  </div>
+
+	  <div class="status-block" style="background:#000;color:#ffd600;padding:8px;border-radius:6px;">
+		<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+		  <div>E*TRADE API</div>
+		  <div id="etrade-dot" class="dot dot-red">●</div>
+		</div>
+	  </div>
+	</div>
+   </div>
   </div>
 </div>
 
