@@ -4,6 +4,11 @@ import logging
 import os
 import time
 from collections.abc import Iterable
+import sys
+import json
+import logging
+
+log = logging.getLogger(__name__)
 
 from services.broker_live import (
     BASE as _BASE,  # https://api.etrade.com/v1
@@ -2285,99 +2290,135 @@ def fetch_etrade_quote(symbols: str | Iterable[str]) -> float | dict[str, float]
 
 # --- Portfolio / Balances (backwards-compatible API) ---
 
+import logging
+import requests
+
+log = logging.getLogger(__name__)
+
+ETRADE_BASE_URL = "https://api.etrade.com"  # keep whatever you already use
+
+
+def get_default_account() -> dict:
+    """
+    Resolve the default/brokerage account to use.
+    Tries your existing account_identity() helper; adjust mapping if needed.
+    """
+    ident = account_identity()  # you already have this
+    if not ident:
+        raise RuntimeError("No account_identity() data returned from E*TRADE")
+
+    # Support both legacy flat + nested shapes.
+    # Example expected keys:
+    #   account_id, account_id_key, account_type, account_type_display
+    acct = {}
+
+    # Flat style
+    if ident.get("account_id_key") or ident.get("accountIdKey"):
+        acct = {
+            "account_id": ident.get("account_id") or ident.get("accountId"),
+            "account_id_key": ident.get("account_id_key") or ident.get("accountIdKey"),
+            "account_type": ident.get("account_type") or ident.get("accountType"),
+            "account_type_display": ident.get("account_type_display") or ident.get("accountTypeDesc"),
+        }
+        return acct
+
+    # If your account_identity returns list-style Accounts, pick first brokerage.
+    accounts = (
+        ident.get("Accounts", {}).get("Account", [])
+        or ident.get("AccountList", [])
+        or []
+    )
+    if not isinstance(accounts, list):
+        accounts = [accounts]
+
+    if not accounts:
+        raise RuntimeError("No accounts returned from E*TRADE")
+
+    # Prefer INDIVIDUAL / BROKERAGE type
+    preferred = None
+    for a in accounts:
+        t = (a.get("accountType") or a.get("account_type") or "").upper()
+        if "BROKERAGE" in t or "INDIVIDUAL" in t:
+            preferred = a
+            break
+    acct = preferred or accounts[0]
+
+    return {
+        "account_id": acct.get("accountId") or acct.get("account_id"),
+        "account_id_key": acct.get("accountIdKey") or acct.get("account_id_key"),
+        "account_type": acct.get("accountType") or acct.get("account_type"),
+        "account_type_display": acct.get("accountDesc") or acct.get("account_type_display"),
+    }
+
+
+# ---------------- Portfolio / Balances (normalized) ----------------
+
 def get_account_summary(account_id_key: str | None = None) -> dict:
     """
-    Return a normalized balances summary dict with:
-      - settled_cash (float)
-      - buying_power (float)
-      - raw (the raw BalanceResponse)
-    Tries both accountIdKey and numeric accountId + with/without instType.
+    Normalized snapshot for the dashboard.
+
+    Returns:
+      {
+        "account_id": str | None,
+        "account_key": str | None,
+        "account_type": str | None,
+        "account_type_display": str | None,
+        "nav": float,             # Net Account Value from E*TRADE
+        "available_funds": float, # cash / BP-ish we get from balances
+        "raw": dict,              # raw BalanceResponse for debugging
+      }
     """
-    # Resolve IDs
     sess = get_oauth_session()
-    ident = account_identity()
+    ident = account_identity() or {}
+
     aid_key = (account_id_key or ident.get("account_id_key") or "").strip()
     aid_num = (ident.get("account_id") or "").strip()
 
-    # Fetch with retries/fallbacks
     br = fetch_balances_resilient(sess, aid_key, aid_num)
     if not isinstance(br, dict):
         br = {}
 
-    # br is the BalanceResponse / balanceResponse block
-    settled, bp = compute_cash_fields(br)
+    # Pull NAV / cash-ish fields from whatever shape E*TRADE gave us
+    bal = br.get("BalanceResponse") or br.get("balanceResponse") or br
+
+    def _f(*keys, default=0.0):
+        for k in keys:
+            v = bal.get(k)
+            if v is None:
+                continue
+            try:
+                return float(v)
+            except Exception:
+                pass
+        return float(default)
+
+    nav = _f(
+        "netAccountValue",
+        "netaccountvalue",
+        "accountValue",
+        "netAssets",
+        default=0.0,
+    )
+
+    avail = _f(
+        "cashAvailableForInvestment",
+        "cashAvailableForWithdrawal",
+        "cashBuyingPower",
+        "cashBalance",
+        "fundsForOpenOrdersCash",
+        default=0.0,
+    )
 
     out = {
-        "settled_cash": float(settled or 0.0),
-        "buying_power": float(bp or 0.0),
+        "account_id": aid_num or None,
+        "account_key": aid_key or None,
+        "account_type": bal.get("accountType") or bal.get("acctType"),
+        "account_type_display": bal.get("accountDesc") or bal.get("description"),
+        "nav": nav,
+        "available_funds": avail,
         "raw": br,
     }
     return out
-
-
-from datetime import timedelta
-
-API_BASE = "https://api.etrade.com/v1"
-
-
-def _json_or_empty(resp):
-    try:
-        txt = (resp.text or "").strip()
-        if not txt:
-            return {}
-        return resp.json()
-    except Exception:
-        return {}
-
-
-def get_default_account_id():
-    """
-    Returns the default E*TRADE account id from account_identity().
-    Handles both the new flat dict and the older nested response.
-    """
-    ident = account_identity()
-    if not ident:
-        raise RuntimeError("No accounts returned from E*TRADE")
-
-    # Case 1: new flat dict (what your debug shows)
-    if isinstance(ident, dict) and ident.get("account_id"):
-        return ident["account_id"]
-
-    # Case 2: older/alt shapes
-    accounts = []
-
-    # direct list
-    if isinstance(ident, list):
-        accounts = ident
-
-    # nested common legacy formats
-    if isinstance(ident, dict):
-        if "accounts" in ident:
-            accounts = ident["accounts"]
-        elif "AccountListResponse" in ident:
-            accounts = (
-                ident["AccountListResponse"]
-                .get("Accounts", {})
-                .get("Account", [])
-            )
-
-    if isinstance(accounts, dict):
-        accounts = [accounts]
-
-    if not accounts:
-        raise RuntimeError(f"No accounts returned from E*TRADE (raw={ident})")
-
-    # Prefer individual brokerage if present
-    for a in accounts:
-        if str(a.get("account_type", "")).upper().startswith("INDIVIDUAL"):
-            return a.get("account_id") or a.get("accountId")
-
-    # Fallback: first account with any id
-    for a in accounts:
-        if a.get("account_id") or a.get("accountId"):
-            return a.get("account_id") or a.get("accountId")
-
-    raise RuntimeError(f"No usable account id in E*TRADE identity (raw={ident})")
 
 import logging
 from requests_oauthlib import OAuth1Session

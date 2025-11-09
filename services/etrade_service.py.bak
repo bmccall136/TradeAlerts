@@ -4,6 +4,11 @@ import logging
 import os
 import time
 from collections.abc import Iterable
+import sys
+import json
+import logging
+
+log = logging.getLogger(__name__)
 
 from services.broker_live import (
     BASE as _BASE,  # https://api.etrade.com/v1
@@ -1584,45 +1589,120 @@ from datetime import timedelta
 _sess_cache = None
 
 
-get_oauth_sessiondef account_id_key() -> str:
-    """
-    Return the E*TRADE accountIdKey used in URLs like
-    /v1/accounts/{accountIdKey}/....  No self-imports, no class dependency.
-    """
-    # 1) Environment variable (recommended)
-    aid = os.getenv("ETRADE_ACCOUNT_ID_KEY") or ""
-    if aid:
-        return aid
+import os
+import json
+from requests_oauthlib import OAuth1Session
+from dotenv import load_dotenv
 
-    # 2) Try a helper you might already have
-    try:
-        aid = account_id_key() or ""
-        if aid:
-            return aid
-    except Exception:
-        pass
+load_dotenv("etrade.env")
 
-    # 3) Ask the API for the first account (requires OAuth session)
-    try:
-        sess = get_oauth_session()
-        r = sess.get("https://api.etrade.com/v1/accounts/list.json", timeout=15)
-        r.raise_for_status()
-        j = r.json() or {}
-        accounts = j.get("AccountListResponse", {}).get("Accounts", {}).get(
-            "Account", []
-        ) or j.get("accounts", [])
-        for a in accounts:
-            key = a.get("accountIdKey") or a.get("accountIdKeyValue")
-            if key:
-                return key
-    except Exception:
-        pass
+ETRADE_BASE_URL = "https://api.etrade.com"
+TOKEN_FILE = "etrade_tokens.json"
 
-    raise RuntimeError(
-        "ETRADE_ACCOUNT_ID_KEY not found. Set it in the environment "
-        "or provide services.broker_live.get_account_id_key()."
+
+def _load_tokens():
+    if not os.path.exists(TOKEN_FILE):
+        raise RuntimeError(
+            "E*TRADE tokens not found. Run etrade_auth_flow.py or use the reconnect button."
+        )
+    with open(TOKEN_FILE, "r") as f:
+        return json.load(f)
+
+
+def get_oauth_session():
+    consumer_key = os.getenv("ETRADE_API_KEY")
+    consumer_secret = os.getenv("ETRADE_API_SECRET")
+    if not consumer_key or not consumer_secret:
+        raise RuntimeError("Missing ETRADE_API_KEY / ETRADE_API_SECRET in etrade.env")
+
+    tokens = _load_tokens()
+    oauth_token = tokens.get("oauth_token")
+    oauth_token_secret = tokens.get("oauth_token_secret")
+    if not oauth_token or not oauth_token_secret:
+        raise RuntimeError("etrade_tokens.json missing oauth_token / oauth_token_secret")
+
+    return OAuth1Session(
+        consumer_key,
+        client_secret=consumer_secret,
+        resource_owner_key=oauth_token,
+        resource_owner_secret=oauth_token_secret,
     )
 
+
+def account_identity():
+    """
+    Fetch primary E*TRADE account identity via /v1/accounts/list.json.
+    Returns:
+      {
+        "account_id": ...,
+        "account_id_key": ...,
+        "account_type": ...,
+        "account_type_display": ...
+      }
+    """
+    sess = get_oauth_session()
+    url = f"{ETRADE_BASE_URL}/v1/accounts/list.json"
+    r = sess.get(url, timeout=15)
+    r.raise_for_status()
+    j = r.json()
+
+    accounts = (
+        j.get("AccountListResponse", {})
+         .get("Accounts", {})
+         .get("Account", [])
+    )
+
+    if not accounts:
+        raise RuntimeError("No accounts returned from E*TRADE /v1/accounts/list.json")
+
+    pick = None
+    for a in accounts:
+        t = (a.get("accountType") or "").upper()
+        if "BROKERAGE" in t or "INDIVIDUAL" in t or "MARGIN" in t:
+            pick = a
+            break
+    if pick is None:
+        pick = accounts[0]
+
+    return {
+        "account_id": pick.get("accountId"),
+        "account_id_key": pick.get("accountIdKey"),
+        "account_type": pick.get("accountType"),
+        "account_type_display": pick.get("accountDesc") or pick.get("accountType"),
+    }
+
+
+def get_default_account_id_key() -> str:
+    ident = account_identity()
+    key = ident.get("account_id_key")
+    if not key:
+        raise RuntimeError("No account_id_key in E*TRADE identity response")
+    return key
+
+
+def get_positions():
+    """
+    Return raw positions payload from E*TRADE.
+    dashboard.py will normalize via _normalize_positions_payload.
+    """
+    acct_key = get_default_account_id_key()
+    sess = get_oauth_session()
+
+    url = f"{ETRADE_BASE_URL}/v1/accounts/{acct_key}/portfolio.json"
+    params = {
+        "view": "QUICK",
+        "sortBy": "MARKET_VALUE",
+        "sortOrder": "DESC",
+        "count": 500,
+    }
+
+    r = sess.get(url, params=params, timeout=15)
+
+    if r.status_code == 204 or not (r.text or "").strip():
+        return {}
+
+    r.raise_for_status()
+    return r.json()
 
 # Optional alias if other code uses it
 get_account_id_key = account_id_key
@@ -2210,99 +2290,142 @@ def fetch_etrade_quote(symbols: str | Iterable[str]) -> float | dict[str, float]
 
 # --- Portfolio / Balances (backwards-compatible API) ---
 
-def get_account_summary(account_id_key: str | None = None) -> dict:
+import logging
+import requests
+
+log = logging.getLogger(__name__)
+
+ETRADE_BASE_URL = "https://api.etrade.com"  # keep whatever you already use
+
+
+def get_default_account() -> dict:
     """
-    Return a normalized balances summary dict with:
-      - settled_cash (float)
-      - buying_power (float)
-      - raw (the raw BalanceResponse)
-    Tries both accountIdKey and numeric accountId + with/without instType.
+    Resolve the default/brokerage account to use.
+    Tries your existing account_identity() helper; adjust mapping if needed.
     """
-    # Resolve IDs
-    sess = get_oauth_session()
-    ident = account_identity()
-    aid_key = (account_id_key or ident.get("account_id_key") or "").strip()
-    aid_num = (ident.get("account_id") or "").strip()
-
-    # Fetch with retries/fallbacks
-    br = fetch_balances_resilient(sess, aid_key, aid_num)
-    if not isinstance(br, dict):
-        br = {}
-
-    # br is the BalanceResponse / balanceResponse block
-    settled, bp = compute_cash_fields(br)
-
-    out = {
-        "settled_cash": float(settled or 0.0),
-        "buying_power": float(bp or 0.0),
-        "raw": br,
-    }
-    return out
-
-
-from datetime import timedelta
-
-API_BASE = "https://api.etrade.com/v1"
-
-
-def _json_or_empty(resp):
-    try:
-        txt = (resp.text or "").strip()
-        if not txt:
-            return {}
-        return resp.json()
-    except Exception:
-        return {}
-
-
-def get_default_account_id():
-    """
-    Returns the default E*TRADE account id from account_identity().
-    Handles both the new flat dict and the older nested response.
-    """
-    ident = account_identity()
+    ident = account_identity()  # you already have this
     if not ident:
-        raise RuntimeError("No accounts returned from E*TRADE")
+        raise RuntimeError("No account_identity() data returned from E*TRADE")
 
-    # Case 1: new flat dict (what your debug shows)
-    if isinstance(ident, dict) and ident.get("account_id"):
-        return ident["account_id"]
+    # Support both legacy flat + nested shapes.
+    # Example expected keys:
+    #   account_id, account_id_key, account_type, account_type_display
+    acct = {}
 
-    # Case 2: older/alt shapes
-    accounts = []
+    # Flat style
+    if ident.get("account_id_key") or ident.get("accountIdKey"):
+        acct = {
+            "account_id": ident.get("account_id") or ident.get("accountId"),
+            "account_id_key": ident.get("account_id_key") or ident.get("accountIdKey"),
+            "account_type": ident.get("account_type") or ident.get("accountType"),
+            "account_type_display": ident.get("account_type_display") or ident.get("accountTypeDesc"),
+        }
+        return acct
 
-    # direct list
-    if isinstance(ident, list):
-        accounts = ident
-
-    # nested common legacy formats
-    if isinstance(ident, dict):
-        if "accounts" in ident:
-            accounts = ident["accounts"]
-        elif "AccountListResponse" in ident:
-            accounts = (
-                ident["AccountListResponse"]
-                .get("Accounts", {})
-                .get("Account", [])
-            )
-
-    if isinstance(accounts, dict):
+    # If your account_identity returns list-style Accounts, pick first brokerage.
+    accounts = (
+        ident.get("Accounts", {}).get("Account", [])
+        or ident.get("AccountList", [])
+        or []
+    )
+    if not isinstance(accounts, list):
         accounts = [accounts]
 
     if not accounts:
-        raise RuntimeError(f"No accounts returned from E*TRADE (raw={ident})")
+        raise RuntimeError("No accounts returned from E*TRADE")
 
-    # Prefer individual brokerage if present
+    # Prefer INDIVIDUAL / BROKERAGE type
+    preferred = None
     for a in accounts:
-        if str(a.get("account_type", "")).upper().startswith("INDIVIDUAL"):
-            return a.get("account_id") or a.get("accountId")
+        t = (a.get("accountType") or a.get("account_type") or "").upper()
+        if "BROKERAGE" in t or "INDIVIDUAL" in t:
+            preferred = a
+            break
+    acct = preferred or accounts[0]
 
-    # Fallback: first account with any id
-    for a in accounts:
-        if a.get("account_id") or a.get("accountId"):
-            return a.get("account_id") or a.get("accountId")
+    return {
+        "account_id": acct.get("accountId") or acct.get("account_id"),
+        "account_id_key": acct.get("accountIdKey") or acct.get("account_id_key"),
+        "account_type": acct.get("accountType") or acct.get("account_type"),
+        "account_type_display": acct.get("accountDesc") or acct.get("account_type_display"),
+    }
 
-    raise RuntimeError(f"No usable account id in E*TRADE identity (raw={ident})")
+
+def get_account_summary(debug: bool = False) -> dict:
+    """
+    Fetch balances for the default account and expose:
+      - net_account_value
+      - available_funds (cash purchasing power)
+      - plus some identity fields
+    Also logs raw response for debugging.
+    """
+    acct = get_default_account()
+    acct_key = acct.get("account_id_key")
+    if not acct_key:
+        raise RuntimeError("No account_id_key available for balances")
+
+    url = f"{ETRADE_BASE_URL}/v1/accounts/{acct_key}/balance.json"
+
+    # See E*TRADE docs: use 'detailFlag' for full balances if needed
+    params = {"instType": "BROKERAGE", "realTimeNAV": "true"}
+
+    r = oauth.get(url, params=params, timeout=15)
+    try:
+        r.raise_for_status()
+    except Exception as e:
+        log.exception("E*TRADE get_account_summary HTTP error: %s", e)
+        raise
+
+    text = r.text
+    try:
+        log.info("E*TRADE get_account_summary RAW: %s", text)
+    except Exception:
+        pass
+
+    try:
+        data = r.json()
+    except ValueError:
+        log.error("E*TRADE get_account_summary: non-JSON response")
+        data = {}
+
+    # Navigate typical E*TRADE structure:
+    # { "BalanceResponse": { "accountId": "...", "Computed": {...}, "Margin": {...}, ... } }
+    bal = (
+        data.get("BalanceResponse")
+        or data.get("balanceResponse")
+        or data
+    )
+
+    computed = bal.get("Computed") or {}
+    # Fallbacks for NAV:
+    nav = (
+        computed.get("realTimeValues") or {}
+    ).get("totalAccountValue") or \
+        computed.get("netAccountValue") or \
+        bal.get("netAccountValue")
+
+    # Fallbacks for Cash Purchasing Power / Buying Power:
+    bp = (
+        computed.get("cashAvailableForInvestment")
+        or computed.get("cashPurchasingPower")
+        or bal.get("cashAvailableForInvestment")
+        or bal.get("cashPurchasingPower")
+        or 0.0
+    )
+
+    out = {
+        "account_id": acct.get("account_id"),
+        "account_key": acct.get("account_id_key"),
+        "account_type": acct.get("account_type"),
+        "account_type_display": acct.get("account_type_display"),
+        "net_account_value": float(nav) if nav is not None else 0.0,
+        "available_funds": float(bp) if bp is not None else 0.0,
+    }
+
+    if debug:
+        out["_raw_balance"] = data
+
+    return out
 
 import logging
 from requests_oauthlib import OAuth1Session
