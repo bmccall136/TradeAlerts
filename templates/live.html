@@ -96,7 +96,7 @@
     <div class="col-12 col-md-4">
       <div class="card bg-dark border-0 shadow-sm h-100">
         <div class="card-body kpi-card d-flex flex-column justify-content-center">
-          <div class="text-uppercase small">VALUE</div>
+          <div class="text-uppercase small">Net Account Value NAV</div>
           <div id="kpi-cash" class="fs-3 fw-bold"></div>
           <div class="mt-2 small kpi-cash-extra">
             <div class="cash-rows">
@@ -207,16 +207,21 @@
 
 <script>
 (() => {
-  const POS = '#2ecc71', NEG = '#ff6b6b', ZERO = '#b8b8b8';
+  const POS  = '#2ecc71';
+  const NEG  = '#ff6b6b';
+  const ZERO = '#b8b8b8';
+
+  const START_CASH = 367.76;
+  const START_DATE = '2025-08-22';
 
   const num = x => {
     if (x == null) return NaN;
     if (typeof x === 'number') return x;
-    if (typeof x === 'string') return Number(x.replace(/[\$,]/g,'').trim());
+    if (typeof x === 'string') return Number(x.replace(/[\$,]/g, '').trim());
     return Number(x);
   };
 
-  const set = (sel,val) => {
+  const set = (sel, val) => {
     const el = document.querySelector(sel);
     if (el) el.textContent = (val ?? '—');
   };
@@ -241,43 +246,49 @@
   };
 
   const fmtET = x => {
-    try{
+    try {
       const ms = num(x);
-      if (Number.isFinite(ms) && ms > 10_000_000_000){
+      if (Number.isFinite(ms) && ms > 10_000_000_000) {
         return new Intl.DateTimeFormat('en-US', {
-          timeZone:'America/New_York',
-          year:'numeric',month:'2-digit',day:'2-digit',
-          hour:'2-digit',minute:'2-digit',second:'2-digit',
-          hour12:false
-        }).format(new Date(ms)).replace(',','');
+          timeZone: 'America/New_York',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false,
+        }).format(new Date(ms)).replace(',', '');
       }
-      const s = String(x||'').trim();
+      const s = String(x || '').trim();
       if (!s) return '—';
-      if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(s)) return s.replace('T',' ');
+      if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(s)) return s.replace('T', ' ');
       return s;
-    }catch{ return '—'; }
+    } catch {
+      return '—';
+    }
   };
 
   const maskAcctPretty = id => {
-    const s = String(id||"");
+    const s = String(id || "");
     if (!s) return "—";
     if (/^\d+$/.test(s)) return "••••" + s.slice(-4);
-    if (s.length > 9)    return s.slice(0,4) + "…" + s.slice(-5);
+    if (s.length > 9)    return s.slice(0, 4) + "…" + s.slice(-5);
     return s;
   };
 
   const preferNumericAccountId = a => {
     const numId = (a?.account_id ?? a?.accountId ?? "").toString().trim();
     const keyId = (a?.account_key ?? a?.accountIdKey ?? "").toString().trim();
-    if (/^\d{6,}$/.test(numId)) return { show:numId };
-    if (keyId)                  return { show:keyId };
-    return { show:"" };
+    if (/^\d{6,}$/.test(numId)) return { show: numId };
+    if (keyId)                  return { show: keyId };
+    return { show: "" };
   };
 
   const paintStatus = ok => {
     const dot = document.getElementById('etrade-dot');
     if (!dot) return;
-    dot.classList.remove('dot-red','dot-green');
+    dot.classList.remove('dot-red', 'dot-green');
     dot.classList.add(ok ? 'dot-green' : 'dot-red');
   };
 
@@ -285,11 +296,13 @@
     const tb = document.getElementById('holdings-body');
     if (!tb) return;
     tb.innerHTML = '';
-    if (!rows || !rows.length){
+
+    if (!rows || !rows.length) {
       tb.innerHTML = `<tr><td colspan="10" class="text-muted">No holdings.</td></tr>`;
       return;
     }
-    for (const h of rows){
+
+    for (const h of rows) {
       const sym   = (h.symbol || '').toUpperCase();
       const qty   = h.qty ?? 0;
       const last  = h.last_price;
@@ -297,7 +310,7 @@
       const value = h.value;
       const dpl   = h.day_pl ?? 0;
       const dplp  = h.day_pl_pct ?? 0;
-      const tpl   = h.total_pl ?? 0;
+      const tpl   = h.total_pl ?? h.total_gain ?? 0;
       const tplp  = h.total_pl_pct ?? 0;
 
       tb.insertAdjacentHTML('beforeend', `
@@ -312,7 +325,9 @@
           <td class="tot-pl">${money(tpl)}</td>
           <td class="tot-pl-pct">${pct(tplp)}</td>
           <td>${money(value)}</td>
-        </tr>`);
+        </tr>
+      `);
+
       const row = tb.lastElementChild;
       setColor(row.querySelector('.day-pl'), dpl);
       setColor(row.querySelector('.day-pl-pct'), dplp);
@@ -325,11 +340,13 @@
     const tb = document.getElementById('trades-body');
     if (!tb) return;
     tb.innerHTML = '';
-    if (!rows || !rows.length){
+
+    if (!rows || !rows.length) {
       tb.innerHTML = `<tr><td colspan="8" class="text-muted">No trades yet.</td></tr>`;
       return;
     }
-    for (const t of rows){
+
+    for (const t of rows) {
       const time = t.time_ms != null ? fmtET(t.time_ms) : (t.time || '—');
       const sym  = (t.symbol || '').toUpperCase();
       const side = t.action || '';
@@ -349,7 +366,9 @@
           <td class="tr-paid">${paid}</td>
           <td class="tr-pl">${pl}</td>
           <td class="tr-pl-p">${plp}</td>
-        </tr>`);
+        </tr>
+      `);
+
       const row = tb.lastElementChild;
       setColor(row.querySelector('.tr-pl'), t.pl ?? 0);
       setColor(row.querySelector('.tr-pl-p'), t.pl_pct ?? 0);
@@ -357,28 +376,71 @@
   };
 
   const updateKPIs = d => {
-    const m = d.metrics || {};
-    const about = d.about || {};
     const account = d.account || {};
+    const value   = d.value || {};
+    const metrics = d.metrics || {};
+    const realized = metrics.realized_buckets || d.realized || {};
+    const holdings = d.holdings || [];
 
-    // VALUE tile
-    const nav = num(m.net_account_value ?? d.value?.value ?? 0);
-    const bp  = num(m.buying_power ?? d.value?.buying_power ?? 0);
-    const pv  = num(m.positions_value ?? d.value?.positions_value ?? 0);
-    set('#kpi-cash',   money(nav));
-    set('#kpi-bp',     money(bp));
-    set('#kpi-posval', money(pv));
+    // --- NAV: trust backend; fallbacks in priority order ---
+    const nav = num(
+      metrics.net_account_value ??
+      value.net_account_value ??
+      account.nav ??
+      value.value ??
+      0
+    );
 
-    // Unrealized P&L
-    const uAmt = num(m.unrealized_pnl ?? 0);
-    const uPct = num(m.unrealized_pnl_pct ?? 0);
+    // --- Positions value ---
+    let pv = num(
+      metrics.positions_value ??
+      value.positions_value ??
+      0
+    );
+    if (!pv && holdings.length) {
+      pv = holdings.reduce((sum, h) => sum + num(h.value), 0);
+    }
+
+    // --- Buying power ---
+    let bp = num(
+      metrics.buying_power ??
+      account.cashBuyingPower ??
+      account.available_funds ??
+      0
+    );
+    // If backend didn't set bp but nav/pv exist, try NAV - PV
+    if (!Number.isFinite(bp) || bp === 0) {
+      if (Number.isFinite(nav) && Number.isFinite(pv) && nav >= pv) {
+        bp = nav - pv;
+      } else if (!Number.isFinite(bp)) {
+        bp = 0;
+      }
+    }
+
+    // VALUE tile numbers
+    set('#kpi-cash',   money(nav));   // Net Account Value (NAV)
+    set('#kpi-bp',     money(bp));    // Buying Power
+    set('#kpi-posval', money(pv));    // Positions Value
+
+    // --- Unrealized P&L (use backend if present, else compute from holdings) ---
+    let uAmt = num(metrics.unrealized_pnl);
+    let uPct = num(metrics.unrealized_pnl_pct);
+
+    if (!Number.isFinite(uAmt) || !Number.isFinite(uPct)) {
+      let cost = 0;
+      for (const h of holdings) {
+        cost += num(h.price_paid) * num(h.qty);
+      }
+      uAmt = Number.isFinite(pv) && Number.isFinite(cost) ? (pv - cost) : 0;
+      uPct = cost > 0 ? (uAmt / cost) * 100 : 0;
+    }
+
     set('#kpi-pnl',     money(uAmt));
     set('#kpi-pnl-pct', pct(uPct));
     setColor(document.querySelector('#kpi-pnl'), uAmt);
     setColor(document.querySelector('#kpi-pnl-pct'), uPct);
 
-    // Realized buckets
-    const rb = m.realized_buckets || d.realized || {};
+    // --- Realized buckets ---
     const map = [
       ['day',       '#kpi-r-day',       '#kpi-r-day-pct'],
       ['week',      '#kpi-r-week',      '#kpi-r-week-pct'],
@@ -386,38 +448,56 @@
       ['month',     '#kpi-r-month',     '#kpi-r-month-pct'],
       ['all',       '#kpi-r-all',       '#kpi-r-all-pct'],
     ];
-    for (const [key, aSel, pSel] of map){
-      const row = rb[key] || {pnl:0,pct:0};
-      set(aSel, money(row.pnl));
-      set(pSel, pct(row.pct));
-      setColor(document.querySelector(aSel), row.pnl);
-      setColor(document.querySelector(pSel), row.pct);
+
+    for (const [key, amtSel, pctSel] of map) {
+      const row = realized[key] || { pnl: 0, pct: 0 };
+      set(amtSel, money(row.pnl));
+      set(pctSel, pct(row.pct));
+      setColor(document.querySelector(amtSel), row.pnl);
+      setColor(document.querySelector(pctSel), row.pct);
     }
 
-    // Hero blurb / about
-    set('#about-start-cash', `$${num(about.start_cash ?? 0).toFixed(2)}`);
-    set('#about-start-date', about.start_date || '—');
-    set('#about-since-pnl',  `$${num(about.since_pnl ?? 0).toFixed(2)}`);
-    set('#about-since-pct',  `${num(about.since_pct ?? 0).toFixed(2)}%`);
+	// --- Hero blurb "Since Start" (NAV-based total gain) ---
+	let navGain = num(metrics.total_gain_nav);
+	let navGainPct = num(metrics.total_gain_nav_pct);
 
-    // Account badge
+	// Fallback if backend missing
+	if (!Number.isFinite(navGain) || !Number.isFinite(navGainPct)) {
+	  if (Number.isFinite(nav) && START_CASH > 0) {
+		navGain = nav - START_CASH;
+		navGainPct = (navGain / START_CASH) * 100;
+	  } else {
+		navGain = 0;
+		navGainPct = 0;
+	  }
+	}
+
+	set('#about-start-cash', money(START_CASH));
+	set('#about-start-date', START_DATE);
+	set('#about-since-pnl',  money(navGain));
+	set('#about-since-pct',  pct(navGainPct));
+	setColor(document.querySelector('#about-since-pnl'), navGain);
+	setColor(document.querySelector('#about-since-pct'), navGainPct);
+
+
+    // --- Account badge ---
     const { show } = preferNumericAccountId(account);
     const badge = document.getElementById('acct-badge');
-    if (badge){
-      badge.textContent = maskAcctPretty(show);
+    if (badge) {
+      const masked = maskAcctPretty(show);
+      badge.textContent = masked;
       badge.title = show || '';
     }
   };
 
   const refreshLive = async () => {
-    const start = localStorage.getItem('live_start') || '2025-08-22';
-    const qs = new URLSearchParams({ start, debug:'1' });
+    const start = localStorage.getItem('live_start') || START_DATE;
+    const qs = new URLSearchParams({ start, debug: '1' });
     const r = await fetch(`/live/status?${qs.toString()}`);
     const d = await r.json();
 
     const ok = !!(d.ok && !d.needs_reconnect);
     paintStatus(ok);
-
     if (!d.ok) return;
 
     updateKPIs(d);
@@ -431,5 +511,4 @@
   });
 })();
 </script>
-
 {% endblock %}
