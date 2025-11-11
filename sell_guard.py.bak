@@ -1,4 +1,5 @@
-# sell_guard.py  — LIVE sell guard with hold/ladder rules (Ben 2025-11-03)
+
+# sell_guard.py  — LIVE sell guard with immediate trailing arm on gain (Ben 2025-11-04)
 from __future__ import annotations
 
 import json, logging, os, sys, time, random, string
@@ -24,7 +25,7 @@ HERE = os.path.abspath(os.path.dirname(__file__))
 if HERE not in sys.path: sys.path.insert(0, HERE)
 
 from services import etrade_service as et  # your wrapper
-from services import live_guardrails as gr  # we’ll read opened_at
+from services import live_guardrails as gr  # opened_at + journal
 
 def j(x): 
     try: return json.dumps(x, indent=2, sort_keys=True, default=str)
@@ -39,10 +40,10 @@ def now_et():
     return datetime.now(UTC)
 
 def rand_id(prefix: str, n: int = 6) -> str:
+    import random, string
     return f"{prefix}{''.join(random.choice(string.ascii_lowercase+string.digits) for _ in range(n))}"
 
 DEFAULTS = {
-  "mode": "live",
   "normalize_tick": 0.01,
   "sell_window_start_et": "09:35",
   "sell_window_end_et": "15:55",
@@ -51,23 +52,27 @@ DEFAULTS = {
   "market_fallback_for": ["SELL_STOP","TIMEOUT"],
   "max_place_attempts": 4,
   "sell_guard": {
+    "mode": "live",
     "allow_intraday_stoploss": True,
-    "avoid_daytrades": True,
+    "avoid_daytrades": False,
     "blocklist": [],
     "force_symbols": [],
     "force_without_entry": False,
     "limit_from": "bid",
     "limit_offset_bps": 0,
     "max_hold_mins": 1_000_000,
-    "min_hold_days": 1,
-    "min_hold_minutes": 390,
+    "min_hold_days": 0,
+    "min_hold_minutes": 0,
     "normalize_tick": 0.01,
-    "sell_protect_after_mins": None,
-    "sell_window_start_et": "09:35",
-    "sell_window_end_et": "15:55",
+    "sell_protect_after_mins": 0,   # ignored for arming trail
+    "sell_window_start_et": "04:00",
+    "sell_window_end_et": "20:00",
     "stop_bps": 100,
     "target_bps": 200,
-    "use_extended_hours": False,
+    "protect_min_gain_pct": 1.5,
+    "protect_trail_arm_pct": 3.0,
+    "protect_trail_pct": 3.0,
+    "use_extended_hours": True,
     "circuit_fail_threshold": 2,
     "circuit_open_seconds": 480,
     "max_place_attempts": 4
@@ -82,14 +87,12 @@ def load_settings() -> Dict[str, Any]:
             user = json.load(f)
     except FileNotFoundError:
         user = {}
-    # merge but prefer NESTED values
+    # merge; nested wins
     merged = dict(DEFAULTS)
     merged["sell_guard"] = dict(DEFAULTS["sell_guard"])
-    # bring user top-level keys (rare)
     for k, v in user.items():
         if k != "sell_guard":
             merged[k] = v
-    # bring nested last (so nested wins)
     if "sell_guard" in user and isinstance(user["sell_guard"], dict):
         merged["sell_guard"].update(user["sell_guard"])
     return merged
@@ -100,10 +103,11 @@ def get_acct_key() -> str:
         try:
             k = et.get_account_id_key()
             if k: return str(k)
-        except Exception: pass
+        except Exception: 
+            pass
     if hasattr(et, "account_id_key") and et.account_id_key:
         return str(et.account_id_key)
-    raise RuntimeError("Could not determine account_id_key")
+    return "UNKNOWN"
 
 def preview(acct_key, sym, qty, price_type, limit_or_none):
     return et.preview_equity_order(
@@ -175,7 +179,7 @@ def place_with_adaptive_variants(acct_key, sym, qty, price_type, limit_or_none, 
                 return True
             except Exception as e:
                 msg = str(e)
-                if (" 500:" in msg) or ('"code": 100' in msg) or ("'code': 100" in msg):
+                if (" 500:" in msg) or ('\"code\": 100' in msg) or ("'code': 100" in msg):
                     LOG.warning("Transient venue error; refreshing preview (outer=%d)", outer)
                     break
                 if numeric_path:
@@ -201,7 +205,7 @@ def get_positions_any(acct_key=None):
         except Exception as e: raise e
 
 def iter_positions(pobj):
-    """Yield (sym, qty_float, last, entry) from any of the usual E*TRADE shapes."""
+    """Yield (sym, qty_float, last, entry) from E*TRADE shapes."""
     def L(x): return x if isinstance(x, list) else ([] if x is None else [x])
     if not isinstance(pobj, dict): return
     pr = pobj.get("PortfolioResponse") or {}
@@ -221,7 +225,7 @@ def iter_positions(pobj):
             if sym and qty > 0: yield sym, qty, last, entry
 
 def opened_today(sym: str) -> bool:
-    """BUY today? (PDT)"""
+    """BUY today? (PDT helper)"""
     try:
         for t in et.get_transactions(start="today", end="today") or []:
             tsym = (t.get("symbol") or t.get("securitySymbol") or "").strip().upper()
@@ -230,7 +234,7 @@ def opened_today(sym: str) -> bool:
     except Exception: pass
     return False
 
-# ----- compute price type ------------------------------------------------------
+# ----- compute order params ---------------------------------------------------
 def best_bid(symbol: str) -> float:
     try:
         q = et.fetch_etrade_quote(symbol) or {}
@@ -269,7 +273,10 @@ def compute_order_params(symbol: str, cfg) -> Tuple[str, float|None]:
             pt = "LIMIT"
     return pt, limit_px
 
-# ----- config shape ------------------------------------------------------------
+# ----- config shape -----------------------------------------------------------
+from dataclasses import dataclass
+from typing import List, Dict, Any, Tuple
+
 @dataclass
 class GuardSettings:
     sell_window_start_et: str
@@ -282,18 +289,17 @@ class GuardSettings:
     sg: Dict[str, Any]
 
 # trailing state (in-process). If you want persistence, wire sqlite/json.
-TRAIL: Dict[str, Dict[str, float]] = {}  # sym -> {"hi": high_pl_pct, "trail_pct": float}
+TRAIL: Dict[str, Dict[str, float]] = {}  # sym -> {"hi": high_pl_pct, "trail_pct": float, "armed": 0/1}
 
 def main():
     cfg_raw = load_settings()
     LOG.info("sell_guard starting…")
     LOG.info("Settings: %s", j(cfg_raw))
 
-    # Prefer NESTED (sell_guard.*) values first, then fallback to top-level
     sg = cfg_raw["sell_guard"]
     cfg = GuardSettings(
-        sell_window_start_et = sg.get("sell_window_start_et") or cfg_raw.get("sell_window_start_et") or "09:35",
-        sell_window_end_et   = sg.get("sell_window_end_et")   or cfg_raw.get("sell_window_end_et")   or "15:55",
+        sell_window_start_et = sg.get("sell_window_start_et") or cfg_raw.get("sell_window_start_et") or "04:00",
+        sell_window_end_et   = sg.get("sell_window_end_et")   or cfg_raw.get("sell_window_end_et")   or "20:00",
         throttle_ms          = int( sg.get("throttle_ms", cfg_raw.get("throttle_ms", 30_000)) ),
         max_place_attempts   = int( sg.get("max_place_attempts", cfg_raw.get("max_place_attempts", 4)) ),
         market_fallback_for  = list(sg.get("market_fallback_for") or cfg_raw.get("market_fallback_for") or []),
@@ -329,7 +335,7 @@ def main():
             LOG.info("outside sell window; sleeping %ds", throttle)
             time.sleep(throttle); continue
 
-        # build entry/opened_at map from guardrails
+        # opened_at map from guardrails table
         open_map: Dict[str, datetime] = {}
         for e in gr.list_open_entries():
             try:
@@ -338,7 +344,7 @@ def main():
                 continue
             open_map[(e["symbol"] or "").upper()] = dt
 
-        # positions → candidates with pl% + hold minutes
+        # pull positions
         try:
             pos = get_positions_any(acct_key)
         except Exception as e:
@@ -347,24 +353,51 @@ def main():
         LOG.info("positions raw glimpse: %s", _glimpse(pos))
         rows: List[Tuple[str,int,float,float]] = list(iter_positions(pos))  # sym, qty, last, entry
 
-        # apply blocklist and “force_without_entry”
         block = set(map(str.upper, cfg.sg.get("blocklist") or []))
         fwe   = bool(cfg.sg.get("force_without_entry", False))
 
-        candidates: List[Tuple[str,int,float,float, float]] = []
+        candidates: List[Tuple[str, int, float, float, float]] = []
+
         for sym, q, last, entry in rows:
-            if sym in block: continue
-            if not fwe and sym not in open_map:  # no recorded opened_at → skip unless allowed
+            sym = sym.upper()
+            if sym in block:
                 continue
-            if q < 1: continue
-            pl_pct = ((last - entry) / entry * 100.0) if (last > 0 and entry > 0) else 0.0
-            hold_min = None
-            if sym in open_map:
+            if q < 1:
+                continue
+
+            # Require opened_at unless explicitly allowed to run without it
+            opened = open_map.get(sym)
+            if not fwe and not opened:
+                continue
+
+            # P&L %
+            pl_pct = ((last - entry) / max(entry, 0.0001) * 100.0) if (last > 0 and entry > 0) else 0.0
+
+            # Hold minutes from opened_at (timezone safe)
+            hold_min = 0.0
+            if opened:
                 try:
-                    hold_min = max(0.0, (now_et() - open_map[sym].replace(tzinfo=None)).total_seconds()/60.0)
+                    if hasattr(opened, "tzinfo") and opened.tzinfo is not None:
+                        # convert to ET, drop tz
+                        if ETZ:
+                            opened_naive = opened.astimezone(ETZ).replace(tzinfo=None)
+                        else:
+                            opened_naive = opened.replace(tzinfo=None)
+                    else:
+                        opened_naive = opened  # assume ET naive from guardrails
+
+                    if ETZ:
+                        now_naive = now_et().astimezone(ETZ).replace(tzinfo=None)
+                    else:
+                        now_naive = now_et().replace(tzinfo=None)
+
+                    hold_min = max(0.0, (now_naive - opened_naive).total_seconds() / 60.0)
+
                 except Exception:
-                    hold_min = None
-            candidates.append((sym, int(q), pl_pct, hold_min if hold_min is not None else -1.0, entry))
+                    LOG.warning("[OPENED_AT] bad opened_at for %s: %r", sym, opened)
+                    hold_min = 0.0  # treat as fresh; timeout will still work for new entries
+
+            candidates.append((sym, int(q), pl_pct, hold_min, entry))
 
         LOG.info("eligible final -> %s", [(s,q) for s,q,_,_,_ in candidates])
         if not candidates:
@@ -372,66 +405,85 @@ def main():
             LOG.info("sleeping %ds", throttle); time.sleep(throttle); continue
         LOG.info("candidates: %s", ",".join(f"{s}x{q}" for s,q,_,_,_ in candidates))
 
-        # thresholds
-        stop_pct   = abs(float(cfg.sg.get("stop_bps", 100))) / 100.0
-        target_pct = abs(float(cfg.sg.get("target_bps", 200))) / 100.0
-        min_hold   = float(cfg.sg.get("min_hold_minutes", 0))
-        max_hold   = float(cfg.sg.get("max_hold_mins", 1_000_000))
-        protect_after = cfg.sg.get("sell_protect_after_mins")
-        protect_after = float(protect_after) if protect_after is not None else None
+        # thresholds from settings
+        stop_pct        = abs(float(cfg.sg.get("stop_bps", 100))) / 100.0
+        target_pct      = abs(float(cfg.sg.get("target_bps", 200))) / 100.0
+        min_hold        = float(cfg.sg.get("min_hold_minutes", 0))
+        max_hold        = float(cfg.sg.get("max_hold_mins", 1_000_000))
+        # New: immediate arm thresholds
+        arm_at          = float(cfg.sg.get("protect_trail_arm_pct", 3.0))    # e.g., 3.0 (%)
+        trail_pct_cfg   = float(cfg.sg.get("protect_trail_pct", 3.0))        # e.g., 3.0 (%)
+        min_gain_lock   = float(cfg.sg.get("protect_min_gain_pct", 1.5))     # log only
+
         allow_intraday_stop = bool(cfg.sg.get("allow_intraday_stoploss", True))
-        avoid_daytrades = bool(cfg.sg.get("avoid_daytrades", False))
+        avoid_daytrades     = bool(cfg.sg.get("avoid_daytrades", False))
 
         for s, qty, pl_pct, hold_min, entry_px in candidates:
             # PDT guard (optional)
             if avoid_daytrades and opened_today(s):
                 LOG.info("[PDT] Skipping %s (opened today; avoid_daytrades on)", s); continue
 
-            # STOP: allow intraday stoploss regardless of min hold
+            # Protective STOP regardless of hold (intraday stoploss)
             if allow_intraday_stop and pl_pct <= -stop_pct:
                 pt, lim = compute_order_params(s, cfg)
-                LOG.info("[SG] %s STOP %.2f%% ≤ -%.2f%% → place %s%s", s, pl_pct, stop_pct, pt, f" {lim:.2f}" if lim else "")
-                ok = place_with_adaptive_variants(acct_key, s, qty, pt, (lim if pt=="LIMIT" else None), cfg.max_place_attempts)
+                LOG.info("[STOP] %s %.2f%% ≤ -%.2f%% → place %s%s", s, pl_pct, stop_pct, pt, f" {lim:.2f}" if lim else "")
+                ok = place_with_adaptive_variants(acct_key, s, qty, pt, (lim if pt=='LIMIT' else None), cfg.max_place_attempts)
                 if ok: LOG.info("sleeping %ds", throttle)
                 continue
 
-            # HOLD until min_hold_minutes (unless max_hold reached)
-            if hold_min >= 0 and hold_min < min_hold:
-                LOG.info("[HOLD] %s hold %.1f mins < %.1f mins (min_hold); no action", s, hold_min, min_hold)
-                continue
+            hold_min = -1.0
+            if sym in open_map:
+                try:
+                    hold_min = max(
+                        0.0,
+                        (now_et() - open_map[sym].replace(tzinfo=None)).total_seconds() / 60.0
+                    )
+                except Exception:
+                    LOG.warning("[OPENED_AT] bad opened_at for %s: %r", s, open_map[sym])
+                    hold_min = 0.0  # treat as freshly opened so timeout can work going forward
 
-            # Max hold → exit
-            if hold_min >= max_hold:
-                pt, lim = compute_order_params(s, cfg)
-                LOG.info("[TIMEOUT] %s hold %.1f mins ≥ %.1f mins → place %s%s", s, hold_min, max_hold, pt, f" {lim:.2f}" if lim else "")
-                place_with_adaptive_variants(acct_key, s, qty, pt, (lim if pt=="LIMIT" else None), cfg.max_place_attempts)
-                continue
-
-            # Ladder / trailing emulation
-            now_gain = pl_pct
-            hi = TRAIL.get(s, {}).get("hi", now_gain)
-            hi = max(hi, now_gain)
+            # --- Trailing logic ---
+            # Always record high-water gain
+            cur = pl_pct
+            hi = TRAIL.get(s, {}).get("hi", cur)
+            hi = max(hi, cur)
             TRAIL.setdefault(s, {})["hi"] = hi
 
-            armed = (protect_after is not None and hold_min >= protect_after and hi >= target_pct)
-            if armed and "trail_pct" not in TRAIL[s]:
-                # Arm a simple trail at half the target (e.g., target 2% -> trail 1%)
-                TRAIL[s]["trail_pct"] = max(0.5, target_pct/2.0)
+            # Arm immediately when gain >= arm threshold (ignores min_hold)
+            if cur >= arm_at and not TRAIL[s].get("armed"):
+                TRAIL[s]["armed"] = 1
+                TRAIL[s]["trail_pct"] = max(0.5, trail_pct_cfg)
+                LOG.info("[TRAIL_ARM] %s gain=%.2f%% ≥ %.2f%% → armed trail=%.2f%% (hi=%.2f%%)",
+                         s, cur, arm_at, TRAIL[s]['trail_pct'], hi)
 
-            if armed:
+            # If armed, sell when drawdown from HI ≥ trail_pct
+            if TRAIL[s].get("armed"):
                 trail = TRAIL[s]["trail_pct"]
-                if now_gain <= (hi - trail):
+                if cur <= (hi - trail):
                     pt, lim = compute_order_params(s, cfg)
-                    LOG.info("[TRAIL] %s gain %.2f%% fell from hi %.2f%% by ≥ %.2f%% → place %s%s",
-                             s, now_gain, hi, trail, pt, f" {lim:.2f}" if lim else "")
-                    place_with_adaptive_variants(acct_key, s, qty, pt, (lim if pt=="LIMIT" else None), cfg.max_place_attempts)
+                    LOG.info("[TRAIL_SELL] %s gain %.2f%% fell from hi %.2f%% by ≥ %.2f%% → place %s%s",
+                             s, cur, hi, trail, pt, f" {lim:.2f}" if lim else "")
+                    place_with_adaptive_variants(acct_key, s, qty, pt, (lim if pt=='LIMIT' else None), cfg.max_place_attempts)
+                    # keep armed state; hi will reset on next loop if still a position
                     continue
                 else:
-                    LOG.info("[ARMED] %s hi=%.2f%% gain=%.2f%% trail=%.2f%% (holding)", s, hi, now_gain, TRAIL[s]["trail_pct"])
+                    LOG.info("[ARMED] %s hi=%.2f%% gain=%.2f%% trail=%.2f%% (holding)", s, hi, cur, trail)
                     continue
 
-            # Not armed yet and not a stop → hold
-            LOG.info("[HOLD] %s gain=%.2f%% hold=%.1f mins (waiting for protect/target/timeout)", s, now_gain, hold_min)
+            # Not armed yet → respect min_hold before acting on targets (but only for sells other than trail)
+            if hold_min >= 0 and hold_min < min_hold:
+                LOG.info("[HOLD] %s hold %.1f mins < %.1f mins (min_hold); gain=%.2f%%", s, hold_min, min_hold, cur)
+                continue
+
+            # Optional fixed target exit (if you want it alongside trailing)
+            if cur >= target_pct:
+                pt, lim = compute_order_params(s, cfg)
+                LOG.info("[TARGET] %s gain %.2f%% ≥ %.2f%% → place %s%s", s, cur, target_pct, pt, f" {lim:.2f}" if lim else "")
+                place_with_adaptive_variants(acct_key, s, qty, pt, (lim if pt=='LIMIT' else None), cfg.max_place_attempts)
+                continue
+
+            # Otherwise do nothing
+            LOG.info("[HOLD] %s gain=%.2f%% hold=%.1f mins (waiting for trail/target/timeout)", s, cur, hold_min)
 
         LOG.info("sleeping %ds", throttle)
         time.sleep(throttle)

@@ -320,20 +320,31 @@
     }
 
     for (const h of rows) {
-      const sym   = (h.symbol || '').toUpperCase();
-      const qty   = h.qty ?? 0;
-      const last  = h.last_price;
-      const paid  = h.price_paid;
-      const value = h.value;
-      const dpl   = h.day_pl ?? 0;
-      const dplp  = h.day_pl_pct ?? 0;
-      const tpl   = h.total_pl ?? h.total_gain ?? 0;
-      const tplp  = h.total_pl_pct ?? 0;
+      const sym = (h.symbol || '').toUpperCase();
+
+      // Opened (ET) from backend; fallback to "—"
+      const opened = h.opened_et || h.opened || '—';
+
+      const qty  = Number(h.qty ?? 0);
+      const last = Number(h.last_price ?? 0);
+      const paid = Number(h.price_paid ?? 0);
+
+      // Prefer backend value; otherwise compute
+      let value = (h.value != null) ? Number(h.value) : (qty * last);
+      if (!Number.isFinite(value)) value = 0;
+
+      // Day P&L (intraday)
+      const dpl  = Number(h.day_pl ?? 0);
+      const dplp = Number(h.day_pl_pct ?? 0);
+
+      // Total P&L (since entry)
+      const tpl  = Number(h.total_pl ?? 0);
+      const tplp = Number(h.total_pl_pct ?? 0);
 
       tb.insertAdjacentHTML('beforeend', `
         <tr>
           <td>${sym}</td>
-          <td>—</td>
+          <td>${opened}</td>
           <td>${money(last)}</td>
           <td>${qty}</td>
           <td>${money(paid)}</td>
