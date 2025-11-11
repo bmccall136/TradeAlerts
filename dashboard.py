@@ -34,6 +34,17 @@ from services import etrade_service as et
 from services.trade_source import load_trades_merged
 from flask import Flask, render_template, jsonify, request, redirect, url_for
 import logging, os
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from services import live_guardrails as gr
+
+# live guardrails holds opened_at for live trades
+try:
+    from services import live_guardrails as gr
+except ImportError:
+    gr = None  # if not available, we'll just show "—"
+
+ETZ = ZoneInfo("America/New_York")
 
 log = logging.getLogger(__name__)
 
@@ -133,6 +144,38 @@ except ImportError:
 # Helpers
 # -----------------------------------------------------------------------------#
 
+from services import live_guardrails as gr
+from zoneinfo import ZoneInfo
+ETZ = ZoneInfo("America/New_York")
+
+def get_opened_at_map():
+    """
+    Map SYMBOL -> opened_at as ET-aware datetime, from live_guardrails.
+    Used by both Sell Guard and dashboard so they agree.
+    """
+    out = {}
+    if gr is None:
+        return out
+
+    try:
+        for e in gr.list_open_entries():
+            sym = (e.get("symbol") or "").upper()
+            ts = e.get("opened_at")
+            if not sym or not ts:
+                continue
+            try:
+                dt = datetime.fromisoformat(ts)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=ETZ)
+                else:
+                    dt = dt.astimezone(ETZ)
+                out[sym] = dt
+            except Exception:
+                continue
+    except Exception as ex:
+        print("get_opened_at_map error:", ex)
+
+    return out
 
 def always_json(f):
     """Decorator: make view always return JSON + catch exceptions."""
@@ -320,127 +363,167 @@ def realized_buckets_from_live_db(db_path: str) -> Dict[str, Dict[str, float]]:
 
     return out
 
-def _normalize_positions_payload(raw: Any) -> List[Dict[str, Any]]:
+def _normalize_positions_payload(raw):
     """
-    Normalize E*TRADE positions into:
-        {symbol, qty, price_paid, last_price}
-    Accepts either:
-      - already-normalized rows, or
-      - raw E*TRADE portfolio JSON.
+    Normalize raw E*TRADE positions JSON into:
+      symbol, qty, price_paid, last_price, day_pl, day_pl_pct, prior_close
     """
-    rows: List[Dict[str, Any]] = []
+    rows = []
     if not raw:
         return rows
 
-    # Already normalized?
-    if (
-        isinstance(raw, list)
-        and raw
-        and isinstance(raw[0], dict)
-        and "symbol" in raw[0]
-    ):
+    # If already normalized list of dicts, just coerce types
+    if isinstance(raw, list) and raw and isinstance(raw[0], dict) and "symbol" in raw[0]:
         for r in raw:
             rows.append(
                 {
                     "symbol": str(r.get("symbol", "")).upper(),
-                    "qty": _safe_float(r.get("qty"), 0.0),
-                    "price_paid": _safe_float(r.get("price_paid"), 0.0),
-                    "last_price": _safe_float(r.get("last_price"), 0.0),
+                    "qty": float(r.get("qty", 0) or 0),
+                    "price_paid": float(r.get("price_paid", 0) or 0),
+                    "last_price": float(r.get("last_price", 0) or 0),
+                    "day_pl": float(r.get("day_pl", 0) or 0),
+                    "day_pl_pct": float(r.get("day_pl_pct", 0) or 0),
+                    "prior_close": float(r.get("prior_close", 0) or 0),
                 }
             )
         return rows
 
-    # Raw E*TRADE shape
+    # Raw E*TRADE PortfolioResponse
     try:
         pr = raw.get("PortfolioResponse", {}).get("AccountPortfolio", [])
         if isinstance(pr, dict):
             pr = [pr]
+
         for acct in pr:
             for pos in acct.get("Position", []):
-                sym = str(
-                    pos.get("symbolDescription")
-                    or pos.get("symbol")
-                    or ""
-                ).upper()
+                prod = pos.get("Product") or {}
+                sym = (prod.get("symbol") or pos.get("symbol") or "").strip().upper()
                 if not sym:
                     continue
 
-                qty = _safe_float(pos.get("quantity"), 0.0)
-                paid = _safe_float(
+                qty = float(
+                    pos.get("quantity")
+                    or pos.get("longQuantity")
+                    or pos.get("positionQty")
+                    or 0
+                )
+
+                q = pos.get("Quick") or {}
+                allf = pos.get("All") or {}
+
+                price_paid = float(
                     pos.get("pricePaid")
-                    or pos.get("costPerShare")
                     or pos.get("averagePrice")
-                    or 0.0
+                    or pos.get("costPerShare")
+                    or 0
                 )
-                last = _safe_float(
-                    (pos.get("Quick") or {}).get("lastTrade")
-                    or (pos.get("All") or {}).get("lastTrade")
+
+                last_price = float(
+                    q.get("lastTrade")
+                    or allf.get("lastTrade")
                     or pos.get("lastTrade")
-                    or 0.0
+                    or 0
                 )
+
+                day_pl = float(
+                    q.get("todayGainLoss")
+                    or q.get("todayGainLossBase")
+                    or 0
+                )
+                day_pl_pct = float(q.get("todayGainLossPct") or 0)
+
+                prior_close = float(
+                    q.get("priorClose")
+                    or q.get("closePrice")
+                    or allf.get("closePrice")
+                    or 0
+                )
+
                 rows.append(
                     {
                         "symbol": sym,
                         "qty": qty,
-                        "price_paid": paid,
-                        "last_price": last,
+                        "price_paid": price_paid,
+                        "last_price": last_price,
+                        "day_pl": day_pl,
+                        "day_pl_pct": day_pl_pct,
+                        "prior_close": prior_close,
                     }
                 )
+
     except Exception as e:
-        log.exception("normalize positions failed: %s", e)
+        print("normalize positions failed:", e)
 
     return rows
 
-
 def _build_holdings_from_positions(
-    pos_rows: List[Dict[str, Any]]
-) -> Tuple[List[Dict[str, Any]], float]:
+    pos_rows
+):
     """
-    From normalized positions rows, compute holdings rows with:
-      symbol, qty, price_paid, last_price, value,
-      day_pl, day_pl_pct, total_pl, total_pl_pct.
+    Build holdings table rows from normalized positions.
 
-    Returns (holdings, positions_value).
+    Each row:
+      symbol, opened_et, last_price, qty, price_paid,
+      day_pl, day_pl_pct, total_pl, total_pl_pct, value
     """
-    holdings: List[Dict[str, Any]] = []
+    holdings = []
     positions_value = 0.0
+
+    opened_map = get_opened_at_map()
 
     for r in pos_rows:
         sym = str(r.get("symbol", "")).upper()
-        if not sym or sym in IGNORED_TICKERS:
+        if not sym:
             continue
 
-        qty = _safe_float(r.get("qty"), 0.0)
-        paid = _safe_float(r.get("price_paid"), 0.0)
-        last = _safe_float(r.get("last_price"), 0.0)
+        qty = float(r.get("qty") or 0)
+        if qty <= 0:
+            continue
+
+        paid = float(r.get("price_paid") or 0)
+        last = float(r.get("last_price") or 0)
+
+        opened_dt = opened_map.get(sym)
+        opened_str = opened_dt.strftime("%Y-%m-%d %H:%M") if opened_dt else "—"
 
         value = round(qty * last, 2)
         positions_value += value
 
         cost = qty * paid
-        total_pl = round(value - cost, 2) if qty else 0.0
-        total_pl_pct = round((total_pl / cost) * 100.0, 2) if cost > 0 else 0.0
+        if cost > 0:
+            total_pl = round(value - cost, 2)
+            total_pl_pct = round((total_pl / cost) * 100.0, 2)
+        else:
+            total_pl = 0.0
+            total_pl_pct = 0.0
 
-        # day_pl are 0 unless you wire in prevClose; keep placeholders.
-        day_pl = 0.0
-        day_pl_pct = 0.0
+        # Day P&L from API if present
+        day_pl = float(r.get("day_pl") or 0.0)
+        day_pl_pct = float(r.get("day_pl_pct") or 0.0)
+
+        # If API didn't give, derive from prior_close
+        if day_pl == 0.0 and day_pl_pct == 0.0:
+            prior_close = float(r.get("prior_close") or 0.0)
+            if prior_close > 0 and last > 0:
+                day_pl = round((last - prior_close) * qty, 2)
+                day_pl_pct = round(((last - prior_close) / prior_close) * 100.0, 2)
 
         holdings.append(
             {
                 "symbol": sym,
+                "opened_et": opened_str,
+                "last_price": round(last, 4),
                 "qty": qty,
                 "price_paid": round(paid, 4),
-                "last_price": round(last, 4),
-                "value": value,
                 "day_pl": day_pl,
                 "day_pl_pct": day_pl_pct,
                 "total_pl": total_pl,
                 "total_pl_pct": total_pl_pct,
+                "value": value,
             }
         )
 
     return holdings, round(positions_value, 2)
-
 
 
 # -----------------------------------------------------------------------------#

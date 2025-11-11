@@ -7,6 +7,8 @@ from collections.abc import Iterable
 import sys
 import json
 import logging
+from .etrade_auth_flow import get_oauth_session
+
 
 log = logging.getLogger(__name__)
 
@@ -128,6 +130,52 @@ def _safen(d: Any, *path, default=None, cast=float):
         return default if d is None else cast(d)
     except Exception:
         return default
+
+# services/etrade_service.py
+
+def get_buying_power(account_id_key=None):
+    """
+    Return true buying power from E*TRADE:
+      - For margin accounts: marginBuyingPower
+      - For cash accounts:  cashAvailableForInvestment
+    Falls back sanely if fields move.
+    """
+    if account_id_key is None:
+        account_id_key = get_default_account_id_key()
+
+    # Standard brokerage balances endpoint
+    path = f"/v1/accounts/{account_id_key}/balance.json?instType=BROKERAGE"
+    resp = etrade_get(path)
+    resp.raise_for_status()
+    data = resp.json().get("BalanceResponse", {})
+
+    margin = data.get("margin", {}) or {}
+    comp = data.get("Computed", {}) or {}
+
+    # Preferred:
+    margin_bp = margin.get("marginBuyingPower")
+    cash_bp = comp.get("cashAvailableForInvestment")
+
+    def _to_float(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return 0.0
+
+    margin_bp = _to_float(margin_bp)
+    cash_bp = _to_float(cash_bp)
+
+    if margin_bp > 0:
+        return margin_bp
+    if cash_bp > 0:
+        return cash_bp
+
+    # Fallbacks if E*TRADE shuffles fields
+    net_cash = _to_float(comp.get("netCash"))
+    if net_cash > 0:
+        return net_cash
+
+    raise RuntimeError(f"Unable to determine buying power from balances payload: {data}")
 
 def get_account_nav(session=None):
     """
@@ -556,6 +604,74 @@ def account_id_key() -> str:
         "ETRADE_ACCOUNT_ID_KEY not found. Set it (or wire broker_live.get_account_id_key), "
         "or ensure OAuth is valid so /v1/accounts/list.json can be queried."
     )
+
+def get_nav_on_date(account_key: str, date_str: str):
+    """
+    Return net account value (NAV) for a specific date, or None.
+
+    account_key: E*TRADE accountIdKey, e.g. 'kW8LbkuGisPCK9Ey7C8iWA'
+    date_str: 'YYYY-MM-DD'
+    """
+    try:
+        sess = get_oauth_session()
+    except Exception as e:
+        log.error("get_nav_on_date: failed to get OAuth session: %s", e, exc_info=True)
+        return None
+
+    base = os.getenv("ETRADE_BASE_URL", "https://api.etrade.com")
+    # Use account *key*, not bare account number
+    url = f"{base}/v1/accounts/{account_key}/balance.json"
+
+    # E*TRADE historical balance uses view=PERIOD with yyyymmdd dates
+    ymd = date_str.replace("-", "")
+    params = {
+        "view": "PERIOD",
+        "startDate": ymd,
+        "endDate": ymd,
+    }
+
+    try:
+        r = sess.get(url, params=params, timeout=15)
+    except Exception as e:
+        log.error("get_nav_on_date: request error: %s", e, exc_info=True)
+        return None
+
+    if r.status_code != 200:
+        # This is the critical diagnostic you were asking for
+        log.error(
+            "get_nav_on_date: HTTP %s for %s params=%s body=%s",
+            r.status_code, url, params, r.text[:500]
+        )
+        return None
+
+    try:
+        data = r.json()
+    except ValueError:
+        log.error("get_nav_on_date: non-JSON response: %r", r.text[:500])
+        return None
+
+    # E*TRADE balance shapes can vary a bit; handle both dict & list forms
+    br = data.get("BalanceResponse") if isinstance(data, dict) else None
+
+    if isinstance(br, dict):
+        computed = br.get("Computed") or {}
+    elif isinstance(br, list) and br and isinstance(br[0], dict):
+        computed = (br[0].get("Computed") or {})
+    else:
+        log.error("get_nav_on_date: unexpected payload shape: %r", data)
+        return None
+
+    # Try the usual NAV-ish fields in a safe order
+    for key in ("netAccountValue", "accountBalance", "accountBalanceValue"):
+        v = computed.get(key)
+        if v not in (None, ""):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                pass
+
+    log.warning("get_nav_on_date: NAV not found in Computed block: %r", computed)
+    return None
 
 
 def _now_et():
@@ -2353,9 +2469,11 @@ def get_default_account() -> dict:
 
 # ---------------- Portfolio / Balances (normalized) ----------------
 
+# ===== CANONICAL ACCOUNT SUMMARY (OVERRIDES EARLIER VERSIONS) =====
+
 def get_account_summary(account_id_key: str | None = None) -> dict:
     """
-    Normalized snapshot for the dashboard.
+    Normalized snapshot of balances for the dashboard.
 
     Returns:
       {
@@ -2363,61 +2481,172 @@ def get_account_summary(account_id_key: str | None = None) -> dict:
         "account_key": str | None,
         "account_type": str | None,
         "account_type_display": str | None,
-        "nav": float,             # Net Account Value from E*TRADE
-        "available_funds": float, # cash / BP-ish we get from balances
-        "raw": dict,              # raw BalanceResponse for debugging
+        "nav": float,             # Net Account Value from E*TRADE (if available)
+        "available_funds": float, # cash / buying power (if available)
+        "raw": dict,              # raw balances payload (may be {})
       }
+
+    Never raises on HTTP errors; always returns a well-shaped dict so callers
+    (dashboard, live loop, etc.) never blow up.
     """
-    sess = get_oauth_session()
-    ident = account_identity() or {}
 
-    aid_key = (account_id_key or ident.get("account_id_key") or "").strip()
-    aid_num = (ident.get("account_id") or "").strip()
+    # ---------- helpers ----------
+    def _f(v, default: float = 0.0) -> float:
+        try:
+            if v is None or v == "":
+                return float(default)
+            return float(str(v).replace(",", ""))
+        except Exception:
+            return float(default)
 
-    br = fetch_balances_resilient(sess, aid_key, aid_num)
-    if not isinstance(br, dict):
-        br = {}
+    def _extract_balance_view(raw: dict) -> dict | None:
+        """
+        Accepts a variety of E*TRADE balance shapes and returns the inner
+        "one account" dict, or None if we can't recognize it.
+        """
+        if not isinstance(raw, dict):
+            return None
 
-    # Pull NAV / cash-ish fields from whatever shape E*TRADE gave us
-    bal = br.get("BalanceResponse") or br.get("balanceResponse") or br
+        bal = raw.get("BalanceResponse") or raw.get("balanceResponse") or raw
 
-    def _f(*keys, default=0.0):
-        for k in keys:
-            v = bal.get(k)
-            if v is None:
-                continue
-            try:
-                return float(v)
-            except Exception:
-                pass
-        return float(default)
+        # Common shape: { "BalanceResponse": { "balance": [ { ... } ] } }
+        if isinstance(bal, dict) and isinstance(bal.get("balance"), list) and bal["balance"]:
+            bal = bal["balance"][0]
 
-    nav = _f(
-        "netAccountValue",
-        "netaccountvalue",
-        "accountValue",
-        "netAssets",
-        default=0.0,
-    )
+        return bal if isinstance(bal, dict) else None
 
-    avail = _f(
-        "cashAvailableForInvestment",
-        "cashAvailableForWithdrawal",
-        "cashBuyingPower",
-        "cashBalance",
-        "fundsForOpenOrdersCash",
-        default=0.0,
-    )
+    # ---------- locate account identifiers ----------
+    try:
+        ident = account_identity() or {}
+    except Exception:
+        ident = {}
 
-    out = {
-        "account_id": aid_num or None,
-        "account_key": aid_key or None,
-        "account_type": bal.get("accountType") or bal.get("acctType"),
-        "account_type_display": bal.get("accountDesc") or bal.get("description"),
-        "nav": nav,
-        "available_funds": avail,
-        "raw": br,
+    aid_key = (account_id_key
+               or ident.get("account_id_key")
+               or ident.get("accountIdKey")
+               or "").strip() or None
+
+    aid_num = (ident.get("account_id")
+               or ident.get("accountId")
+               or "").strip() or None
+
+    # we always return these, even if balances fail
+    base = {
+        "account_id": aid_num,
+        "account_key": aid_key,
+        "account_type": ident.get("accountType") or ident.get("account_type"),
+        "account_type_display": (
+            ident.get("accountDescription")
+            or ident.get("accountDesc")
+            or ident.get("description")
+        ),
     }
+
+    # If we somehow have no IDs at all, just bail with zeros.
+    if not aid_key and not aid_num:
+        out = dict(base)
+        out.update({
+            "nav": 0.0,
+            "available_funds": 0.0,
+            "raw": {},
+        })
+        return out
+
+    sess = get_oauth_session()
+
+    raw: dict = {}
+
+    # ---------- 1) Try resilient helper if present ----------
+    # This already cycles through sensible ID options and uses _get().
+    if "fetch_balances_resilient" in globals():
+        try:
+            candidate = fetch_balances_resilient(
+                sess,
+                aid_key or aid_num,
+                aid_num or aid_key,
+            )
+            if isinstance(candidate, dict) and candidate:
+                raw = candidate
+        except Exception:
+            # swallow; we'll fall back below
+            raw = {}
+
+    # ---------- 2) Fallback: direct /balance.json calls ----------
+    if not raw:
+        candidates = [c for c in (aid_key, aid_num) if c]
+        for acct in candidates:
+            try:
+                url = f"{ETRADE_BASE_URL}/v1/accounts/{acct}/balance.json"
+                r = sess.get(
+                    url,
+                    headers={"Accept": "application/json"},
+                    timeout=15,
+                )
+                # treat non-200 as "no data", do NOT raise
+                if r.status_code == 200 and (r.text or "").strip():
+                    maybe = r.json() or {}
+                    if isinstance(maybe, dict) and maybe:
+                        raw = maybe
+                        break
+            except Exception:
+                # try next candidate
+                continue
+
+    # ---------- 3) Parse balances ----------
+    bal = _extract_balance_view(raw)
+
+    if not bal:
+        # We couldn't get anything sane from the API.
+        out = dict(base)
+        out.update({
+            "nav": 0.0,
+            "available_funds": 0.0,
+            "raw": {},
+        })
+        return out
+
+    comp = (bal.get("Computed")
+            or bal.get("computedBalance")
+            or {})
+
+    # NAV:
+    nav = _f(
+        comp.get("netAccountValue")
+        or bal.get("netAccountValue")
+        or comp.get("totalAccountValue")
+        or bal.get("totalAccountValue")
+        or comp.get("accountValue")
+        or bal.get("accountValue"),
+        0.0,
+    )
+
+    # Fallback NAV: some responses only give components
+    if nav == 0.0:
+        # best-effort without throwing
+        nav = _f(comp.get("accountBalance")
+                 or comp.get("netCash")
+                 or bal.get("accountBalance")
+                 or bal.get("netCash"),
+                 0.0)
+
+    # Available funds / cash / buying power:
+    available = _f(
+        comp.get("cashBuyingPower")
+        or comp.get("cashAvailableForInvestment")
+        or comp.get("totalBuyingPower")
+        or comp.get("cashBalance")
+        or bal.get("cashBuyingPower")
+        or bal.get("cashAvailableForInvestment")
+        or bal.get("cashBalance"),
+        0.0,
+    )
+
+    out = dict(base)
+    out.update({
+        "nav": nav,
+        "available_funds": available,
+        "raw": raw if isinstance(raw, dict) else {},
+    })
     return out
 
 import logging
@@ -2825,5 +3054,23 @@ except NameError:
 
         pass
 
+# =====================================================
+# Convenience re-exports for external modules
+# =====================================================
+
+# Define get_positions_raw alias for backward compatibility
+try:
+    get_positions_raw
+except NameError:
+    # fall back to the standard get_positions if raw version not defined
+    get_positions_raw = get_positions
+
+# Expose helpers on the ETradeService class
+ETradeService.get_positions = staticmethod(get_positions_raw)
+ETradeService.get_account_summary = staticmethod(get_account_summary)
+
+# Module-level aliases (so dashboard.py can do et.get_account_summary)
+get_positions = get_positions_raw
+get_account_summary = get_account_summary
 
 __all__ = ["ETradeService", "RateLimitError"]

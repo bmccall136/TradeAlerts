@@ -718,9 +718,8 @@ h2 {
     text-overflow: ellipsis; /* Adds ellipsis if too long */
 }
 /* Center the hero blurb under the header */
-#intro-blurb {
+.hero-blurb {
   max-width: 980px;
-  margin: 8px auto 22px;   /* auto centers; small top/bottom spacing */
-  padding: 0 12px;         /* keeps it off the edges on mobile */
-  text-align: center;
+  margin: 8px auto 22px;   /* auto centers in non-flex too */
+  padding: 0 12px;         /* a little breathing room on narrow screens */
 }
