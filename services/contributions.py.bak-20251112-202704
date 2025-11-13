@@ -1,0 +1,26 @@
+﻿import json, os, datetime as dt
+CONTRIB_PATH = os.environ.get("CONTRIB_PATH", r"C:\TradeAlerts\contributions.json")
+
+def _load():
+    try:
+        with open(CONTRIB_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict) and isinstance(data.get("entries"), list):
+                return data
+    except Exception:
+        pass
+    return {"entries": []}
+
+def get_total_contributions(since_iso="2025-08-22"):
+    data = _load()
+    total = 0.0
+    cutoff = dt.datetime.fromisoformat(since_iso)
+    for e in data.get("entries", []):
+        # e = {"date":"YYYY-MM-DD","amount":2000.00,"note":"initial add"}
+        try:
+            d = dt.datetime.fromisoformat(str(e.get("date","")).strip())
+            if d >= cutoff:
+                total += float(e.get("amount", 0))
+        except Exception:
+            pass
+    return round(total, 2)

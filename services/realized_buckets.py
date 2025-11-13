@@ -1,4 +1,4 @@
-# --- drop-in replacement ---
+﻿# --- drop-in replacement ---
 import os
 import sqlite3
 from datetime import datetime, timedelta
@@ -90,3 +90,4 @@ def realized_buckets_from_live_db(db_path: str,
         "all":       _fmt(tall, start_cash),
     }
 # --- end drop-in ---
+

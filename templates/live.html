@@ -1,4 +1,4 @@
-{% extends "layout.html" %}
+﻿{% extends "layout.html" %}
 {% block content %}
 <style>
   .kpi-card { padding: 18px 20px; }
@@ -60,15 +60,18 @@
       <div class="kv"></div>
     </div>
 
-    <!-- Center: hero blurb (values filled by JS) -->
-    <div class="hero-blurb mx-auto text-center">
-      <div class="since">
-        Started with <b id="about-start-cash">$0.00</b> on <b id="about-start-date">—</b>.
-        This app has since made <b id="about-since-pnl">$0.00</b> at
-        <b id="about-since-pct">0.00%</b>.
-      </div>
-      <div class="by">Built by <b>Ben McCall &amp; Max</b></div>
-    </div>
+<div class="hero-blurb mx-auto text-center">
+  <div class="since">
+    Started with <b id="about-start-cash">$0.00</b> on
+    <b id="about-start-date">—</b>.
+    Since then we’ve added
+    <b id="about-net-contrib">$0.00</b> and earned
+    <b id="about-since-pnl">$0.00</b> at
+    <b id="about-since-pct">0.00%</b>
+    after contributions.
+  </div>
+  <div class="by">Built by <b>Ben McCall &amp; Max</b></div>
+</div>
 
 	<!-- Right: account + E*TRADE API status -->
 	<div class="d-flex flex-column align-items-end" style="gap:6px; min-width: 220px;">
@@ -92,13 +95,13 @@
 	  </div>
 
 	  <div class="small text-muted" style="white-space:nowrap;">
-		Acct: <span id="acct-badge">—</span>
+		Acct: <span id="acct-badge">â€”</span>
 	  </div>
 
 	  <div class="status-block" style="background:#000;color:#ffd600;padding:8px;border-radius:6px;">
 		<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
 		  <div>E*TRADE API</div>
-		  <div id="etrade-dot" class="dot dot-red">●</div>
+		  <div id="etrade-dot" class="dot dot-red">â—</div>
 		</div>
 	  </div>
 	</div>
@@ -227,8 +230,7 @@
   const POS  = '#2ecc71';
   const NEG  = '#ff6b6b';
   const ZERO = '#b8b8b8';
-
-  const START_CASH = 367.76;
+  // START_CASH removed; read from backend /live/status.about.start_cash
   const START_DATE = '2025-08-22';
 
   const num = x => {
@@ -404,11 +406,12 @@
   };
 
   const updateKPIs = d => {
-    const account = d.account || {};
-    const value   = d.value || {};
-    const metrics = d.metrics || {};
+    const account  = d.account  || {};
+    const value    = d.value    || {};
+    const metrics  = d.metrics  || {};
     const realized = metrics.realized_buckets || d.realized || {};
     const holdings = d.holdings || [];
+    const about    = d.about    || {};
 
     // --- NAV: trust backend; fallbacks in priority order ---
     const nav = num(
@@ -450,23 +453,18 @@
     set('#kpi-bp',     money(bp));    // Buying Power
     set('#kpi-posval', money(pv));    // Positions Value
 
-    // --- Unrealized P&L (use backend if present, else compute from holdings) ---
-    let uAmt = num(metrics.unrealized_pnl);
-    let uPct = num(metrics.unrealized_pnl_pct);
+    // --- Day P&L (unrealized) for center tile ---
+    let dAmt = num(metrics.day_unrealized_pnl);
+    let dPct = num(metrics.day_unrealized_pnl_pct);
 
-    if (!Number.isFinite(uAmt) || !Number.isFinite(uPct)) {
-      let cost = 0;
-      for (const h of holdings) {
-        cost += num(h.price_paid) * num(h.qty);
-      }
-      uAmt = Number.isFinite(pv) && Number.isFinite(cost) ? (pv - cost) : 0;
-      uPct = cost > 0 ? (uAmt / cost) * 100 : 0;
-    }
+    // Fallback to plain unrealized only if day fields missing
+    if (!Number.isFinite(dAmt)) dAmt = num(metrics.unrealized_pnl);
+    if (!Number.isFinite(dPct)) dPct = num(metrics.unrealized_pnl_pct);
 
-    set('#kpi-pnl',     money(uAmt));
-    set('#kpi-pnl-pct', pct(uPct));
-    setColor(document.querySelector('#kpi-pnl'), uAmt);
-    setColor(document.querySelector('#kpi-pnl-pct'), uPct);
+    set('#kpi-pnl',     money(dAmt));
+    set('#kpi-pnl-pct', pct(dPct));
+    setColor(document.querySelector('#kpi-pnl'), dAmt);
+    setColor(document.querySelector('#kpi-pnl-pct'), dPct);
 
     // --- Realized buckets ---
     const map = [
@@ -485,28 +483,20 @@
       setColor(document.querySelector(pctSel), row.pct);
     }
 
-	// --- Hero blurb "Since Start" (NAV-based total gain) ---
-	let navGain = num(metrics.total_gain_nav);
-	let navGainPct = num(metrics.total_gain_nav_pct);
+    // --- Hero blurb "Since Start" (NAV-based, contribution-aware) ---
+    const startCash   = num(about.start_cash);
+    const startDate   = about.start_date || START_DATE;
+    const netContrib  = num(about.net_contrib);
+    const sincePnl    = num(about.since_pnl ?? metrics.total_gain_nav);
+    const sincePct    = num(about.since_pct ?? metrics.total_gain_nav_pct);
 
-	// Fallback if backend missing
-	if (!Number.isFinite(navGain) || !Number.isFinite(navGainPct)) {
-	  if (Number.isFinite(nav) && START_CASH > 0) {
-		navGain = nav - START_CASH;
-		navGainPct = (navGain / START_CASH) * 100;
-	  } else {
-		navGain = 0;
-		navGainPct = 0;
-	  }
-	}
-
-	set('#about-start-cash', money(START_CASH));
-	set('#about-start-date', START_DATE);
-	set('#about-since-pnl',  money(navGain));
-	set('#about-since-pct',  pct(navGainPct));
-	setColor(document.querySelector('#about-since-pnl'), navGain);
-	setColor(document.querySelector('#about-since-pct'), navGainPct);
-
+    set('#about-start-cash',  money(startCash));
+    set('#about-start-date',  startDate);
+    set('#about-net-contrib', money(netContrib));
+    set('#about-since-pnl',   money(sincePnl));
+    set('#about-since-pct',   pct(sincePct));
+    setColor(document.querySelector('#about-since-pnl'), sincePnl);
+    setColor(document.querySelector('#about-since-pct'), sincePct);
 
     // --- Account badge ---
     const { show } = preferNumericAccountId(account);
@@ -540,3 +530,4 @@
 })();
 </script>
 {% endblock %}
+

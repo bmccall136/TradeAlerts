@@ -32,8 +32,7 @@ from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Tuple
 from services import etrade_service as et
 from services.trade_source import load_trades_merged
-from flask import Flask, render_template, jsonify, request, redirect, url_forfrom services.contributions import get_total_contributions
-
+from flask import Flask, render_template, jsonify, request, redirect, url_for
 
 import logging, os
 from datetime import datetime
@@ -820,73 +819,18 @@ def live_status():
         max_count=max_count,
     ) or []
 
-    # ---------- 7. ABOUT / SINCE STATS (NAV + contributions) ----------
-    raw = (acct_summary_raw or {}).get("raw", {}) if isinstance(acct_summary_raw, dict) else {}
-    comp = raw.get("Computed", {}) if isinstance(raw, dict) else {}
-
-    # Cash pieces from E*TRADE "Computed" block
-    cash_balance   = _safe_float(comp.get("cashBalance", 0.0))
-    unsettled_cash = _safe_float(comp.get("unSettledCashForInvestment", 0.0))
-
-    # Rebuild NAV to match the web UI:
-    #   NAV ≈ cashBalance + positions_value
-    nav = round(cash_balance + positions_value, 2)
-
-    # Baseline + contributions
+    # ---------- 7. SINCE-START BLURB (NAV-BASED) ----------
     START_CASH = START_CASH_BASELINE
     START_DATE = START_DATE_BASELINE
 
-    try:
-        net_contrib = float(get_total_contributions(START_DATE))
-    except Exception:
-        net_contrib = 0.0
-
-    # “Since start” P&L = NAV - baseline - contributions
-    since_pnl = round(nav - START_CASH - net_contrib, 2)
-    denom = START_CASH + net_contrib
-    since_pct = round((since_pnl / denom) * 100.0, 2) if denom > 0 else 0.0
+    since_pnl = nav - START_CASH
+    since_pct = (since_pnl / START_CASH * 100.0) if START_CASH > 0 else 0.0
 
     about = {
         "start_cash": START_CASH,
         "start_date": START_DATE,
-        "net_contrib": round(net_contrib, 2),
-        "since_pnl": since_pnl,
-        "since_pct": since_pct,
-    }
-
-    # --------------------------------------------------
-    # 8) ABOUT / SINCE START (NAV, contribution-aware)
-    # --------------------------------------------------
-    START_CASH = START_CASH_BASELINE
-    START_DATE = START_DATE_BASELINE
-
-    try:
-        net_contrib = float(get_total_contributions(START_DATE))
-    except Exception:
-        net_contrib = 0.0
-
-    # True gain = NAV − start_cash − contributions
-    total_gain = round(nav - START_CASH - net_contrib, 2)
-
-    # Percent is gain divided by (start_cash + contributions)
-    denom = START_CASH + net_contrib
-    total_gain_pct = round((total_gain / denom * 100.0), 2) if denom > 0 else 0.0
-
-    about = {
-        "start_cash": START_CASH,
-        "start_date": START_DATE,
-        "net_contrib": round(net_contrib, 2),
-        "since_pnl": total_gain,
-        "since_pct": total_gain_pct,
-    }
-
-    # Build a simple VALUE object for the UI / compatibility
-    value_obj = {
-        "net_account_value": nav,
-        "positions_value": positions_value,
-        "buying_power": buying_power,
-        # alias; historically the UI also checked this
-        "value": nav,
+        "since_pnl": round(since_pnl, 2),
+        "since_pct": round(since_pct, 2),
     }
 
     # ---------- 8. METRICS / VALUE FOR TILES ----------
@@ -907,9 +851,16 @@ def live_status():
         # Right tile
         "realized_buckets": realized_obj,
 
-        # Blurb (nav-based, after contributions)
-        "total_gain_nav": total_gain,
-        "total_gain_nav_pct": total_gain_pct,
+        # Blurb
+        "total_gain_nav": round(since_pnl, 2),
+        "total_gain_nav_pct": round(since_pct, 2),
+    }
+
+    value_obj = {
+        "net_account_value": nav,
+        "buying_power": buying_power,
+        "positions_value": positions_value,
+        "value": nav,
     }
 
     # ---------- 9. AUTH / STATUS ----------
@@ -942,7 +893,6 @@ def live_status():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
-
 
 
 
