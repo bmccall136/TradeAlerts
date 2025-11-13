@@ -1,0 +1,63 @@
+﻿import json
+import os
+import datetime as dt
+
+# Default path for your contributions file
+CONTRIB_PATH = os.environ.get("CONTRIB_PATH", r"C:\TradeAlerts\contributions.json")
+
+
+def _load():
+    """
+    Load contributions.json.
+
+    Expected format:
+    {
+        "entries": [
+            {"date": "2025-11-11", "amount": 2000.00, "note": "Deposit"},
+            ...
+        ]
+    }
+    """
+    try:
+        if not os.path.exists(CONTRIB_PATH):
+            return {"entries": []}
+
+        with open(CONTRIB_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        if isinstance(data, dict) and isinstance(data.get("entries"), list):
+            return data
+        return {"entries": []}
+    except Exception:
+        # On any parse error, just act like there are no contributions
+        return {"entries": []}
+
+
+def get_total_contributions(since_iso: str = "2025-08-22") -> float:
+    """
+    Sum all contributions with date >= since_iso (YYYY-MM-DD).
+    """
+    data = _load()
+    total = 0.0
+
+    try:
+        cutoff = dt.datetime.fromisoformat(str(since_iso).strip())
+    except Exception:
+        # If the cutoff is bad, just treat as far past so nothing counts
+        return 0.0
+
+    for e in data.get("entries", []):
+        try:
+            date_str = str(e.get("date", "")).strip()
+            amt = float(e.get("amount", 0) or 0.0)
+            if not date_str:
+                continue
+
+            d = dt.datetime.fromisoformat(date_str)
+            if d >= cutoff:
+                total += amt
+        except Exception:
+            # Ignore bad rows
+            continue
+
+    return round(total, 2)

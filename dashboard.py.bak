@@ -1,6 +1,6 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
-TradeAlerts – LIVE Dashboard
+TradeAlerts â€“ LIVE Dashboard
 
 - VALUE = Buying Power + Positions Value
 - Holdings & account info from services.etrade_service
@@ -8,7 +8,7 @@ TradeAlerts – LIVE Dashboard
 - All % = cumulative_gain / LIVE_APP_STARTING_EQUITY
 - Day/Week/LW/Month % = gain / total_cost
 - Exclude GEVO
-- ET timezone; weeks are Mon–Fri
+- ET timezone; weeks are Monâ€“Fri
 - "All" window since 2025-08-22
 
 This file exposes:
@@ -32,7 +32,9 @@ from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Tuple
 from services import etrade_service as et
 from services.trade_source import load_trades_merged
-from flask import Flask, render_template, jsonify, request, redirect, url_for
+from flask import Flask, render_template, jsonify, request, redirect, url_forfrom services.contributions import get_total_contributions
+
+
 import logging, os
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -42,13 +44,14 @@ from services import live_guardrails as gr
 try:
     from services import live_guardrails as gr
 except ImportError:
-    gr = None  # if not available, we'll just show "—"
+    gr = None  # if not available, we'll just show "â€”"
 
 ETZ = ZoneInfo("America/New_York")
 
 log = logging.getLogger(__name__)
 
-from flask import (
+from flask import (
+
     Flask,
     jsonify,
     render_template,
@@ -82,7 +85,7 @@ ET = ZoneInfo("America/New_York")
 LIVE_DB = os.environ.get("LIVE_DB", r"C:\TradeAlerts\live.db")
 
 ALL_START_DATE = date(2025, 8, 22)
-LIVE_APP_STARTING_EQUITY = 367.76  # your original starting amount
+LIVE_APP_STARTING_EQUITY =  392.67  # your original starting amount
 IGNORED_TICKERS = {"GEVO"}
 
 # --- DB paths ---
@@ -92,7 +95,7 @@ LIVE_DB = os.environ.get("LIVE_DB", os.path.join(ROOT, "live.db"))
 
 # --- Live tracking config ---
 PROJECT_START_DATE = date(2025, 8, 22)
-LIVE_APP_STARTING_EQUITY = 367.76
+LIVE_APP_STARTING_EQUITY =  392.67
 START_CASH = LIVE_APP_STARTING_EQUITY  # used for "All" realized %
 
 IGNORED_TICKERS = {"GEVO"}
@@ -106,6 +109,10 @@ CHECKPOINT_BAT = r"C:\TradeAlerts\checkpoint.bat"  # adjust if needed
 # -----------------------------------------------------------------------------#
 # Flask app + logging
 # -----------------------------------------------------------------------------#
+
+# --- Live baseline config (Money Machine) ---
+START_CASH_BASELINE  = 392.67   # 8/22/2025 confirmed baseline NAV start
+START_DATE_BASELINE  = "2025-08-22"
 
 app = Flask(__name__)
 
@@ -303,7 +310,7 @@ def realized_buckets_from_live_db(db_path: str) -> Dict[str, Dict[str, float]]:
       - Day/Week/LW/Month pct = gain / total_cost * 100
       - All pct = cumulative_gain / LIVE_APP_STARTING_EQUITY * 100
       - Exclude GEVO
-      - ET timezone; week is Mon–Fri; All since ALL_START_DATE
+      - ET timezone; week is Monâ€“Fri; All since ALL_START_DATE
     """
     now = datetime.now(ET)
 
@@ -363,128 +370,162 @@ def realized_buckets_from_live_db(db_path: str) -> Dict[str, Dict[str, float]]:
 
     return out
 
-def _normalize_positions_payload(raw):
+def _normalize_positions_payload(raw: dict) -> list[dict]:
     """
-    Normalize raw E*TRADE positions JSON into:
-      symbol, qty, price_paid, last_price, day_pl, day_pl_pct, prior_close
+    Normalize E*TRADE positions into a simple list:
+
+    [
+      {
+        "symbol": "DOW",
+        "qty": 1,
+        "price_paid": 22.15,
+        "last_price": 22.31,
+        "day_pl": 0.21,
+        "day_pl_pct": 0.95,
+        "prior_close": 22.10,
+      },
+      ...
+    ]
     """
-    rows = []
+    rows: list[dict] = []
     if not raw:
         return rows
 
-    # If already normalized list of dicts, just coerce types
-    if isinstance(raw, list) and raw and isinstance(raw[0], dict) and "symbol" in raw[0]:
-        for r in raw:
+    pr = (raw.get("PortfolioResponse") or {}).get("AccountPortfolio") or []
+    if isinstance(pr, dict):
+        pr = [pr]
+
+    for acct in pr:
+        poss = acct.get("Position") or []
+        if isinstance(poss, dict):
+            poss = [poss]
+
+        for pos in poss:
+            prod = pos.get("Product") or {}
+            sym = (prod.get("symbol")
+                   or (prod.get("productId") or {}).get("symbol")
+                   or pos.get("symbol")
+                   or "").strip().upper()
+            if not sym:
+                continue
+
+            qty = _safe_float(
+                pos.get("quantity")
+                or pos.get("longQuantity")
+                or pos.get("positionQty")
+                or 0.0
+            )
+            if qty <= 0:
+                continue
+
+            q = pos.get("Quick") or {}
+            allf = pos.get("All") or {}
+
+            price_paid = _safe_float(
+                pos.get("pricePaid")
+                or pos.get("averagePrice")
+                or pos.get("costPerShare")
+                or 0.0
+            )
+
+            last_price = _safe_float(
+                q.get("lastTrade")
+                or allf.get("lastTrade")
+                or pos.get("lastTrade")
+                or pos.get("marketValue") and (pos.get("marketValue") / max(qty, 1))
+                or 0.0
+            )
+
+            # ---- Day P&L from E*TRADE ----
+            # E*TRADE gives:
+            #   daysGain     -> dollar P&L for the position (already * qty)
+            #   daysGainPct  -> percent move for the position
+            day_pl = _safe_float(
+                pos.get("daysGain")
+                or q.get("todayGainLoss")
+                or q.get("todayGainLossBase")
+                or 0.0
+            )
+
+            day_pl_pct = _safe_float(
+                pos.get("daysGainPct")
+                or q.get("todayGainLossPct")
+                or 0.0
+            )
+
+            # Prior close / ref for fallback calc if needed later
+            prior_close = _safe_float(
+                pos.get("adjPrevClose")
+                or q.get("priorClose")
+                or q.get("closePrice")
+                or allf.get("closePrice")
+                or 0.0
+            )
+
             rows.append(
                 {
-                    "symbol": str(r.get("symbol", "")).upper(),
-                    "qty": float(r.get("qty", 0) or 0),
-                    "price_paid": float(r.get("price_paid", 0) or 0),
-                    "last_price": float(r.get("last_price", 0) or 0),
-                    "day_pl": float(r.get("day_pl", 0) or 0),
-                    "day_pl_pct": float(r.get("day_pl_pct", 0) or 0),
-                    "prior_close": float(r.get("prior_close", 0) or 0),
+                    "symbol": sym,
+                    "qty": qty,
+                    "price_paid": price_paid,
+                    "last_price": last_price,
+                    "day_pl": day_pl,
+                    "day_pl_pct": day_pl_pct,
+                    "prior_close": prior_close,
                 }
             )
-        return rows
-
-    # Raw E*TRADE PortfolioResponse
-    try:
-        pr = raw.get("PortfolioResponse", {}).get("AccountPortfolio", [])
-        if isinstance(pr, dict):
-            pr = [pr]
-
-        for acct in pr:
-            for pos in acct.get("Position", []):
-                prod = pos.get("Product") or {}
-                sym = (prod.get("symbol") or pos.get("symbol") or "").strip().upper()
-                if not sym:
-                    continue
-
-                qty = float(
-                    pos.get("quantity")
-                    or pos.get("longQuantity")
-                    or pos.get("positionQty")
-                    or 0
-                )
-
-                q = pos.get("Quick") or {}
-                allf = pos.get("All") or {}
-
-                price_paid = float(
-                    pos.get("pricePaid")
-                    or pos.get("averagePrice")
-                    or pos.get("costPerShare")
-                    or 0
-                )
-
-                last_price = float(
-                    q.get("lastTrade")
-                    or allf.get("lastTrade")
-                    or pos.get("lastTrade")
-                    or 0
-                )
-
-                day_pl = float(
-                    q.get("todayGainLoss")
-                    or q.get("todayGainLossBase")
-                    or 0
-                )
-                day_pl_pct = float(q.get("todayGainLossPct") or 0)
-
-                prior_close = float(
-                    q.get("priorClose")
-                    or q.get("closePrice")
-                    or allf.get("closePrice")
-                    or 0
-                )
-
-                rows.append(
-                    {
-                        "symbol": sym,
-                        "qty": qty,
-                        "price_paid": price_paid,
-                        "last_price": last_price,
-                        "day_pl": day_pl,
-                        "day_pl_pct": day_pl_pct,
-                        "prior_close": prior_close,
-                    }
-                )
-
-    except Exception as e:
-        print("normalize positions failed:", e)
 
     return rows
 
 def _build_holdings_from_positions(
-    pos_rows: List[Dict[str, Any]]
-) -> Tuple[List[Dict[str, Any]], float]:
+    pos_rows: list[dict],
+) -> tuple[list[dict], float]:
     """
     From normalized positions rows, compute holdings rows with:
       symbol, opened_et, qty, price_paid, last_price, value,
       day_pl, day_pl_pct, total_pl, total_pl_pct.
-
-    Returns (holdings, positions_value).
     """
-    holdings: List[Dict[str, Any]] = []
+    from services import live_guardrails as gr
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    ETZ = ZoneInfo("America/New_York")
+
+    # map of symbol -> opened_at from guardrails
+    opened_map: dict[str, datetime] = {}
+    try:
+        for e in gr.list_open_entries():
+            sym = (e.get("symbol") or "").upper()
+            ts = e.get("opened_at")
+            if not sym or not ts:
+                continue
+            try:
+                dt = datetime.fromisoformat(ts)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=ETZ)
+                else:
+                    dt = dt.astimezone(ETZ)
+                opened_map[sym] = dt
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    holdings: list[dict] = []
     positions_value = 0.0
 
-    opened_map = get_opened_at_map()
-
     for r in pos_rows:
-        sym = str(r.get("symbol", "")).upper()
-        if not sym or sym in IGNORED_TICKERS:
+        sym = (r.get("symbol") or "").upper()
+        if not sym:
             continue
 
         qty = _safe_float(r.get("qty"), 0.0)
-        if qty <= 0:
-            continue
-
         paid = _safe_float(r.get("price_paid"), 0.0)
         last = _safe_float(r.get("last_price"), 0.0)
+        if qty <= 0 or last <= 0:
+            continue
 
         opened_dt = opened_map.get(sym)
-        opened_str = opened_dt.strftime("%Y-%m-%d %H:%M") if opened_dt else "—"
+        opened_str = opened_dt.strftime("%Y-%m-%d %H:%M") if opened_dt else "â€”"
 
         value = round(qty * last, 2)
         positions_value += value
@@ -493,16 +534,8 @@ def _build_holdings_from_positions(
         total_pl = round(value - cost, 2) if cost > 0 else 0.0
         total_pl_pct = round((total_pl / cost) * 100.0, 2) if cost > 0 else 0.0
 
-        # Day P&L: prefer E*TRADE Quick fields; fall back to prior_close math
         day_pl = _safe_float(r.get("day_pl"), 0.0)
         day_pl_pct = _safe_float(r.get("day_pl_pct"), 0.0)
-
-        if day_pl == 0.0 and day_pl_pct == 0.0:
-            prior_close = _safe_float(r.get("prior_close"), 0.0)
-            if prior_close > 0 and last > 0:
-                # compute per-position day P&L
-                day_pl = round((last - prior_close) * qty, 2)
-                day_pl_pct = round(((last - prior_close) / prior_close) * 100.0, 2)
 
         holdings.append(
             {
@@ -512,16 +545,14 @@ def _build_holdings_from_positions(
                 "price_paid": round(paid, 4),
                 "last_price": round(last, 4),
                 "value": value,
-                "day_pl": day_pl,
-                "day_pl_pct": day_pl_pct,
+                "day_pl": round(day_pl, 2),
+                "day_pl_pct": round(day_pl_pct, 2),
                 "total_pl": total_pl,
                 "total_pl_pct": total_pl_pct,
             }
         )
 
     return holdings, round(positions_value, 2)
-
-
 
 # -----------------------------------------------------------------------------#
 
@@ -659,53 +690,58 @@ def live_view():
 @always_json
 def live_status():
     """
-    Returns the JSON the Live UI expects.
+    JSON feed for the Live UI.
 
     Query params:
       - start=YYYY-MM-DD  : earliest trade date (for table)
-      - days=N            : fallback lookback window
-      - debug=1           : include raw E*TRADE payloads
+      - days=N            : fallback lookback
+      - max=N             : max trades
+      - debug=1           : include raw payloads
     """
     from flask import request, current_app
     from services import etrade_service as et
     from services.trade_source import load_trades_merged
 
     debug = request.args.get("debug", "0") == "1"
-
-    # --------------------------------------------------
-    # 1) ACCOUNT SUMMARY (RAW FROM E*TRADE)
-    # --------------------------------------------------
-    acct_summary_raw = {}
-    etrade_ok = False
     debug_raw = {}
 
+    # ---------- 1. ACCOUNT SUMMARY (NAV + BUYING POWER) ----------
+    acct_summary_raw = {}
+    etrade_ok = False
     try:
-        # This is your canonical wrapper: do NOT pass debug kwarg.
+        # Your wrapper; adjust if it's called get_balances()
         acct_summary_raw = et.get_account_summary() or {}
         etrade_ok = True
     except Exception as e:
         current_app.logger.exception("account summary error: %s", e)
 
-    # Fall back so we can always index into something
     raw_ui = acct_summary_raw.get("raw") or acct_summary_raw or {}
+    if debug:
+        debug_raw["acct_summary_raw"] = acct_summary_raw
 
-    comp = (raw_ui.get("Computed") or {})
-    # Buying Power: tie directly to E*TRADE cashBuyingPower
-    cash_bp = _safe_float(
-        comp.get("cashBuyingPower",
-                 comp.get("cashAvailableForInvestment", 0.0))
+    comp = (raw_ui.get("Computed") or
+            raw_ui.get("Balance") or
+            raw_ui.get("BalanceDetail") or {})
+
+    # NAV: pull straight from E*TRADE if present
+    nav = _safe_float(
+        comp.get("netAccountValue")
+        or raw_ui.get("netAccountValue")
+        or comp.get("realTimeValue")
+        or raw_ui.get("accountBalance")
+        or 0.0
     )
 
-    # Cash balance candidates for NAV calc
-    cash_bal = _safe_float(
-        comp.get("cashBalance",
-                 comp.get("settledCashForInvestment",
-                          comp.get("netCash", 0.0)))
+    # Buying Power: cash available for investing
+    buying_power = _safe_float(
+        comp.get("cashAvailableForInvestment")
+        or comp.get("cashBuyingPower")
+        or raw_ui.get("cashAvailableForInvestment")
+        or raw_ui.get("cashBuyingPower")
+        or 0.0
     )
 
-    # --------------------------------------------------
-    # 2) POSITIONS -> HOLDINGS + POSITIONS VALUE
-    # --------------------------------------------------
+    # ---------- 2. POSITIONS -> HOLDINGS + POSITIONS VALUE ----------
     holdings = []
     positions_value = 0.0
 
@@ -713,6 +749,8 @@ def live_status():
         raw_positions = et.get_positions() or {}
         if debug:
             debug_raw["positions_raw"] = raw_positions
+
+        # MUST populate day_pl/day_pl_pct from Quick.todayGainLoss / todayGainLossPct
         pos_rows = _normalize_positions_payload(raw_positions)
         holdings, positions_value = _build_holdings_from_positions(pos_rows)
     except Exception as e:
@@ -720,130 +758,152 @@ def live_status():
 
     positions_value = _safe_float(positions_value)
 
-    # --------------------------------------------------
-    # 3) NAV: PULL / DERIVE FROM RAW E*TRADE
-    # --------------------------------------------------
-    # Prefer explicit values if E*TRADE gives them.
-    api_nav = 0.0
-    if "netAccountValue" in comp:
-        api_nav = _safe_float(comp.get("netAccountValue", 0.0))
-    elif "accountBalance" in comp:
-        api_nav = _safe_float(comp.get("accountBalance", 0.0))
+    # If NAV missing, approximate; otherwise trust E*TRADE.
+    if nav <= 0:
+        nav = positions_value + buying_power
 
-    # If those are zero/absent, derive:
-    # for a cash account NAV ≈ cash_balance + positions_value
-    if not api_nav:
-        api_nav = cash_bal + positions_value
+    nav = round(nav, 2)
+    buying_power = round(buying_power, 2)
+    positions_value = round(positions_value, 2)
 
-    nav = round(api_nav, 2)
-    bp = round(cash_bp, 2)
-    pv = round(positions_value, 2)
-
-    # --------------------------------------------------
-    # 4) NORMALIZED ACCOUNT OBJECT (WHAT UI READS)
-    # --------------------------------------------------
+    # ---------- 3. ACCOUNT OBJECT FOR UI ----------
     account = {
-        "account_id": acct_summary_raw.get("account_id")
-                      or raw_ui.get("accountId"),
-        "account_key": acct_summary_raw.get("account_key")
-                       or raw_ui.get("accountIdKey")
-                       or acct_summary_raw.get("account_key"),
-        "account_type": acct_summary_raw.get("account_type")
-                        or raw_ui.get("accountType"),
-        "account_type_display": acct_summary_raw.get("account_type_display")
-                                or raw_ui.get("accountMode"),
-        # Expose these two exactly how we want UI to use them:
-        "available_funds": bp,   # Buying power
-        "nav": nav,              # Net Account Value
+        "account_id": (
+            acct_summary_raw.get("account_id")
+            or raw_ui.get("accountId")
+        ),
+        "account_key": (
+            acct_summary_raw.get("account_key")
+            or raw_ui.get("accountIdKey")
+            or raw_ui.get("accountKey")
+        ),
+        "account_type": (
+            acct_summary_raw.get("account_type")
+            or raw_ui.get("accountType")
+        ),
+        "account_type_display": (
+            acct_summary_raw.get("account_type_display")
+            or raw_ui.get("accountMode")
+        ),
+        "nav": nav,
+        "available_funds": buying_power,
     }
 
-    if debug:
-        debug_raw["acct_summary_raw"] = acct_summary_raw
-
-    # --------------------------------------------------
-    # 5) UNREALIZED P&L (FROM HOLDINGS ONLY)
-    # --------------------------------------------------
+    # ---------- 4. UNREALIZED & DAY P&L (CENTER TILE + HOLDINGS) ----------
     total_cost = 0.0
+    day_unreal = 0.0
+
     for h in holdings:
         qty = _safe_float(h.get("qty"), 0.0)
         paid = _safe_float(h.get("price_paid"), 0.0)
         total_cost += qty * paid
+        day_unreal += _safe_float(h.get("day_pl"), 0.0)
 
-    unrealized_pnl = round(pv - total_cost, 2)
-    unrealized_pnl_pct = round(
-        (unrealized_pnl / total_cost * 100.0), 2
-    ) if total_cost > 0 else 0.0
+    unrealized_pnl = positions_value - total_cost if total_cost > 0 else 0.0
+    unrealized_pnl_pct = (unrealized_pnl / total_cost * 100.0) if total_cost > 0 else 0.0
 
-    # --------------------------------------------------
-    # 6) REALIZED BUCKETS (FROM live.db)
-    # --------------------------------------------------
-    realized_obj = realized_buckets_from_live_db(LIVE_DB)
+    # Day P&L straight from holdings (sum of todayGainLoss)
+    day_unrealized_pnl = day_unreal
+    day_unrealized_pnl_pct = (day_unrealized_pnl / nav * 100.0) if nav > 0 else 0.0
 
-    # --------------------------------------------------
-    # 7) TRADES TABLE
-    # --------------------------------------------------
-    start = request.args.get("start", "").strip()
+    # ---------- 5. REALIZED P&L BUCKETS (RIGHT TILE) ----------
+    realized_obj = realized_buckets_from_live_db(LIVE_DB) or {}
+
+    # ---------- 6. TRADES TABLE ----------
+    start = (request.args.get("start") or "").strip()
     days = request.args.get("days", type=int)
     max_count = request.args.get("max", default=5000, type=int)
 
     trades = load_trades_merged(
         days=days,
         start_iso=start,
-        max_count=max_count
+        max_count=max_count,
     ) or []
 
-    # --------------------------------------------------
-    # 8) ABOUT / SINCE STATS
-    # --------------------------------------------------
-    # Using your original starting equity
-    START_CASH = 367.76
-    START_DATE = "2025-08-22"
+    # ---------- 7. ABOUT / SINCE STATS (NAV + contributions) ----------
+    raw = (acct_summary_raw or {}).get("raw", {}) if isinstance(acct_summary_raw, dict) else {}
+    comp = raw.get("Computed", {}) if isinstance(raw, dict) else {}
 
-    all_bucket = realized_obj.get("all", {}) if isinstance(realized_obj, dict) else {}
-    since_pnl = _safe_float(all_bucket.get("pnl", 0.0))
-    since_pct = round(
-        (since_pnl / START_CASH * 100.0), 2
-    ) if START_CASH > 0 else 0.0
+    # Cash pieces from E*TRADE "Computed" block
+    cash_balance   = _safe_float(comp.get("cashBalance", 0.0))
+    unsettled_cash = _safe_float(comp.get("unSettledCashForInvestment", 0.0))
+
+    # Rebuild NAV to match the web UI:
+    #   NAV ≈ cashBalance + positions_value
+    nav = round(cash_balance + positions_value, 2)
+
+    # Baseline + contributions
+    START_CASH = START_CASH_BASELINE
+    START_DATE = START_DATE_BASELINE
+
+    try:
+        net_contrib = float(get_total_contributions(START_DATE))
+    except Exception:
+        net_contrib = 0.0
+
+    # “Since start” P&L = NAV - baseline - contributions
+    since_pnl = round(nav - START_CASH - net_contrib, 2)
+    denom = START_CASH + net_contrib
+    since_pct = round((since_pnl / denom) * 100.0, 2) if denom > 0 else 0.0
 
     about = {
         "start_cash": START_CASH,
         "start_date": START_DATE,
-        "since_pnl": round(since_pnl, 2),
+        "net_contrib": round(net_contrib, 2),
+        "since_pnl": since_pnl,
         "since_pct": since_pct,
     }
 
     # --------------------------------------------------
-    # 9) METRICS / VALUE CARD PAYLOAD
+    # 8) ABOUT / SINCE START (NAV, contribution-aware)
     # --------------------------------------------------
+    START_CASH = START_CASH_BASELINE
+    START_DATE = START_DATE_BASELINE
+
+    try:
+        net_contrib = float(get_total_contributions(START_DATE))
+    except Exception:
+        net_contrib = 0.0
+
+    # True gain = NAV − start_cash − contributions
+    total_gain = round(nav - START_CASH - net_contrib, 2)
+
+    # Percent is gain divided by (start_cash + contributions)
+    denom = START_CASH + net_contrib
+    total_gain_pct = round((total_gain / denom * 100.0), 2) if denom > 0 else 0.0
+
+    about = {
+        "start_cash": START_CASH,
+        "start_date": START_DATE,
+        "net_contrib": round(net_contrib, 2),
+        "since_pnl": total_gain,
+        "since_pct": total_gain_pct,
+    }
+
+    # ---------- 8. METRICS / VALUE FOR TILES ----------
     metrics = {
-        "buying_power": bp,
+        # Left tile
         "net_account_value": nav,
-        "positions_value": pv,
-        "unrealized_pnl": unrealized_pnl,
-        "unrealized_pnl_pct": unrealized_pnl_pct,
+        "buying_power": buying_power,
+        "positions_value": positions_value,
+
+        # Center tile (use these for Day P&L)
+        "day_unrealized_pnl": round(day_unrealized_pnl, 2),
+        "day_unrealized_pnl_pct": round(day_unrealized_pnl_pct, 2),
+
+        # Also expose plain unrealized if you want it elsewhere
+        "unrealized_pnl": round(unrealized_pnl, 2),
+        "unrealized_pnl_pct": round(unrealized_pnl_pct, 2),
+
+        # Right tile
         "realized_buckets": realized_obj,
+
+        # Blurb (nav-based, after contributions)
+        "total_gain_nav": total_gain,
+        "total_gain_nav_pct": total_gain_pct,
     }
 
-    value_obj = {
-        "buying_power": bp,
-        "positions_value": pv,
-        "net_account_value": nav,
-        # For the big left tile, treat NAV as "value"
-        "value": nav,
-    }
-
-    # --------------------------------------------------
-    # 10) TOTAL GAIN SINCE PROJECT START (BASED ON NAV)
-    # --------------------------------------------------
-    START_CASH = 367.76
-    START_DATE = "2025-08-22"
-
-    total_gain = round(nav - START_CASH, 2)
-    total_gain_pct = round((total_gain / START_CASH * 100.0), 2) if START_CASH > 0 else 0.0
-
-    metrics["total_gain_nav"] = total_gain
-    metrics["total_gain_nav_pct"] = total_gain_pct
-
+    # ---------- 9. AUTH / STATUS ----------
     needs_reconnect = bool(
         getattr(et, "need_oauth", False)
         or os.path.exists(str(NEED_AUTH_FLAG))
@@ -873,3 +933,8 @@ def live_status():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
+
+
+
+
+

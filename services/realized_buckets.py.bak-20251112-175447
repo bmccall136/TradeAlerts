@@ -22,7 +22,7 @@ def realized_buckets_from_live_db(db_path: str,
     since = since or os.environ.get("PROJECT_START", "2025-08-22")
     try:
         start_cash = float(start_cash if start_cash is not None
-                           else os.environ.get("START_CASH", "392.67"))
+                           else os.environ.get("START_CASH", "367.76"))
     except Exception:
         start_cash = 0.0
 

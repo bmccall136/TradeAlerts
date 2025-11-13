@@ -1,0 +1,105 @@
+# tools/nav_on_date.py
+# Reconstruct NAV on a given date from merged trades.
+# - Uses ET (America/New_York) midnight..23:59:59 as the cutoff window.
+# - Cash = sum(sells) - sum(buys) up to cutoff (ignores fees).
+# - Positions valued at last seen trade price for each symbol up to cutoff.
+# - By default, excludes GEVO sells from realized cash (toggle with --include-gevo).
+
+from __future__ import annotations
+
+import sys
+import math
+from dataclasses import dataclass, field
+from typing import Dict, List, Tuple, Optional
+
+# --- Timezone helpers ---------------------------------------------------------
+try:
+    from zoneinfo import ZoneInfo
+    ET = ZoneInfo("America/New_York")
+except Exception:
+    # crude fallback: fixed -5; good enough for replaying local timestamps already in ET strings
+    import datetime as _dt
+    ET = _dt.timezone(_dt.timedelta(hours=-5))
+
+import datetime as dt
+
+# --- Project imports (assumes PYTHONPATH=C:\TradeAlerts) -----------------------
+try:
+    from services.trade_source import load_trades_merged
+except Exception as e:
+    print(f"[FATAL] Could not import services.trade_source.load_trades_merged: {e}", file=sys.stderr)
+    sys.exit(2)
+
+# --- Data structures ----------------------------------------------------------
+@dataclass
+class Pos:
+    qty: float = 0.0
+    avg: float = 0.0
+    last: Optional[float] = None   # last seen trade price at/before cutoff (for valuation)
+
+    def buy(self, qty: float, price: float) -> None:
+        # standard moving average
+        total_cost = self.avg * self.qty + price * qty
+        self.qty = round(self.qty + qty, 8)
+        self.avg = (total_cost / self.qty) if self.qty else 0.0
+        self.last = price
+
+    def sell(self, qty: float, price: float) -> None:
+        self.qty = round(self.qty - qty, 8)
+        if self.qty < 1e-8:
+            self.qty = 0.0
+        self.last = price
+
+# --- Utilities ----------------------------------------------------------------
+def parse_date_ymd(s: str) -> dt.date:
+    return dt.datetime.strptime(s.strip(), "%Y-%m-%d").date()
+
+def cutoff_range_for_date(d: dt.date) -> Tuple[dt.datetime, dt.datetime]:
+    start = dt.datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=ET)
+    end   = dt.datetime(d.year, d.month, d.day, 23, 59, 59, 999000, tzinfo=ET)
+    return start, end
+
+def num(x, default=0.0) -> float:
+    try:
+        if x is None: return float(default)
+        if isinstance(x, (int, float)): return float(x)
+        if isinstance(x, str):
+            x = x.replace(",", "").replace("$", "").strip()
+            return float(x) if x else float(default)
+        return float(x)
+    except Exception:
+        return float(default)
+
+def pretty_money(x: float) -> str:
+    return f"${x:,.2f}"
+
+def pretty_pct(x: float) -> str:
+    return f"{x:,.2f}%"
+
+def et_ms_to_dt(ms: Optional[int]) -> Optional[dt.datetime]:
+    if ms is None:
+        return None
+    try:
+        return dt.datetime.fromtimestamp(ms / 1000.0, tz=ET)
+    except Exception:
+        return None
+
+def parse_trade_time(t: dict) -> Optional[dt.datetime]:
+    """
+    Trades in your merged feed have either:
+      - time_ms (epoch ms, ET)  -> preferred
+      - time (ET string 'YYYY-MM-DD HH:MM:SS') -> fallback
+    """
+    ms = t.get("time_ms")
+    if ms is not None:
+        return et_ms_to_dt(ms)
+    s = str(t.get("time") or "").strip()
+    if not s:
+        return None
+    # Try 'YYYY-MM-DD HH:MM:SS'
+    try:
+        return dt.datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=ET)
+    except Exception:
+        # Try ISO 'YYYY-MM-DDTHH:MM:SS'
+        try:
+            return dt.datetime.strptime(s.replace("T", " "), "%Y-%m-%d %H:%M:%S
