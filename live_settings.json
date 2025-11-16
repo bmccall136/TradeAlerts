@@ -48,7 +48,7 @@
   "max_pyramids": 0,
   "account_type": "cash",
 
-  "sell_after_days": 1,
+  "sell_after_days": 3,
 
   "broker_mode": "etrade",
   "mode": "live",
@@ -82,6 +82,5 @@
   "prefer_quotes": false,
   "market_gate_on": true,
   "realized_since": "2025-08-22",
-"realized_tz": "America/New_York"
-
+  "realized_tz": "America/New_York"
 }

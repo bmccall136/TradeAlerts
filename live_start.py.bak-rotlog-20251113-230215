@@ -6,22 +6,6 @@ import os
 import sys
 
 # -----------------------------------------------------------------------------
-# Emoji-safe console stream (Windows cp1252 console)
-# -----------------------------------------------------------------------------
-class SafeStdout:
-    def write(self, s):
-        try:
-            sys.stdout.write(s)
-        except UnicodeEncodeError:
-            # Fallback: strip characters the console can't render
-            safe = s.encode("ascii", "ignore").decode("ascii", errors="ignore")
-            sys.stdout.write(safe)
-
-    def flush(self):
-        sys.stdout.flush()
-
-
-# -----------------------------------------------------------------------------
 # Logging: console + rotating file (logs/live.log)
 # -----------------------------------------------------------------------------
 LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
@@ -34,18 +18,11 @@ root_logger.handlers.clear()
 
 _fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-# Console handler (emoji-safe)
-_console = logging.StreamHandler(SafeStdout())
+_console = logging.StreamHandler(sys.stdout)
 _console.setFormatter(_fmt)
 root_logger.addHandler(_console)
 
-# File handler (UTF-8, rotating)
-_file = RotatingFileHandler(
-    LOG_PATH,
-    maxBytes=5_000_000,
-    backupCount=5,
-    encoding="utf-8",
-)
+_file = RotatingFileHandler(LOG_PATH, maxBytes=5_000_000, backupCount=5)
 _file.setFormatter(_fmt)
 root_logger.addHandler(_file)
 
@@ -66,11 +43,7 @@ def load_json(path):
 
 def load_symbols(path):
     with open(path, encoding="utf-8") as f:
-        return [
-            ln.strip().split(",")[0].upper()
-            for ln in f
-            if ln.strip()
-        ]
+        return [ln.strip().split(",")[0].upper() for ln in f if ln.strip()]
 
 
 def _norm_mode(v):
@@ -81,7 +54,7 @@ def _norm_mode(v):
 def main():
     log.info("▶️  Live launcher starting…")
 
-    # Guardrails banner (these env flags can still be used if you want)
+    # Guardrails banner (optional env flags)
     log.info(
         "GUARDRAILS_ENABLED = %s",
         str(os.getenv("GUARDRAILS_ENABLED", "true")).lower(),
@@ -105,6 +78,7 @@ def main():
     log.info("🔧 Using live settings from %s", SETTINGS_PATH)
     log.info("▶️  Live loop starting (mode=%s)", mode)
 
+    # If you also pass settings as dict, run_live_loop will normalize it.
     run_live_loop(data, symbols, broker_mode=mode)
 
 

@@ -3,12 +3,12 @@
     {
       "date": "2025-11-11",
       "amount": 2000.00,
-      "note": "Deposit 1"
-    },
+      "note": "Deposit"
+    }
     {
       "date": "2025-11-13",
       "amount": 2000.00,
-      "note": "Deposit 2"
+      "note": "Deposit"
     }
   ]
 }
