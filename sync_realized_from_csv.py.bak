@@ -1,0 +1,306 @@
+#!/usr/bin/env python
+"""
+sync_realized_from_csv.py
+
+Import realized gains from the E*TRADE "Gains & Losses" CSV
+(GainsAndLossesDownload.csv) into live.db: realized_trades.
+
+Assumptions about the CSV (matching what you uploaded):
+
+- Top of file has summary sections ("Account Summary", "SEARCH CRITERIA", etc.).
+- The real trade data starts at the section:
+
+    TAXABLE G&L DETAILS
+
+  followed by a header row:
+
+    Symbol,Quantity,Date,Cost/Share $,Total Cost $,Date,Price/Share $,Proceeds $,Gain $,Deferred Loss $,Term,Lot Selection
+
+- Each symbol has a "summary" line like:
+
+    ZTS,1,--,--,122.63,--,--,121.4,-1.23,--,Short,--,
+
+  followed by one or more detail lines that start with "Sell", e.g.:
+
+        Sell,1,11/12/2025,122.63,122.63,11/12/2025,121.40,121.4,-1.23,.00,Short,FIFO,
+
+We:
+
+- Skip everything until "TAXABLE G&L DETAILS".
+- Use the *next non-empty row* as the header.
+- Keep track of the current symbol from the non-"Sell" rows.
+- For each "Sell" row, insert one realized_trades record.
+
+Filters:
+
+- Only rows with close_date >= BASELINE_DATE.
+- Exclude symbols in EXCLUDE_SYMBOLS (e.g., GEVO).
+"""
+
+import csv
+import os
+import sqlite3
+import sys
+import datetime as dt
+from typing import Dict, Iterator, List, Optional
+
+# === CONFIG ===
+CSV_PATH = r"C:\TradeAlerts\GainsAndLossesDownload.csv"
+LIVE_DB = r"C:\TradeAlerts\live.db"
+
+BASELINE_DATE = dt.date(2025, 8, 22)
+EXCLUDE_SYMBOLS = {"GEVO"}
+
+
+def _log(msg: str) -> None:
+    print(msg, flush=True)
+
+
+def coerce_float(s: str) -> float:
+    s = (s or "").strip()
+    if not s or s == "--":
+        return 0.0
+    s = s.replace(",", "")
+    # Handle parentheses as negatives: (1.23) => -1.23
+    if s.startswith("(") and s.endswith(")"):
+        s = "-" + s[1:-1]
+    # Handle ".12" or "-.34" forms
+    if s.startswith("."):
+        s = "0" + s
+    if s.startswith("-.") and len(s) > 2:
+        s = "-0" + s[2:]
+    try:
+        return float(s)
+    except ValueError:
+        _log(f"[WARN] Could not parse float from {s!r}; treating as 0.0")
+        return 0.0
+
+
+def parse_mmddyyyy(s: str) -> Optional[dt.date]:
+    s = (s or "").strip()
+    if not s or s == "--":
+        return None
+    try:
+        m, d, y = s.split("/")
+        return dt.date(int(y), int(m), int(d))
+    except Exception:
+        _log(f"[WARN] Could not parse date from {s!r}; skipping this row.")
+        return None
+
+
+def find_details_header(reader: Iterator[List[str]]) -> Optional[List[str]]:
+    """
+    Advance the reader until we hit the "TAXABLE G&L DETAILS" marker,
+    then return the next non-empty row as the header.
+    Leaves the iterator positioned at the first *data* row after header.
+    """
+    for row in reader:
+        if not row:
+            continue
+        first = (row[0] or "").strip()
+        if first == "TAXABLE G&L DETAILS":
+            # Next non-empty row is the header
+            for hdr in reader:
+                if hdr and any((c or "").strip() for c in hdr):
+                    return hdr
+            break
+    return None
+
+
+def iter_realized_from_csv(path: str) -> Iterator[Dict]:
+    """
+    Yield dicts representing realized trades from the CSV.
+    """
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+
+    with open(path, "r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.reader(f)
+
+        header = find_details_header(reader)
+        if not header:
+            _log("[ERROR] Could not find 'TAXABLE G&L DETAILS' header area.")
+            return
+
+        # Clean header cells
+        header = [(c or "").strip() for c in header]
+
+        def idx(col: str) -> int:
+            try:
+                return header.index(col)
+            except ValueError:
+                raise RuntimeError(f"Expected column {col!r} not found in header: {header!r}")
+
+        # Map indices based on the real header you showed:
+        # Symbol,Quantity,Date,Cost/Share $,Total Cost $,Date,Price/Share $,Proceeds $,Gain $,Deferred Loss $,Term,Lot Selection
+        symbol_idx = idx("Symbol")
+        qty_idx = idx("Quantity")
+        open_date_idx = header.index("Date")          # first "Date"
+        close_date_idx = header.index("Date", open_date_idx + 1)  # second "Date"
+        cost_share_idx = idx("Cost/Share $")
+        total_cost_idx = idx("Total Cost $")
+        price_share_idx = idx("Price/Share $")
+        proceeds_idx = idx("Proceeds $")
+        gain_idx = idx("Gain $")
+        term_idx = idx("Term")
+
+        _log("CSV header mapped as:")
+        _log(f"  Symbol       -> {symbol_idx}")
+        _log(f"  Quantity     -> {qty_idx}")
+        _log(f"  Open Date    -> {open_date_idx}")
+        _log(f"  Close Date   -> {close_date_idx}")
+        _log(f"  Cost/Share   -> {cost_share_idx}")
+        _log(f"  Total Cost   -> {total_cost_idx}")
+        _log(f"  Price/Share  -> {price_share_idx}")
+        _log(f"  Proceeds     -> {proceeds_idx}")
+        _log(f"  Gain         -> {gain_idx}")
+        _log(f"  Term         -> {term_idx}")
+
+        current_symbol: Optional[str] = None
+
+        for row in reader:
+            if not row or not any((c or "").strip() for c in row):
+                continue
+
+            # Pad row so we don't blow up on short lines
+            if len(row) < len(header):
+                row = list(row) + [""] * (len(header) - len(row))
+
+            first = (row[0] or "").strip()
+
+            # Summary symbol row (e.g. "ZTS,1,--,..."), not a "Sell" row.
+            if first and not first.upper().startswith("SELL"):
+                current_symbol = first
+                continue
+
+            # Only process SELL lines
+            if not first.upper().startswith("SELL"):
+                continue
+
+            if not current_symbol:
+                # Defensive: shouldn't happen, but don't crash.
+                _log(f"[WARN] SELL row with no current_symbol: {row!r}")
+                continue
+
+            symbol = current_symbol.strip().upper()
+            if symbol in EXCLUDE_SYMBOLS:
+                continue
+
+            qty = coerce_float(row[qty_idx])
+            open_date = parse_mmddyyyy(row[open_date_idx])
+            close_date = parse_mmddyyyy(row[close_date_idx])
+
+            # Must have a close date and be within our baseline
+            if not close_date or close_date < BASELINE_DATE:
+                continue
+
+            cost_share = coerce_float(row[cost_share_idx])
+            total_cost = coerce_float(row[total_cost_idx])
+            price_share = coerce_float(row[price_share_idx])
+            proceeds = coerce_float(row[proceeds_idx])
+            gain = coerce_float(row[gain_idx])
+            term = (row[term_idx] or "").strip()
+
+            yield {
+                "symbol": symbol,
+                "action": "SELL",
+                "qty": qty,
+                "open_date": open_date.isoformat() if open_date else None,
+                "close_date": close_date.isoformat(),
+                "price_share": price_share,
+                "proceeds": proceeds,
+                "cost_share": cost_share,
+                "total_cost": total_cost,
+                "gain": gain,
+                "term": term,
+            }
+
+
+def ensure_table(conn: sqlite3.Connection) -> None:
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS realized_trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT,
+            action TEXT,
+            qty REAL,
+            open_date TEXT,
+            close_date TEXT,
+            price_share REAL,
+            proceeds REAL,
+            cost_share REAL,
+            total_cost REAL,
+            gain REAL,
+            term TEXT
+        )
+        """
+    )
+    conn.commit()
+
+
+def main() -> None:
+    _log("=== Realized sync from CSV -> live.db ===")
+    _log(f"CSV: {CSV_PATH}")
+    _log(f"DB : {LIVE_DB}")
+    _log(f"Baseline date: {BASELINE_DATE.isoformat()}")
+    _log(f"Excluding symbols: {', '.join(sorted(EXCLUDE_SYMBOLS)) or '(none)'}")
+    _log("")
+
+    if not os.path.exists(CSV_PATH):
+        _log(f"[ERROR] CSV not found: {CSV_PATH}")
+        sys.exit(1)
+
+    conn = sqlite3.connect(LIVE_DB)
+    try:
+        ensure_table(conn)
+        cur = conn.cursor()
+
+        # Wipe existing realized trades so this is the source of truth
+        _log("[DB] Deleting existing realized_trades rows...")
+        cur.execute("DELETE FROM realized_trades")
+        conn.commit()
+
+        inserted = 0
+        total_gain = 0.0
+
+        for rec in iter_realized_from_csv(CSV_PATH):
+            cur.execute(
+                """
+                INSERT INTO realized_trades (
+                    symbol, action, qty,
+                    open_date, close_date,
+                    price_share, proceeds,
+                    cost_share, total_cost,
+                    gain, term
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    rec["symbol"],
+                    rec["action"],
+                    rec["qty"],
+                    rec["open_date"],
+                    rec["close_date"],
+                    rec["price_share"],
+                    rec["proceeds"],
+                    rec["cost_share"],
+                    rec["total_cost"],
+                    rec["gain"],
+                    rec["term"],
+                ),
+            )
+            inserted += 1
+            total_gain += rec["gain"]
+
+        conn.commit()
+        _log("")
+        _log(f"[OK] Inserted {inserted} realized trades (excluding {', '.join(EXCLUDE_SYMBOLS) or 'none'}).")
+        _log(f"[OK] Sum(gain) from CSV (loaded to DB): {total_gain:.2f}")
+        _log("Done.")
+    finally:
+        conn.close()
+
+
+if __name__ == "__main__":
+    main()

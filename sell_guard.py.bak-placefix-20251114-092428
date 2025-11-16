@@ -1,4 +1,4 @@
-﻿# sell_guard.py â€” LIVE sell guard with trail + timeout (Ben 2025-11-11)
+# sell_guard.py — LIVE sell guard with trail + timeout (Ben 2025-11-11)
 
 from __future__ import annotations
 
@@ -278,7 +278,7 @@ def _place_variants(prev, acct_key, sym, qty_override, price_type, limit_price):
             exc,
             _glimpse(prev),
         )
-        # Yield nothing â†’ caller sees no variants and will give up gracefully.
+        # Yield nothing → caller sees no variants and will give up gracefully.
         return
 
     if qty <= 0:
@@ -593,7 +593,7 @@ def compute_order_params(symbol: str, cfg: GuardSettings) -> Tuple[str, float | 
 
 def main() -> None:
     cfg_raw = load_settings()
-    LOG.info("sell_guard startingâ€¦")
+    LOG.info("sell_guard starting…")
     LOG.info("Settings: %s", j(cfg_raw))
 
     sg = cfg_raw["sell_guard"]
@@ -698,7 +698,7 @@ def main() -> None:
 
             opened = open_map.get(sym)
             if not opened and not force_without_entry:
-                # no opened_at â†’ let it sit; guardrails didn't track entry
+                # no opened_at → let it sit; guardrails didn't track entry
                 continue
 
             # P&L %
@@ -764,7 +764,7 @@ def main() -> None:
             if allow_intraday_stop and pl_pct <= -stop_pct:
                 pt, lim = compute_order_params(s, cfg)
                 LOG.info(
-                    "[STOP] %s %.2f%% â‰¤ -%.2f%% â†’ place %s%s",
+                    "[STOP] %s %.2f%% ≤ -%.2f%% → place %s%s",
                     s,
                     pl_pct,
                     stop_pct,
@@ -785,7 +785,7 @@ def main() -> None:
             if hold_min >= max_hold >= 0:
                 pt, lim = compute_order_params(s, cfg)
                 LOG.info(
-                    "[TIMEOUT] %s hold %.1f mins â‰¥ %.1f mins â†’ place %s%s",
+                    "[TIMEOUT] %s hold %.1f mins ≥ %.1f mins → place %s%s",
                     s,
                     hold_min,
                     max_hold,
@@ -813,7 +813,7 @@ def main() -> None:
                 TRAIL[s]["armed"] = 1
                 TRAIL[s]["trail_pct"] = max(0.5, trail_pct_cfg)
                 LOG.info(
-                    "[TRAIL_ARM] %s gain=%.2f%% â‰¥ %.2f%% â†’ armed trail=%.2f%% (hi=%.2f%%)",
+                    "[TRAIL_ARM] %s gain=%.2f%% ≥ %.2f%% → armed trail=%.2f%% (hi=%.2f%%)",
                     s,
                     cur,
                     arm_at,
@@ -827,7 +827,7 @@ def main() -> None:
                 if cur <= (hi - trail):
                     pt, lim = compute_order_params(s, cfg)
                     LOG.info(
-                        "[TRAIL_SELL] %s gain %.2f%% fell from hi %.2f%% by â‰¥ %.2f%% â†’ place %s%s",
+                        "[TRAIL_SELL] %s gain %.2f%% fell from hi %.2f%% by ≥ %.2f%% → place %s%s",
                         s,
                         cur,
                         hi,
@@ -869,7 +869,7 @@ def main() -> None:
             if cur >= target_pct:
                 pt, lim = compute_order_params(s, cfg)
                 LOG.info(
-                    "[TARGET] %s gain %.2f%% â‰¥ %.2f%% â†’ place %s%s",
+                    "[TARGET] %s gain %.2f%% ≥ %.2f%% → place %s%s",
                     s,
                     cur,
                     target_pct,
@@ -899,4 +899,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

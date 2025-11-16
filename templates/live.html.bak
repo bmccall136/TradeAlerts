@@ -65,10 +65,9 @@
     Started with <b id="about-start-cash">$0.00</b> on
     <b id="about-start-date">—</b>.
     Since then we’ve added
-    <b id="about-net-contrib">$0.00</b> and earned
+    <b id="about-net-contrib">$0.00</b> and our NAV P&amp;L is
     <b id="about-since-pnl">$0.00</b> at
-    <b id="about-since-pct">0.00%</b>
-    after contributions.
+    <b id="about-since-pct">0.00%</b>.
   </div>
   <div class="by">Built by <b>Ben McCall &amp; Max</b></div>
 </div>
@@ -101,7 +100,7 @@
 	  <div class="status-block" style="background:#000;color:#ffd600;padding:8px;border-radius:6px;">
 		<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
 		  <div>E*TRADE API</div>
-		  <div id="etrade-dot" class="dot dot-red">â—</div>
+		  <div id="etrade-dot" class="dot dot-red">&#9679;</div>
 		</div>
 	  </div>
 	</div>
@@ -230,10 +229,8 @@
   const POS  = '#2ecc71';
   const NEG  = '#ff6b6b';
   const ZERO = '#b8b8b8';
-
-  // Fallbacks only – real values come from /live/status.about
-  const START_FALLBACK_CASH = 392.67;
-  const START_FALLBACK_DATE = '2025-08-22';
+  // START_CASH removed; read from backend /live/status.about.start_cash
+  const START_DATE = '2025-08-22';
 
   const num = x => {
     if (x == null) return NaN;
@@ -326,16 +323,22 @@
     for (const h of rows) {
       const sym = (h.symbol || '').toUpperCase();
 
+      // Opened (ET) from backend; fallback to "—"
       const opened = h.opened_et || h.opened || '—';
+
       const qty  = Number(h.qty ?? 0);
       const last = Number(h.last_price ?? 0);
       const paid = Number(h.price_paid ?? 0);
 
+      // Prefer backend value; otherwise compute
       let value = (h.value != null) ? Number(h.value) : (qty * last);
       if (!Number.isFinite(value)) value = 0;
 
+      // Day P&L (intraday)
       const dpl  = Number(h.day_pl ?? 0);
       const dplp = Number(h.day_pl_pct ?? 0);
+
+      // Total P&L (since entry)
       const tpl  = Number(h.total_pl ?? 0);
       const tplp = Number(h.total_pl_pct ?? 0);
 
@@ -402,23 +405,22 @@
   };
 
   const updateKPIs = d => {
-    const account  = d.account || {};
-    const value    = d.value || {};
-    const metrics  = d.metrics || {};
+    const account  = d.account  || {};
+    const value    = d.value    || {};
+    const metrics  = d.metrics  || {};
     const realized = metrics.realized_buckets || d.realized || {};
     const holdings = d.holdings || [];
-    const about    = d.about || {};
+    const about    = d.about    || {};
 
-    // --- NAV / PV / BP ---
-
+    // --- NAV (no local math, no value.value) ---
+    // We trust the backend-only metrics, which already use the E*TRADE summary NAV.
     const nav = num(
       metrics.net_account_value ??
-      value.net_account_value ??
       account.nav ??
-      value.value ??
       0
     );
 
+    // --- Positions value ---
     let pv = num(
       metrics.positions_value ??
       value.positions_value ??
@@ -428,12 +430,14 @@
       pv = holdings.reduce((sum, h) => sum + num(h.value), 0);
     }
 
+    // --- Buying power ---
     let bp = num(
       metrics.buying_power ??
       account.cashBuyingPower ??
       account.available_funds ??
       0
     );
+    // If backend didn't set bp but nav/pv exist, try NAV - PV
     if (!Number.isFinite(bp) || bp === 0) {
       if (Number.isFinite(nav) && Number.isFinite(pv) && nav >= pv) {
         bp = nav - pv;
@@ -442,14 +446,16 @@
       }
     }
 
-    set('#kpi-cash',   money(nav));   // NAV
+    // VALUE tile numbers
+    set('#kpi-cash',   money(nav));   // Net Account Value (NAV)
     set('#kpi-bp',     money(bp));    // Buying Power
     set('#kpi-posval', money(pv));    // Positions Value
 
-    // --- Day P&L (unrealized) ---
+    // --- Day P&L (unrealized) for center tile ---
     let dAmt = num(metrics.day_unrealized_pnl);
     let dPct = num(metrics.day_unrealized_pnl_pct);
 
+    // Fallback to plain unrealized only if day fields missing
     if (!Number.isFinite(dAmt)) dAmt = num(metrics.unrealized_pnl);
     if (!Number.isFinite(dPct)) dPct = num(metrics.unrealized_pnl_pct);
 
@@ -475,31 +481,18 @@
       setColor(document.querySelector(pctSel), row.pct);
     }
 
-    // --- Hero "Since Start" (uses backend about{} with contributions) ---
-
-    const startCashRaw = num(about.start_cash);
-    const startCash = Number.isFinite(startCashRaw)
-      ? startCashRaw
-      : START_FALLBACK_CASH;
-
-    const startDate = about.start_date || START_FALLBACK_DATE;
-
-    const netContrib = num(about.net_contrib);
-    let sincePnl     = num(about.since_pnl);
-    let sincePct     = num(about.since_pct);
-
-    // Fallback to metrics if backend didn't fill about.since_*
-    if (!Number.isFinite(sincePnl) || !Number.isFinite(sincePct)) {
-      sincePnl = num(metrics.total_gain_nav);
-      sincePct = num(metrics.total_gain_nav_pct);
-    }
+    // --- Hero blurb "Since Start" (NAV-based, contribution-aware) ---
+    const startCash   = num(about.start_cash);
+    const startDate   = about.start_date || START_DATE;
+    const netContrib  = num(about.net_contrib);
+    const sincePnl    = num(about.since_pnl ?? metrics.total_gain_nav);
+    const sincePct    = num(about.since_pct ?? metrics.total_gain_nav_pct);
 
     set('#about-start-cash',  money(startCash));
     set('#about-start-date',  startDate);
     set('#about-net-contrib', money(netContrib));
     set('#about-since-pnl',   money(sincePnl));
     set('#about-since-pct',   pct(sincePct));
-
     setColor(document.querySelector('#about-since-pnl'), sincePnl);
     setColor(document.querySelector('#about-since-pct'), sincePct);
 
@@ -514,7 +507,7 @@
   };
 
   const refreshLive = async () => {
-    const start = localStorage.getItem('live_start') || START_FALLBACK_DATE;
+    const start = localStorage.getItem('live_start') || START_DATE;
     const qs = new URLSearchParams({ start, debug: '1' });
     const r = await fetch(`/live/status?${qs.toString()}`);
     const d = await r.json();

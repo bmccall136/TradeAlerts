@@ -75,7 +75,7 @@
   "take_profit_pct": 0.0,
   "stop_loss_pct": 0.0,
 
-  "max_per_trade": 100.0,
+  "max_per_trade": 150.0,
   "market_session": "REGULAR",
   "order_term": "GOOD_UNTIL_CANCEL",
 

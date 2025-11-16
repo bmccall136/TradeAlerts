@@ -1,6 +1,4 @@
-# sell_guard.py — LIVE sell guard with trail + timeout (Ben 2025-11-11)
-
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import logging
@@ -65,13 +63,6 @@ def now_et() -> datetime:
     if ETZ:
         return datetime.now(ETZ)
     return datetime.now(UTC)
-
-
-def rand_id(prefix: str, n: int = 6) -> str:
-    import random
-    import string
-
-    return f"{prefix}{''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(n))}"
 
 
 # --------------------------------------------------------------------------- #
@@ -148,6 +139,7 @@ def load_settings() -> Dict[str, Any]:
 
 
 def get_acct_key() -> str:
+    # Prefer the helper in etrade_service if present
     if hasattr(et, "get_account_id_key"):
         try:
             k = et.get_account_id_key()
@@ -155,12 +147,18 @@ def get_acct_key() -> str:
                 return str(k)
         except Exception:
             pass
+    # Fallback to attribute
     if hasattr(et, "account_id_key") and et.account_id_key:
         return str(et.account_id_key)
-    return "UNKNOWN"
+    # Last resort
+    try:
+        return str(et.account_id_key())
+    except Exception:
+        return "UNKNOWN"
 
 
 def preview(acct_key: str, sym: str, qty: int, price_type: str, limit_or_none: float | None):
+    """Thin wrapper around et.preview_equity_order using our sell-guard params."""
     return et.preview_equity_order(
         acct_key,
         sym,
@@ -173,169 +171,46 @@ def preview(acct_key: str, sym: str, qty: int, price_type: str, limit_or_none: f
     )
 
 
-def _mk_min_order(
-    symbol: str,
-    action: str,
-    qty: int,
-    qty_type: str,
-    price_type: str,
-    order_term: str,
-    limit_price: float | None,
-    market_session: str | None,
-) -> Dict[str, Any]:
-    o: Dict[str, Any] = {
-        "orderTerm": order_term,
-        "priceType": price_type,
-        "Instrument": [
-            {
-                "Product": {"securityType": "EQ", "symbol": symbol},
-                "orderAction": action,
-                "quantityType": qty_type,
-                "quantity": int(qty),
-            }
-        ],
-    }
-    if market_session:
-        o["marketSession"] = market_session
-    if price_type == "LIMIT" and limit_price is not None:
-        o["limitPrice"] = float(limit_price)
-    return o
+def best_bid(symbol: str) -> float:
+    try:
+        q = et.fetch_etrade_quote(symbol) or {}
+    except Exception:
+        q = et.get_quote(symbol) or {}
 
-
-def _extract_core(prev: dict, qty_override: int | None):
-    pr = (prev or {}).get("PreviewOrderResponse") or {}
-    acct_num = str(pr.get("accountId") or "").strip()
-    orders = pr.get("Order") or []
-    if not orders:
-        raise RuntimeError("preview missing Order[]")
-    o0 = orders[0]
-    i0 = (o0.get("Instrument") or [{}])[0]
-    sym = (i0.get("Product") or {}).get("symbol") or ""
-    qty = int(qty_override if qty_override is not None else i0.get("quantity") or 0)
-    price_type = o0.get("priceType") or "MARKET"
-    limit_price = o0.get("limitPrice")
-    order_term = o0.get("orderTerm") or "GOOD_FOR_DAY"
-    market_sess = o0.get("marketSession") or "REGULAR"
-    qty_type = i0.get("quantityType") or "QUANTITY"
-    pid = pr.get("previewId") or ((pr.get("PreviewIds") or [{}])[0].get("previewId"))
-    if not pid:
-        raise RuntimeError("previewId not found")
-    return (
-        acct_num,
-        sym,
-        "SELL",
-        qty,
-        qty_type,
-        price_type,
-        limit_price,
-        order_term,
-        market_sess,
-        int(pid),
-    )
-
-
-def _place_variants(prev: dict, qty_override=None, force_price_type=None, force_limit=None):
-    (
-        acct_num,
-        sym,
-        action,
-        qty,
-        qty_type,
-        price_type,
-        limit_price,
-        order_term,
-        market_sess,
-        pid,
-    ) = _extract_core(prev, qty_override)
-
-    if force_price_type:
-        price_type = force_price_type
-    if force_limit is not None:
-        limit_price = force_limit
-
-    coid = rand_id(prefix=f"{sym.upper()}")
-
-    base_no_sess = _mk_min_order(
-        sym, action, qty, qty_type, price_type, order_term, limit_price, None
-    )
-    base_with_sess = _mk_min_order(
-        sym, action, qty, qty_type, price_type, order_term, limit_price, market_sess
-    )
-
-    yield acct_num, {
-        "PlaceOrderRequest": {
-            "orderType": "EQ",
-            "clientOrderId": coid,
-            "PreviewIds": [{"previewId": pid}],
-            "Order": [dict(base_with_sess)],
-        }
-    }
-    yield acct_num, {
-        "PlaceOrderRequest": {
-            "orderType": "EQ",
-            "clientOrderId": coid,
-            "PreviewIds": [{"previewId": pid}],
-            "marketSession": market_sess,
-            "Order": [dict(base_no_sess)],
-        }
-    }
-
-
-def _epost(path: str, body: dict):
-    return et._epost(path, body)
-
-
-def place_with_adaptive_variants(
-    acct_key: str,
-    sym: str,
-    qty: int,
-    price_type: str,
-    limit_or_none: float | None,
-    max_outer: int,
-) -> bool:
-    for outer in range(1, max_outer + 1):
-        prev = preview(acct_key, sym, qty, price_type, limit_or_none)
-        numeric_path = None
-
-        for acct_num, body in _place_variants(
-            prev, qty_override=qty, force_price_type=price_type, force_limit=limit_or_none
+    if isinstance(q, dict):
+        for src in (
+            q,
+            q.get("All") or {},
+            (q.get("QuoteResponse") or {}).get("QuoteData") or {},
         ):
-            key_path = f"/accounts/{acct_key}/orders/place.json"
-            if acct_num:
-                numeric_path = f"/accounts/{acct_num}/orders/place.json"
-
-            try:
-                _epost(key_path, body)
-                LOG.info("%s SELL placed (%s)", sym, price_type)
-                return True
-            except Exception as e:
-                msg = str(e)
-                if (
-                    " 500:" in msg
-                    or '"code": 100' in msg
-                    or "'code': 100" in msg
-                ):
-                    LOG.warning(
-                        "Transient venue error; refreshing preview (outer=%d)", outer
-                    )
-                    break
-
-                if numeric_path:
-                    try:
-                        _epost(numeric_path, body)
-                        LOG.info("%s SELL placed (%s) via numeric path", sym, price_type)
-                        return True
-                    except Exception as e2:
-                        LOG.warning("numeric path failed: %s", e2)
-
-        time.sleep(0.8 * outer)
-
-    return False
+            if isinstance(src, list):
+                src = src[0] if src else {}
+            if isinstance(src, dict):
+                for k in ("bid", "bidPrice", "bestBid"):
+                    if k in src:
+                        return f(src[k], 0.0)
+    return 0.0
 
 
-# --------------------------------------------------------------------------- #
-# Positions helpers
-# --------------------------------------------------------------------------- #
+def last_trade(symbol: str) -> float:
+    try:
+        q = et.fetch_etrade_quote(symbol) or {}
+    except Exception:
+        q = et.get_quote(symbol) or {}
+
+    if isinstance(q, dict):
+        for src in (
+            q,
+            q.get("All") or {},
+            (q.get("QuoteResponse") or {}).get("QuoteData") or {},
+        ):
+            if isinstance(src, list):
+                src = src[0] if src else {}
+            if isinstance(src, dict):
+                for k in ("last", "lastPrice", "ltr", "lastTrade"):
+                    if k in src:
+                        return f(src[k], 0.0)
+    return 0.0
 
 
 def _glimpse(obj: Any) -> Any:
@@ -358,6 +233,7 @@ def get_positions_any(acct_key: str | None = None) -> Any:
 
 def iter_positions(pobj: Any):
     """Yield (sym, qty, last, entry) from E*TRADE shapes."""
+
     def L(x):
         if isinstance(x, list):
             return x
@@ -432,55 +308,9 @@ def opened_today(sym: str) -> bool:
 
 
 # --------------------------------------------------------------------------- #
-# Order params
-# --------------------------------------------------------------------------- #
-
-
-def best_bid(symbol: str) -> float:
-    try:
-        q = et.fetch_etrade_quote(symbol) or {}
-    except Exception:
-        q = et.get_quote(symbol) or {}
-
-    if isinstance(q, dict):
-        for src in (
-            q,
-            q.get("All") or {},
-            (q.get("QuoteResponse") or {}).get("QuoteData") or {},
-        ):
-            if isinstance(src, list):
-                src = src[0] if src else {}
-            if isinstance(src, dict):
-                for k in ("bid", "bidPrice", "bestBid"):
-                    if k in src:
-                        return f(src[k], 0.0)
-    return 0.0
-
-
-def last_trade(symbol: str) -> float:
-    try:
-        q = et.fetch_etrade_quote(symbol) or {}
-    except Exception:
-        q = et.get_quote(symbol) or {}
-
-    if isinstance(q, dict):
-        for src in (
-            q,
-            q.get("All") or {},
-            (q.get("QuoteResponse") or {}).get("QuoteData") or {},
-        ):
-            if isinstance(src, list):
-                src = src[0] if src else {}
-            if isinstance(src, dict):
-                for k in ("last", "lastPrice", "ltr", "lastTrade"):
-                    if k in src:
-                        return f(src[k], 0.0)
-    return 0.0
-
-
-# --------------------------------------------------------------------------- #
 # Config dataclass
 # --------------------------------------------------------------------------- #
+
 
 @dataclass
 class GuardSettings:
@@ -499,10 +329,12 @@ TRAIL: Dict[str, Dict[str, float]] = {}  # sym -> {"hi": float, "trail_pct": flo
 
 
 # --------------------------------------------------------------------------- #
-# Core loop
+# Core helpers
 # --------------------------------------------------------------------------- #
 
+
 def compute_order_params(symbol: str, cfg: GuardSettings) -> Tuple[str, float | None]:
+    """Decide MARKET vs LIMIT and compute limit price when enabled."""
     pt, limit_px = "MARKET", None
     limit_from = (cfg.sg.get("limit_from") or "").lower()
     tick = float(cfg.sg.get("normalize_tick") or cfg.normalize_tick or 0.01) or 0.01
@@ -517,6 +349,63 @@ def compute_order_params(symbol: str, cfg: GuardSettings) -> Tuple[str, float | 
                 limit_px = max(0.01, round(ref - tick, 2))
             pt = "LIMIT"
     return pt, limit_px
+
+
+def place_with_adaptive_variants(
+    acct_key: str,
+    sym: str,
+    qty: int,
+    price_type: str,
+    limit_or_none: float | None,
+    max_outer: int,
+) -> bool:
+    """
+    Preview + place loop.
+
+    Uses et.place_equity_order() for the actual place call. On transient
+    venue errors (500/code 100), we re-preview and retry up to max_outer.
+    """
+    for outer in range(1, max_outer + 1):
+        try:
+            prev = preview(acct_key, sym, qty, price_type, limit_or_none)
+        except Exception as e:
+            LOG.error("preview failed for %s: %s", sym, e)
+            return False
+
+        if not isinstance(prev, dict) or "PreviewOrderResponse" not in prev:
+            LOG.error("preview response malformed for %s: %s", sym, _glimpse(prev))
+            return False
+
+        try:
+            et.place_equity_order(prev, qty=qty)
+            LOG.info("%s SELL placed (%s)", sym, price_type)
+            return True
+        except Exception as e:
+            msg = str(e)
+            LOG.warning("place_equity_order failed for %s (outer=%d): %s", sym, outer, msg)
+            # Transient venue issues → retry with fresh preview
+            if (
+                " 500:" in msg
+                or '"code": 100' in msg
+                or "'code': 100" in msg
+            ):
+                LOG.warning(
+                    "Transient venue error for %s; refreshing preview (outer=%d)",
+                    sym,
+                    outer,
+                )
+                time.sleep(0.8 * outer)
+                continue
+
+            # Non-transient error → give up for this symbol
+            return False
+
+    return False
+
+
+# --------------------------------------------------------------------------- #
+# Main loop
+# --------------------------------------------------------------------------- #
 
 
 def main() -> None:

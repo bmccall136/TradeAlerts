@@ -65,10 +65,9 @@
     Started with <b id="about-start-cash">$0.00</b> on
     <b id="about-start-date">—</b>.
     Since then we’ve added
-    <b id="about-net-contrib">$0.00</b> and earned
+    <b id="about-net-contrib">$0.00</b> and our NAV P&amp;L is
     <b id="about-since-pnl">$0.00</b> at
-    <b id="about-since-pct">0.00%</b>
-    after contributions.
+    <b id="about-since-pct">0.00%</b>.
   </div>
   <div class="by">Built by <b>Ben McCall &amp; Max</b></div>
 </div>
@@ -101,7 +100,7 @@
 	  <div class="status-block" style="background:#000;color:#ffd600;padding:8px;border-radius:6px;">
 		<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
 		  <div>E*TRADE API</div>
-		  <div id="etrade-dot" class="dot dot-red">â—</div>
+		  <div id="etrade-dot" class="dot dot-red">&#9679;</div>
 		</div>
 	  </div>
 	</div>
@@ -413,12 +412,11 @@
     const holdings = d.holdings || [];
     const about    = d.about    || {};
 
-    // --- NAV: trust backend; fallbacks in priority order ---
+    // --- NAV (no local math, no value.value) ---
+    // We trust the backend-only metrics, which already use the E*TRADE summary NAV.
     const nav = num(
       metrics.net_account_value ??
-      value.net_account_value ??
       account.nav ??
-      value.value ??
       0
     );
 
@@ -466,14 +464,31 @@
     setColor(document.querySelector('#kpi-pnl'), dAmt);
     setColor(document.querySelector('#kpi-pnl-pct'), dPct);
 
-    // --- Realized buckets ---
-    const map = [
-      ['day',       '#kpi-r-day',       '#kpi-r-day-pct'],
-      ['week',      '#kpi-r-week',      '#kpi-r-week-pct'],
-      ['last_week', '#kpi-r-lastweek',  '#kpi-r-lastweek-pct'],
-      ['month',     '#kpi-r-month',     '#kpi-r-month-pct'],
-      ['all',       '#kpi-r-all',       '#kpi-r-all-pct'],
-    ];
+	// --- Realized buckets (Day / Week / Last Week / Month / All) ---
+	function applyRealizedBuckets(metrics) {
+	  // Back-end sends metrics.realized_buckets = { day: {...}, week: {...}, ... }
+	  const buckets = (metrics && metrics.realized_buckets) || {};
+
+	  const map = [
+		['day',       '#kpi-r-day',       '#kpi-r-day-pct'],
+		['week',      '#kpi-r-week',      '#kpi-r-week-pct'],
+		['last_week', '#kpi-r-lastweek',  '#kpi-r-lastweek-pct'],
+		['month',     '#kpi-r-month',     '#kpi-r-month-pct'],
+		['all',       '#kpi-r-all',       '#kpi-r-all-pct'],
+	  ];
+
+	  map.forEach(([key, amtSel, pctSel]) => {
+		const bucket = buckets[key] || { pnl: 0, pct: 0 };
+		const pnl = typeof bucket.pnl === 'number' ? bucket.pnl : 0;
+		const pct = typeof bucket.pct === 'number' ? bucket.pct : 0;
+
+		const amtEl = document.querySelector(amtSel);
+		const pctEl = document.querySelector(pctSel);
+
+		if (amtEl) amtEl.textContent = `$${pnl.toFixed(2)}`;
+		if (pctEl) pctEl.textContent = `${pct.toFixed(2)}%`;
+	  });
+	}
 
     for (const [key, amtSel, pctSel] of map) {
       const row = realized[key] || { pnl: 0, pct: 0 };
