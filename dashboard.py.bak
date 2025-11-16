@@ -86,16 +86,13 @@ ET = ZoneInfo("America/New_York")
 LIVE_DB = os.environ.get("LIVE_DB", r"C:\TradeAlerts\live.db")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-LIVE_MODE_PATH = os.path.join(BASE_DIR, "live_mode.txt")
-LIVE_MODE_DEFAULT = "DAY"  # or "SWING" if you ever want to default to swing
-
+LIVE_MODE_FILE = os.path.join(os.path.dirname(__file__), "live_mode.txt")
+VALID_LIVE_MODES = {"DAY", "SWING"}
 ALL_START_DATE = date(2025, 8, 22)
 LIVE_APP_STARTING_EQUITY =  392.67  # your original starting amount
 IGNORED_TICKERS = {"GEVO"}
 
 # --- DB paths ---
-SIM_DB = os.path.join(ROOT, "simulation.db")
-BACKTEST_DB = os.path.join(ROOT, "backtest.db")
 LIVE_DB = os.environ.get("LIVE_DB", os.path.join(ROOT, "live.db"))
 
 # --- Live tracking config ---
@@ -179,24 +176,25 @@ except Exception:
     _ET = _dt.timezone(_dt.timedelta(hours=-5))  # crude ET fallback
 
 def _read_live_mode() -> str:
-  """Return current mode: 'DAY' or 'SWING' (default DAY)."""
-  try:
-    if not os.path.exists(LIVE_MODE_PATH):
-      return LIVE_MODE_DEFAULT
-    with open(LIVE_MODE_PATH, "r", encoding="utf-8") as f:
-      raw = f.read().strip().upper()
-    return raw if raw in ("DAY", "SWING") else LIVE_MODE_DEFAULT
-  except Exception:
+    """Return current live mode: 'DAY' or 'SWING'."""
+    try:
+        with open(LIVE_MODE_FILE, "r", encoding="utf-8") as f:
+            value = f.read().strip().upper()
+            if value in VALID_LIVE_MODES:
+                return value
+    except FileNotFoundError:
+        pass
     return LIVE_MODE_DEFAULT
 
 
 def _write_live_mode(mode: str) -> str:
-  mode = (mode or "").strip().upper()
-  if mode not in ("DAY", "SWING"):
-    raise ValueError(f"Invalid live mode: {mode}")
-  with open(LIVE_MODE_PATH, "w", encoding="utf-8") as f:
-    f.write(mode)
-  return mode
+    """Persist live mode to disk and return normalized value."""
+    mode = (mode or "").upper()
+    if mode not in VALID_LIVE_MODES:
+        raise ValueError(f"Invalid live mode: {mode!r}")
+    with open(LIVE_MODE_FILE, "w", encoding="utf-8") as f:
+        f.write(mode)
+    return mode
 
 def _realized_buckets_from_trades(trades):
     """
@@ -867,6 +865,26 @@ def inject_status():
 def index():
     return redirect(url_for("live_view"))
 
+@app.route("/live/mode", methods=["GET", "POST"])
+@always_json
+def live_mode():
+    """
+    Get or set the Live trading mode (DAY or SWING).
+
+    GET  -> {"ok": true, "mode": "DAY"}
+    POST -> {"ok": true, "mode": "SWING"}  (with JSON body {"mode": "SWING"})
+    """
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        mode = data.get("mode") or ""
+        try:
+            mode = _write_live_mode(mode)
+        except ValueError:
+            return {"ok": False, "error": "invalid_mode"}, 400
+        return {"ok": True, "mode": mode}
+
+    # GET: just report current mode
+    return {"ok": True, "mode": _read_live_mode()}
 
 @app.route("/live")
 def live_view():
@@ -1040,45 +1058,6 @@ def live_status():
         max_count=max_count,
     ) or []
 
-    # ---------- 7) REALIZED P&L BUCKETS (from trades) ----------
-    realized_obj = _realized_buckets_from_trades(trades) or {}
-
-    # For ALL: percent = cumulative gain ÷ START_CASH_BASELINE
-    try:
-        all_bucket = realized_obj.get("all") or {}
-        all_pnl = float(all_bucket.get("pnl") or 0.0)
-        base = float(START_CASH_BASELINE)
-        all_pct = round((all_pnl / base) * 100.0, 2) if base > 0 else 0.0
-        all_bucket["pct"] = all_pct
-        realized_obj["all"] = all_bucket
-    except Exception:
-        # If anything goes weird, we just leave the cost-based % in place
-        pass
-
-    # ---------- 8) ABOUT / SINCE START (NAV + contributions) ----------
-    START_CASH = START_CASH_BASELINE
-    START_DATE = START_DATE_BASELINE
-
-    try:
-        net_contrib = float(get_total_contributions(START_DATE))
-    except Exception:
-        net_contrib = 0.0
-
-    # True gain = NAV − start_cash − contributions
-    total_gain = round(nav - START_CASH - net_contrib, 2)
-
-    # Percent = gain / (start_cash + contributions)
-    denom = START_CASH + net_contrib
-    total_gain_pct = round((total_gain / denom * 100.0), 2) if denom > 0 else 0.0
-
-    about = {
-        "start_cash": START_CASH,
-        "start_date": START_DATE,
-        "net_contrib": round(net_contrib, 2),
-        "since_pnl": total_gain,
-        "since_pct": total_gain_pct,
-    }
-
     # ---------- 9) VALUE OBJECT FOR LEFT TILE ----------
     value_obj = {
         "net_account_value": nav,
@@ -1087,18 +1066,25 @@ def live_status():
         "value": nav,  # historical alias
     }
 
-    # ---------- 10) METRICS OBJECT ----------
+    # ---------- 10) METRICS / VALUE FOR TILES ----------
     metrics = {
+        # Left tile
         "net_account_value": nav,
         "buying_power": buying_power,
         "positions_value": positions_value,
-        "day_unrealized_pnl": round(day_unrealized_pnl, 2),
-        "day_unrealized_pnl_pct": round(day_unrealized_pnl_pct, 2),
-        "unrealized_pnl": round(unrealized_pnl, 2),
-        "unrealized_pnl_pct": round(unrealized_pnl_pct, 2),
-        "realized_buckets": realized_obj,
+
+        # Center tile (UNREALIZED)
+        "day_unrealized_pnl": day_unrealized_pnl,
+        "day_unrealized_pnl_pct": day_unrealized_pnl_pct,
+        "unrealized_pnl": unrealized_pnl,
+        "unrealized_pnl_pct": unrealized_pnl_pct,
+
+        # Hero blurb “since start” (NAV-based; same as top sentence)
         "total_gain_nav": total_gain,
         "total_gain_nav_pct": total_gain_pct,
+
+        # Right tile: realized P&L buckets (Day / Week / LW / Month / All)
+        "realized_buckets": realized_obj,
     }
 
     # ---------- 11) AUTH / STATUS ----------

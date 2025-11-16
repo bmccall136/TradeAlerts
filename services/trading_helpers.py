@@ -985,3 +985,94 @@ def refresh_holdings_prices() -> None:
             pass
     conn.commit()
     conn.close()
+
+# ---------------------------------------------------------------------------
+# Realized P&L buckets for Live dashboard
+# ---------------------------------------------------------------------------
+
+import datetime as _dt
+import sqlite3 as _sqlite
+
+def realized_buckets_from_live_db(db_path):
+    """
+    Compute realized P&L buckets from live.db.
+
+    Returns a dict:
+      {
+        "day":       {"pnl": float, "pct": float},
+        "week":      {"pnl": float, "pct": float},
+        "last_week": {"pnl": float, "pct": float},
+        "month":     {"pnl": float, "pct": float},
+        "all":       {"pnl": float, "pct": float},
+      }
+
+    NOTE: This version assumes a table 'realized_trades' with at least:
+      - gain       REAL  (realized P&L for the trade)
+      - close_date TEXT  (ISO timestamp, e.g. '2025-11-14 15:32:31')
+
+    If your column names differ, adjust the SQL queries below.
+    """
+    buckets = {
+        "day":       {"pnl": 0.0, "pct": 0.0},
+        "week":      {"pnl": 0.0, "pct": 0.0},
+        "last_week": {"pnl": 0.0, "pct": 0.0},
+        "month":     {"pnl": 0.0, "pct": 0.0},
+        "all":       {"pnl": 0.0, "pct": 0.0},
+    }
+
+    conn = _sqlite.connect(db_path)
+    try:
+        conn.row_factory = _sqlite.Row
+        cur = conn.cursor()
+
+        now = _dt.datetime.now()
+        today = now.date()
+        # start of this week (Mon)
+        week_start = today - _dt.timedelta(days=today.weekday())
+        last_week_start = week_start - _dt.timedelta(days=7)
+        last_week_end = week_start
+        month_start = today.replace(day=1)
+
+        def _sum_gain(start_date=None, end_date=None):
+            q = "SELECT SUM(gain) AS s FROM realized_trades"
+            params = []
+            if start_date and end_date:
+                q += " WHERE date(close_date) >= ? AND date(close_date) < ?"
+                params = [start_date.isoformat(), end_date.isoformat()]
+            elif start_date:
+                q += " WHERE date(close_date) >= ?"
+                params = [start_date.isoformat()]
+            cur.execute(q, params)
+            row = cur.fetchone()
+            return float(row["s"] or 0.0)
+
+        # Amounts
+        day_pnl   = _sum_gain(start_date=today)
+        week_pnl  = _sum_gain(start_date=week_start)
+        last_pnl  = _sum_gain(start_date=last_week_start, end_date=last_week_end)
+        month_pnl = _sum_gain(start_date=month_start)
+        all_pnl   = _sum_gain()
+
+        buckets["day"]["pnl"]   = round(day_pnl, 2)
+        buckets["week"]["pnl"]  = round(week_pnl, 2)
+        buckets["last_week"]["pnl"] = round(last_pnl, 2)
+        buckets["month"]["pnl"] = round(month_pnl, 2)
+        buckets["all"]["pnl"]   = round(all_pnl, 2)
+
+        # Simple %s for now – refine once we confirm your cost-basis schema.
+        # For day/week/month/last_week, use START_CASH-ish or 1 to avoid div/0.
+        def _pct(pnl, denom):
+            return round((pnl / denom) * 100.0, 2) if denom else 0.0
+
+        # You can replace these denominators once we confirm your intended logic.
+        START_CASH = 392.67
+        buckets["day"]["pct"]       = _pct(day_pnl, START_CASH)
+        buckets["week"]["pct"]      = _pct(week_pnl, START_CASH)
+        buckets["last_week"]["pct"] = _pct(last_pnl, START_CASH)
+        buckets["month"]["pct"]     = _pct(month_pnl, START_CASH)
+        buckets["all"]["pct"]       = _pct(all_pnl, START_CASH)
+
+    finally:
+        conn.close()
+
+    return buckets

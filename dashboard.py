@@ -86,16 +86,13 @@ ET = ZoneInfo("America/New_York")
 LIVE_DB = os.environ.get("LIVE_DB", r"C:\TradeAlerts\live.db")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-LIVE_MODE_PATH = os.path.join(BASE_DIR, "live_mode.txt")
-LIVE_MODE_DEFAULT = "DAY"  # or "SWING" if you ever want to default to swing
-
+LIVE_MODE_FILE = os.path.join(os.path.dirname(__file__), "live_mode.txt")
+VALID_LIVE_MODES = {"DAY", "SWING"}
 ALL_START_DATE = date(2025, 8, 22)
 LIVE_APP_STARTING_EQUITY =  392.67  # your original starting amount
 IGNORED_TICKERS = {"GEVO"}
 
 # --- DB paths ---
-SIM_DB = os.path.join(ROOT, "simulation.db")
-BACKTEST_DB = os.path.join(ROOT, "backtest.db")
 LIVE_DB = os.environ.get("LIVE_DB", os.path.join(ROOT, "live.db"))
 
 # --- Live tracking config ---
@@ -179,24 +176,25 @@ except Exception:
     _ET = _dt.timezone(_dt.timedelta(hours=-5))  # crude ET fallback
 
 def _read_live_mode() -> str:
-  """Return current mode: 'DAY' or 'SWING' (default DAY)."""
-  try:
-    if not os.path.exists(LIVE_MODE_PATH):
-      return LIVE_MODE_DEFAULT
-    with open(LIVE_MODE_PATH, "r", encoding="utf-8") as f:
-      raw = f.read().strip().upper()
-    return raw if raw in ("DAY", "SWING") else LIVE_MODE_DEFAULT
-  except Exception:
+    """Return current live mode: 'DAY' or 'SWING'."""
+    try:
+        with open(LIVE_MODE_FILE, "r", encoding="utf-8") as f:
+            value = f.read().strip().upper()
+            if value in VALID_LIVE_MODES:
+                return value
+    except FileNotFoundError:
+        pass
     return LIVE_MODE_DEFAULT
 
 
 def _write_live_mode(mode: str) -> str:
-  mode = (mode or "").strip().upper()
-  if mode not in ("DAY", "SWING"):
-    raise ValueError(f"Invalid live mode: {mode}")
-  with open(LIVE_MODE_PATH, "w", encoding="utf-8") as f:
-    f.write(mode)
-  return mode
+    """Persist live mode to disk and return normalized value."""
+    mode = (mode or "").upper()
+    if mode not in VALID_LIVE_MODES:
+        raise ValueError(f"Invalid live mode: {mode!r}")
+    with open(LIVE_MODE_FILE, "w", encoding="utf-8") as f:
+        f.write(mode)
+    return mode
 
 def _realized_buckets_from_trades(trades):
     """
@@ -867,29 +865,26 @@ def inject_status():
 def index():
     return redirect(url_for("live_view"))
 
-@app.route("/live/mode", methods=["GET"])
+@app.route("/live/mode", methods=["GET", "POST"])
 @always_json
 def live_mode():
-  """
-  Get or set the Live trading mode: DAY vs SWING.
+    """
+    Get or set the Live trading mode (DAY or SWING).
 
-  - GET /live/mode              -> {"ok": true, "mode": "DAY"}
-  - GET /live/mode?set=DAY      -> {"ok": true, "mode": "DAY"}
-  - GET /live/mode?set=SWING    -> {"ok": true, "mode": "SWING"}
-  """
-  from flask import request
+    GET  -> {"ok": true, "mode": "DAY"}
+    POST -> {"ok": true, "mode": "SWING"}  (with JSON body {"mode": "SWING"})
+    """
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        mode = data.get("mode") or ""
+        try:
+            mode = _write_live_mode(mode)
+        except ValueError:
+            return {"ok": False, "error": "invalid_mode"}, 400
+        return {"ok": True, "mode": mode}
 
-  try:
-    current = _read_live_mode()
-    new_mode = request.args.get("set")
-
-    if new_mode:
-      current = _write_live_mode(new_mode)
-
-    return {"ok": True, "mode": current}
-  except Exception as e:
-    current_app.logger.exception("[LIVE] live_mode failed: %s", e)
-    return {"ok": False, "error": str(e), "mode": _read_live_mode()}
+    # GET: just report current mode
+    return {"ok": True, "mode": _read_live_mode()}
 
 @app.route("/live")
 def live_view():
@@ -954,6 +949,7 @@ def live_status():
     from flask import request, current_app
     from services import etrade_service as et
     from services.trade_source import load_trades_merged
+    from services.trading_helpers import realized_buckets_from_live_db
 
     debug = request.args.get("debug", "0") == "1"
     debug_raw: dict[str, Any] = {}
@@ -1052,7 +1048,7 @@ def live_status():
     day_unrealized_pnl = day_unreal
     day_unrealized_pnl_pct = (day_unrealized_pnl / nav * 100.0) if nav > 0 else 0.0
 
-    # ---------- 6) TRADES TABLE (merged from E*TRADE) ----------
+    # ---------- 6) TRADES TABLE (for history) ----------
     start = (request.args.get("start") or "").strip()
     days = request.args.get("days", type=int)
     max_count = request.args.get("max", default=5000, type=int)
@@ -1063,20 +1059,11 @@ def live_status():
         max_count=max_count,
     ) or []
 
-    # ---------- 7) REALIZED P&L BUCKETS (from trades) ----------
-    realized_obj = _realized_buckets_from_trades(trades) or {}
+    if debug:
+        debug_raw["trades_raw"] = trades
 
-    # For ALL: percent = cumulative gain ÷ START_CASH_BASELINE
-    try:
-        all_bucket = realized_obj.get("all") or {}
-        all_pnl = float(all_bucket.get("pnl") or 0.0)
-        base = float(START_CASH_BASELINE)
-        all_pct = round((all_pnl / base) * 100.0, 2) if base > 0 else 0.0
-        all_bucket["pct"] = all_pct
-        realized_obj["all"] = all_bucket
-    except Exception:
-        # If anything goes weird, we just leave the cost-based % in place
-        pass
+    # ---------- 7) REALIZED P&L BUCKETS (from live.db) ----------
+    realized_obj = realized_buckets_from_live_db(str(LIVE_DB)) or {}
 
     # ---------- 8) ABOUT / SINCE START (NAV + contributions) ----------
     START_CASH = START_CASH_BASELINE
@@ -1102,7 +1089,13 @@ def live_status():
         "since_pct": total_gain_pct,
     }
 
-    # ---------- 9) VALUE OBJECT FOR LEFT TILE ----------
+    # ---------- 9) OVERRIDE 'ALL' BUCKET TO MATCH HERO ----------
+    all_bucket = realized_obj.get("all") or {}
+    all_bucket["pnl"] = total_gain
+    all_bucket["pct"] = total_gain_pct
+    realized_obj["all"] = all_bucket
+
+    # ---------- 10) VALUE OBJECT FOR LEFT TILE ----------
     value_obj = {
         "net_account_value": nav,
         "positions_value": positions_value,
@@ -1110,21 +1103,28 @@ def live_status():
         "value": nav,  # historical alias
     }
 
-    # ---------- 10) METRICS OBJECT ----------
+    # ---------- 11) METRICS / VALUE FOR TILES ----------
     metrics = {
+        # Left tile
         "net_account_value": nav,
         "buying_power": buying_power,
         "positions_value": positions_value,
-        "day_unrealized_pnl": round(day_unrealized_pnl, 2),
-        "day_unrealized_pnl_pct": round(day_unrealized_pnl_pct, 2),
-        "unrealized_pnl": round(unrealized_pnl, 2),
-        "unrealized_pnl_pct": round(unrealized_pnl_pct, 2),
-        "realized_buckets": realized_obj,
+
+        # Center tile (unrealized)
+        "day_unrealized_pnl": day_unrealized_pnl,
+        "day_unrealized_pnl_pct": day_unrealized_pnl_pct,
+        "unrealized_pnl": unrealized_pnl,
+        "unrealized_pnl_pct": unrealized_pnl_pct,
+
+        # Hero blurb “since start” (NAV-based)
         "total_gain_nav": total_gain,
         "total_gain_nav_pct": total_gain_pct,
+
+        # Right tile: realized P&L buckets (with All overridden above)
+        "realized_buckets": realized_obj,
     }
 
-    # ---------- 11) AUTH / STATUS ----------
+    # ---------- 12) AUTH / STATUS ----------
     needs_reconnect = bool(
         getattr(et, "need_oauth", False)
         or os.path.exists(str(NEED_AUTH_FLAG))
