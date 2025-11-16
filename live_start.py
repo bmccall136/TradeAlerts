@@ -55,14 +55,24 @@ log = logging.getLogger("launcher")
 # Paths / helpers
 # -----------------------------------------------------------------------------
 ROOT = os.path.abspath(os.path.dirname(__file__))
-SETTINGS_PATH = os.path.join(ROOT, "live_settings.json")
+
+# Default / legacy settings file
+DEFAULT_SETTINGS = os.path.join(ROOT, "live_settings.json")
+
+# Mode-specific settings files
+SETTINGS_BY_MODE = {
+    "DAY": os.path.join(ROOT, "live_settings_day.json"),
+    "SWING": os.path.join(ROOT, "live_settings_swing.json"),
+}
+
+LIVE_MODE_FILE = os.path.join(ROOT, "live_mode.txt")
+VALID_LIVE_MODES = {"DAY", "SWING"}
+LIVE_MODE_DEFAULT = "DAY"
+
 SYMS_PATH = os.path.join(ROOT, "sp500_symbols.txt")
 
 
-def load_json(path):
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
-
+load_json
 
 def load_symbols(path):
     with open(path, encoding="utf-8") as f:
@@ -78,6 +88,55 @@ def _norm_mode(v):
     return "LIVE" if v in ("LIVE", "ETRADE", "REAL") else "SIM"
 
 
+def _read_live_mode() -> str:
+    """Read DAY/SWING from live_mode.txt, with a safe default."""
+    try:
+        with open(LIVE_MODE_FILE, encoding="utf-8") as f:
+            text = f.read().strip().upper()
+        if text in VALID_LIVE_MODES:
+            return text
+    except FileNotFoundError:
+        pass
+    except Exception as exc:
+        log.warning("live_mode: failed to read %s: %s", LIVE_MODE_FILE, exc)
+    return LIVE_MODE_DEFAULT
+
+
+def _resolve_settings_path() -> str:
+    """
+    Decide which live_settings*.json to use:
+
+    1) If LIVE_SETTINGS_PATH env is set and exists -> use it.
+    2) Else look at live_mode.txt (DAY/SWING) and choose
+       live_settings_day.json or live_settings_swing.json.
+    3) If that file is missing, fall back to live_settings.json.
+    """
+    env_path = os.getenv("LIVE_SETTINGS_PATH")
+    if env_path:
+        if os.path.exists(env_path):
+            log.info("Using LIVE_SETTINGS_PATH from env: %s", env_path)
+            return env_path
+        else:
+            log.warning(
+                "LIVE_SETTINGS_PATH=%s does not exist; falling back to mode mapping",
+                env_path,
+            )
+
+    mode = _read_live_mode()
+    path = SETTINGS_BY_MODE.get(mode, DEFAULT_SETTINGS)
+    if not os.path.exists(path):
+        log.warning(
+            "Mode %s mapped to %s but it does not exist; falling back to %s",
+            mode,
+            path,
+            DEFAULT_SETTINGS,
+        )
+        return DEFAULT_SETTINGS
+
+    log.info("Mode %s → live settings from %s", mode, path)
+    return path
+
+
 def main():
     log.info("▶️  Live launcher starting…")
 
@@ -91,7 +150,13 @@ def main():
         str(os.getenv("LIVE_SAFE_MODE", "true")).lower(),
     )
 
-    data = load_json(SETTINGS_PATH)
+    # 1) Resolve settings path based on env + live_mode.txt
+    settings_path = _resolve_settings_path()
+
+    # 2) Load settings JSON
+    data = load_json(settings_path)
+
+    # 3) Normalize broker mode (LIVE vs SIM)
     raw_mode = data.get("broker_mode", "LIVE")
     mode = _norm_mode(os.getenv("BROKER_MODE") or raw_mode)
 
@@ -102,7 +167,7 @@ def main():
 
     from services.live_loop import run_live_loop
 
-    log.info("🔧 Using live settings from %s", SETTINGS_PATH)
+    log.info("🔧 Using live settings from %s", settings_path)
     log.info("▶️  Live loop starting (mode=%s)", mode)
 
     run_live_loop(data, symbols, broker_mode=mode)

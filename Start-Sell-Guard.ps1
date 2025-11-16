@@ -1,108 +1,66 @@
-# Start-Sell-Guard.ps1
-# Launches sell_guard.py from this folder, writes logs, and records a PID file.
-# Safe paths (no hardcoding), prefers local venv, UTF-8 output, PID hygiene.
-
-# --- Console theme (match Live) ---
-try {
-  $raw = $Host.UI.RawUI
-  $raw.BackgroundColor = 'Black'
-  $raw.ForegroundColor = 'Gray'
-  $raw.WindowTitle     = 'TradeAlerts'
-  Clear-Host
-} catch {}
-
-# --- Encoding + unbuffered python output ---
-try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}
-$env:PYTHONIOENCODING = 'utf-8'
-$env:PYTHONUNBUFFERED = '1'
-
-$ErrorActionPreference = 'Continue'
-
-# Work out of the script's folder
-Set-Location -Path $PSScriptRoot
-
-# --- Config file -> env var (underscore!) ---
-$cfg = Join-Path $PSScriptRoot 'sell_guard_settings.json'
-if (-not (Test-Path $cfg)) {
-  $alt = Join-Path $PSScriptRoot 'sell_guard.settings.json'
-  if (Test-Path $alt) { $cfg = $alt }
-}
-$env:SELL_GUARD_SETTINGS = $cfg
-Write-Host "Using SELL_GUARD_SETTINGS=$($env:SELL_GUARD_SETTINGS)"
-if (-not (Test-Path $cfg)) {
-  Write-Host "WARNING: $cfg not found; sell_guard.py will fall back to live_settings.json" -ForegroundColor Yellow
-}
-
-# --- Logging + PID file ---
-$logDir  = Join-Path $PSScriptRoot 'logs'
-$pidsDir = Join-Path $PSScriptRoot 'pids'
-New-Item -ItemType Directory -Path $logDir,$pidsDir -Force | Out-Null
-$log     = Join-Path $logDir  'StartSellGuard.log'
-$pidFile = Join-Path $pidsDir 'sell_guard.pid'
-
-Start-Transcript -Path $log -Append | Out-Null
-Write-Host "=== $(Get-Date) START Sell Guard (PID-backed) ==="
-
-# --- Find Python robustly (prefer venv) ---
-function Resolve-Python([string[]]$candidates) {
-  foreach ($p in $candidates) {
-    if ($p -and (Test-Path $p)) { return $p }
-  }
-  try { $c = Get-Command python -ErrorAction Stop; if ($c -and (Test-Path $c.Path)) { return $c.Path } } catch {}
-  try { $c = Get-Command py -ErrorAction Stop; if ($c) { return $c.Path } } catch {}
-  return $null
-}
-
-$venvPy = Join-Path $PSScriptRoot 'venv\Scripts\python.exe'
-$candidates = @(
-  $venvPy,
-  'C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe',
-  'C:\Program Files\Python311\python.exe',
-  'C:\Program Files\Python312\python.exe',
-  'C:\Python311\python.exe'
+﻿param(
+    [string]$Mode = $null
 )
-$py = Resolve-Python $candidates
-if (-not $py) {
-  Write-Host "ERROR: Could not find Python. Edit Start-Sell-Guard.ps1 and set `$py manually." -ForegroundColor Red
-  Write-Host "Press Enter to close."; [void](Read-Host); Stop-Transcript | Out-Null; exit 1
+
+# Always work from the TradeAlerts root
+$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+Set-Location $root
+
+Write-Host "=== TradeAlerts – Start Sell Guard ==="
+
+# ----------------- 1) Resolve mode (DAY / SWING) -----------------
+$liveModeFile = Join-Path $root 'live_mode.txt'
+
+if (-not $Mode) {
+    if (Test-Path $liveModeFile) {
+        $Mode = (Get-Content $liveModeFile -Raw).Trim().ToUpper()
+        if (-not $Mode) { $Mode = 'SWING' }
+    }
+    else {
+        $Mode = 'SWING'
+    }
+} else {
+    $Mode = $Mode.Trim().ToUpper()
 }
 
-Write-Host "Python: $py"
-Write-Host "CWD: $((Get-Location).Path)"
-
-# Clear any stale PID file
-if (Test-Path $pidFile) { Remove-Item $pidFile -Force -ErrorAction SilentlyContinue }
-
-# --- Launch sell_guard.py in the SAME window (splatting avoids -PassThru parsing issues) ---
-try {
-  Write-Host "Launching: $py -u .\sell_guard.py (same window)"
-  $sp = @{
-    FilePath         = $py
-    ArgumentList     = @('-u','.\sell_guard.py')
-    WorkingDirectory = $PSScriptRoot
-    NoNewWindow      = $true
-    PassThru         = $true
-  }
-  $p = Start-Process @sp
-  if ($p -and $p.Id) {
-    $p.Id | Out-File -FilePath $pidFile -Encoding ascii -Force
-    Write-Host "Recorded PID $($p.Id) -> $pidFile"
-  }
-  Wait-Process -Id $p.Id
-} catch {
-  Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
-  # Minimal fallback if Start-Process ever misbehaves:
-  try { & $py -u .\sell_guard.py } catch { Write-Host "Fallback failed: $($_.Exception.Message)" -ForegroundColor Red }
-} finally {
-  # Remove PID file on exit so no stale PID lingers
-  if (Test-Path $pidFile) {
-    Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
-  }
+if ($Mode -ne 'DAY' -and $Mode -ne 'SWING') {
+    Write-Warning "Unknown mode '$Mode' – defaulting to SWING."
+    $Mode = 'SWING'
 }
 
-Write-Host "=== $(Get-Date) END Sell Guard ==="
-Stop-Transcript | Out-Null
+# ----------------- 2) Pick settings file for this mode -----------------
+$baseCfg = Join-Path $root 'sell_guard_settings.json'
+$dayCfg  = Join-Path $root 'sell_guard_settings_day.json'
+$swingCfg= Join-Path $root 'sell_guard_settings_swing.json'
 
-Write-Host "`n--------------------------------------------------"
-Write-Host "Done. Press Enter to close..." -ForegroundColor Yellow
-[void](Read-Host)
+$cfg = $baseCfg
+
+if ($Mode -eq 'DAY' -and (Test-Path $dayCfg)) {
+    $cfg = $dayCfg
+}
+elseif ($Mode -eq 'SWING' -and (Test-Path $swingCfg)) {
+    $cfg = $swingCfg
+}
+elseif (Test-Path $baseCfg) {
+    $cfg = $baseCfg
+}
+
+$env:SELL_GUARD_SETTINGS = $cfg
+Write-Host "Mode $Mode → SELL_GUARD_SETTINGS=$($env:SELL_GUARD_SETTINGS)"
+
+if (-not (Test-Path $cfg)) {
+    Write-Warning "Config file $cfg not found. sell_guard.py will start with no settings!"
+}
+
+# ----------------- 3) Launch sell_guard.py -----------------
+$python = "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe"
+if (-not (Test-Path $python)) {
+    $python = "python"
+}
+
+Write-Host "Launching: $python -u sell_guard.py"
+& $python -u "sell_guard.py"
+
+Write-Host ""
+Write-Host "--------------------------------------------------"
+Write-Host "Sell Guard exited. Close this window when done."

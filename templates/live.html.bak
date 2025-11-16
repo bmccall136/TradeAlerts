@@ -408,7 +408,6 @@
     const account  = d.account  || {};
     const value    = d.value    || {};
     const metrics  = d.metrics  || {};
-    const realized = metrics.realized_buckets || d.realized || {};
     const holdings = d.holdings || [];
     const about    = d.about    || {};
 
@@ -463,9 +462,11 @@
     set('#kpi-pnl-pct', pct(dPct));
     setColor(document.querySelector('#kpi-pnl'), dAmt);
     setColor(document.querySelector('#kpi-pnl-pct'), dPct);
+	
+    // --- Realized buckets (Day / Week / Last Week / Month / All) ---
+    const realized = (metrics && metrics.realized_buckets) || {};
 
-    // --- Realized buckets ---
-    const map = [
+    const RB_MAP = [
       ['day',       '#kpi-r-day',       '#kpi-r-day-pct'],
       ['week',      '#kpi-r-week',      '#kpi-r-week-pct'],
       ['last_week', '#kpi-r-lastweek',  '#kpi-r-lastweek-pct'],
@@ -473,13 +474,19 @@
       ['all',       '#kpi-r-all',       '#kpi-r-all-pct'],
     ];
 
-    for (const [key, amtSel, pctSel] of map) {
+    RB_MAP.forEach(([key, amtSel, pctSel]) => {
       const row = realized[key] || { pnl: 0, pct: 0 };
-      set(amtSel, money(row.pnl));
-      set(pctSel, pct(row.pct));
-      setColor(document.querySelector(amtSel), row.pnl);
-      setColor(document.querySelector(pctSel), row.pct);
-    }
+      const amt = Number.isFinite(row.pnl) ? row.pnl : 0;
+      const pctVal = Number.isFinite(row.pct) ? row.pct : 0;
+
+      set(amtSel, money(amt));
+      set(pctSel, pct(pctVal));
+
+      const amtEl = document.querySelector(amtSel);
+      const pctEl = document.querySelector(pctSel);
+      if (amtEl) setColor(amtEl, amt);
+      if (pctEl) setColor(pctEl, pctVal);
+    });
 
     // --- Hero blurb "Since Start" (NAV-based, contribution-aware) ---
     const startCash   = num(about.start_cash);

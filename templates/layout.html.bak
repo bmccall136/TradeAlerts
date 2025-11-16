@@ -67,3 +67,102 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
+<script>
+// --- Day Trader / Swing Trader mode toggle ---
+function refreshModeButtons(mode) {
+  const group = document.getElementById('live-mode-toggle');
+  if (!group) return;
+
+  const buttons = group.querySelectorAll('button[data-mode]');
+  buttons.forEach(btn => {
+    const m = btn.getAttribute('data-mode');
+    if (m === mode) {
+      // Active mode: solid highlight
+      btn.classList.remove('btn-outline-secondary');
+      btn.classList.add('btn-warning');
+    } else {
+      // Inactive mode: outline
+      btn.classList.remove('btn-warning');
+      btn.classList.add('btn-outline-secondary');
+    }
+  });
+}
+
+function loadLiveMode() {
+  fetch('/live/mode')
+    .then(r => r.json())
+    .then(data => {
+      if (!data || !data.ok) return;
+      refreshModeButtons((data.mode || 'DAY').toUpperCase());
+    })
+    .catch(err => console.error('[LIVE] mode fetch failed', err));
+}
+
+<script>
+  // --- Live mode toggle: Day Trader / Swing Trader ---
+  function initLiveModeToggle() {
+    const group = document.getElementById('live-mode-toggle');
+    if (!group) return;
+
+    const buttons = group.querySelectorAll('[data-mode]');
+
+    function applyMode(mode) {
+      const upper = (mode || '').toUpperCase();
+      buttons.forEach(btn => {
+        const m = (btn.dataset.mode || '').toUpperCase();
+        const isActive = (m === upper);
+
+        if (isActive) {
+          btn.classList.add('btn-warning');
+          btn.classList.remove('btn-outline-warning');
+        } else {
+          btn.classList.add('btn-outline-warning');
+          btn.classList.remove('btn-warning');
+        }
+      });
+    }
+
+    async function fetchMode() {
+      try {
+        const resp = await fetch('/live/mode');
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        applyMode(data.mode || 'DAY');
+      } catch (err) {
+        console.error('[live-mode] fetch failed:', err);
+        applyMode('DAY');
+      }
+    }
+
+    async function setMode(mode) {
+      applyMode(mode); // optimistic
+      try {
+        const resp = await fetch('/live/mode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode })
+        });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        applyMode(data.mode || mode);
+      } catch (err) {
+        console.error('[live-mode] set failed:', err);
+      }
+    }
+
+    buttons.forEach(btn => {
+      btn.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        const mode = this.dataset.mode;
+        if (mode) {
+          setMode(mode);
+        }
+      });
+    });
+
+    // Initial sync from server
+    fetchMode();
+  }
+
+  document.addEventListener('DOMContentLoaded', initLiveModeToggle);
+</script>
