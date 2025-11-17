@@ -72,10 +72,7 @@ LIVE_MODE_DEFAULT = "DAY"
 SYMS_PATH = os.path.join(ROOT, "sp500_symbols.txt")
 
 
-def load_json(path):
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
-
+load_json
 
 def load_symbols(path):
     with open(path, encoding="utf-8") as f:

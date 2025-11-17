@@ -5,6 +5,25 @@ from logging.handlers import RotatingFileHandler
 import os
 import sys
 
+# --- Small JSON helper for live_start ---
+import json
+from pathlib import Path
+
+def load_json(path, default=None):
+    """
+    Load JSON from `path`. If file is missing or invalid, return `default`.
+    """
+    try:
+        p = Path(path)
+        if not p.exists():
+            print(f"[live_start] {p} not found, using default")
+            return default
+        with p.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"[live_start] ERROR reading {path}: {e}")
+        return default
+
 # -----------------------------------------------------------------------------
 # Emoji-safe console stream (Windows cp1252 console)
 # -----------------------------------------------------------------------------
