@@ -1,0 +1,178 @@
+#!/usr/bin/env python
+"""
+ai_snapshot.py
+
+Quick “AI brain dump” for a trading day.
+
+- Finds the latest triggers_YYYY-MM-DD.csv in C:\TradeAlerts (same dir as this file)
+- Treats any row with one or more indicator flags == "1" as a trigger
+- Prints:
+    * basic info about the file
+    * indicator usage counts
+    * top indicator combos
+    * symbols that fired most often
+
+This is read-only and does NOT talk to E*TRADE.
+"""
+
+from __future__ import annotations
+
+import csv
+import json
+from collections import Counter
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import List, Dict, Tuple
+
+
+ROOT = Path(__file__).resolve().parent
+
+
+# Which columns to treat as indicator flags and how to label them in output
+INDICATOR_COLUMNS: Dict[str, str] = {
+    "MACD_up": "MACD_up",
+    "VWAP_plus": "VWAP_plus",
+    "BB_breakout": "BB_breakout",
+    "RSI_overbought": "RSI_overbought",
+    "Vol_spike": "Vol_spike",
+    "ATRpct_ge": "ATRpct_ge",
+    "Gap_ge": "Gap_ge",
+    "Price_gt_SMA": "Price_gt_SMA",
+}
+
+
+@dataclass
+class TriggerRow:
+    timestamp: datetime
+    symbol: str
+    tags: List[str] = field(default_factory=list)
+    raw: Dict[str, str] = field(default_factory=dict)
+
+
+def _log(msg: str) -> None:
+    print(msg, flush=True)
+
+
+def find_latest_triggers_file() -> Path | None:
+    candidates = sorted(ROOT.glob("triggers_*.csv"))
+    if not candidates:
+        return None
+    # Prefer the one with the newest mtime (usually the latest date)
+    return max(candidates, key=lambda p: p.stat().st_mtime)
+
+
+def parse_triggers(path: Path) -> List[TriggerRow]:
+    rows: List[TriggerRow] = []
+    with path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for idx, row in enumerate(reader, start=1):
+            symbol = (row.get("symbol") or "").strip()
+            if not symbol:
+                continue
+
+            ts_raw = (row.get("timestamp") or row.get("time") or "").strip()
+            if ts_raw:
+                try:
+                    ts = datetime.fromisoformat(ts_raw.replace("Z", ""))
+                except Exception:
+                    # Fallback: just keep as naive string-parsed
+                    try:
+                        ts = datetime.strptime(ts_raw, "%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        ts = datetime.min
+            else:
+                ts = datetime.min
+
+            tags: List[str] = []
+            for col, label in INDICATOR_COLUMNS.items():
+                val = (row.get(col) or "").strip()
+                if val == "1":
+                    tags.append(label)
+
+            if not tags:
+                # No active indicators on this row; ignore for the “AI snapshot”
+                continue
+
+            rows.append(TriggerRow(timestamp=ts, symbol=symbol, tags=tags, raw=row))
+    return rows
+
+
+def summarize(rows: List[TriggerRow]) -> Dict:
+    indicator_counter: Counter[str] = Counter()
+    combo_counter: Counter[Tuple[str, ...]] = Counter()
+    symbol_counter: Counter[str] = Counter()
+
+    for r in rows:
+        symbol_counter[r.symbol] += 1
+        # Individual indicators
+        for tag in r.tags:
+            indicator_counter[tag] += 1
+        # Combo pattern (sorted so MACD_up+VWAP_plus == VWAP_plus+MACD_up)
+        combo_key = tuple(sorted(r.tags))
+        combo_counter[combo_key] += 1
+
+    summary = {
+        "total_trigger_rows": len(rows),
+        "indicators": indicator_counter.most_common(),
+        "combos": [(list(k), v) for k, v in combo_counter.most_common()],
+        "symbols": symbol_counter.most_common(),
+    }
+    return summary
+
+
+def print_summary(path: Path, rows: List[TriggerRow], summary: Dict) -> None:
+    _log(f"[ai_snapshot] Using trigger file: {path.name}")
+    if not rows:
+        _log("[ai_snapshot] No trigger rows with active indicators (all flags were 0).")
+        return
+
+    _log(f"[ai_snapshot] Trigger rows with ≥1 active indicator: {summary['total_trigger_rows']}")
+    _log("")
+
+    # Indicators
+    _log("Top indicators (by count):")
+    for name, count in summary["indicators"][:10]:
+        _log(f"  - {name:15s} {count}")
+
+    _log("")
+    _log("Top indicator combos:")
+    for combo, count in summary["combos"][:10]:
+        combo_label = " + ".join(combo)
+        _log(f"  - {combo_label:40s} {count}")
+
+    _log("")
+    _log("Top symbols by trigger count:")
+    for symbol, count in summary["symbols"][:15]:
+        _log(f"  - {symbol:5s} {count}")
+
+    # Optional JSON dump for future “black box” work
+    out = ROOT / "ai_snapshot_latest.json"
+    data = {
+        "file": str(path),
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "summary": summary,
+    }
+    out.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    _log("")
+    _log(f"[ai_snapshot] Wrote JSON summary to {out}")
+
+
+def main() -> None:
+    triggers_path = find_latest_triggers_file()
+    if not triggers_path:
+        _log(f"[ai_snapshot] No triggers_*.csv files found in {ROOT}")
+        return
+
+    rows = parse_triggers(triggers_path)
+    if not rows:
+        _log(f"[ai_snapshot] Using trigger file: {triggers_path.name}")
+        _log("[ai_snapshot] No rows with active indicator flags (all zeros).")
+        return
+
+    summary = summarize(rows)
+    print_summary(triggers_path, rows, summary)
+
+
+if __name__ == "__main__":
+    main()

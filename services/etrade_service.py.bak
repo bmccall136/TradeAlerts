@@ -2491,9 +2491,10 @@ def get_account_summary(account_id_key: str | None = None) -> dict:
         "account_type": str | None,
         "account_type_display": str | None,
         "nav": float,              # Net Account Value (or best approximation)
-        "available_funds": float,  # cash / buying power (if available)
-        "cash_balance": float,     # cash balance from E*TRADE (if available)
-        "raw": dict,               # raw balances payload (may be {})
+        "available_funds": float,  # cash / buying power (what you can actually deploy)
+        "cash_balance": float,     # total cash balance from E*TRADE (can include unsettled)
+        "settled_cash": float,     # settled cash for investment (if E*TRADE reports it)
+        "raw": dict,               # raw balances payload (may be {}),
       }
 
     Never raises on HTTP errors; always returns a well-shaped dict so callers
@@ -2559,6 +2560,7 @@ def get_account_summary(account_id_key: str | None = None) -> dict:
             "nav": 0.0,
             "available_funds": 0.0,
             "cash_balance": 0.0,
+            "settled_cash": 0.0,
             "raw": {},
         })
         return out
@@ -2568,7 +2570,6 @@ def get_account_summary(account_id_key: str | None = None) -> dict:
     raw: dict = {}
 
     # ---------- 1) Try resilient helper if present ----------
-    # This already cycles through sensible ID options and uses _get().
     if "fetch_balances_resilient" in globals():
         try:
             candidate = fetch_balances_resilient(
@@ -2579,7 +2580,6 @@ def get_account_summary(account_id_key: str | None = None) -> dict:
             if isinstance(candidate, dict) and candidate:
                 raw = candidate
         except Exception:
-            # swallow; we'll fall back below
             raw = {}
 
     # ---------- 2) Fallback: direct /balance.json calls ----------
@@ -2600,19 +2600,18 @@ def get_account_summary(account_id_key: str | None = None) -> dict:
                         raw = maybe
                         break
             except Exception:
-                # try next candidate
                 continue
 
     # ---------- 3) Parse balances ----------
     bal = _extract_balance_view(raw)
 
     if not bal:
-        # We couldn't get anything sane from the API.
         out = dict(base)
         out.update({
             "nav": 0.0,
             "available_funds": 0.0,
             "cash_balance": 0.0,
+            "settled_cash": 0.0,
             "raw": {},
         })
         return out
@@ -2621,14 +2620,21 @@ def get_account_summary(account_id_key: str | None = None) -> dict:
             or bal.get("computedBalance")
             or {})
 
-    # Cash balance (this is what your E*TRADE UI shows as cash)
+    # --- Core fields from E*TRADE ---
     cash_balance = _f(
         comp.get("cashBalance")
         or bal.get("cashBalance"),
         0.0,
     )
 
-    # NAV:
+    # Settled cash for investment (if E*TRADE reports it – often 0 in practice)
+    settled_cash = _f(
+        comp.get("settledCashForInvestment")
+        or bal.get("settledCashForInvestment"),
+        0.0,
+    )
+
+    # NAV as reported by E*TRADE (net account value / total account value)
     nav = _f(
         comp.get("netAccountValue")
         or bal.get("netAccountValue")
@@ -2639,70 +2645,43 @@ def get_account_summary(account_id_key: str | None = None) -> dict:
         0.0,
     )
 
-    # Fallback NAV: some responses only give components.
-    # IMPORTANT: we DO NOT treat netCash as NAV anymore.
+    # Fallback NAV: DO NOT use netCash as NAV.
+    # If E*TRADE only gives us components, at least return cashBalance.
     if nav == 0.0:
-        # Best-effort: at least report cash balance instead of netCash.
         nav = cash_balance
 
-    # Available funds / cash / buying power:
-    available = _f(
-        comp.get("cashBuyingPower")
-        or comp.get("cashAvailableForInvestment")
-        or comp.get("totalBuyingPower")
-        or comp.get("cashBalance")
-        or bal.get("cashBuyingPower")
-        or bal.get("cashAvailableForInvestment")
-        or bal.get("cashBalance"),
+    # --- Buying power / available funds ---
+    # For a cash account, the cleanest "what can I actually deploy" is netCash,
+    # with fallbacks to cashBuyingPower / cashAvailableForInvestment, etc.
+    net_cash = _f(
+        comp.get("netCash")
+        or bal.get("netCash"),
         0.0,
     )
+
+    cash_bp = _f(
+        comp.get("cashBuyingPower")
+        or bal.get("cashBuyingPower"),
+        0.0,
+    )
+
+    alt_bp = _f(
+        comp.get("cashAvailableForInvestment")
+        or bal.get("cashAvailableForInvestment")
+        or comp.get("totalBuyingPower")
+        or bal.get("totalBuyingPower"),
+        0.0,
+    )
+
+    # Prefer netCash if present, otherwise fall back through the others.
+    available = net_cash or cash_bp or alt_bp or cash_balance
 
     out = dict(base)
     out.update({
         "nav": nav,
         "available_funds": available,
         "cash_balance": cash_balance,
-        "raw": raw if isinstance(raw, dict) else {},
-    })
-    return out
-
-    # NAV:
-    nav = _f(
-        comp.get("netAccountValue")
-        or bal.get("netAccountValue")
-        or comp.get("totalAccountValue")
-        or bal.get("totalAccountValue")
-        or comp.get("accountValue")
-        or bal.get("accountValue"),
-        0.0,
-    )
-
-    # Fallback NAV: some responses only give components.
-    # DO NOT treat netCash as NAV – that gave us 202.48 instead of 4444.26.
-    if nav == 0.0:
-        # best-effort: use cashBalance if present, otherwise leave as 0.0
-        nav = _f(
-            comp.get("cashBalance")
-            or bal.get("cashBalance"),
-            0.0,
-        )
-
-    # Available funds / cash / buying power:
-    available = _f(
-        comp.get("cashBuyingPower")
-        or comp.get("cashAvailableForInvestment")
-        or comp.get("totalBuyingPower")
-        or comp.get("cashBalance")
-        or bal.get("cashBuyingPower")
-        or bal.get("cashAvailableForInvestment")
-        or bal.get("cashBalance"),
-        0.0,
-    )
-
-    out = dict(base)
-    out.update({
-        "nav": nav,
-        "available_funds": available,
+        "settled_cash": settled_cash,
         "raw": raw if isinstance(raw, dict) else {},
     })
     return out
