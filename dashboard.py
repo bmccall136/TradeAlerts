@@ -1031,6 +1031,19 @@ def live_status():
         "nav": nav,
         "available_funds": buying_power,
     }
+    # --- UI buying power choice ---
+    # For your cash / PDT account, E*TRADE reports:
+    #   cash_balance = 2012.77  (what you can really deploy)
+    #   available_funds = 12.77 (tiny computed BP)
+    #
+    # For the left tile we want the *cash_balance* number.
+    acct_mode = (acct_summary_raw.get("raw", {})
+                 .get("accountType", "")).upper()
+    if acct_mode in {"PDT_ACCOUNT", "CASH", "CASH_ACCOUNT"}:
+        ui_buying_power = cash_balance
+    else:
+        # margin or weird cases – fall back sensibly
+        ui_buying_power = available_funds if available_funds is not None else cash_balance
 
     # ---------- 5) UNREALIZED & DAY P&L ----------
     total_cost = 0.0
@@ -1099,7 +1112,7 @@ def live_status():
     value_obj = {
         "net_account_value": nav,
         "positions_value": positions_value,
-        "buying_power": buying_power,
+        "buying_power": ui_buying_power,
         "value": nav,  # historical alias
     }
 
@@ -1107,7 +1120,7 @@ def live_status():
     metrics = {
         # Left tile
         "net_account_value": nav,
-        "buying_power": buying_power,
+        "buying_power": ui_buying_power,
         "positions_value": positions_value,
 
         # Center tile (unrealized)
