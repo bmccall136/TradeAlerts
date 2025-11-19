@@ -57,23 +57,49 @@ _LIVE_TPLUS_DAYS = int(os.getenv("LIVE_TPLUS_DAYS", "0") or 0)  # 0 = off
 
 def _select_funds(summary: dict, settings: dict) -> tuple[float, str]:
     """
-    Always use buying power for CASH accounts (E*TRADE reports settledCash=0).
-    Falls back safely if fields are missing.
-    """
-    acct_type = (settings.get("account_type") or "cash").lower()
-    s = summary or {}
-    # E*TRADE shapes vary; try both
-    bp = (s.get("buyingPower") or s.get("cashBuyingPower") or s.get("computed") or {}).get("buyingPower") if isinstance(s.get("computed"), dict) else s.get("buyingPower")
-    if bp is None:
-        bp = s.get("cashBuyingPower") if isinstance(s, dict) else 0.0
-    settled = s.get("settledCash") or 0.0
+    Select how much money is available to trade.
 
-    if acct_type == "cash":
-        use = float(bp or 0.0)
-        return max(0.0, use), "buying_power"
-    # margin or unknown → still prefer BP if present
-    use = float(bp if bp is not None else settled or 0.0)
-    return max(0.0, use), ("buying_power" if bp is not None else "settled")
+    For both CASH and MARGIN accounts we prefer E*TRADE's true
+    buying-power style fields (currentBp / cashAvailableForInvestment,
+    etc.) and we do NOT fall back to tiny settledCash balances.
+    """
+    s = summary or {}
+    acct_type = (settings.get("account_type") or "cash").lower()
+
+    def _num(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError, TypeError):
+            return None
+
+    # E*TRADE balance blocks can be nested
+    comp   = s.get("Computed") or s.get("computed") or {}
+    margin = s.get("Margin")   or s.get("margin")   or {}
+
+    # Ordered preference of buying-power style fields
+    candidates = [
+        s.get("currentBp"),
+        comp.get("cashAvailableForInvestment"),
+        comp.get("cashBuyingPower"),
+        margin.get("marginBuyingPower"),
+        s.get("buyingPower"),
+        s.get("cashBuyingPower"),
+    ]
+
+    bp_val = None
+    for v in candidates:
+        v = _num(v)
+        if v is not None and v > 0:
+            bp_val = v
+            break
+
+    if bp_val is None:
+        bp_val = 0.0
+
+    # For your use case we always trade off buying power,
+    # regardless of cash vs margin; label it accordingly.
+    use = max(0.0, float(bp_val))
+    return use, "buying_power"
 
 def _env_int(name: str, default: int | None = None) -> int | None:
     v = os.getenv(name)
@@ -237,23 +263,42 @@ def _extract_settled_cash(acct: dict) -> float | None:
     return None
 
 
-def _extract_buying_power(acct: dict) -> float | None:
+# --- Buying power extractor (ETRADE-only) ---
+def _extract_buying_power(bal: dict) -> float:
     """
-    Prefer Computed.cashBuyingPower, then marginBuyingPower, then netCash.
+    Prefer E*TRADE's true buying power fields.
+    Ignore settledCash / availableCash style fields that show tiny amounts.
     """
-    hits = _dig_numbers(
-        acct, ["cashBuyingPower", "marginBuyingPower", "netCash", "buyingPower"]
-    )
-    for want in ("cashBuyingPower", "marginBuyingPower", "netCash"):
-        for k, v in hits.items():
-            if (
-                k.lower().replace("_", "") == want.lower().replace("_", "")
-                and v is not None
-                and v > 0
-            ):
-                return float(v)
-    return None
+    if not isinstance(bal, dict):
+        return 0.0
 
+    # E*TRADE balance blocks
+    comp   = bal.get("Computed") or bal.get("computed") or {}
+    margin = bal.get("Margin")   or bal.get("margin")   or {}
+
+    candidates = [
+        # Cash account / general BP
+        comp.get("cashAvailableForInvestment"),
+        comp.get("cashBuyingPower"),
+        # Margin accounts
+        margin.get("marginBuyingPower"),
+        # Fallbacks on the top-level, if present
+        bal.get("currentBp"),
+        bal.get("cashBp"),
+    ]
+
+    for v in candidates:
+        try:
+            if v is None:
+                continue
+            v = float(v)
+            if v > 0:
+                return round(v, 2)
+        except (TypeError, ValueError):
+            continue
+
+    # If E*TRADE really returns nothing useful, just 0.0 instead
+    return 0.0
 
 def _pool_for_sizing(settled_cash, buying_power, *, prefer='bp'):
     """
