@@ -209,6 +209,19 @@ def get_account_nav(session=None):
         if nav is not None: return float(nav)
     return None
 
+def _clean_instruments_for_place(instr_list):
+    """
+    Take Instrument[] from a preview response and strip fields that
+    cause E*TRADE venue errors (reserveOrder, reserveQuantity, cancelQuantity).
+    """
+    cleaned = []
+    for ins in instr_list or []:
+        # Shallow copy so we don't mutate the original preview dict
+        ins_copy = dict(ins)
+        for k in ("reserveOrder", "reserveQuantity", "cancelQuantity"):
+            ins_copy.pop(k, None)
+        cleaned.append(ins_copy)
+    return cleaned
 
 def fetch_balances_resilient(sess, account_id_key: str, account_id_numeric: str, retries: int = 3):
     urls = [
@@ -2203,16 +2216,42 @@ def _eget(path: str, params: dict | None = None):
 
 
 def _epost(path, body):
-    s = get_oauth_session()  # use the signed session you already have
+    """
+    Small helper for POSTs that:
+      - uses the signed OAuth session
+      - raises on HTTP >= 400 **including the request payload** so callers
+        (sell_guard, live loop, etc.) can see exactly what we sent.
+    """
+    s = get_oauth_session()
     url = f"https://api.etrade.com/v1{path}"
-    r = s.post(url, json=body, headers={"Content-Type": "application/json"})
+
+    try:
+        r = s.post(
+            url,
+            json=body,
+            headers={"Content-Type": "application/json"},
+        )
+    except Exception as e:
+        # Transport / session failure before HTTP status
+        raise RuntimeError(
+            f"etrade POST {path} transport error: {e!r} | payload={body!r}"
+        )
+
     if r.status_code >= 400:
         try:
             err = r.json()
         except Exception:
-            err = r.text
-        raise RuntimeError(f"etrade POST {path} -> {r.status_code}: {err}")
-    return r.json()
+            err = (r.text or "").strip()
+
+        raise RuntimeError(
+            f"etrade POST {path} -> {r.status_code}: {err} | payload={body!r}"
+        )
+
+    # Happy path – best effort JSON decode
+    try:
+        return r.json()
+    except Exception:
+        return {"raw_text": r.text}
 
 
 # Back-compat aliases (catch any legacy calls)
@@ -2817,62 +2856,106 @@ def preview_equity_order(
     return _epost(f"/accounts/{account_id_key}/orders/preview.json", body)
 
 
-def place_equity_order(preview_resp: dict, qty: int | None = None) -> dict:
-    """Place an equity order from a successful preview, using the account KEY path
-    and a minimal order payload (no read-only fields). Preserves preview quantity
-    formatting (string)."""
-    aid_key = account_id_key()  # MUST be the key, not numeric id
+def place_equity_order(preview_resp: dict, qty: float | None = None) -> dict:
+    """
+    Place an equity order using a previously returned preview response.
+
+    This is intentionally minimal and mirrors the body that we know works
+    from sell_direct_place.py:
+      - Use the first Order / Instrument from the preview
+      - Optionally override quantity
+      - For MARKET orders, DO NOT send limitPrice / stopPrice (E*TRADE
+        rejects MARKET + 0.00 price fields with a 500 / code 100)
+      - For non-MARKET orders, pass through any non-zero limit/stop.
+
+    Args:
+        preview_resp: Dict returned from preview_equity_order().
+        qty: Optional override quantity; if None, use the preview quantity.
+
+    Returns:
+        Parsed JSON dict from the E*TRADE place endpoint.
+    """
+    if not isinstance(preview_resp, dict):
+        raise TypeError("preview_resp must be a dict")
 
     pr = preview_resp.get("PreviewOrderResponse") or {}
-    if not pr or "Error" in preview_resp:
-        raise RuntimeError(f"preview failed: {preview_resp}")
+    if not pr:
+        raise RuntimeError("preview response missing PreviewOrderResponse")
 
+    # ----- 1. Extract base order & instrument -----
     orders = pr.get("Order") or []
     if not orders:
-        raise RuntimeError(f"preview response missing Order: {preview_resp}")
-    src = orders[0]
+        raise RuntimeError("preview response missing Order[]")
+    src = orders[0] or {}
 
-    instr = src.get("Instrument") or []
-    if not instr:
-        raise RuntimeError("preview missing Instrument")
+    instrs = src.get("Instrument") or []
+    if not instrs:
+        raise RuntimeError("preview response missing Instrument[]")
+    first = dict(instrs[0])  # shallow copy
 
-    # Preserve preview quantity formatting (string), allow override
+    prod = dict(first.get("Product") or {})
+    symbol = (prod.get("symbol") or first.get("symbol") or "").upper()
+    if not symbol:
+        raise RuntimeError("preview Instrument missing symbol")
+
+    if "securityType" not in prod:
+        prod["securityType"] = "EQ"
+
+    # Decide quantity (override from arg if provided)
+    q = first.get("quantity")
     if qty is not None:
-        instr[0]["quantity"] = str(int(qty))
+        q = qty
+    if q is None:
+        raise RuntimeError("preview Instrument missing quantity")
 
-    order_min = {
-        "orderTerm": src.get("orderTerm") or "GOOD_FOR_DAY",
-        "priceType": src.get("priceType") or "MARKET",
-        "marketSession": src.get("marketSession") or "REGULAR",
-        "allOrNone": bool(src.get("allOrNone", False)),
-        "Instrument": instr,
+    instrument_min = {
+        "Product": {
+            "securityType": prod.get("securityType", "EQ"),
+            "symbol": symbol,
+        },
+        "orderAction": first.get("orderAction", "SELL"),
+        "quantityType": first.get("quantityType", "QUANTITY"),
+        "quantity": q,
     }
-    if src.get("limitPrice"):
-        order_min["limitPrice"] = f"{float(src['limitPrice']):.2f}"
-    if src.get("stopPrice"):
-        order_min["stopPrice"] = f"{float(src['stopPrice']):.2f}"
 
-    # Robust previewId extraction
-    pid = pr.get("previewId")
-    if not pid:
-        pids = pr.get("PreviewIds") or pr.get("previewIds") or []
-        if isinstance(pids, list) and pids and isinstance(pids[0], dict):
-            pid = pids[0].get("previewId") or pids[0].get("id")
-    if not pid:
+    price_type = src.get("priceType", "MARKET")
+
+    # Base order block – no limit/stop yet
+    order_min: dict[str, object] = {
+        "Instrument": [instrument_min],
+        "marketSession": src.get("marketSession", "REGULAR"),
+        "orderTerm": src.get("orderTerm", "GOOD_FOR_DAY"),
+        "priceType": price_type,
+    }
+
+    # ----- 2. Only propagate price fields for NON-MARKET orders -----
+    if price_type != "MARKET":
+        for key in ("limitPrice", "stopPrice"):
+            if key in src:
+                v = src.get(key)
+                if v not in (None, 0, 0.0, "0", "0.0"):
+                    order_min[key] = v
+
+    # ----- 3. Preview ID is required -----
+    pids = pr.get("PreviewIds") or []
+    if not pids or "previewId" not in (pids[0] or {}):
         raise RuntimeError("previewId not found in preview response")
+    preview_id = pids[0]["previewId"]
 
-    place_body = {
+    body = {
         "PlaceOrderRequest": {
-            "orderType": "EQ",
-            # Keep clientOrderId if the preview set one; else None is fine
-            "clientOrderId": pr.get("clientOrderId"),
-            "PreviewIds": [{"previewId": int(pid)}],
+            "orderType": pr.get("orderType", "EQ"),
+            "PreviewIds": [{"previewId": preview_id}],
             "Order": [order_min],
         }
     }
-    r = _epost(f"/accounts/{aid_key}/orders/place.json", place_body)
-    return r.json()
 
+    # ----- 4. Place via accountIdKey path -----
+    aid_key = account_id_key()
+    path = f"/accounts/{aid_key}/orders/place.json"
+
+    resp = _epost(path, json=body)
+    return resp.json()
 
 def list_recent_trades(days: int = 5) -> list[dict[str, Any]]:
     """

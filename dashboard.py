@@ -21,6 +21,8 @@ from __future__ import annotations
 from services import etrade_service as et
 from services.trade_source import load_trades_merged
 import os
+import math
+import json
 import sys
 import logging
 import sqlite3
@@ -434,14 +436,26 @@ def compute_value_card(account_ui: Dict[str, Any],
         buying_power = explicit_bp if explicit_bp > 0 else max(0.0, nav - positions_value)
         value = nav
     else:
-        # fallback: old behavior
         buying_power = explicit_bp
         value = buying_power + positions_value
+
+    # --- Unrealized ALL P&L from holdings table ---
+    total_unreal_pl = round(
+        sum(_safe_float(h.get("total_pl"), 0.0) for h in holdings_rows), 2
+    )
+    total_unreal_pct = (
+        round((total_unreal_pl / positions_value) * 100.0, 2)
+        if positions_value > 0 else 0.0
+    )
 
     return {
         "buying_power": round(buying_power, 2),
         "positions_value": round(positions_value, 2),
         "value": round(value, 2),
+
+        # NEW: full unrealized (ALL)
+        "unrealized_pl": total_unreal_pl,
+        "unrealized_pl_pct": total_unreal_pct,
     }
 
 
@@ -997,15 +1011,28 @@ def live_status():
     # E*TRADE UI:
     #   Cash row ~= cashBalance - netCash
     #   NAV      ~= Cash row + positions_value
+    # --- NAV (Net Account Value) ---
+    # Prefer E*TRADE's own computed netAccountValue or nav from the
+    # summary. Only fall back to a derived value if those are missing.
     cash_balance = _safe_float(
         comp.get("cashBalance"),
         _safe_float(acct_summary_raw.get("cash_balance"), 0.0),
     )
     net_cash = _safe_float(comp.get("netCash"), 0.0)
 
-    effective_cash = cash_balance - net_cash
-    nav = round(effective_cash + positions_value, 2)
+    nav = _safe_float(
+        comp.get("netAccountValue") or acct_summary_raw.get("nav")
+    )
 
+    # If nav wasn't present or came back non-finite, derive a best-effort
+    # value from cash + positions, adjusted by net_cash if we have it.
+    if not math.isfinite(nav) or nav <= 0:
+        effective_cash = cash_balance
+        if math.isfinite(net_cash):
+            effective_cash = cash_balance - net_cash
+        nav = round(effective_cash + positions_value, 2)
+
+    nav = round(nav, 2)
     buying_power = round(buying_power, 2)
     positions_value = round(positions_value, 2)
 
@@ -1047,19 +1074,30 @@ def live_status():
 
     # ---------- 5) UNREALIZED & DAY P&L ----------
     total_cost = 0.0
+    total_value = 0.0
     day_unreal = 0.0
 
+    # use the same rows you use for the holdings table
     for h in holdings:
         qty = _safe_float(h.get("qty"), 0.0)
         paid = _safe_float(h.get("price_paid"), 0.0)
+        last = _safe_float(h.get("last_price"), 0.0)
+
         total_cost += qty * paid
+        total_value += qty * last
         day_unreal += _safe_float(h.get("day_pl"), 0.0)
 
-    unrealized_pnl = positions_value - total_cost if total_cost > 0 else 0.0
-    unrealized_pnl_pct = (unrealized_pnl / total_cost * 100.0) if total_cost > 0 else 0.0
+    # ALL-TIME unrealized based on cost vs current value
+    total_unreal_pl = round(total_value - total_cost, 2) if total_cost > 0 else 0.0
+    total_unreal_pct = round(
+        (total_unreal_pl / total_cost) * 100.0, 2
+    ) if total_cost > 0 else 0.0
 
-    day_unrealized_pnl = day_unreal
-    day_unrealized_pnl_pct = (day_unrealized_pnl / nav * 100.0) if nav > 0 else 0.0
+    # keep day unreal in case we want it later
+    day_unrealized_pnl = round(day_unreal, 2)
+    day_unrealized_pnl_pct = (
+        round((day_unrealized_pnl / nav) * 100.0, 2) if nav > 0 else 0.0
+    )
 
     # ---------- 6) TRADES TABLE (for history) ----------
     start = (request.args.get("start") or "").strip()
@@ -1078,7 +1116,8 @@ def live_status():
     # ---------- 7) REALIZED P&L BUCKETS (from live.db) ----------
     realized_obj = realized_buckets_from_live_db(str(LIVE_DB)) or {}
 
-    # ---------- 8) ABOUT / SINCE START (NAV + contributions) ----------
+    # ---------- 8) ABOUT / SINCE START ----------
+    # Baseline config for project
     START_CASH = START_CASH_BASELINE
     START_DATE = START_DATE_BASELINE
 
@@ -1087,26 +1126,23 @@ def live_status():
     except Exception:
         net_contrib = 0.0
 
-    # True gain = NAV − start_cash − contributions
+    # NAV-based gain (kept for metrics/debug)
     total_gain = round(nav - START_CASH - net_contrib, 2)
-
-    # Percent = gain / (start_cash + contributions)
     denom = START_CASH + net_contrib
     total_gain_pct = round((total_gain / denom * 100.0), 2) if denom > 0 else 0.0
+
+    # For the hero blurb we now show the REALIZED "All" bucket
+    all_bucket = realized_obj.get("all") or {}
+    all_realized_pnl = _safe_float(all_bucket.get("pnl"), 0.0)
+    all_realized_pct = _safe_float(all_bucket.get("pct"), 0.0)
 
     about = {
         "start_cash": START_CASH,
         "start_date": START_DATE,
         "net_contrib": round(net_contrib, 2),
-        "since_pnl": total_gain,
-        "since_pct": total_gain_pct,
+        "since_pnl": round(all_realized_pnl, 2),
+        "since_pct": round(all_realized_pct, 2),
     }
-
-    # ---------- 9) OVERRIDE 'ALL' BUCKET TO MATCH HERO ----------
-    all_bucket = realized_obj.get("all") or {}
-    all_bucket["pnl"] = total_gain
-    all_bucket["pct"] = total_gain_pct
-    realized_obj["all"] = all_bucket
 
     # ---------- 10) VALUE OBJECT FOR LEFT TILE ----------
     value_obj = {
@@ -1115,7 +1151,6 @@ def live_status():
         "buying_power": ui_buying_power,
         "value": nav,  # historical alias
     }
-
     # ---------- 11) METRICS / VALUE FOR TILES ----------
     metrics = {
         # Left tile
@@ -1123,18 +1158,15 @@ def live_status():
         "buying_power": ui_buying_power,
         "positions_value": positions_value,
 
-        # Center tile (unrealized)
-        "day_unrealized_pnl": day_unrealized_pnl,
-        "day_unrealized_pnl_pct": day_unrealized_pnl_pct,
-        "unrealized_pnl": unrealized_pnl,
-        "unrealized_pnl_pct": unrealized_pnl_pct,
+        # Center tile (UNREALIZED = ALL-TIME)
+        "day_unrealized_pnl": total_unreal_pl,
+        "day_unrealized_pnl_pct": total_unreal_pct,
+        "unrealized_pl": total_unreal_pl,
+        "unrealized_pl_pct": total_unreal_pct,
 
         # Hero blurb “since start” (NAV-based)
         "total_gain_nav": total_gain,
         "total_gain_nav_pct": total_gain_pct,
-
-        # Right tile: realized P&L buckets (with All overridden above)
-        "realized_buckets": realized_obj,
     }
 
     # ---------- 12) AUTH / STATUS ----------

@@ -209,6 +209,19 @@ def get_account_nav(session=None):
         if nav is not None: return float(nav)
     return None
 
+def _clean_instruments_for_place(instr_list):
+    """
+    Take Instrument[] from a preview response and strip fields that
+    cause E*TRADE venue errors (reserveOrder, reserveQuantity, cancelQuantity).
+    """
+    cleaned = []
+    for ins in instr_list or []:
+        # Shallow copy so we don't mutate the original preview dict
+        ins_copy = dict(ins)
+        for k in ("reserveOrder", "reserveQuantity", "cancelQuantity"):
+            ins_copy.pop(k, None)
+        cleaned.append(ins_copy)
+    return cleaned
 
 def fetch_balances_resilient(sess, account_id_key: str, account_id_numeric: str, retries: int = 3):
     urls = [
@@ -2843,62 +2856,189 @@ def preview_equity_order(
     return _epost(f"/accounts/{account_id_key}/orders/preview.json", body)
 
 
-def place_equity_order(preview_resp: dict, qty: int | None = None) -> dict:
-    """Place an equity order from a successful preview, using the account KEY path
-    and a minimal order payload (no read-only fields). Preserves preview quantity
-    formatting (string)."""
-    aid_key = account_id_key()  # MUST be the key, not numeric id
+def place_equity_order(
+    symbol: str,
+    qty: float,
+    action: str = "SELL",
+    limit_price: float | None = None,
+    stop_price: float | None = None,
+    time_in_force: str = "GOOD_FOR_DAY",
+    market_session: str = "REGULAR",
+    price_type_override: str | None = None,
+) -> dict:
+    """Place an equity order using a prior preview as a template.
 
-    pr = preview_resp.get("PreviewOrderResponse") or {}
-    if not pr or "Error" in preview_resp:
-        raise RuntimeError(f"preview failed: {preview_resp}")
+    This mirrors the working sell_direct_place.py behavior:
 
+      * Always starts from a fresh preview_equity_order().
+      * For MARKET orders, sends only Instrument + orderTerm + priceType + marketSession
+        (no bogus limitPrice/stopPrice zeros).
+      * Places via accountIdKey path with transient 500/code 100 retry.
+    """
+    symbol = symbol.upper().strip()
+    if qty <= 0:
+        raise ValueError("qty must be positive")
+
+    # 1) Fresh preview (same params sell_guard uses)
+    preview = preview_equity_order(
+        symbol=symbol,
+        qty=qty,
+        action=action,
+        limit_price=limit_price,
+        stop_price=stop_price,
+        time_in_force=time_in_force,
+        market_session=market_session,
+        price_type_override=price_type_override,
+    )
+
+    pr = (preview or {}).get("PreviewOrderResponse") or {}
     orders = pr.get("Order") or []
     if not orders:
-        raise RuntimeError(f"preview response missing Order: {preview_resp}")
-    src = orders[0]
+        raise RuntimeError("preview response missing Order[]")
 
-    instr = src.get("Instrument") or []
+    order = orders[0]
+    preview_ids = pr.get("PreviewIds") or []
+    if not preview_ids:
+        raise RuntimeError("preview response missing PreviewIds[]")
+    preview_id = preview_ids[0].get("previewId")
+    if not preview_id:
+        raise RuntimeError("previewId not found in preview")
+
+    acct_num = pr.get("accountId") or pr.get("account_id")
+    acct_key = _get_account_id_key()
+    if not acct_key:
+        raise RuntimeError("account_id_key not configured")
+
+    # 2) Build Instruments from preview but strip preview-only noise
+    instr = order.get("Instrument") or []
+    instr = _clean_instruments_for_place(instr)
     if not instr:
-        raise RuntimeError("preview missing Instrument")
+        raise RuntimeError("preview missing Instrument for order placement")
 
-    # Preserve preview quantity formatting (string), allow override
-    if qty is not None:
-        instr[0]["quantity"] = str(int(qty))
+    # 3) Decide priceType + orderTerm
+    if price_type_override:
+        price_type = price_type_override
+    elif limit_price is not None and stop_price is not None:
+        price_type = "STOP_LIMIT"
+    elif limit_price is not None:
+        price_type = "LIMIT"
+    elif stop_price is not None:
+        price_type = "STOP"
+    else:
+        price_type = "MARKET"
 
-    order_min = {
-        "orderTerm": src.get("orderTerm") or "GOOD_FOR_DAY",
-        "priceType": src.get("priceType") or "MARKET",
-        "marketSession": src.get("marketSession") or "REGULAR",
-        "allOrNone": bool(src.get("allOrNone", False)),
+    order_term = order.get("orderTerm") or time_in_force or "GOOD_FOR_DAY"
+    mkt_session = order.get("marketSession") or market_session or "REGULAR"
+
+    # 4) Build a clean Order payload (no limitPrice/stopPrice for plain MARKET)
+    clean_order: dict = {
         "Instrument": instr,
+        "marketSession": mkt_session,
+        "orderTerm": order_term,
+        "priceType": price_type,
     }
-    if src.get("limitPrice"):
-        order_min["limitPrice"] = f"{float(src['limitPrice']):.2f}"
-    if src.get("stopPrice"):
-        order_min["stopPrice"] = f"{float(src['stopPrice']):.2f}"
 
-    # Robust previewId extraction
-    pid = pr.get("previewId")
-    if not pid:
-        pids = pr.get("PreviewIds") or pr.get("previewIds") or []
-        if isinstance(pids, list) and pids and isinstance(pids[0], dict):
-            pid = pids[0].get("previewId") or pids[0].get("id")
-    if not pid:
-        raise RuntimeError("previewId not found in preview response")
+    # Only attach limit/stop fields when they’re actually in use
+    if price_type in ("LIMIT", "STOP_LIMIT") and limit_price is not None:
+        clean_order["limitPrice"] = float(limit_price)
+    if price_type in ("STOP", "STOP_LIMIT") and stop_price is not None:
+        clean_order["stopPrice"] = float(stop_price)
 
-    place_body = {
+    body = {
         "PlaceOrderRequest": {
             "orderType": "EQ",
-            # Keep clientOrderId if the preview set one; else None is fine
-            "clientOrderId": pr.get("clientOrderId"),
-            "PreviewIds": [{"previewId": int(pid)}],
-            "Order": [order_min],
+            "clientOrderId": f"{symbol}{_rand_id()}",
+            "PreviewIds": [{"previewId": preview_id}],
+            "Order": [clean_order],
         }
     }
-    r = _epost(f"/accounts/{aid_key}/orders/place.json", place_body)
-    return r.json()
 
+    path_key = f"/accounts/{acct_key}/orders/place.json"
+    # acct_num is kept for future use if we ever need numeric fallback
+    _ = acct_num  # avoids linter noise
+
+    last_err: Exception | None = None
+
+    # 5) Try place with transient 500/code 100 handling
+    for outer in range(1, 1 + 4):
+        try:
+            resp = _epost(path_key, body)
+            if 200 <= resp.status_code < 300:
+                return resp.json()
+
+            # Transient venue failure (E*TRADE code 100)
+            if resp.status_code == 500:
+                try:
+                    err_json = resp.json()
+                except Exception:  # noqa: BLE001
+                    err_json = {}
+                err = (err_json or {}).get("Error") or {}
+                if str(err.get("code")) == "100":
+                    _lg.warning(
+                        "place_equity_order transient venue error for %s (outer=%s): %s",
+                        symbol,
+                        outer,
+                        err,
+                    )
+                    # Refresh preview + rebuild for next loop
+                    preview = preview_equity_order(
+                        symbol=symbol,
+                        qty=qty,
+                        action=action,
+                        limit_price=limit_price,
+                        stop_price=stop_price,
+                        time_in_force=time_in_force,
+                        market_session=market_session,
+                        price_type_override=price_type_override,
+                    )
+                    pr = (preview or {}).get("PreviewOrderResponse") or {}
+                    orders = pr.get("Order") or []
+                    if not orders:
+                        raise RuntimeError(
+                            "preview response missing Order[] (retry)"
+                        )
+                    order = orders[0]
+                    preview_ids = pr.get("PreviewIds") or []
+                    if not preview_ids:
+                        raise RuntimeError(
+                            "preview response missing PreviewIds[] (retry)"
+                        )
+                    preview_id = preview_ids[0].get("previewId")
+                    if not preview_id:
+                        raise RuntimeError(
+                            "previewId not found in preview (retry)"
+                        )
+                    instr = _clean_instruments_for_place(
+                        order.get("Instrument") or []
+                    )
+                    if not instr:
+                        raise RuntimeError(
+                            "preview missing Instrument for order placement (retry)"
+                        )
+                    mkt_session = order.get("marketSession") or mkt_session
+                    order_term = order.get("orderTerm") or order_term
+                    clean_order["Instrument"] = instr
+                    clean_order["marketSession"] = mkt_session
+                    clean_order["orderTerm"] = order_term
+                    body["PlaceOrderRequest"]["PreviewIds"] = [
+                        {"previewId": preview_id}
+                    ]
+                    continue
+
+            # Non-OK / non-transient response
+            resp.raise_for_status()
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+            _lg.warning(
+                "place_equity_order failed for %s (outer=%s): %s",
+                symbol,
+                outer,
+                e,
+            )
+
+    if last_err is not None:
+        raise last_err
+    raise RuntimeError("place_equity_order failed with unknown error")
 
 def list_recent_trades(days: int = 5) -> list[dict[str, Any]]:
     """

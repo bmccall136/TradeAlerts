@@ -60,51 +60,49 @@
       <div class="kv"></div>
     </div>
 
-<div class="hero-blurb mx-auto text-center">
-  <div class="since">
-    Started with <b id="about-start-cash">$0.00</b> on
-    <b id="about-start-date">—</b>.
-    Since then we’ve added
-    <b id="about-net-contrib">$0.00</b> and our NAV P&amp;L is
-    <b id="about-since-pnl">$0.00</b> at
-    <b id="about-since-pct">0.00%</b>.
-  </div>
-  <div class="by">Built by <b>Ben McCall &amp; Max</b></div>
-</div>
+    <div class="hero-blurb mx-auto text-center">
+      <div class="since">
+        Started with <b id="about-start-cash">$0.00</b> on
+        <b id="about-start-date">—</b>.
+        Since then we’ve added
+        <b id="about-net-contrib">$0.00</b> and our NAV P&amp;L is
+        <b id="about-since-pnl">$0.00</b> at
+        <b id="about-since-pct">0.00%</b>.
+      </div>
+      <div class="by">Built by <b>Ben McCall &amp; Max</b></div>
+    </div>
 
-	<!-- Right: account + E*TRADE API status -->
-	<div class="d-flex flex-column align-items-end" style="gap:6px; min-width: 220px;">
-	  {% set acct = account or {} %}
-	  {% set raw_type = (acct.get('account_type') or '') %}
-	  {% set acct_label = 'Cash Acct.' %}
+    <!-- Right: account + E*TRADE API status -->
+    <div class="d-flex flex-column align-items-end" style="gap:6px; min-width: 220px;">
+      {% set acct = account or {} %}
+      {% set raw_type = (acct.get('account_type') or '') %}
+      {% set acct_label = 'Cash Acct.' %}
 
-	  {% if raw_type in ['CASH', 'CASH_ACCOUNT'] %}
-		{% set acct_label = 'Cash Acct.' %}
-	  {% elif raw_type in ['MARGIN', 'MARGIN_ACCOUNT'] %}
-		{% set acct_label = 'Margin Acct.' %}
-	  {% elif raw_type == 'PDT_ACCOUNT' %}
-		{% set acct_label = 'Cash (PDT)' %}
-	  {% elif raw_type %}
-		{# Fallback: prettify anything unknown from E*TRADE #}
-		{% set acct_label = raw_type|replace('_', ' ')|title %}
-	  {% endif %}
+      {% if raw_type in ['CASH', 'CASH_ACCOUNT'] %}
+        {% set acct_label = 'Cash Acct.' %}
+      {% elif raw_type in ['MARGIN', 'MARGIN_ACCOUNT'] %}
+        {% set acct_label = 'Margin Acct.' %}
+      {% elif raw_type == 'PDT_ACCOUNT' %}
+        {% set acct_label = 'Cash (PDT)' %}
+      {% elif raw_type %}
+        {% set acct_label = raw_type|replace('_', ' ')|title %}
+      {% endif %}
 
-	  <div class="fw-bold" style="white-space: nowrap;">
-		Account type: {{ acct_label }}
-	  </div>
+      <div class="fw-bold" style="white-space: nowrap;">
+        Account type: {{ acct_label }}
+      </div>
 
-	  <div class="small text-muted" style="white-space:nowrap;">
-		Acct: <span id="acct-badge">â€”</span>
-	  </div>
+      <div class="small text-muted" style="white-space:nowrap;">
+        Acct: <span id="acct-badge">—</span>
+      </div>
 
-	  <div class="status-block" style="background:#000;color:#ffd600;padding:8px;border-radius:6px;">
-		<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-		  <div>E*TRADE API</div>
-		  <div id="etrade-dot" class="dot dot-red">&#9679;</div>
-		</div>
-	  </div>
-	</div>
-   </div>
+      <div class="status-block" style="background:#000;color:#ffd600;padding:8px;border-radius:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+          <div>E*TRADE API</div>
+          <div id="etrade-dot" class="dot dot-red">&#9679;</div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -193,6 +191,7 @@
         <th>Last Price</th>
         <th>Qty</th>
         <th>Price Paid</th>
+        <th>Diff</th>
         <th>Day P&amp;L</th>
         <th>Day P&amp;L %</th>
         <th>Total P&amp;L</th>
@@ -229,7 +228,6 @@
   const POS  = '#2ecc71';
   const NEG  = '#ff6b6b';
   const ZERO = '#b8b8b8';
-  // START_CASH removed; read from backend /live/status.about.start_cash
   const START_DATE = '2025-08-22';
 
   const num = x => {
@@ -316,29 +314,27 @@
     tb.innerHTML = '';
 
     if (!rows || !rows.length) {
-      tb.innerHTML = `<tr><td colspan="10" class="text-muted">No holdings.</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="11" class="text-muted">No holdings.</td></tr>`;
       return;
     }
 
     for (const h of rows) {
       const sym = (h.symbol || '').toUpperCase();
-
-      // Opened (ET) from backend; fallback to "—"
       const opened = h.opened_et || h.opened || '—';
 
       const qty  = Number(h.qty ?? 0);
       const last = Number(h.last_price ?? 0);
       const paid = Number(h.price_paid ?? 0);
 
-      // Prefer backend value; otherwise compute
+      // Per-share diff
+      const diff = last - paid;
+
       let value = (h.value != null) ? Number(h.value) : (qty * last);
       if (!Number.isFinite(value)) value = 0;
 
-      // Day P&L (intraday)
       const dpl  = Number(h.day_pl ?? 0);
       const dplp = Number(h.day_pl_pct ?? 0);
 
-      // Total P&L (since entry)
       const tpl  = Number(h.total_pl ?? 0);
       const tplp = Number(h.total_pl_pct ?? 0);
 
@@ -349,6 +345,7 @@
           <td>${money(last)}</td>
           <td>${qty}</td>
           <td>${money(paid)}</td>
+          <td class="diff-pl">${money(diff)}</td>
           <td class="day-pl">${money(dpl)}</td>
           <td class="day-pl-pct">${pct(dplp)}</td>
           <td class="tot-pl">${money(tpl)}</td>
@@ -358,6 +355,7 @@
       `);
 
       const row = tb.lastElementChild;
+      setColor(row.querySelector('.diff-pl'), diff);
       setColor(row.querySelector('.day-pl'), dpl);
       setColor(row.querySelector('.day-pl-pct'), dplp);
       setColor(row.querySelector('.tot-pl'), tpl);
@@ -371,7 +369,7 @@
     tb.innerHTML = '';
 
     if (!rows || !rows.length) {
-      tb.innerHTML = `<tr><td colspan="8" class="text-muted">No trades yet.</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="9" class="text-muted">No trades yet.</td></tr>`;
       return;
     }
 
@@ -411,9 +409,8 @@
     const holdings = d.holdings || [];
     const about    = d.about    || {};
 
-    // --- NAV (no local math, no value.value) ---
-    // We trust the backend-only metrics, which already use the E*TRADE summary NAV.
-    const nav = num(
+    // --- NAV (backend hint only; we'll recompute) ---
+    let nav = num(
       metrics.net_account_value ??
       account.nav ??
       0
@@ -436,13 +433,11 @@
       account.available_funds ??
       0
     );
-    // If backend didn't set bp but nav/pv exist, try NAV - PV
-    if (!Number.isFinite(bp) || bp === 0) {
-      if (Number.isFinite(nav) && Number.isFinite(pv) && nav >= pv) {
-        bp = nav - pv;
-      } else if (!Number.isFinite(bp)) {
-        bp = 0;
-      }
+
+    // FINAL NAV = Buying Power + Positions Value
+    const computedNav = num(bp) + num(pv);
+    if (Number.isFinite(computedNav) && computedNav > 0) {
+      nav = computedNav;
     }
 
     // VALUE tile numbers
@@ -450,21 +445,18 @@
     set('#kpi-bp',     money(bp));    // Buying Power
     set('#kpi-posval', money(pv));    // Positions Value
 
-    // --- Day P&L (unrealized) for center tile ---
     let dAmt = num(metrics.day_unrealized_pnl);
     let dPct = num(metrics.day_unrealized_pnl_pct);
 
-    // Fallback to plain unrealized only if day fields missing
     if (!Number.isFinite(dAmt)) dAmt = num(metrics.unrealized_pnl);
-    if (!Number.isFinite(dPct)) dPct = num(metrics.unrealized_pnl_pct);
+    if (!Number.isFinite(dPct)) dPct = num(metrics.unrealized_pl_pct);
 
     set('#kpi-pnl',     money(dAmt));
     set('#kpi-pnl-pct', pct(dPct));
     setColor(document.querySelector('#kpi-pnl'), dAmt);
     setColor(document.querySelector('#kpi-pnl-pct'), dPct);
-	
-    // --- Realized buckets (Day / Week / Last Week / Month / All) ---
-    const realized = (metrics && metrics.realized_buckets) || {};
+
+    const realized = metrics.realized_buckets || d.realized || {};
 
     const RB_MAP = [
       ['day',       '#kpi-r-day',       '#kpi-r-day-pct'],
@@ -488,7 +480,6 @@
       if (pctEl) setColor(pctEl, pctVal);
     });
 
-    // --- Hero blurb "Since Start" (NAV-based, contribution-aware) ---
     const startCash   = num(about.start_cash);
     const startDate   = about.start_date || START_DATE;
     const netContrib  = num(about.net_contrib);
@@ -503,7 +494,6 @@
     setColor(document.querySelector('#about-since-pnl'), sincePnl);
     setColor(document.querySelector('#about-since-pct'), sincePct);
 
-    // --- Account badge ---
     const { show } = preferNumericAccountId(account);
     const badge = document.getElementById('acct-badge');
     if (badge) {
@@ -535,4 +525,3 @@
 })();
 </script>
 {% endblock %}
-
