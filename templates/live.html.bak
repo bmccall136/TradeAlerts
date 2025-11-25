@@ -223,11 +223,293 @@
   </table>
 </div>
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>🚀 TradeAlerts 🚀</title>
+
+  <!-- 1) Bootstrap CSS -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
+
+  <!-- 2) Bootstrap Icons -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css"
+    rel="stylesheet"
+  />
+
+  <!-- 3) App CSS -->
+  <link rel="stylesheet" href="/static/style.css" />
+
+  
+</head>
+<body class="black-bg text-light">
+
+  <!-- NAVBAR -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-black py-2 position-relative">
+    <div class="container-fluid">
+
+      <!-- Left: primary nav -->
+      <div class="d-flex align-items-center mb-3">
+        <div id="live-mode-toggle" class="btn-group btn-group-sm" role="group" aria-label="Trade mode">
+          <button type="button" class="btn btn-outline-warning" data-mode="DAY">Day Trader</button>
+          <button type="button" class="btn btn-outline-secondary" data-mode="SWING">Swing Trader</button>
+        </div>
+      </div>
+
+      <!-- Center: big title -->
+      <div class="trade-alerts-title position-absolute top-50 start-50 translate-middle text-center">
+        🚀 <b>TradeAlerts</b> 🚀
+      </div>
+
+      <!-- Right: actions -->
+      <div class="d-flex align-items-center gap-2 ms-auto">
+        <!-- Checkpoint -->
+        <form action="/checkpoint" method="get" class="m-0">
+          <button class="btn btn-small">✅ Checkpoint</button>
+        </form>
+
+        <!-- Reconnect API -->
+        <a class="btn btn-sm btn-outline-warning btn-fixed"
+           href="/auth/etrade/reconnect">
+          🔁 Reconnect API
+        </a>
+      </div>
+
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="container py-4">
+    
+<style>
+  .kpi-card { padding: 18px 20px; }
+  .top-blurb { margin-top: 6px; margin-bottom: 12px; opacity: .95; }
+
+  :root{
+    --pos: #2ecc71;
+    --neg: #ff6b6b;
+    --zero: #b8b8b8;
+  }
+  .text-pos { color: var(--pos) !important; }
+  .text-neg { color: var(--neg) !important; }
+  .text-zero{ color: var(--zero) !important; }
+
+  .kpi-realized .rline{
+    display:grid;
+    grid-template-columns: 1fr max-content max-content;
+    gap:.25rem 1rem;
+    align-items:baseline;
+    padding: 2px 0;
+  }
+  .kpi-realized .rline > :nth-child(2),
+  .kpi-realized .rline > :nth-child(3){
+    text-align:right;
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi-realized .rline > :nth-child(2){ min-width: 5.5rem; }
+  .kpi-realized .rline > :nth-child(3){ min-width: 3.75rem; }
+
+  .hero-blurb{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:6px;
+    text-align:center;
+    padding:10px 0 22px;
+    margin:0 auto;
+    max-width:1100px;
+    line-height:1.15;
+  }
+  .hero-blurb .since { opacity:.92; font-size:1.05rem; }
+  .hero-blurb .by    { opacity:.80; font-size:1rem; }
+  .dot-green { color:#39d353; }
+  .dot-red   { color:#ff4d4d; }
+
+  .cash-rows{
+    display:grid;
+    grid-template-columns: 1fr auto;
+    column-gap:.75rem;
+    row-gap:.25rem;
+    white-space:nowrap;
+  }
+</style>
+
+<div class="container">
+  <div class="d-flex justify-content-between align-items-start mb-4" style="min-height:54px; position:relative;">
+    <!-- Left spacer -->
+    <div style="min-width:220px;">
+      <div class="kv"></div>
+    </div>
+
+<div class="hero-blurb mx-auto text-center">
+  <div class="since">
+    Started with <b id="about-start-cash">$0.00</b> on
+    <b id="about-start-date">—</b>.
+    Since then we’ve added
+    <b id="about-net-contrib">$0.00</b> and our NAV P&amp;L is
+    <b id="about-since-pnl">$0.00</b> at
+    <b id="about-since-pct">0.00%</b>.
+  </div>
+  <div class="by">Built by <b>Ben McCall &amp; Max</b></div>
+</div>
+
+	<!-- Right: account + E*TRADE API status -->
+	<div class="d-flex flex-column align-items-end" style="gap:6px; min-width: 220px;">
+	  
+	  
+	  
+
+	  
+		
+		
+	  
+
+	  <div class="fw-bold" style="white-space: nowrap;">
+		Account type: Individual
+	  </div>
+
+	  <div class="small text-muted" style="white-space:nowrap;">
+		Acct: <span id="acct-badge">â€”</span>
+	  </div>
+
+	  <div class="status-block" style="background:#000;color:#ffd600;padding:8px;border-radius:6px;">
+		<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+		  <div>E*TRADE API</div>
+		  <div id="etrade-dot" class="dot dot-red">&#9679;</div>
+		</div>
+	  </div>
+	</div>
+   </div>
+  </div>
+</div>
+
+<!-- KPI Row -->
+<div class="container-fluid mt-2">
+  <div class="row g-3 align-items-stretch">
+    <!-- VALUE -->
+    <div class="col-12 col-md-4">
+      <div class="card bg-dark border-0 shadow-sm h-100">
+        <div class="card-body kpi-card d-flex flex-column justify-content-center">
+          <div class="text-uppercase small">Net Account Value NAV</div>
+          <div id="kpi-cash" class="fs-3 fw-bold"></div>
+          <div class="mt-2 small kpi-cash-extra">
+            <div class="cash-rows">
+              <div>Buying Power</div><div id="kpi-bp" class="fw-semibold text-end"></div>
+              <div>Positions Value</div><div id="kpi-posval" class="fw-semibold text-end"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Unrealized P&L -->
+    <div class="col-12 col-md-4">
+      <div class="card bg-dark border-0 shadow-sm h-100 text-center">
+        <div class="card-body kpi-card d-flex flex-column justify-content-center">
+          <div class="text-uppercase small">P&amp;L (Unrealized)</div>
+          <div id="kpi-pnl" class="fs-3 fw-bold"></div>
+          <div id="kpi-pnl-pct" class="small"></div>
+          <div id="kpi-pv-note" class="small text-muted mt-1"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Realized P&L buckets -->
+    <div class="col-12 col-md-4">
+      <div class="card bg-dark border-0 shadow-sm h-100">
+        <div class="card-body kpi-card">
+          <div class="d-flex justify-content-between align-items-center">
+            <div class="text-uppercase small">Realized P&amp;L</div>
+            <div class="small">D / W / LW / M / All</div>
+          </div>
+          <div class="kpi-realized mt-2">
+            <div class="rline">
+              <span class="small">Day</span>
+              <span id="kpi-r-day" class="fw-semibold"></span>
+              <span id="kpi-r-day-pct" class="small"></span>
+            </div>
+            <div class="rline">
+              <span class="small">Week</span>
+              <span id="kpi-r-week" class="fw-semibold"></span>
+              <span id="kpi-r-week-pct" class="small"></span>
+            </div>
+            <div class="rline">
+              <span class="small">Last Week</span>
+              <span id="kpi-r-lastweek" class="fw-semibold"></span>
+              <span id="kpi-r-lastweek-pct" class="small"></span>
+            </div>
+            <div class="rline">
+              <span class="small">Month</span>
+              <span id="kpi-r-month" class="fw-semibold"></span>
+              <span id="kpi-r-month-pct" class="small"></span>
+            </div>
+            <div class="rline">
+              <span class="small">All</span>
+              <span id="kpi-r-all" class="fw-semibold"></span>
+              <span id="kpi-r-all-pct" class="small"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Holdings -->
+<div class="d-flex justify-content-between align-items-center mb-3 mt-4">
+  <h3 class="text-white mb-0">Holdings</h3>
+</div>
+<div class="table-responsive">
+  <table class="table table-striped table-bordered alerts-table text-white">
+    <thead class="table-light">
+      <tr>
+        <th>Symbol</th>
+        <th>Opened (ET)</th>
+        <th>Last Price</th>
+        <th>Qty</th>
+        <th>Price Paid</th>
+        <th>Day P&amp;L</th>
+        <th>Day P&amp;L %</th>
+        <th>Total P&amp;L</th>
+        <th>Total P&amp;L %</th>
+        <th>Value</th>
+      </tr>
+    </thead>
+    <tbody id="holdings-body"></tbody>
+  </table>
+</div>
+
+<!-- Recent Trades -->
+<h3 class="section-title mt-4">Recent Trades</h3>
+<div class="table-responsive">
+  <table class="table table-striped table-bordered alerts-table text-white">
+    <thead class="table-light">
+      <tr>
+        <th>Time (ET)</th>
+        <th>Symbol</th>
+        <th>Side</th>
+        <th>Qty</th>
+        <th>Price</th>
+        <th>Price Paid</th>
+		<th>Diff</th>
+        <th>P&amp;L</th>
+        <th>P&amp;L %</th>
+      </tr>
+    </thead>
+    <tbody id="trades-body"></tbody>
+  </table>
+</div>
+
 <script>
 (() => {
   const POS  = '#2ecc71';
   const NEG  = '#ff6b6b';
   const ZERO = '#b8b8b8';
+  // START_CASH removed; read from backend /live/status.about.start_cash
   const START_DATE = '2025-08-22';
 
   const num = x => {
@@ -320,21 +602,26 @@
 
     for (const h of rows) {
       const sym = (h.symbol || '').toUpperCase();
+
+      // Opened (ET) from backend; fallback to "—"
       const opened = h.opened_et || h.opened || '—';
 
       const qty  = Number(h.qty ?? 0);
       const last = Number(h.last_price ?? 0);
       const paid = Number(h.price_paid ?? 0);
 
-      // Per-share diff
-      const diff = last - paid;
+	// Per-share diff (Last - Paid)
+	const diff = last - paid;
 
+      // Prefer backend value; otherwise compute
       let value = (h.value != null) ? Number(h.value) : (qty * last);
       if (!Number.isFinite(value)) value = 0;
 
+      // Day P&L (intraday)
       const dpl  = Number(h.day_pl ?? 0);
       const dplp = Number(h.day_pl_pct ?? 0);
 
+      // Total P&L (since entry)
       const tpl  = Number(h.total_pl ?? 0);
       const tplp = Number(h.total_pl_pct ?? 0);
 
@@ -344,23 +631,23 @@
           <td>${opened}</td>
           <td>${money(last)}</td>
           <td>${qty}</td>
-          <td>${money(paid)}</td>
-          <td class="diff-pl">${money(diff)}</td>
-          <td class="day-pl">${money(dpl)}</td>
-          <td class="day-pl-pct">${pct(dplp)}</td>
-          <td class="tot-pl">${money(tpl)}</td>
-          <td class="tot-pl-pct">${pct(tplp)}</td>
-          <td>${money(value)}</td>
+		<td>${money(paid)}</td>
+		<td class="diff-pl">${money(diff)}</td>
+		<td class="day-pl">${money(dpl)}</td>
+		<td class="day-pl-pct">${pct(dplp)}</td>
+		<td class="tot-pl">${money(tpl)}</td>
+		<td class="tot-pl-pct">${pct(tplp)}</td>
+		<td>${money(value)}</td>
         </tr>
       `);
 
       const row = tb.lastElementChild;
       setColor(row.querySelector('.diff-pl'), diff);
-      setColor(row.querySelector('.day-pl'), dpl);
+	  setColor(row.querySelector('.day-pl'), dpl);
       setColor(row.querySelector('.day-pl-pct'), dplp);
       setColor(row.querySelector('.tot-pl'), tpl);
       setColor(row.querySelector('.tot-pl-pct'), tplp);
-    }
+	  }
   };
 
   const renderTrades = rows => {
@@ -369,7 +656,7 @@
     tb.innerHTML = '';
 
     if (!rows || !rows.length) {
-      tb.innerHTML = `<tr><td colspan="9" class="text-muted">No trades yet.</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="8" class="text-muted">No trades yet.</td></tr>`;
       return;
     }
 
@@ -409,12 +696,14 @@
     const holdings = d.holdings || [];
     const about    = d.about    || {};
 
-    // --- NAV (backend hint only; we'll recompute) ---
-    let nav = num(
-      metrics.net_account_value ??
+    // --- NAV (no local math, no value.value) ---
+    // Prefer raw E*TRADE NAV; use metrics only as a fallback.
+    const nav = num(
       account.nav ??
+      metrics.net_account_value ??
       0
     );
+    console.log("NAV parts:", account.nav, metrics.net_account_value);
 
     // --- Positions value ---
     let pv = num(
@@ -433,11 +722,13 @@
       account.available_funds ??
       0
     );
-
-    // FINAL NAV = Buying Power + Positions Value
-    const computedNav = num(bp) + num(pv);
-    if (Number.isFinite(computedNav) && computedNav > 0) {
-      nav = computedNav;
+    // If backend didn't set bp but nav/pv exist, try NAV - PV
+    if (!Number.isFinite(bp) || bp === 0) {
+      if (Number.isFinite(nav) && Number.isFinite(pv) && nav >= pv) {
+        bp = nav - pv;
+      } else if (!Number.isFinite(bp)) {
+        bp = 0;
+      }
     }
 
     // VALUE tile numbers
@@ -445,18 +736,21 @@
     set('#kpi-bp',     money(bp));    // Buying Power
     set('#kpi-posval', money(pv));    // Positions Value
 
+    // --- Day P&L (unrealized) for center tile ---
     let dAmt = num(metrics.day_unrealized_pnl);
     let dPct = num(metrics.day_unrealized_pnl_pct);
 
+    // Fallback to plain unrealized only if day fields missing
     if (!Number.isFinite(dAmt)) dAmt = num(metrics.unrealized_pnl);
-    if (!Number.isFinite(dPct)) dPct = num(metrics.unrealized_pl_pct);
+    if (!Number.isFinite(dPct)) dPct = num(metrics.unrealized_pnl_pct);
 
     set('#kpi-pnl',     money(dAmt));
     set('#kpi-pnl-pct', pct(dPct));
     setColor(document.querySelector('#kpi-pnl'), dAmt);
     setColor(document.querySelector('#kpi-pnl-pct'), dPct);
 
-    const realized = metrics.realized_buckets || d.realized || {};
+    // --- Realized buckets (Day / Week / Last Week / Month / All) ---
+    const realized = (metrics && metrics.realized_buckets) || d.realized || {};
 
     const RB_MAP = [
       ['day',       '#kpi-r-day',       '#kpi-r-day-pct'],
@@ -467,8 +761,8 @@
     ];
 
     RB_MAP.forEach(([key, amtSel, pctSel]) => {
-      const row = realized[key] || { pnl: 0, pct: 0 };
-      const amt = Number.isFinite(row.pnl) ? row.pnl : 0;
+      const row    = realized[key] || { pnl: 0, pct: 0 };
+      const amt    = Number.isFinite(row.pnl) ? row.pnl : 0;
       const pctVal = Number.isFinite(row.pct) ? row.pct : 0;
 
       set(amtSel, money(amt));
@@ -480,6 +774,7 @@
       if (pctEl) setColor(pctEl, pctVal);
     });
 
+    // --- Hero blurb "Since Start" (NAV-based, contribution-aware) ---
     const startCash   = num(about.start_cash);
     const startDate   = about.start_date || START_DATE;
     const netContrib  = num(about.net_contrib);
@@ -494,6 +789,13 @@
     setColor(document.querySelector('#about-since-pnl'), sincePnl);
     setColor(document.querySelector('#about-since-pct'), sincePct);
 
+    // --- Keep 'All' row in Realized P&L tile in sync with NAV P&L ---
+    set('#kpi-r-all',     money(sincePnl));
+    set('#kpi-r-all-pct', pct(sincePct));
+    setColor(document.querySelector('#kpi-r-all'),     sincePnl);
+    setColor(document.querySelector('#kpi-r-all-pct'), sincePct);
+
+    // --- Account badge ---
     const { show } = preferNumericAccountId(account);
     const badge = document.getElementById('acct-badge');
     if (badge) {
@@ -502,6 +804,7 @@
       badge.title = show || '';
     }
   };
+
 
   const refreshLive = async () => {
     const start = localStorage.getItem('live_start') || START_DATE;
@@ -523,5 +826,76 @@
     setInterval(() => refreshLive().catch(console.error), 30000);
   });
 })();
+</script>
+
+  </main>
+
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Live mode toggle: Day Trader / Swing Trader -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const group = document.getElementById('live-mode-toggle');
+      if (!group) return;
+
+      const buttons = group.querySelectorAll('[data-mode]');
+
+      function applyMode(mode) {
+        const upper = (mode || '').toUpperCase();
+        buttons.forEach(btn => {
+          const m = (btn.dataset.mode || '').toUpperCase();
+          const isActive = (m === upper);
+
+          if (isActive) {
+            btn.classList.add('btn-warning');
+            btn.classList.remove('btn-outline-warning', 'btn-outline-secondary');
+          } else {
+            btn.classList.add('btn-outline-warning');
+            btn.classList.remove('btn-warning');
+          }
+        });
+      }
+
+      async function fetchMode() {
+        try {
+          const resp = await fetch('/live/mode');
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          const data = await resp.json();
+          applyMode(data.mode || 'DAY');
+        } catch (err) {
+          console.error('[live-mode] fetch failed:', err);
+          applyMode('DAY');
+        }
+      }
+
+      async function setMode(mode) {
+        // Optimistic update
+        applyMode(mode);
+        try {
+          const resp = await fetch('/live/mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode })
+          });
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          const data = await resp.json();
+          applyMode(data.mode || mode);
+        } catch (err) {
+          console.error('[live-mode] set failed:', err);
+        }
+      }
+
+      buttons.forEach(btn => {
+        btn.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          const mode = this.dataset.mode;
+          if (mode) setMode(mode);
+        });
+      });
+
+      // Initial sync from server
+      fetchMode();
+    });
 </script>
 {% endblock %}

@@ -2519,6 +2519,10 @@ def get_default_account() -> dict:
 
 # ===== CANONICAL ACCOUNT SUMMARY (OVERRIDES EARLIER VERSIONS) =====
 
+# ===== CANONICAL ACCOUNT SUMMARY (OVERRIDES EARLIER VERSIONS) =====
+
+# ===== CANONICAL ACCOUNT SUMMARY (OVERRIDES EARLIER VERSIONS) =====
+
 def get_account_summary(account_id_key: str | None = None) -> dict:
     """
     Normalized snapshot of balances for the dashboard.
@@ -2564,6 +2568,31 @@ def get_account_summary(account_id_key: str | None = None) -> dict:
             bal = bal["balance"][0]
 
         return bal if isinstance(bal, dict) else None
+
+    def _dig_nav(node):
+        """Deep search for NAV-like fields anywhere in the balance payload."""
+        if node is None:
+            return None
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k in (
+                    "netAccountValue",
+                    "netAssets",
+                    "netValue",
+                    "totalAccountValue",
+                    "accountValue",
+                ) and v not in (None, ""):
+                    return v
+            for v in node.values():
+                found = _dig_nav(v)
+                if found is not None:
+                    return found
+        elif isinstance(node, (list, tuple)):
+            for v in node:
+                found = _dig_nav(v)
+                if found is not None:
+                    return found
+        return None
 
     # ---------- locate account identifiers ----------
     try:
@@ -2673,7 +2702,8 @@ def get_account_summary(account_id_key: str | None = None) -> dict:
         0.0,
     )
 
-    # NAV as reported by E*TRADE (net account value / total account value)
+    # ---------- NAV (Net Account Value) ----------
+    # First try the obvious fields on the primary balance dict
     nav = _f(
         comp.get("netAccountValue")
         or bal.get("netAccountValue")
@@ -2684,8 +2714,14 @@ def get_account_summary(account_id_key: str | None = None) -> dict:
         0.0,
     )
 
-    # Fallback NAV: DO NOT use netCash as NAV.
-    # If E*TRADE only gives us components, at least return cashBalance.
+    # If the direct fields aren't populated, try a deep search over the full payload
+    if nav == 0.0:
+        deep_nav = _dig_nav(raw)
+        if deep_nav is not None:
+            nav = _f(deep_nav, 0.0)
+
+    # Final fallback NAV: only if E*TRADE truly didn't give us a NAV-like field,
+    # fall back to cash_balance so the UI still has a number.
     if nav == 0.0:
         nav = cash_balance
 
@@ -2856,107 +2892,129 @@ def preview_equity_order(
     return _epost(f"/accounts/{account_id_key}/orders/preview.json", body)
 
 
-def place_equity_order(preview_resp: dict, qty: float | None = None) -> dict:
-    """
-    Place an equity order using a previously returned preview response.
+def place_equity_order(preview: dict, qty: float | None = None) -> dict:
+    """Place an equity order given a preview response.
 
-    This is intentionally minimal and mirrors the body that we know works
-    from sell_direct_place.py:
-      - Use the first Order / Instrument from the preview
-      - Optionally override quantity
-      - For MARKET orders, DO NOT send limitPrice / stopPrice (E*TRADE
-        rejects MARKET + 0.00 price fields with a 500 / code 100)
-      - For non-MARKET orders, pass through any non-zero limit/stop.
+    This is the contract used by sell_guard.py:
 
-    Args:
-        preview_resp: Dict returned from preview_equity_order().
-        qty: Optional override quantity; if None, use the preview quantity.
+        prev = preview(acct_key, sym, qty, price_type, limit_or_none)
+        et.place_equity_order(prev, qty=qty)
 
-    Returns:
-        Parsed JSON dict from the E*TRADE place endpoint.
-    """
-    if not isinstance(preview_resp, dict):
-        raise TypeError("preview_resp must be a dict")
-
-    pr = preview_resp.get("PreviewOrderResponse") or {}
-    if not pr:
-        raise RuntimeError("preview response missing PreviewOrderResponse")
-
-    # ----- 1. Extract base order & instrument -----
+    * `preview` must be the raw dict returned by preview_equity_order()
+      (or the /orders/preview.json endpoint).
+    * `qty` is currently only used for logging / future safety; the
+      actual quantity comes from the preview Instrument block.
+    """  # noqa: D401
+    pr = (preview or {}).get("PreviewOrderResponse") or {}
     orders = pr.get("Order") or []
     if not orders:
         raise RuntimeError("preview response missing Order[]")
-    src = orders[0] or {}
 
-    instrs = src.get("Instrument") or []
-    if not instrs:
-        raise RuntimeError("preview response missing Instrument[]")
-    first = dict(instrs[0])  # shallow copy
+    order = orders[0]
+    preview_ids = pr.get("PreviewIds") or []
+    if not preview_ids:
+        raise RuntimeError("preview response missing PreviewIds[]")
+    preview_id = preview_ids[0].get("previewId")
+    if not preview_id:
+        raise RuntimeError("previewId not found in preview")
 
-    prod = dict(first.get("Product") or {})
-    symbol = (prod.get("symbol") or first.get("symbol") or "").upper()
-    if not symbol:
-        raise RuntimeError("preview Instrument missing symbol")
+    # Pull out Instruments and clean preview-only fields
+    instr = order.get("Instrument") or []
+    instr = _clean_instruments_for_place(instr)
+    if not instr:
+        raise RuntimeError("preview missing Instrument for order placement")
 
-    if "securityType" not in prod:
-        prod["securityType"] = "EQ"
+    # Best-effort symbol just for logging / clientOrderId
+    symbol = ""
+    try:
+        prod = (instr[0].get("Product") or {})
+        symbol = str(prod.get("symbol") or "").upper().strip()
+    except Exception:  # noqa: BLE001
+        symbol = ""
 
-    # Decide quantity (override from arg if provided)
-    q = first.get("quantity")
-    if qty is not None:
-        q = qty
-    if q is None:
-        raise RuntimeError("preview Instrument missing quantity")
+    # priceType / term / session come from the preview, with safe defaults
+    price_type = order.get("priceType") or "MARKET"
+    order_term = order.get("orderTerm") or "GOOD_FOR_DAY"
+    mkt_session = order.get("marketSession") or "REGULAR"
 
-    instrument_min = {
-        "Product": {
-            "securityType": prod.get("securityType", "EQ"),
-            "symbol": symbol,
-        },
-        "orderAction": first.get("orderAction", "SELL"),
-        "quantityType": first.get("quantityType", "QUANTITY"),
-        "quantity": q,
-    }
-
-    price_type = src.get("priceType", "MARKET")
-
-    # Base order block – no limit/stop yet
-    order_min: dict[str, object] = {
-        "Instrument": [instrument_min],
-        "marketSession": src.get("marketSession", "REGULAR"),
-        "orderTerm": src.get("orderTerm", "GOOD_FOR_DAY"),
+    # Carry forward limit/stop prices only if they exist in the preview
+    clean_order: dict = {
+        "Instrument": instr,
+        "marketSession": mkt_session,
+        "orderTerm": order_term,
         "priceType": price_type,
     }
+    if "limitPrice" in order and order.get("limitPrice") is not None:
+        clean_order["limitPrice"] = float(order["limitPrice"])
+    if "stopPrice" in order and order.get("stopPrice") is not None:
+        clean_order["stopPrice"] = float(order["stopPrice"])
 
-    # ----- 2. Only propagate price fields for NON-MARKET orders -----
-    if price_type != "MARKET":
-        for key in ("limitPrice", "stopPrice"):
-            if key in src:
-                v = src.get(key)
-                if v not in (None, 0, 0.0, "0", "0.0"):
-                    order_min[key] = v
-
-    # ----- 3. Preview ID is required -----
-    pids = pr.get("PreviewIds") or []
-    if not pids or "previewId" not in (pids[0] or {}):
-        raise RuntimeError("previewId not found in preview response")
-    preview_id = pids[0]["previewId"]
+    # Discover account key the same way other helpers do
+    try:
+        acct_key = get_default_account_id_key()
+    except Exception:
+        # Fallback to env if helper is unavailable
+        from_env = (
+            os.getenv("ETRADE_ACCOUNT_ID_KEY")
+            or os.getenv("ACCOUNT_ID_KEY")
+        )
+        if not from_env:
+            raise RuntimeError(
+                "account_id_key not configured for place_equity_order"
+            )
+        acct_key = from_env
 
     body = {
         "PlaceOrderRequest": {
-            "orderType": pr.get("orderType", "EQ"),
+            "orderType": pr.get("orderType") or "EQ",
+            "clientOrderId": f"{symbol or 'EQ'}-{int(time.time() * 1000)}",
             "PreviewIds": [{"previewId": preview_id}],
-            "Order": [order_min],
+            "Order": [clean_order],
         }
     }
 
-    # ----- 4. Place via accountIdKey path -----
-    aid_key = account_id_key()
-    path = f"/accounts/{aid_key}/orders/place.json"
+    path_key = f"/accounts/{acct_key}/orders/place.json"
+    last_err: Exception | None = None
 
-    resp = _epost(path, json=body)
-    return resp.json()
+    # 500 / code 100 is a transient venue issue – we simply retry
+    for outer in range(1, 1 + 4):
+        try:
+            resp = _epost(path_key, body)
+            if 200 <= resp.status_code < 300:
+                return resp.json()
 
+            if resp.status_code == 500:
+                try:
+                    err_json = resp.json() or {}
+                except Exception:  # noqa: BLE001
+                    err_json = {}
+                err = (err_json or {}).get("Error") or {}
+                code = str(err.get("code")) if err else None
+                if code == "100":
+                    _lg.warning(
+                        "place_equity_order transient venue error for %s (outer=%s): %s",
+                        symbol or "?",
+                        outer,
+                        err,
+                    )
+                    # Retry with the same body; if it keeps failing we'll
+                    # eventually bubble the error up to the caller.
+                    continue
+
+            # Non-OK / non-transient response
+            resp.raise_for_status()
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+            _lg.warning(
+                "place_equity_order failed for %s (outer=%s): %s",
+                symbol or "?",
+                outer,
+                e,
+            )
+
+    if last_err is not None:
+        raise last_err
+    raise RuntimeError("place_equity_order failed with unknown error")
 def list_recent_trades(days: int = 5) -> list[dict[str, Any]]:
     """
     Return recently executed trades (BUY/SELL) using the Orders API,

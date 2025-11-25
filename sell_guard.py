@@ -439,12 +439,17 @@ def place_with_adaptive_variants(
             return False
 
         try:
-            et.place_equity_order(prev, qty=qty)
-            LOG.info("%s SELL placed (%s)", sym, price_type)
-            return True
+            # IMPORTANT: pass the preview dict into place_equity_order.
+            # The wrapper expects the full preview response, not just the symbol.
+            res = et.place_equity_order(prev)
         except Exception as e:
             msg = str(e)
-            LOG.warning("place_equity_order failed for %s (outer=%d): %s", sym, outer, msg)
+            LOG.warning(
+                "place_equity_order failed for %s (outer=%d): %s",
+                sym,
+                outer,
+                msg,
+            )
             # Transient venue issues → retry with fresh preview
             if (
                 " 500:" in msg
@@ -461,6 +466,23 @@ def place_with_adaptive_variants(
 
             # Non-transient error → give up for this symbol
             return False
+
+        # If we got here, place_equity_order didn't raise.
+        # If the wrapper returns a dict with an "ok" flag, honor it;
+        # otherwise assume success.
+        if isinstance(res, dict):
+            ok = res.get("ok", True)
+            if not ok:
+                LOG.warning(
+                    "place_equity_order response not ok for %s (outer=%d): %s",
+                    sym,
+                    outer,
+                    j(res),
+                )
+                return False
+
+        LOG.info("%s SELL placed (%s)", sym, price_type)
+        return True
 
     return False
 

@@ -596,7 +596,7 @@
     tb.innerHTML = '';
 
     if (!rows || !rows.length) {
-      tb.innerHTML = `<tr><td colspan="10" class="text-muted">No holdings.</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="11" class="text-muted">No holdings.</td></tr>`;
       return;
     }
 
@@ -609,6 +609,9 @@
       const qty  = Number(h.qty ?? 0);
       const last = Number(h.last_price ?? 0);
       const paid = Number(h.price_paid ?? 0);
+
+	// Per-share diff (Last - Paid)
+	const diff = last - paid;
 
       // Prefer backend value; otherwise compute
       let value = (h.value != null) ? Number(h.value) : (qty * last);
@@ -628,21 +631,23 @@
           <td>${opened}</td>
           <td>${money(last)}</td>
           <td>${qty}</td>
-          <td>${money(paid)}</td>
-          <td class="day-pl">${money(dpl)}</td>
-          <td class="day-pl-pct">${pct(dplp)}</td>
-          <td class="tot-pl">${money(tpl)}</td>
-          <td class="tot-pl-pct">${pct(tplp)}</td>
-          <td>${money(value)}</td>
+		<td>${money(paid)}</td>
+		<td class="diff-pl">${money(diff)}</td>
+		<td class="day-pl">${money(dpl)}</td>
+		<td class="day-pl-pct">${pct(dplp)}</td>
+		<td class="tot-pl">${money(tpl)}</td>
+		<td class="tot-pl-pct">${pct(tplp)}</td>
+		<td>${money(value)}</td>
         </tr>
       `);
 
       const row = tb.lastElementChild;
-      setColor(row.querySelector('.day-pl'), dpl);
+      setColor(row.querySelector('.diff-pl'), diff);
+	  setColor(row.querySelector('.day-pl'), dpl);
       setColor(row.querySelector('.day-pl-pct'), dplp);
       setColor(row.querySelector('.tot-pl'), tpl);
       setColor(row.querySelector('.tot-pl-pct'), tplp);
-    }
+	  }
   };
 
   const renderTrades = rows => {
@@ -688,17 +693,17 @@
     const account  = d.account  || {};
     const value    = d.value    || {};
     const metrics  = d.metrics  || {};
-    const realizedBuckets = metrics.realized_buckets || d.realized || {};
     const holdings = d.holdings || [];
     const about    = d.about    || {};
 
     // --- NAV (no local math, no value.value) ---
-    // We trust the backend-only metrics, which already use the E*TRADE summary NAV.
+    // Prefer raw E*TRADE NAV; use metrics only as a fallback.
     const nav = num(
-      metrics.net_account_value ??
       account.nav ??
+      metrics.net_account_value ??
       0
     );
+    console.log("NAV parts:", account.nav, metrics.net_account_value);
 
     // --- Positions value ---
     let pv = num(
@@ -743,9 +748,9 @@
     set('#kpi-pnl-pct', pct(dPct));
     setColor(document.querySelector('#kpi-pnl'), dAmt);
     setColor(document.querySelector('#kpi-pnl-pct'), dPct);
-	
-	// --- Realized buckets (Day / Week / Last Week / Month / All) ---
-	const realized = (metrics && metrics.realized_buckets) || d.realized || {};
+
+    // --- Realized buckets (Day / Week / Last Week / Month / All) ---
+    const realized = (metrics && metrics.realized_buckets) || d.realized || {};
 
     const RB_MAP = [
       ['day',       '#kpi-r-day',       '#kpi-r-day-pct'],
@@ -756,8 +761,8 @@
     ];
 
     RB_MAP.forEach(([key, amtSel, pctSel]) => {
-      const row = realized[key] || { pnl: 0, pct: 0 };
-      const amt = Number.isFinite(row.pnl) ? row.pnl : 0;
+      const row    = realized[key] || { pnl: 0, pct: 0 };
+      const amt    = Number.isFinite(row.pnl) ? row.pnl : 0;
       const pctVal = Number.isFinite(row.pct) ? row.pct : 0;
 
       set(amtSel, money(amt));
@@ -769,26 +774,17 @@
       if (pctEl) setColor(pctEl, pctVal);
     });
 
-    // --- Hero blurb "Since Start" (NAV-based, contribution-aware) ---
-    const startCash   = num(about.start_cash);
-    const startDate   = about.start_date || START_DATE;
-    const netContrib  = num(about.net_contrib);
-    const sincePnl    = num(about.since_pnl ?? metrics.total_gain_nav);
-    const sincePct    = num(about.since_pct ?? metrics.total_gain_nav_pct);
-
-    set('#about-start-cash',  money(startCash));
-    set('#about-start-date',  startDate);
-    set('#about-net-contrib', money(netContrib));
-    set('#about-since-pnl',   money(sincePnl));
-    set('#about-since-pct',   pct(sincePct));
     setColor(document.querySelector('#about-since-pnl'), sincePnl);
     setColor(document.querySelector('#about-since-pct'), sincePct);
 
     // --- Keep 'All' row in Realized P&L tile in sync with NAV P&L ---
     set('#kpi-r-all',     money(sincePnl));
     set('#kpi-r-all-pct', pct(sincePct));
-    setColor(document.querySelector('#kpi-r-all'),     sincePnl);
-    setColor(document.querySelector('#kpi-r-all-pct'), sincePct);
+
+    const allAmtEl = document.querySelector('#kpi-r-all');
+    const allPctEl = document.querySelector('#kpi-r-all-pct');
+    if (allAmtEl) setColor(allAmtEl, sincePnl);
+    if (allPctEl) setColor(allPctEl, sincePct);
 
     // --- Account badge ---
     const { show } = preferNumericAccountId(account);
@@ -799,6 +795,7 @@
       badge.title = show || '';
     }
   };
+
 
   const refreshLive = async () => {
     const start = localStorage.getItem('live_start') || START_DATE;
