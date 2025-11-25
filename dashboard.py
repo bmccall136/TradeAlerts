@@ -469,8 +469,8 @@ def realized_buckets_from_live_db(db_path: str) -> Dict[str, Dict[str, float]]:
       symbol TEXT
       action TEXT
       qty REAL
-      open_date TEXT  -- "YYYY-MM-DD"
-      close_date TEXT -- "YYYY-MM-DD"
+      open_date TEXT  -- "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS"
+      close_date TEXT -- "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS"
       price_share REAL
       proceeds REAL
       cost_share REAL
@@ -509,13 +509,15 @@ def realized_buckets_from_live_db(db_path: str) -> Dict[str, Dict[str, float]]:
         """
         s = start.isoformat()
         e = end.isoformat()
-        sql = (
-            "SELECT COALESCE(SUM(gain), 0.0), "
-            "       COALESCE(SUM(total_cost), 0.0) "
-            "FROM realized_trades "
-            "WHERE close_date >= ? AND close_date <= ? "
-            "  AND (symbol IS NULL OR symbol != 'GEVO')"
-        )
+        sql = """
+            SELECT
+              COALESCE(SUM(gain), 0.0)       AS gain,
+              COALESCE(SUM(total_cost), 0.0) AS total_cost
+            FROM realized_trades
+            WHERE date(close_date) >= date(?)
+              AND date(close_date) <= date(?)
+              AND (symbol IS NULL OR symbol != 'GEVO')
+        """
         try:
             cur.execute(sql, (s, e))
             row = cur.fetchone() or (0.0, 0.0)
@@ -1070,6 +1072,9 @@ def live_status():
         ui_buying_power = cash_balance
     else:
         # margin or weird cases – fall back sensibly
+        cash_balance = account.get("cash_balance")
+
+        available_funds = account.get("available_funds")
         ui_buying_power = available_funds if available_funds is not None else cash_balance
 
     # ---------- 5) UNREALIZED & DAY P&L ----------
@@ -1116,8 +1121,12 @@ def live_status():
     # ---------- 7) REALIZED P&L BUCKETS (from live.db) ----------
     realized_obj = realized_buckets_from_live_db(str(LIVE_DB)) or {}
 
-    # ---------- 8) ABOUT / SINCE START ----------
-    # Baseline config for project
+    # ---------- 8) VALUE / TRADEALERTS NAV (BP + positions) ----------
+    # nav_ta = TradeAlerts computed NAV: cash we can deploy (BP) + positions value.
+    # This matches the 4,381.31 number you see on the web UI when you’re all in cash.
+    nav_ta = round(float(ui_buying_power) + float(positions_value), 2)
+
+    # ---------- 9) ABOUT / SINCE START (NAV_TA + contributions) ----------
     START_CASH = START_CASH_BASELINE
     START_DATE = START_DATE_BASELINE
 
@@ -1126,35 +1135,36 @@ def live_status():
     except Exception:
         net_contrib = 0.0
 
-    # NAV-based gain (kept for metrics/debug)
-    total_gain = round(nav - START_CASH - net_contrib, 2)
+    # True gain = NAV_TA − start_cash − contributions
+    total_gain = round(nav_ta - START_CASH - net_contrib, 2)
+
+    # Percent = gain / (start_cash + contributions)
     denom = START_CASH + net_contrib
     total_gain_pct = round((total_gain / denom * 100.0), 2) if denom > 0 else 0.0
-
-    # For the hero blurb we now show the REALIZED "All" bucket
-    all_bucket = realized_obj.get("all") or {}
-    all_realized_pnl = _safe_float(all_bucket.get("pnl"), 0.0)
-    all_realized_pct = _safe_float(all_bucket.get("pct"), 0.0)
 
     about = {
         "start_cash": START_CASH,
         "start_date": START_DATE,
         "net_contrib": round(net_contrib, 2),
-        "since_pnl": round(all_realized_pnl, 2),
-        "since_pct": round(all_realized_pct, 2),
+        "since_pnl": total_gain,       # <- this feeds the hero blurb
+        "since_pct": total_gain_pct,
     }
 
     # ---------- 10) VALUE OBJECT FOR LEFT TILE ----------
+    # Keep the left tile showing the raw broker NAV (2,927.61) so you can still
+    # see exactly what the API is giving us, but expose nav_ta as "value".
     value_obj = {
-        "net_account_value": nav,
+        "net_account_value": nav,      # broker NAV from get_account_summary()
         "positions_value": positions_value,
         "buying_power": ui_buying_power,
-        "value": nav,  # historical alias
+        "value": nav_ta,              # TA computed NAV (BP + PV)
     }
+
     # ---------- 11) METRICS / VALUE FOR TILES ----------
     metrics = {
         # Left tile
         "net_account_value": nav,
+        "nav_ta": nav_ta,             # TA-computed NAV (for debugging / future UI)
         "buying_power": ui_buying_power,
         "positions_value": positions_value,
 

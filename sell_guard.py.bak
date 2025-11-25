@@ -106,16 +106,80 @@ DEFAULTS = {
     },
 }
 
+LIVE_MODE_FILE = os.path.join(HERE, "live_mode.txt")
+VALID_LIVE_MODES = {"DAY", "SWING"}
+LIVE_MODE_DEFAULT = "DAY"
+
+SELL_GUARD_FILES = {
+    "DAY": os.path.join(HERE, "sell_guard_settings_day.json"),
+    "SWING": os.path.join(HERE, "sell_guard_settings_swing.json"),
+}
+
+
+def _read_live_mode() -> str:
+    """Read DAY/SWING from live_mode.txt with a safe default."""
+    try:
+        with open(LIVE_MODE_FILE, encoding="utf-8") as f:
+            text = f.read().strip().upper()
+        if text in VALID_LIVE_MODES:
+            return text
+    except FileNotFoundError:
+        pass
+    except Exception as exc:
+        LOG.warning("live_mode: failed to read %s: %s", LIVE_MODE_FILE, exc)
+    return LIVE_MODE_DEFAULT
+
+
+def _resolve_settings_path() -> str:
+    """
+    Decide which sell_guard_settings*.json to use:
+
+    1) If SELL_GUARD_SETTINGS env is set and exists -> use it.
+    2) Else look at live_mode.txt (DAY/SWING) and choose
+       sell_guard_settings_day.json or sell_guard_settings_swing.json.
+    3) If missing, fall back to sell_guard_settings.json.
+    """
+    env_path = os.environ.get("SELL_GUARD_SETTINGS")
+    if env_path:
+        if os.path.exists(env_path):
+            LOG.info("Using SELL_GUARD_SETTINGS from env: %s", env_path)
+            return env_path
+        else:
+            LOG.warning(
+                "SELL_GUARD_SETTINGS=%s does not exist; falling back to mode mapping",
+                env_path,
+            )
+
+    mode = _read_live_mode()
+    path = SELL_GUARD_FILES.get(mode) or os.path.join(HERE, "sell_guard_settings.json")
+    if not os.path.exists(path):
+        fallback = os.path.join(HERE, "sell_guard_settings.json")
+        LOG.warning(
+            "Mode %s mapped to %s but it does not exist; falling back to %s",
+            mode,
+            path,
+            fallback,
+        )
+        return fallback
+
+    LOG.info("Mode %s → sell_guard settings from %s", mode, path)
+    return path
+
 
 def load_settings() -> Dict[str, Any]:
-    path = os.environ.get("SELL_GUARD_SETTINGS") or os.path.join(
-        HERE, "sell_guard_settings.json"
-    )
-    LOG.info("Using SELL_GUARD_SETTINGS=%s", path)
+    path = _resolve_settings_path()
     try:
         with open(path, encoding="utf-8") as f:
             user = json.load(f)
     except FileNotFoundError:
+        LOG.warning("sell_guard settings file not found at %s; using defaults", path)
+        user = {}
+    except Exception as exc:
+        LOG.warning(
+            "failed to load sell_guard settings from %s: %s; using defaults",
+            path,
+            exc,
+        )
         user = {}
 
     merged = dict(DEFAULTS)
@@ -136,7 +200,6 @@ def load_settings() -> Dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # E*TRADE helpers
 # --------------------------------------------------------------------------- #
-
 
 def get_acct_key() -> str:
     # Prefer the helper in etrade_service if present
@@ -332,7 +395,6 @@ TRAIL: Dict[str, Dict[str, float]] = {}  # sym -> {"hi": float, "trail_pct": flo
 # Core helpers
 # --------------------------------------------------------------------------- #
 
-
 def compute_order_params(symbol: str, cfg: GuardSettings) -> Tuple[str, float | None]:
     """Decide MARKET vs LIMIT and compute limit price when enabled."""
     pt, limit_px = "MARKET", None
@@ -377,12 +439,18 @@ def place_with_adaptive_variants(
             return False
 
         try:
-            et.place_equity_order(prev, qty=qty)
+            # Use the symbol, not the preview JSON, for the one-shot place call
+            et.place_equity_order(sym, qty=qty)
             LOG.info("%s SELL placed (%s)", sym, price_type)
             return True
         except Exception as e:
             msg = str(e)
-            LOG.warning("place_equity_order failed for %s (outer=%d): %s", sym, outer, msg)
+            LOG.warning(
+                "place_equity_order failed for %s (outer=%d): %s",
+                sym,
+                outer,
+                msg,
+            )
             # Transient venue issues → retry with fresh preview
             if (
                 " 500:" in msg
@@ -406,7 +474,6 @@ def place_with_adaptive_variants(
 # --------------------------------------------------------------------------- #
 # Main loop
 # --------------------------------------------------------------------------- #
-
 
 def main() -> None:
     cfg_raw = load_settings()

@@ -36,6 +36,69 @@ except Exception:
 
 # ─── Trailing stop persistence (canonical) ─────────────────────────────
 
+# services/realized_helpers.py  (or in your existing helpers module)
+
+import sqlite3
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+ET = ZoneInfo("America/New_York")
+
+def insert_realized_trade(
+    db_path: str,
+    *,
+    symbol: str,
+    qty: float,
+    fill_price: float,
+    avg_cost: float,
+    gain: float,
+    term: str = "DAY",
+    open_date: str | None = None,
+    close_date: str | None = None,
+) -> None:
+    """
+    Insert a realized SELL into realized_trades with your existing schema:
+
+      id, symbol, action, qty, open_date, close_date,
+      price_share, proceeds, cost_share, total_cost, gain, term
+    """
+
+    now_et = datetime.now(ET)
+    close_dt = close_date or now_et.strftime("%Y-%m-%d %H:%M:%S")
+    open_dt  = open_date or close_dt  # if we don't know the true open, reuse close
+
+    proceeds   = float(fill_price) * float(qty)
+    total_cost = float(avg_cost)   * float(qty)
+
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        INSERT INTO realized_trades
+            (symbol, action, qty,
+             open_date, close_date,
+             price_share, proceeds,
+             cost_share, total_cost,
+             gain, term)
+        VALUES (?, 'SELL', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            symbol.upper(),
+            float(qty),
+            open_dt,
+            close_dt,
+            float(fill_price),
+            proceeds,
+            float(avg_cost),
+            total_cost,
+            float(gain),
+            term,
+        ),
+    )
+
+    conn.commit()
+    conn.close()
 
 def _utcnow_iso() -> str:
     # UTC ISO8601 with Z, consistent everywhere
@@ -118,6 +181,89 @@ def _trail_clear(symbol: str) -> None:
     conn.commit()
     conn.close()
 
+from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
+import sqlite3
+
+ET = ZoneInfo("America/New_York")
+ALL_START_DATE = date(2025, 8, 22)
+LIVE_APP_STARTING_EQUITY = 392.67
+IGNORED_TICKERS = {"GEVO"}
+
+def realized_buckets_from_live_db(db_path: str) -> dict:
+    """
+    Build Day / Week / Last Week / Month / All realized P&L buckets
+    from live.db.realized_trades.
+
+    close_date is stored as a TEXT timestamp; we bucket using date(close_date)
+    so '2025-11-24 15:09:14' still counts for the 2025-11-24 bucket.
+    """
+
+    today = datetime.now(ET).date()
+    monday = today - timedelta(days=today.weekday())
+    last_monday = monday - timedelta(days=7)
+    last_sunday = monday - timedelta(days=1)
+    month_start = today.replace(day=1)
+
+    buckets = {
+        "day":   {"gain": 0.0, "percent": 0.0},
+        "week":  {"gain": 0.0, "percent": 0.0},
+        "last_week": {"gain": 0.0, "percent": 0.0},
+        "month": {"gain": 0.0, "percent": 0.0},
+        "all":   {"gain": 0.0, "percent": 0.0},
+    }
+
+    def _sum_range(start: date, end: date):
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        # note the date(close_date) here
+        cur.execute(
+            """
+            SELECT symbol, gain, total_cost
+            FROM realized_trades
+            WHERE date(close_date) >= ? AND date(close_date) <= ?
+            """,
+            (start.isoformat(), end.isoformat()),
+        )
+        rows = cur.fetchall()
+        conn.close()
+
+        total_gain = 0.0
+        total_cost = 0.0
+        for sym, g, c in rows:
+            sym = (sym or "").upper()
+            if sym in IGNORED_TICKERS:
+                continue
+            try:
+                g = float(g or 0.0)
+            except Exception:
+                g = 0.0
+            try:
+                c = float(c or 0.0)
+            except Exception:
+                c = 0.0
+
+            total_gain += g
+            total_cost += max(0.0, c)
+
+        pct = (total_gain / total_cost * 100.0) if total_cost > 0 else 0.0
+        return round(total_gain, 2), round(pct, 2)
+
+    # Buckets (ET)
+    buckets["day"]["gain"], buckets["day"]["percent"] = _sum_range(today, today)
+    buckets["week"]["gain"], buckets["week"]["percent"] = _sum_range(monday, today)
+    buckets["last_week"]["gain"], buckets["last_week"]["percent"] = _sum_range(last_monday, last_sunday)
+    buckets["month"]["gain"], buckets["month"]["percent"] = _sum_range(month_start, today)
+
+    # "All" is since 2025-08-22; % is relative to your starting equity
+    all_gain, _ = _sum_range(ALL_START_DATE, today)
+    buckets["all"]["gain"] = all_gain
+    buckets["all"]["percent"] = round(
+        (all_gain / LIVE_APP_STARTING_EQUITY * 100.0) if LIVE_APP_STARTING_EQUITY > 0 else 0.0,
+        2,
+    )
+
+    return buckets
 
 # ─── Backtest DB initializer (restored) ────────────────────────────────────────
 def init_backtest_db():
