@@ -1168,9 +1168,11 @@ def live_status():
         "buying_power": ui_buying_power,
         "positions_value": positions_value,
 
-        # Center tile (UNREALIZED = ALL-TIME)
-        "day_unrealized_pnl": total_unreal_pl,
-        "day_unrealized_pnl_pct": total_unreal_pct,
+        # Center tile: Day vs All-Time
+        # Day = today's move (sum of daysGain / day_pl)
+        # All Time = full unrealized based on cost vs current value
+        "day_unrealized_pnl": day_unrealized_pnl,
+        "day_unrealized_pnl_pct": day_unrealized_pnl_pct,
         "unrealized_pl": total_unreal_pl,
         "unrealized_pl_pct": total_unreal_pct,
 
