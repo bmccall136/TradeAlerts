@@ -85,6 +85,13 @@ def get_open_orders(account_id_key: str, days: int = 14) -> dict:
     then fall back to a recent window with both YYYY-MM-DD and MM/DD/YYYY.
     """
     import datetime as _dt
+# Backwards-compat alias for older callers
+def list_orders(account_id_key: str | None = None, days: int = 14) -> list[dict]:
+    """
+    Legacy name kept for compatibility with older code.
+    Internally just calls get_open_orders().
+    """
+    return get_open_orders(account_id_key=account_id_key, days=days)
 
     # 1) no dates – many tenants accept this and avoid 400s
     try:
@@ -2720,10 +2727,21 @@ def get_account_summary(account_id_key: str | None = None) -> dict:
         if deep_nav is not None:
             nav = _f(deep_nav, 0.0)
 
-    # Final fallback NAV: only if E*TRADE truly didn't give us a NAV-like field,
-    # fall back to cash_balance so the UI still has a number.
+    # Fallback NAV:
+    # If the standard NAV fields are missing/zero, try cashBuyingPower / totalBuyingPower,
+    # which for a flat cash account should match "Net Account Value" on E*TRADE.
     if nav == 0.0:
-        nav = cash_balance
+        nav_from_bp = _f(
+            comp.get("cashBuyingPower")
+            or bal.get("cashBuyingPower")
+            or comp.get("totalBuyingPower")
+            or bal.get("totalBuyingPower"),
+            0.0,
+        )
+        if nav_from_bp > 0.0:
+            nav = nav_from_bp
+        else:
+            nav = cash_balance
 
     # --- Buying power / available funds ---
     # For a cash account, the cleanest "what can I actually deploy" is netCash,

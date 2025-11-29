@@ -1,19 +1,20 @@
-﻿{% extends "layout.html" %}
+{% extends "layout.html" %}
 {% block content %}
-  <!-- Hero blurb -->
-  <div class="hero-blurb mb-4 text-center">
-    Started with <span id="about-start-cash">$0.00</span> on
-    <span id="about-start-date">—</span>.
-    Since then we’ve added <span id="about-net-contrib">$0.00</span> and our P&L is
-    <span id="about-since-pnl">$0.00</span> at
-    <span id="about-since-pct">0.00%</span>.
-  </div>
-
 <style>
   body {
     background-color: #000;
     color: #f5f5f5;
   }
+
+  /* Make navbar / checkpoint text bright enough */
+  .navbar span,
+  .navbar label,
+  .navbar .form-check-label,
+  .navbar .text-muted,
+  .navbar .nav-link {
+    color: #f8f9fa !important;
+  }
+
   .kpi-tile {
     background: #111;
     border-radius: 0.75rem;
@@ -50,12 +51,13 @@
     background-color: #222;
   }
 
-  /* Blurb centered under title */
+  /* Blurb centered and nudged upward so it hugs the title area */
   .hero-blurb {
     font-size: 0.95rem;
     color: #ddd;
     text-align: center;
-    margin-top: 0.35rem;
+    margin-top: -0.6rem;
+    margin-bottom: 0.85rem;
   }
 
   .dot {
@@ -74,16 +76,10 @@
   .nav-link.active {
     color: #ffc107 !important;
   }
-
-  /* Make Checkpoint / status text bright enough in dark mode */
-  .form-check-label,
-  .text-muted {
-    color: #e8e8e8 !important;
-  }
 </style>
 
 <!-- Top status row: only E*TRADE API + account badge -->
-<div class="d-flex justify-content-between align-items-center mb-2">
+<div class="d-flex justify-content-between align-items-center mb-1">
   <div></div>
   <div class="text-end">
     <div class="mb-2">
@@ -94,8 +90,8 @@
   </div>
 </div>
 
-<!-- Hero blurb centered -->
-<div class="hero-blurb mb-3">
+<!-- Hero blurb centered just under the title area -->
+<div class="hero-blurb">
   Started with <span id="about-start-cash">$0.00</span> on
   <span id="about-start-date">—</span>.
   Since then we’ve added <span id="about-net-contrib">$0.00</span> and our P&amp;L is
@@ -119,24 +115,17 @@
     </div>
   </div>
 
-  <!-- UNREALIZED P&L tile (Day + All Time) -->
+  <!-- UNREALIZED P&L tile (kept as *unrealized day move on open positions*) -->
   <div class="col-md-4">
     <div class="kpi-tile">
-      <div class="kpi-label mb-2">P&amp;L (Unrealized)</div>
-
-      <div class="kpi-sub mb-1">
-        <strong>Day</strong>:
-        <span id="kpi-pnl-day">$0.00</span>
-        (<span id="kpi-pnl-day-pct">0.00%</span>)
+      <div class="kpi-label mb-2">P&amp;L (Unrealized – Open Positions)</div>
+      <div class="kpi-main">
+        <span id="kpi-pnl">$0.00</span>
+        <span class="ms-2" id="kpi-pnl-pct">0.00%</span>
       </div>
-
       <div class="kpi-sub">
-        <strong>All Time</strong>:
-        <span id="kpi-pnl-all">$0.00</span>
-        (<span id="kpi-pnl-all-pct">0.00%</span>)
-      </div>
-
-      <div class="kpi-sub mt-2">
+        Intraday unrealized move across current open positions
+        (this will NOT exactly match E*TRADE “Day’s Gain”).
       </div>
     </div>
   </div>
@@ -316,7 +305,7 @@
     tb.innerHTML = '';
 
     if (!rows || !rows.length) {
-      tb.innerHTML = `<tr><td colspan="11" class="text-muted">No holdings.</td></tr>`;
+      tb.innerHTML = '<tr><td colspan="11" class="text-muted">No holdings.</td></tr>';
       return;
     }
 
@@ -369,7 +358,7 @@
     tb.innerHTML = '';
 
     if (!rows || !rows.length) {
-      tb.innerHTML = `<tr><td colspan="8" class="text-muted">No trades yet.</td></tr>`;
+      tb.innerHTML = '<tr><td colspan="8" class="text-muted">No trades yet.</td></tr>';
       return;
     }
 
@@ -427,7 +416,6 @@
       0
     );
 
-    // If BP is NaN but we have nav + pv, derive; otherwise default 0
     const nav = num(
       account.nav ??
       metrics.net_account_value ??
@@ -442,7 +430,6 @@
       }
     }
 
-    // --- VALUE big number = BP + Positions ---
     const valTotal =
       (Number.isFinite(bp) ? bp : 0) +
       (Number.isFinite(pv) ? pv : 0);
@@ -451,23 +438,17 @@
     set('#kpi-bp',     money(bp));
     set('#kpi-posval', money(pv));
 
-    // --- Unrealized P&L tile: Day + All Time ---
-    const dAmt    = num(metrics.day_unrealized_pnl);
-    const dPct    = num(metrics.day_unrealized_pnl_pct);
-    const allAmt  = num(metrics.unrealized_pl);
-    const allPct  = num(metrics.unrealized_pl_pct);
+    // --- Unrealized intraday move (center tile) ---
+    let dAmt = num(metrics.day_unrealized_pnl);
+    let dPct = num(metrics.day_unrealized_pnl_pct);
 
-    // Day
-    set('#kpi-pnl-day',     money(dAmt));
-    set('#kpi-pnl-day-pct', pct(dPct));
-    setColor(document.querySelector('#kpi-pnl-day'), dAmt);
-    setColor(document.querySelector('#kpi-pnl-day-pct'), dPct);
+    if (!Number.isFinite(dAmt)) dAmt = num(metrics.unrealized_pnl);
+    if (!Number.isFinite(dPct)) dPct = num(metrics.unrealized_pnl_pct);
 
-    // All Time
-    set('#kpi-pnl-all',     money(allAmt));
-    set('#kpi-pnl-all-pct', pct(allPct));
-    setColor(document.querySelector('#kpi-pnl-all'), allAmt);
-    setColor(document.querySelector('#kpi-pnl-all-pct'), allPct);
+    set('#kpi-pnl',     money(dAmt));
+    set('#kpi-pnl-pct', pct(dPct));
+    setColor(document.querySelector('#kpi-pnl'), dAmt);
+    setColor(document.querySelector('#kpi-pnl-pct'), dPct);
 
     // --- Realized buckets ---
     const realized = (metrics && metrics.realized_buckets) || d.realized || {};
@@ -481,9 +462,9 @@
     ];
 
     RB_MAP.forEach(([key, amtSel, pctSel]) => {
-      const row = realized[key] || { pnl: 0, pct: 0 };
-      const amt = Number.isFinite(row.pnl) ? row.pnl : 0;
-      const pctVal = Number.isFinite(row.pct) ? row.pct : 0;
+      const row = realized[key] || { pnl: 0, pct: 0, gain: 0, percent: 0 };
+      const amt = Number.isFinite(row.pnl ?? row.gain) ? (row.pnl ?? row.gain) : 0;
+      const pctVal = Number.isFinite(row.pct ?? row.percent) ? (row.pct ?? row.percent) : 0;
 
       set(amtSel, money(amt));
       set(pctSel, pct(pctVal));
@@ -494,13 +475,13 @@
       if (pctEl) setColor(pctEl, pctVal);
     });
 
-    // --- Hero blurb "since start" follows Realized ALL ---
-    const allBucket = realized['all'] || { pnl: 0, pct: 0 };
-    const sincePnl  = Number.isFinite(allBucket.pnl)
-      ? allBucket.pnl
+    // --- Hero blurb follows "All" realized bucket so everything matches ---
+    const allBucket = realized['all'] || { pnl: 0, pct: 0, gain: 0, percent: 0 };
+    const sincePnl  = Number.isFinite(allBucket.pnl ?? allBucket.gain)
+      ? (allBucket.pnl ?? allBucket.gain)
       : num(about.since_pnl);
-    const sincePct  = Number.isFinite(allBucket.pct)
-      ? allBucket.pct
+    const sincePct  = Number.isFinite(allBucket.pct ?? allBucket.percent)
+      ? (allBucket.pct ?? allBucket.percent)
       : num(about.since_pct);
 
     const startCash   = num(about.start_cash);
@@ -515,7 +496,6 @@
     setColor(document.querySelector('#about-since-pnl'), sincePnl);
     setColor(document.querySelector('#about-since-pct'), sincePct);
 
-    // --- Account badge ---
     const { show } = preferNumericAccountId(account);
     const badge = document.getElementById('acct-badge');
     if (badge) {

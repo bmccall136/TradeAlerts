@@ -1,178 +1,165 @@
 ﻿{% extends "layout.html" %}
 {% block content %}
+  <!-- Hero blurb -->
+  <div class="hero-blurb mb-4 text-center">
+    Started with <span id="about-start-cash">$0.00</span> on
+    <span id="about-start-date">—</span>.
+    Since then we’ve added <span id="about-net-contrib">$0.00</span> and our P&L is
+    <span id="about-since-pnl">$0.00</span> at
+    <span id="about-since-pct">0.00%</span>.
+  </div>
+
 <style>
-  .kpi-card { padding: 18px 20px; }
-  .top-blurb { margin-top: 6px; margin-bottom: 12px; opacity: .95; }
-
-  :root{
-    --pos: #2ecc71;
-    --neg: #ff6b6b;
-    --zero: #b8b8b8;
+  body {
+    background-color: #000;
+    color: #f5f5f5;
   }
-  .text-pos { color: var(--pos) !important; }
-  .text-neg { color: var(--neg) !important; }
-  .text-zero{ color: var(--zero) !important; }
-
-  .kpi-realized .rline{
-    display:grid;
-    grid-template-columns: 1fr max-content max-content;
-    gap:.25rem 1rem;
-    align-items:baseline;
-    padding: 2px 0;
+  .kpi-tile {
+    background: #111;
+    border-radius: 0.75rem;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+    border: 1px solid #333;
+    box-shadow: 0 0 18px rgba(0, 0, 0, 0.7);
   }
-  .kpi-realized .rline > :nth-child(2),
-  .kpi-realized .rline > :nth-child(3){
-    text-align:right;
-    font-variant-numeric: tabular-nums;
+  .kpi-label {
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #aaa;
   }
-  .kpi-realized .rline > :nth-child(2){ min-width: 5.5rem; }
-  .kpi-realized .rline > :nth-child(3){ min-width: 3.75rem; }
-
-  .hero-blurb{
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    gap:6px;
-    text-align:center;
-    padding:10px 0 22px;
-    margin:0 auto;
-    max-width:1100px;
-    line-height:1.15;
+  .kpi-main {
+    font-size: 1.7rem;
+    font-weight: 600;
   }
-  .hero-blurb .since { opacity:.92; font-size:1.05rem; }
-  .hero-blurb .by    { opacity:.80; font-size:1rem; }
-  .dot-green { color:#39d353; }
-  .dot-red   { color:#ff4d4d; }
+  .kpi-sub {
+    font-size: 0.95rem;
+    color: #ccc;
+  }
+  .table-dark {
+    --bs-table-bg: #121212;
+    --bs-table-striped-bg: #181818;
+    --bs-table-striped-color: #f5f5f5;
+    --bs-table-border-color: #333;
+  }
+  .table-dark thead.table-light {
+    --bs-table-bg: #1f1f1f;
+    --bs-table-color: #f5f5f5;
+  }
+  .table-dark tbody tr:hover {
+    background-color: #222;
+  }
 
-  .cash-rows{
-    display:grid;
-    grid-template-columns: 1fr auto;
-    column-gap:.75rem;
-    row-gap:.25rem;
-    white-space:nowrap;
+  /* Blurb centered under title */
+  .hero-blurb {
+    font-size: 0.95rem;
+    color: #ddd;
+    text-align: center;
+    margin-top: 0.35rem;
+  }
+
+  .dot {
+    display: inline-block;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    margin-left: 0.4rem;
+  }
+  .dot-green {
+    background-color: #2ecc71;
+  }
+  .dot-red {
+    background-color: #e74c3c;
+  }
+  .nav-link.active {
+    color: #ffc107 !important;
+  }
+
+  /* Make Checkpoint / status text bright enough in dark mode */
+  .form-check-label,
+  .text-muted {
+    color: #e8e8e8 !important;
   }
 </style>
 
-<div class="container">
-  <div class="d-flex justify-content-between align-items-start mb-4" style="min-height:54px; position:relative;">
-    <!-- Left spacer -->
-    <div style="min-width:220px;">
-      <div class="kv"></div>
+<!-- Top status row: only E*TRADE API + account badge -->
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <div></div>
+  <div class="text-end">
+    <div class="mb-2">
+      <span class="me-2 text-muted">E*TRADE API</span>
+      <span id="etrade-dot" class="dot dot-red"></span>
     </div>
-
-    <div class="hero-blurb mx-auto text-center">
-      <div class="since">
-        Started with <b id="about-start-cash">$0.00</b> on
-        <b id="about-start-date">—</b>.
-        Since then we’ve added
-        <b id="about-net-contrib">$0.00</b> and our NAV P&amp;L is
-        <b id="about-since-pnl">$0.00</b> at
-        <b id="about-since-pct">0.00%</b>.
-      </div>
-      <div class="by">Built by <b>Ben McCall &amp; Max</b></div>
-    </div>
-
-    <!-- Right: account + E*TRADE API status -->
-    <div class="d-flex flex-column align-items-end" style="gap:6px; min-width: 220px;">
-      {% set acct = account or {} %}
-      {% set raw_type = (acct.get('account_type') or '') %}
-      {% set acct_label = 'Cash Acct.' %}
-
-      {% if raw_type in ['CASH', 'CASH_ACCOUNT'] %}
-        {% set acct_label = 'Cash Acct.' %}
-      {% elif raw_type in ['MARGIN', 'MARGIN_ACCOUNT'] %}
-        {% set acct_label = 'Margin Acct.' %}
-      {% elif raw_type == 'PDT_ACCOUNT' %}
-        {% set acct_label = 'Cash (PDT)' %}
-      {% elif raw_type %}
-        {% set acct_label = raw_type|replace('_', ' ')|title %}
-      {% endif %}
-
-      <div class="fw-bold" style="white-space: nowrap;">
-        Account type: {{ acct_label }}
-      </div>
-
-      <div class="small text-muted" style="white-space:nowrap;">
-        Acct: <span id="acct-badge">—</span>
-      </div>
-
-      <div class="status-block" style="background:#000;color:#ffd600;padding:8px;border-radius:6px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-          <div>E*TRADE API</div>
-          <div id="etrade-dot" class="dot dot-red">&#9679;</div>
-        </div>
-      </div>
-    </div>
+    <span id="acct-badge" class="badge bg-secondary"></span>
   </div>
 </div>
 
 <!-- KPI Row -->
-<div class="container-fluid mt-2">
-  <div class="row g-3 align-items-stretch">
-    <!-- VALUE -->
-    <div class="col-12 col-md-4">
-      <div class="card bg-dark border-0 shadow-sm h-100">
-        <div class="card-body kpi-card d-flex flex-column justify-content-center">
-          <div class="text-uppercase small">Net Account Value NAV</div>
-          <div id="kpi-cash" class="fs-3 fw-bold"></div>
-          <div class="mt-2 small kpi-cash-extra">
-            <div class="cash-rows">
-              <div>Buying Power</div><div id="kpi-bp" class="fw-semibold text-end"></div>
-              <div>Positions Value</div><div id="kpi-posval" class="fw-semibold text-end"></div>
-            </div>
-          </div>
-        </div>
+<div class="row">
+  <!-- VALUE tile -->
+  <div class="col-md-4">
+    <div class="kpi-tile">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="kpi-label">Value</div>
+      </div>
+      <div class="kpi-main" id="kpi-cash">$0.00</div>
+      <div class="kpi-sub">
+        <div>Buying Power: <span id="kpi-bp">$0.00</span></div>
+        <div>Positions Value: <span id="kpi-posval">$0.00</span></div>
       </div>
     </div>
+  </div>
 
-    <!-- Unrealized P&L -->
-    <div class="col-12 col-md-4">
-      <div class="card bg-dark border-0 shadow-sm h-100 text-center">
-        <div class="card-body kpi-card d-flex flex-column justify-content-center">
-          <div class="text-uppercase small">P&amp;L (Unrealized)</div>
-          <div id="kpi-pnl" class="fs-3 fw-bold"></div>
-          <div id="kpi-pnl-pct" class="small"></div>
-          <div id="kpi-pv-note" class="small text-muted mt-1"></div>
-        </div>
+  <!-- UNREALIZED P&L tile (Day + All Time) -->
+  <div class="col-md-4">
+    <div class="kpi-tile">
+      <div class="kpi-label mb-2">P&amp;L (Unrealized)</div>
+
+      <div class="kpi-sub mb-1">
+        <strong>Day</strong>:
+        <span id="kpi-pnl-day">$0.00</span>
+        (<span id="kpi-pnl-day-pct">0.00%</span>)
+      </div>
+
+      <div class="kpi-sub">
+        <strong>All Time</strong>:
+        <span id="kpi-pnl-all">$0.00</span>
+        (<span id="kpi-pnl-all-pct">0.00%</span>)
+      </div>
+
+      <div class="kpi-sub mt-2">
       </div>
     </div>
+  </div>
 
-    <!-- Realized P&L buckets -->
-    <div class="col-12 col-md-4">
-      <div class="card bg-dark border-0 shadow-sm h-100">
-        <div class="card-body kpi-card">
-          <div class="d-flex justify-content-between align-items-center">
-            <div class="text-uppercase small">Realized P&amp;L</div>
-            <div class="small">D / W / LW / M / All</div>
-          </div>
-          <div class="kpi-realized mt-2">
-            <div class="rline">
-              <span class="small">Day</span>
-              <span id="kpi-r-day" class="fw-semibold"></span>
-              <span id="kpi-r-day-pct" class="small"></span>
-            </div>
-            <div class="rline">
-              <span class="small">Week</span>
-              <span id="kpi-r-week" class="fw-semibold"></span>
-              <span id="kpi-r-week-pct" class="small"></span>
-            </div>
-            <div class="rline">
-              <span class="small">Last Week</span>
-              <span id="kpi-r-lastweek" class="fw-semibold"></span>
-              <span id="kpi-r-lastweek-pct" class="small"></span>
-            </div>
-            <div class="rline">
-              <span class="small">Month</span>
-              <span id="kpi-r-month" class="fw-semibold"></span>
-              <span id="kpi-r-month-pct" class="small"></span>
-            </div>
-            <div class="rline">
-              <span class="small">All</span>
-              <span id="kpi-r-all" class="fw-semibold"></span>
-              <span id="kpi-r-all-pct" class="small"></span>
-            </div>
-          </div>
-        </div>
+  <!-- REALIZED P&L tile -->
+  <div class="col-md-4">
+    <div class="kpi-tile">
+      <div class="kpi-label mb-2">Realized P&amp;L</div>
+      <div class="kpi-sub mb-1">
+        <strong>Day</strong>:
+        <span id="kpi-r-day">$0.00</span>
+        (<span id="kpi-r-day-pct">0.00%</span>)
+      </div>
+      <div class="kpi-sub mb-1">
+        <strong>Week</strong>:
+        <span id="kpi-r-week">$0.00</span>
+        (<span id="kpi-r-week-pct">0.00%</span>)
+      </div>
+      <div class="kpi-sub mb-1">
+        <strong>Last Week</strong>:
+        <span id="kpi-r-lastweek">$0.00</span>
+        (<span id="kpi-r-lastweek-pct">0.00%</span>)
+      </div>
+      <div class="kpi-sub mb-1">
+        <strong>Month</strong>:
+        <span id="kpi-r-month">$0.00</span>
+        (<span id="kpi-r-month-pct">0.00%</span>)
+      </div>
+      <div class="kpi-sub">
+        <strong>All</strong>:
+        <span id="kpi-r-all">$0.00</span>
+        (<span id="kpi-r-all-pct">0.00%</span>)
       </div>
     </div>
   </div>
@@ -183,7 +170,7 @@
   <h3 class="text-white mb-0">Holdings</h3>
 </div>
 <div class="table-responsive">
-  <table class="table table-striped table-bordered alerts-table text-white">
+  <table class="table table-dark table-striped align-middle">
     <thead class="table-light">
       <tr>
         <th>Symbol</th>
@@ -191,7 +178,7 @@
         <th>Last Price</th>
         <th>Qty</th>
         <th>Price Paid</th>
-        <th>Diff</th>
+        <th>Diff (Last - Paid)</th>
         <th>Day P&amp;L</th>
         <th>Day P&amp;L %</th>
         <th>Total P&amp;L</th>
@@ -199,14 +186,18 @@
         <th>Value</th>
       </tr>
     </thead>
-    <tbody id="holdings-body"></tbody>
+    <tbody id="holdings-body">
+      <tr><td colspan="11" class="text-muted">Loading…</td></tr>
+    </tbody>
   </table>
 </div>
 
 <!-- Recent Trades -->
-<h3 class="section-title mt-4">Recent Trades</h3>
-<div class="table-responsive">
-  <table class="table table-striped table-bordered alerts-table text-white">
+<div class="d-flex justify-content-between align-items-center mb-3 mt-5">
+  <h3 class="text-white mb-0">Recent Trades</h3>
+</div>
+<div class="table-responsive mb-5">
+  <table class="table table-dark table-striped align-middle">
     <thead class="table-light">
       <tr>
         <th>Time (ET)</th>
@@ -219,288 +210,9 @@
         <th>P&amp;L %</th>
       </tr>
     </thead>
-    <tbody id="trades-body"></tbody>
-  </table>
-</div>
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>🚀 TradeAlerts 🚀</title>
-
-  <!-- 1) Bootstrap CSS -->
-  <link
-    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-    rel="stylesheet"
-  />
-
-  <!-- 2) Bootstrap Icons -->
-  <link
-    href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css"
-    rel="stylesheet"
-  />
-
-  <!-- 3) App CSS -->
-  <link rel="stylesheet" href="/static/style.css" />
-
-  
-</head>
-<body class="black-bg text-light">
-
-  <!-- NAVBAR -->
-  <nav class="navbar navbar-expand-lg navbar-dark bg-black py-2 position-relative">
-    <div class="container-fluid">
-
-      <!-- Left: primary nav -->
-      <div class="d-flex align-items-center mb-3">
-        <div id="live-mode-toggle" class="btn-group btn-group-sm" role="group" aria-label="Trade mode">
-          <button type="button" class="btn btn-outline-warning" data-mode="DAY">Day Trader</button>
-          <button type="button" class="btn btn-outline-secondary" data-mode="SWING">Swing Trader</button>
-        </div>
-      </div>
-
-      <!-- Center: big title -->
-      <div class="trade-alerts-title position-absolute top-50 start-50 translate-middle text-center">
-        🚀 <b>TradeAlerts</b> 🚀
-      </div>
-
-      <!-- Right: actions -->
-      <div class="d-flex align-items-center gap-2 ms-auto">
-        <!-- Checkpoint -->
-        <form action="/checkpoint" method="get" class="m-0">
-          <button class="btn btn-small">✅ Checkpoint</button>
-        </form>
-
-        <!-- Reconnect API -->
-        <a class="btn btn-sm btn-outline-warning btn-fixed"
-           href="/auth/etrade/reconnect">
-          🔁 Reconnect API
-        </a>
-      </div>
-
-    </div>
-  </nav>
-
-  <!-- MAIN -->
-  <main class="container py-4">
-    
-<style>
-  .kpi-card { padding: 18px 20px; }
-  .top-blurb { margin-top: 6px; margin-bottom: 12px; opacity: .95; }
-
-  :root{
-    --pos: #2ecc71;
-    --neg: #ff6b6b;
-    --zero: #b8b8b8;
-  }
-  .text-pos { color: var(--pos) !important; }
-  .text-neg { color: var(--neg) !important; }
-  .text-zero{ color: var(--zero) !important; }
-
-  .kpi-realized .rline{
-    display:grid;
-    grid-template-columns: 1fr max-content max-content;
-    gap:.25rem 1rem;
-    align-items:baseline;
-    padding: 2px 0;
-  }
-  .kpi-realized .rline > :nth-child(2),
-  .kpi-realized .rline > :nth-child(3){
-    text-align:right;
-    font-variant-numeric: tabular-nums;
-  }
-  .kpi-realized .rline > :nth-child(2){ min-width: 5.5rem; }
-  .kpi-realized .rline > :nth-child(3){ min-width: 3.75rem; }
-
-  .hero-blurb{
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    gap:6px;
-    text-align:center;
-    padding:10px 0 22px;
-    margin:0 auto;
-    max-width:1100px;
-    line-height:1.15;
-  }
-  .hero-blurb .since { opacity:.92; font-size:1.05rem; }
-  .hero-blurb .by    { opacity:.80; font-size:1rem; }
-  .dot-green { color:#39d353; }
-  .dot-red   { color:#ff4d4d; }
-
-  .cash-rows{
-    display:grid;
-    grid-template-columns: 1fr auto;
-    column-gap:.75rem;
-    row-gap:.25rem;
-    white-space:nowrap;
-  }
-</style>
-
-<div class="container">
-  <div class="d-flex justify-content-between align-items-start mb-4" style="min-height:54px; position:relative;">
-    <!-- Left spacer -->
-    <div style="min-width:220px;">
-      <div class="kv"></div>
-    </div>
-
-<div class="hero-blurb mx-auto text-center">
-  <div class="since">
-    Started with <b id="about-start-cash">$0.00</b> on
-    <b id="about-start-date">—</b>.
-    Since then we’ve added
-    <b id="about-net-contrib">$0.00</b> and our NAV P&amp;L is
-    <b id="about-since-pnl">$0.00</b> at
-    <b id="about-since-pct">0.00%</b>.
-  </div>
-  <div class="by">Built by <b>Ben McCall &amp; Max</b></div>
-</div>
-
-	<!-- Right: account + E*TRADE API status -->
-	<div class="d-flex flex-column align-items-end" style="gap:6px; min-width: 220px;">
-	  
-	  
-	  
-
-	  
-		
-		
-	  
-
-	  <div class="fw-bold" style="white-space: nowrap;">
-		Account type: Individual
-	  </div>
-
-	  <div class="small text-muted" style="white-space:nowrap;">
-		Acct: <span id="acct-badge">â€”</span>
-	  </div>
-
-	  <div class="status-block" style="background:#000;color:#ffd600;padding:8px;border-radius:6px;">
-		<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-		  <div>E*TRADE API</div>
-		  <div id="etrade-dot" class="dot dot-red">&#9679;</div>
-		</div>
-	  </div>
-	</div>
-   </div>
-  </div>
-</div>
-
-<!-- KPI Row -->
-<div class="container-fluid mt-2">
-  <div class="row g-3 align-items-stretch">
-    <!-- VALUE -->
-    <div class="col-12 col-md-4">
-      <div class="card bg-dark border-0 shadow-sm h-100">
-        <div class="card-body kpi-card d-flex flex-column justify-content-center">
-          <div class="text-uppercase small">Net Account Value NAV</div>
-          <div id="kpi-cash" class="fs-3 fw-bold"></div>
-          <div class="mt-2 small kpi-cash-extra">
-            <div class="cash-rows">
-              <div>Buying Power</div><div id="kpi-bp" class="fw-semibold text-end"></div>
-              <div>Positions Value</div><div id="kpi-posval" class="fw-semibold text-end"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Unrealized P&L -->
-    <div class="col-12 col-md-4">
-      <div class="card bg-dark border-0 shadow-sm h-100 text-center">
-        <div class="card-body kpi-card d-flex flex-column justify-content-center">
-          <div class="text-uppercase small">P&amp;L (Unrealized)</div>
-          <div id="kpi-pnl" class="fs-3 fw-bold"></div>
-          <div id="kpi-pnl-pct" class="small"></div>
-          <div id="kpi-pv-note" class="small text-muted mt-1"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Realized P&L buckets -->
-    <div class="col-12 col-md-4">
-      <div class="card bg-dark border-0 shadow-sm h-100">
-        <div class="card-body kpi-card">
-          <div class="d-flex justify-content-between align-items-center">
-            <div class="text-uppercase small">Realized P&amp;L</div>
-            <div class="small">D / W / LW / M / All</div>
-          </div>
-          <div class="kpi-realized mt-2">
-            <div class="rline">
-              <span class="small">Day</span>
-              <span id="kpi-r-day" class="fw-semibold"></span>
-              <span id="kpi-r-day-pct" class="small"></span>
-            </div>
-            <div class="rline">
-              <span class="small">Week</span>
-              <span id="kpi-r-week" class="fw-semibold"></span>
-              <span id="kpi-r-week-pct" class="small"></span>
-            </div>
-            <div class="rline">
-              <span class="small">Last Week</span>
-              <span id="kpi-r-lastweek" class="fw-semibold"></span>
-              <span id="kpi-r-lastweek-pct" class="small"></span>
-            </div>
-            <div class="rline">
-              <span class="small">Month</span>
-              <span id="kpi-r-month" class="fw-semibold"></span>
-              <span id="kpi-r-month-pct" class="small"></span>
-            </div>
-            <div class="rline">
-              <span class="small">All</span>
-              <span id="kpi-r-all" class="fw-semibold"></span>
-              <span id="kpi-r-all-pct" class="small"></span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Holdings -->
-<div class="d-flex justify-content-between align-items-center mb-3 mt-4">
-  <h3 class="text-white mb-0">Holdings</h3>
-</div>
-<div class="table-responsive">
-  <table class="table table-striped table-bordered alerts-table text-white">
-    <thead class="table-light">
-      <tr>
-        <th>Symbol</th>
-        <th>Opened (ET)</th>
-        <th>Last Price</th>
-        <th>Qty</th>
-        <th>Price Paid</th>
-        <th>Day P&amp;L</th>
-        <th>Day P&amp;L %</th>
-        <th>Total P&amp;L</th>
-        <th>Total P&amp;L %</th>
-        <th>Value</th>
-      </tr>
-    </thead>
-    <tbody id="holdings-body"></tbody>
-  </table>
-</div>
-
-<!-- Recent Trades -->
-<h3 class="section-title mt-4">Recent Trades</h3>
-<div class="table-responsive">
-  <table class="table table-striped table-bordered alerts-table text-white">
-    <thead class="table-light">
-      <tr>
-        <th>Time (ET)</th>
-        <th>Symbol</th>
-        <th>Side</th>
-        <th>Qty</th>
-        <th>Price</th>
-        <th>Price Paid</th>
-		<th>Diff</th>
-        <th>P&amp;L</th>
-        <th>P&amp;L %</th>
-      </tr>
-    </thead>
-    <tbody id="trades-body"></tbody>
+    <tbody id="trades-body">
+      <tr><td colspan="8" class="text-muted">Loading…</td></tr>
+    </tbody>
   </table>
 </div>
 
@@ -509,7 +221,6 @@
   const POS  = '#2ecc71';
   const NEG  = '#ff6b6b';
   const ZERO = '#b8b8b8';
-  // START_CASH removed; read from backend /live/status.about.start_cash
   const START_DATE = '2025-08-22';
 
   const num = x => {
@@ -602,26 +313,19 @@
 
     for (const h of rows) {
       const sym = (h.symbol || '').toUpperCase();
-
-      // Opened (ET) from backend; fallback to "—"
       const opened = h.opened_et || h.opened || '—';
 
       const qty  = Number(h.qty ?? 0);
       const last = Number(h.last_price ?? 0);
       const paid = Number(h.price_paid ?? 0);
+      const diff = last - paid;
 
-	// Per-share diff (Last - Paid)
-	const diff = last - paid;
-
-      // Prefer backend value; otherwise compute
       let value = (h.value != null) ? Number(h.value) : (qty * last);
       if (!Number.isFinite(value)) value = 0;
 
-      // Day P&L (intraday)
       const dpl  = Number(h.day_pl ?? 0);
       const dplp = Number(h.day_pl_pct ?? 0);
 
-      // Total P&L (since entry)
       const tpl  = Number(h.total_pl ?? 0);
       const tplp = Number(h.total_pl_pct ?? 0);
 
@@ -631,23 +335,23 @@
           <td>${opened}</td>
           <td>${money(last)}</td>
           <td>${qty}</td>
-		<td>${money(paid)}</td>
-		<td class="diff-pl">${money(diff)}</td>
-		<td class="day-pl">${money(dpl)}</td>
-		<td class="day-pl-pct">${pct(dplp)}</td>
-		<td class="tot-pl">${money(tpl)}</td>
-		<td class="tot-pl-pct">${pct(tplp)}</td>
-		<td>${money(value)}</td>
+          <td>${money(paid)}</td>
+          <td class="diff-pl">${money(diff)}</td>
+          <td class="day-pl">${money(dpl)}</td>
+          <td class="day-pl-pct">${pct(dplp)}</td>
+          <td class="tot-pl">${money(tpl)}</td>
+          <td class="tot-pl-pct">${pct(tplp)}</td>
+          <td>${money(value)}</td>
         </tr>
       `);
 
       const row = tb.lastElementChild;
       setColor(row.querySelector('.diff-pl'), diff);
-	  setColor(row.querySelector('.day-pl'), dpl);
+      setColor(row.querySelector('.day-pl'), dpl);
       setColor(row.querySelector('.day-pl-pct'), dplp);
       setColor(row.querySelector('.tot-pl'), tpl);
       setColor(row.querySelector('.tot-pl-pct'), tplp);
-	  }
+    }
   };
 
   const renderTrades = rows => {
@@ -696,15 +400,6 @@
     const holdings = d.holdings || [];
     const about    = d.about    || {};
 
-    // --- NAV (no local math, no value.value) ---
-    // Prefer raw E*TRADE NAV; use metrics only as a fallback.
-    const nav = num(
-      account.nav ??
-      metrics.net_account_value ??
-      0
-    );
-    console.log("NAV parts:", account.nav, metrics.net_account_value);
-
     // --- Positions value ---
     let pv = num(
       metrics.positions_value ??
@@ -722,34 +417,50 @@
       account.available_funds ??
       0
     );
-    // If backend didn't set bp but nav/pv exist, try NAV - PV
-    if (!Number.isFinite(bp) || bp === 0) {
-      if (Number.isFinite(nav) && Number.isFinite(pv) && nav >= pv) {
-        bp = nav - pv;
-      } else if (!Number.isFinite(bp)) {
+
+    // If BP is NaN but we have nav + pv, derive; otherwise default 0
+    const nav = num(
+      account.nav ??
+      metrics.net_account_value ??
+      0
+    );
+    if (!Number.isFinite(bp)) {
+      if (Number.isFinite(nav) && Number.isFinite(pv)) {
+        const derived = nav - pv;
+        bp = Number.isFinite(derived) ? derived : 0;
+      } else {
         bp = 0;
       }
     }
 
-    // VALUE tile numbers
-    set('#kpi-cash',   money(nav));   // Net Account Value (NAV)
-    set('#kpi-bp',     money(bp));    // Buying Power
-    set('#kpi-posval', money(pv));    // Positions Value
+    // --- VALUE big number = BP + Positions ---
+    const valTotal =
+      (Number.isFinite(bp) ? bp : 0) +
+      (Number.isFinite(pv) ? pv : 0);
 
-    // --- Day P&L (unrealized) for center tile ---
-    let dAmt = num(metrics.day_unrealized_pnl);
-    let dPct = num(metrics.day_unrealized_pnl_pct);
+    set('#kpi-cash',   money(valTotal));
+    set('#kpi-bp',     money(bp));
+    set('#kpi-posval', money(pv));
 
-    // Fallback to plain unrealized only if day fields missing
-    if (!Number.isFinite(dAmt)) dAmt = num(metrics.unrealized_pnl);
-    if (!Number.isFinite(dPct)) dPct = num(metrics.unrealized_pnl_pct);
+    // --- Unrealized P&L tile: Day + All Time ---
+    const dAmt    = num(metrics.day_unrealized_pnl);
+    const dPct    = num(metrics.day_unrealized_pnl_pct);
+    const allAmt  = num(metrics.unrealized_pl);
+    const allPct  = num(metrics.unrealized_pl_pct);
 
-    set('#kpi-pnl',     money(dAmt));
-    set('#kpi-pnl-pct', pct(dPct));
-    setColor(document.querySelector('#kpi-pnl'), dAmt);
-    setColor(document.querySelector('#kpi-pnl-pct'), dPct);
+    // Day
+    set('#kpi-pnl-day',     money(dAmt));
+    set('#kpi-pnl-day-pct', pct(dPct));
+    setColor(document.querySelector('#kpi-pnl-day'), dAmt);
+    setColor(document.querySelector('#kpi-pnl-day-pct'), dPct);
 
-    // --- Realized buckets (Day / Week / Last Week / Month / All) ---
+    // All Time
+    set('#kpi-pnl-all',     money(allAmt));
+    set('#kpi-pnl-all-pct', pct(allPct));
+    setColor(document.querySelector('#kpi-pnl-all'), allAmt);
+    setColor(document.querySelector('#kpi-pnl-all-pct'), allPct);
+
+    // --- Realized buckets ---
     const realized = (metrics && metrics.realized_buckets) || d.realized || {};
 
     const RB_MAP = [
@@ -761,8 +472,8 @@
     ];
 
     RB_MAP.forEach(([key, amtSel, pctSel]) => {
-      const row    = realized[key] || { pnl: 0, pct: 0 };
-      const amt    = Number.isFinite(row.pnl) ? row.pnl : 0;
+      const row = realized[key] || { pnl: 0, pct: 0 };
+      const amt = Number.isFinite(row.pnl) ? row.pnl : 0;
       const pctVal = Number.isFinite(row.pct) ? row.pct : 0;
 
       set(amtSel, money(amt));
@@ -774,17 +485,26 @@
       if (pctEl) setColor(pctEl, pctVal);
     });
 
+    // --- Hero blurb "since start" follows Realized ALL ---
+    const allBucket = realized['all'] || { pnl: 0, pct: 0 };
+    const sincePnl  = Number.isFinite(allBucket.pnl)
+      ? allBucket.pnl
+      : num(about.since_pnl);
+    const sincePct  = Number.isFinite(allBucket.pct)
+      ? allBucket.pct
+      : num(about.since_pct);
+
+    const startCash   = num(about.start_cash);
+    const startDate   = about.start_date || START_DATE;
+    const netContrib  = num(about.net_contrib);
+
+    set('#about-start-cash',  money(startCash));
+    set('#about-start-date',  startDate);
+    set('#about-net-contrib', money(netContrib));
+    set('#about-since-pnl',   money(sincePnl));
+    set('#about-since-pct',   pct(sincePct));
     setColor(document.querySelector('#about-since-pnl'), sincePnl);
     setColor(document.querySelector('#about-since-pct'), sincePct);
-
-    // --- Keep 'All' row in Realized P&L tile in sync with NAV P&L ---
-    set('#kpi-r-all',     money(sincePnl));
-    set('#kpi-r-all-pct', pct(sincePct));
-
-    const allAmtEl = document.querySelector('#kpi-r-all');
-    const allPctEl = document.querySelector('#kpi-r-all-pct');
-    if (allAmtEl) setColor(allAmtEl, sincePnl);
-    if (allPctEl) setColor(allPctEl, sincePct);
 
     // --- Account badge ---
     const { show } = preferNumericAccountId(account);
@@ -795,7 +515,6 @@
       badge.title = show || '';
     }
   };
-
 
   const refreshLive = async () => {
     const start = localStorage.getItem('live_start') || START_DATE;
@@ -817,76 +536,5 @@
     setInterval(() => refreshLive().catch(console.error), 30000);
   });
 })();
-</script>
-
-  </main>
-
-  <!-- Bootstrap JS -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
-  <!-- Live mode toggle: Day Trader / Swing Trader -->
-  <script>
-    document.addEventListener('DOMContentLoaded', function () {
-      const group = document.getElementById('live-mode-toggle');
-      if (!group) return;
-
-      const buttons = group.querySelectorAll('[data-mode]');
-
-      function applyMode(mode) {
-        const upper = (mode || '').toUpperCase();
-        buttons.forEach(btn => {
-          const m = (btn.dataset.mode || '').toUpperCase();
-          const isActive = (m === upper);
-
-          if (isActive) {
-            btn.classList.add('btn-warning');
-            btn.classList.remove('btn-outline-warning', 'btn-outline-secondary');
-          } else {
-            btn.classList.add('btn-outline-warning');
-            btn.classList.remove('btn-warning');
-          }
-        });
-      }
-
-      async function fetchMode() {
-        try {
-          const resp = await fetch('/live/mode');
-          if (!resp.ok) throw new Error('HTTP ' + resp.status);
-          const data = await resp.json();
-          applyMode(data.mode || 'DAY');
-        } catch (err) {
-          console.error('[live-mode] fetch failed:', err);
-          applyMode('DAY');
-        }
-      }
-
-      async function setMode(mode) {
-        // Optimistic update
-        applyMode(mode);
-        try {
-          const resp = await fetch('/live/mode', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode })
-          });
-          if (!resp.ok) throw new Error('HTTP ' + resp.status);
-          const data = await resp.json();
-          applyMode(data.mode || mode);
-        } catch (err) {
-          console.error('[live-mode] set failed:', err);
-        }
-      }
-
-      buttons.forEach(btn => {
-        btn.addEventListener('click', function (ev) {
-          ev.preventDefault();
-          const mode = this.dataset.mode;
-          if (mode) setMode(mode);
-        });
-      });
-
-      // Initial sync from server
-      fetchMode();
-    });
 </script>
 {% endblock %}

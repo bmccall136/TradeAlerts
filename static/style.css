@@ -735,3 +735,18 @@ h2 {
   margin: 8px auto 22px;   /* auto centers in non-flex too */
   padding: 0 12px;         /* a little breathing room on narrow screens */
 }
+/* Header Checkpoint button */
+.btn-checkpoint {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #ffd54f !important;        /* bright yellow text */
+  border: 1px solid #ffd54f;        /* yellow outline */
+  background-color: #111111;        /* blend with dark header */
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+
+.btn-checkpoint:hover {
+  background-color: #ffd54f;        /* invert on hover */
+  color: #000000 !important;
+}

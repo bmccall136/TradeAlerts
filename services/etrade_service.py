@@ -85,18 +85,24 @@ def get_open_orders(account_id_key: str, days: int = 14) -> dict:
     then fall back to a recent window with both YYYY-MM-DD and MM/DD/YYYY.
     """
     import datetime as _dt
+# Backwards-compat alias for older callers
+def list_orders(
+    account_id_key: str | None = None,
+    status: str | None = None,
+    days: int = 14,
+) -> dict:
+    """
+    Backwards-compat wrapper used by older code.
 
-    # 1) no dates – many tenants accept this and avoid 400s
-    try:
-        return _eget(
-            f"/accounts/{account_id_key}/orders.json", params={"status": "OPEN"}
-        )
-    except Exception:
-        pass
+    * account_id_key – if None, we fall back to the default live account.
+    * status        – currently ignored; we always request OPEN orders.
+    * days          – look-back window in days used by get_open_orders().
+    """
+    if account_id_key is None:
+        account_id_key = get_default_account_id_key()
 
-    end = _dt.date.today()
-    start = end - _dt.timedelta(days=max(1, int(days)))
-
+    # We ignore `status` for now and always return OPEN orders.
+    return get_open_orders(account_id_key=account_id_key, days=days)
     # 2) date window – try both formats
     for fmt in ("%Y-%m-%d", "%m/%d/%Y"):
         try:

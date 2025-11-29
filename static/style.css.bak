@@ -80,6 +80,18 @@ select {
 .text-pos { color:#41d17d; }
 .text-neg { color:#ff5c5c; }
 .text-zero{ color:#aaaaaa; }
+/* P&L coloring for Live holdings & trades */
+.text-pos {
+  color: #00e676 !important;  /* green */
+}
+
+.text-neg {
+  color: #ff5252 !important;  /* red */
+}
+
+.text-zero {
+  color: #b8b8b8 !important;  /* neutral/gray */
+}
 
 /* P&L positive/negative coloring */
 .pn-pos{color:#17c964}

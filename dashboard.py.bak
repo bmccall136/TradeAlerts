@@ -1121,7 +1121,12 @@ def live_status():
     # ---------- 7) REALIZED P&L BUCKETS (from live.db) ----------
     realized_obj = realized_buckets_from_live_db(str(LIVE_DB)) or {}
 
-    # ---------- 8) ABOUT / SINCE START (NAV + contributions) ----------
+    # ---------- 8) VALUE / TRADEALERTS NAV (BP + positions) ----------
+    # nav_ta = TradeAlerts computed NAV: cash we can deploy (BP) + positions value.
+    # This matches the 4,381.31 number you see on the web UI when you’re all in cash.
+    nav_ta = round(float(ui_buying_power) + float(positions_value), 2)
+
+    # ---------- 9) ABOUT / SINCE START (NAV_TA + contributions) ----------
     START_CASH = START_CASH_BASELINE
     START_DATE = START_DATE_BASELINE
 
@@ -1130,9 +1135,8 @@ def live_status():
     except Exception:
         net_contrib = 0.0
 
-    # True gain = NAV − start_cash − contributions
-    # Use broker NAV here (acct_summary_raw["nav"]), not our local math.
-    total_gain = round(nav - START_CASH - net_contrib, 2)
+    # True gain = NAV_TA − start_cash − contributions
+    total_gain = round(nav_ta - START_CASH - net_contrib, 2)
 
     # Percent = gain / (start_cash + contributions)
     denom = START_CASH + net_contrib
@@ -1142,47 +1146,39 @@ def live_status():
         "start_cash": START_CASH,
         "start_date": START_DATE,
         "net_contrib": round(net_contrib, 2),
-        "since_pnl": total_gain,
+        "since_pnl": total_gain,       # <- this feeds the hero blurb
         "since_pct": total_gain_pct,
     }
 
     # ---------- 10) VALUE OBJECT FOR LEFT TILE ----------
-    # nav_ta = TradeAlerts computed NAV = Buying Power (what we show in the tile)
-    #          + Positions Value. This should be close to broker NAV for a plain
-    #          cash account, but we still treat broker NAV as the source of truth.
-    nav_ta = round(float(ui_buying_power) + float(positions_value), 2)
-
+    # Keep the left tile showing the raw broker NAV (2,927.61) so you can still
+    # see exactly what the API is giving us, but expose nav_ta as "value".
     value_obj = {
-        "net_account_value": nav,   # broker NAV
+        "net_account_value": nav,      # broker NAV from get_account_summary()
         "positions_value": positions_value,
         "buying_power": ui_buying_power,
-        "value": nav_ta,            # what the VALUE tile can show if you want
+        "value": nav_ta,              # TA computed NAV (BP + PV)
     }
 
     # ---------- 11) METRICS / VALUE FOR TILES ----------
-    metrics = {
-        # Left tile
-        "net_account_value": nav,
-        "nav_ta": nav_ta,                 # TA-computed NAV (BP + PV), for UI/debug
-        "buying_power": ui_buying_power,
-        "positions_value": positions_value,
+# keep these calculations above as-is:
+# total_unreal_pl, total_unreal_pct, day_unrealized_pnl, day_unrealized_pnl_pct
 
-        # Center tile (UNREALIZED = ALL-TIME)
-        "day_unrealized_pnl": total_unreal_pl,
-        "day_unrealized_pnl_pct": total_unreal_pct,
-        "unrealized_pl": total_unreal_pl,
-        "unrealized_pl_pct": total_unreal_pct,
+metrics = {
+    "net_account_value": nav,
+    "nav_ta": nav_ta,
+    "buying_power": ui_buying_power,
+    "positions_value": positions_value,
 
-        # Hero blurb “since start” (NAV-based)
-        "total_gain_nav": total_gain,
-        "total_gain_nav_pct": total_gain_pct,
-    }
-    # Override "All" row in REALIZED P&L with NAV-based total P&L since start
-    if isinstance(realized_obj, dict):
-        realized_obj["all"] = {
-            "pnl": total_gain,       # e.g. -11.36
-            "pct": total_gain_pct,   # same % as hero "since start"
-        }
+    # Center tile
+    "day_unrealized_pnl": day_unrealized_pnl,
+    "day_unrealized_pnl_pct": day_unrealized_pnl_pct,
+    "unrealized_pl": total_unreal_pl,
+    "unrealized_pl_pct": total_unreal_pct,
+
+    "total_gain_nav": total_gain,
+    "total_gain_nav_pct": total_gain_pct,
+}
 
     # ---------- 12) AUTH / STATUS ----------
     needs_reconnect = bool(

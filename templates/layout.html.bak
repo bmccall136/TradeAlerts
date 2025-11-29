@@ -29,12 +29,12 @@
     <div class="container-fluid">
 
       <!-- Left: primary nav -->
-	<div class="d-flex align-items-center mb-3">
-	  <div id="live-mode-toggle" class="btn-group btn-group-sm" role="group" aria-label="Trade mode">
-		<button type="button" class="btn btn-outline-warning" data-mode="DAY">Day Trader</button>
-		<button type="button" class="btn btn-outline-secondary" data-mode="SWING">Swing Trader</button>
-	  </div>
-	</div>
+      <div class="d-flex align-items-center mb-3">
+        <div id="live-mode-toggle" class="btn-group btn-group-sm" role="group" aria-label="Trade mode">
+          <button type="button" class="btn btn-outline-warning" data-mode="DAY">Day Trader</button>
+          <button type="button" class="btn btn-outline-secondary" data-mode="SWING">Swing Trader</button>
+        </div>
+      </div>
 
       <!-- Center: big title -->
       <div class="trade-alerts-title position-absolute top-50 start-50 translate-middle text-center">
@@ -44,9 +44,9 @@
       <!-- Right: actions -->
       <div class="d-flex align-items-center gap-2 ms-auto">
         <!-- Checkpoint -->
-		<form action="{{ url_for('run_checkpoint') }}" method="get" class="m-0">
-		  <button class="btn btn-small">✅ Checkpoint</button>
-		</form>
+        <form action="{{ url_for('run_checkpoint') }}" method="get" class="m-0">
+          <button class="btn btn-small">✅ Checkpoint</button>
+        </form>
 
         <!-- Reconnect API -->
         <a class="btn btn-sm btn-outline-warning btn-fixed"
@@ -65,104 +65,71 @@
 
   <!-- Bootstrap JS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Live mode toggle: Day Trader / Swing Trader -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const group = document.getElementById('live-mode-toggle');
+      if (!group) return;
+
+      const buttons = group.querySelectorAll('[data-mode]');
+
+      function applyMode(mode) {
+        const upper = (mode || '').toUpperCase();
+        buttons.forEach(btn => {
+          const m = (btn.dataset.mode || '').toUpperCase();
+          const isActive = (m === upper);
+
+          if (isActive) {
+            btn.classList.add('btn-warning');
+            btn.classList.remove('btn-outline-warning', 'btn-outline-secondary');
+          } else {
+            btn.classList.add('btn-outline-warning');
+            btn.classList.remove('btn-warning');
+          }
+        });
+      }
+
+      async function fetchMode() {
+        try {
+          const resp = await fetch('/live/mode');
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          const data = await resp.json();
+          applyMode(data.mode || 'DAY');
+        } catch (err) {
+          console.error('[live-mode] fetch failed:', err);
+          applyMode('DAY');
+        }
+      }
+
+      async function setMode(mode) {
+        // Optimistic update
+        applyMode(mode);
+        try {
+          const resp = await fetch('/live/mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode })
+          });
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          const data = await resp.json();
+          applyMode(data.mode || mode);
+        } catch (err) {
+          console.error('[live-mode] set failed:', err);
+        }
+      }
+
+      buttons.forEach(btn => {
+        btn.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          const mode = this.dataset.mode;
+          if (mode) setMode(mode);
+        });
+      });
+
+      // Initial sync from server
+      fetchMode();
+    });
+  </script>
 </body>
 </html>
-<script>
-// --- Day Trader / Swing Trader mode toggle ---
-function refreshModeButtons(mode) {
-  const group = document.getElementById('live-mode-toggle');
-  if (!group) return;
-
-  const buttons = group.querySelectorAll('button[data-mode]');
-  buttons.forEach(btn => {
-    const m = btn.getAttribute('data-mode');
-    if (m === mode) {
-      // Active mode: solid highlight
-      btn.classList.remove('btn-outline-secondary');
-      btn.classList.add('btn-warning');
-    } else {
-      // Inactive mode: outline
-      btn.classList.remove('btn-warning');
-      btn.classList.add('btn-outline-secondary');
-    }
-  });
-}
-
-function loadLiveMode() {
-  fetch('/live/mode')
-    .then(r => r.json())
-    .then(data => {
-      if (!data || !data.ok) return;
-      refreshModeButtons((data.mode || 'DAY').toUpperCase());
-    })
-    .catch(err => console.error('[LIVE] mode fetch failed', err));
-}
-
-<script>
-  // --- Live mode toggle: Day Trader / Swing Trader ---
-  function initLiveModeToggle() {
-    const group = document.getElementById('live-mode-toggle');
-    if (!group) return;
-
-    const buttons = group.querySelectorAll('[data-mode]');
-
-    function applyMode(mode) {
-      const upper = (mode || '').toUpperCase();
-      buttons.forEach(btn => {
-        const m = (btn.dataset.mode || '').toUpperCase();
-        const isActive = (m === upper);
-
-        if (isActive) {
-          btn.classList.add('btn-warning');
-          btn.classList.remove('btn-outline-warning');
-        } else {
-          btn.classList.add('btn-outline-warning');
-          btn.classList.remove('btn-warning');
-        }
-      });
-    }
-
-    async function fetchMode() {
-      try {
-        const resp = await fetch('/live/mode');
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const data = await resp.json();
-        applyMode(data.mode || 'DAY');
-      } catch (err) {
-        console.error('[live-mode] fetch failed:', err);
-        applyMode('DAY');
-      }
-    }
-
-    async function setMode(mode) {
-      applyMode(mode); // optimistic
-      try {
-        const resp = await fetch('/live/mode', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode })
-        });
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const data = await resp.json();
-        applyMode(data.mode || mode);
-      } catch (err) {
-        console.error('[live-mode] set failed:', err);
-      }
-    }
-
-    buttons.forEach(btn => {
-      btn.addEventListener('click', function (ev) {
-        ev.preventDefault();
-        const mode = this.dataset.mode;
-        if (mode) {
-          setMode(mode);
-        }
-      });
-    });
-
-    // Initial sync from server
-    fetchMode();
-  }
-
-  document.addEventListener('DOMContentLoaded', initLiveModeToggle);
-</script>
