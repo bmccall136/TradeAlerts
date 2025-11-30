@@ -750,3 +750,19 @@ h2 {
   background-color: #ffd54f;        /* invert on hover */
   color: #000000 !important;
 }
+/* Tiny news button */
+.btn-news {
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  border-radius: 3px;
+  border: 1px solid #ffeb3b;
+  background-color: #111111;
+  color: #ffeb3b;
+  text-decoration: none;
+}
+
+.btn-news:hover {
+  background-color: #ffeb3b;
+  color: #000000;
+  text-decoration: none;
+}

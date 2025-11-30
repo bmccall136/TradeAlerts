@@ -198,37 +198,31 @@ def get_account_key() -> str:
     return str(key)
 
 
-def get_positions_any(acct_key: str | None = None) -> list[Position]:
-    """
-    Wrapper around et.get_positions() that ignores acct_key for now.
+def get_positions_any(acct_key: str | None = None) -> Dict[str, Any]:
+    """Return raw positions payload from E*TRADE.
 
-    et.get_positions() already knows the default account via account_summary,
-    so we just call it with no arguments and translate to Position objects.
+    NOTE: We ignore acct_key for now. et.get_positions() already knows
+    the default account via account_summary, so we just call it with
+    no arguments and return the raw payload for iter_positions().
     """
+    payload: Dict[str, Any] = {}
     try:
-        raw = et.get_positions()
-    except Exception as exc:
-        LOG.warning("get_positions failed: %s", exc)
-        return []
-
-    positions: list[Position] = []
-    for p in raw:
-        try:
-            positions.append(Position.from_etrade(p))
-        except Exception as exc:
-            LOG.warning("bad position row %r: %s", p, exc)
-    return positions
-
+        payload = et.get_positions() or {}
+    except Exception as exc:  # pragma: no cover - defensive
+        LOG.warning("get_positions_any failed: %s", exc)
+    # Useful for debugging; leave structure intact for iter_positions()
+    return payload
 
 def get_open_orders(acct_key: str) -> Dict[str, Any]:
+    """Return open orders; your et.list_orders() does not take status= kwarg."""
     if not et:
         raise RuntimeError("etrade_service not available")
     try:
-        return et.list_orders(acct_key, status="OPEN")
+        # Assuming your wrapper already returns only OPEN orders or all orders.
+        return et.list_orders(acct_key)
     except Exception as exc:  # pragma: no cover
         LOG.error("get_open_orders failed: %s", exc)
         return {}
-
 
 def preview(acct_key: str, sym: str, qty: int, price_type: str, limit_px: float | None):
     if not et:
@@ -285,41 +279,83 @@ def _glimpse(x: Any, limit: int = 200) -> str:
     return s
 
 
-def iter_positions(pos: Dict[str, Any]) -> List[Tuple[str, float, float, float]]:
+from typing import Iterable, Tuple
+
+def iter_positions(payload) -> Iterable[Tuple[str, float, float, float]]:
     """
-    Yield (symbol, qty, last_price, avg_price).
+    Yield (symbol, qty, market_value, avg_price) tuples from the raw
+    E*TRADE /portfolio.json payload.
 
-    We assume positions come from et.get_positions() raw response.
+    This implementation is dictionary-only and does NOT depend on any
+    Position dataclass, so we avoid the 'name Position is not defined'
+    mess entirely.
     """
-    out: List[Tuple[str, float, float, float]] = []
-    if not isinstance(pos, dict):
-        return out
+    if not payload:
+        return []
 
-    pr = pos.get("PositionResponse") or pos
-    arr = pr.get("Positions") or pr.get("positions") or pr.get("Position") or []
-    if isinstance(arr, dict):
-        arr = [arr]
+    # Accept both the raw json() and already-unwrapped dicts
+    pr = (
+        payload.get("PortfolioResponse")
+        or payload.get("portfolioResponse")
+        or payload
+    )
 
-    for row in arr:
-        if not isinstance(row, dict):
-            continue
+    # AccountPortfolio can be a dict or list
+    acct_ports = (
+        pr.get("AccountPortfolio")
+        or pr.get("accountPortfolio")
+        or []
+    )
+    if isinstance(acct_ports, dict):
+        acct_ports = [acct_ports]
 
+    def _f(x, default=0.0):
         try:
-            sym = row.get("symbolDescription") or row.get("symbol") or row.get("prodSym") or ""
-            sym = str(sym).strip().upper()
-            qty = float(row.get("quantity") or row.get("qty") or 0.0)
-            last = float(row.get("lastPrice") or row.get("marketPrice") or 0.0)
-            avg = float(row.get("pricePaid") or row.get("avgPrice") or 0.0)
-        except Exception as exc:  # pragma: no cover
-            LOG.warning("bad position row %r: %s", row, exc)
-            continue
+            if x is None or x == "":
+                return float(default)
+            return float(str(x).replace(",", ""))
+        except Exception:
+            return float(default)
 
-        if not sym:
-            continue
-        out.append((sym, qty, last, avg))
+    for acct in acct_ports:
+        positions = acct.get("Position") or acct.get("position") or []
+        if isinstance(positions, dict):
+            positions = [positions]
 
-    return out
+        for pos in positions:
+            try:
+                prod = pos.get("Product") or pos.get("product") or {}
+                sym = (prod.get("symbol") or pos.get("symbol") or "").upper().strip()
+                if not sym:
+                    continue
 
+                qty = _f(
+                    pos.get("quantity")
+                    or pos.get("longQuantity")
+                    or pos.get("longQty")
+                    or pos.get("positionQty")
+                    or pos.get("positionQuantity")
+                    or 0.0
+                )
+
+                mkt_val = _f(
+                    pos.get("marketValue")
+                    or (qty * _f(pos.get("lastTrade") or pos.get("lastPrice") or 0.0))
+                )
+
+                avg = _f(
+                    pos.get("averagePrice")
+                    or pos.get("averageCost")
+                    or pos.get("costBasisPerShare")
+                    or pos.get("costBasis")
+                    or 0.0
+                )
+
+                # yield (symbol, qty, market_value, avg_price)
+                yield (sym, qty, mkt_val, avg)
+
+            except Exception as e:
+                LOG.warning("iter_positions: bad position row %r: %s", pos, e)
 
 def opened_today(sym: str) -> bool:
     """
@@ -537,6 +573,14 @@ def main() -> None:
     throttle = max(1, int(cfg.throttle_ms / 1000))
 
     while True:
+        # --- 1) Skip non-trading days (weekends) completely -------------------
+        now = datetime.now(ETZ or UTC)
+        if now.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
+            LOG.info("weekend (Sat/Sun); sell_guard idle, sleeping %ds", throttle)
+            time.sleep(throttle)
+            continue
+
+        # --- 2) Enforce intraday sell window (e.g. 09:30–16:00 ET) -----------
         if not now_in_window(cfg.sell_window_start_et, cfg.sell_window_end_et):
             LOG.info(
                 "outside sell window %s–%s ET; sleeping %ds",
@@ -599,40 +643,27 @@ def main() -> None:
 
         candidates: List[Tuple[str, int, float, float, float]] = []
 
-        for sym, qty, last, entry in rows:
-            sym = sym.upper()
-            if sym in block:
-                continue
-            if qty < 1:
-                continue
-
+        for (sym, qty, mv, entry_price) in rows:
             opened = open_map.get(sym)
-            if not opened and not force_without_entry:
-                continue
 
-            pl_pct = (
-                (last - entry) / max(entry, 0.0001) * 100.0
-                if (last > 0 and entry > 0)
-                else 0.0
-            )
-
+            # If we don't have an opened_at record, treat it as 0-minute hold
+            # but still let other guards decide whether it’s eligible.
             hold_min = 0.0
             if opened:
                 try:
-                    if ETZ:
-                        now_naive = now_et().astimezone(ETZ).replace(tzinfo=None)
-                        opened_naive = opened.astimezone(ETZ).replace(tzinfo=None)
-                    else:
-                        now_naive = now_et().replace(tzinfo=None)
-                        opened_naive = opened.replace(tzinfo=None)
-                    hold_min = max(
-                        0.0, (now_naive - opened_naive).total_seconds() / 60.0
-                    )
+                    hold_sec = (tnow - opened).total_seconds()
+                    hold_min = max(0.0, hold_sec / 60.0)
                 except Exception:
-                    LOG.warning("[OPENED_AT] bad opened_at for %s: %r", sym, opened)
                     hold_min = 0.0
 
-            candidates.append((sym, int(qty), pl_pct, hold_min, entry))
+            pl_pct = 0.0
+            if qty and entry_price and entry_price > 0:
+                try:
+                    pl_pct = ((mv / qty) - entry_price) / entry_price * 100.0
+                except Exception:
+                    pl_pct = 0.0
+
+            candidates.append((sym, qty, pl_pct, hold_min, entry_price))
 
         LOG.info("eligible final -> %s", [(s, q) for s, q, _, _, _ in candidates])
         if not candidates:
