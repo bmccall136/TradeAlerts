@@ -1161,24 +1161,25 @@ def live_status():
     }
 
     # ---------- 11) METRICS / VALUE FOR TILES ----------
-# keep these calculations above as-is:
-# total_unreal_pl, total_unreal_pct, day_unrealized_pnl, day_unrealized_pnl_pct
+    metrics = {
+        # Left tile
+        "net_account_value": nav,
+        "nav_ta": nav_ta,             # TA-computed NAV (for debugging / future UI)
+        "buying_power": ui_buying_power,
+        "positions_value": positions_value,
 
-metrics = {
-    "net_account_value": nav,
-    "nav_ta": nav_ta,
-    "buying_power": ui_buying_power,
-    "positions_value": positions_value,
+        # Center tile: Day vs All-Time
+        # Day = today's move (sum of daysGain / day_pl)
+        # All Time = full unrealized based on cost vs current value
+        "day_unrealized_pnl": day_unrealized_pnl,
+        "day_unrealized_pnl_pct": day_unrealized_pnl_pct,
+        "unrealized_pl": total_unreal_pl,
+        "unrealized_pl_pct": total_unreal_pct,
 
-    # Center tile
-    "day_unrealized_pnl": day_unrealized_pnl,
-    "day_unrealized_pnl_pct": day_unrealized_pnl_pct,
-    "unrealized_pl": total_unreal_pl,
-    "unrealized_pl_pct": total_unreal_pct,
-
-    "total_gain_nav": total_gain,
-    "total_gain_nav_pct": total_gain_pct,
-}
+        # Hero blurb “since start” (NAV-based)
+        "total_gain_nav": total_gain,
+        "total_gain_nav_pct": total_gain_pct,
+    }
 
     # ---------- 12) AUTH / STATUS ----------
     needs_reconnect = bool(

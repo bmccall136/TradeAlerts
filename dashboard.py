@@ -20,6 +20,7 @@ This file exposes:
 from __future__ import annotations
 from services import etrade_service as et
 from services.trade_source import load_trades_merged
+
 import os
 import math
 import json
@@ -32,9 +33,9 @@ import pathlib
 from pathlib import Path
 from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Tuple
-from services import etrade_service as et
-from services.trade_source import load_trades_merged
-from flask import Flask, render_template, jsonify, request, redirect, url_forfrom services.contributions import get_total_contributions
+
+from flask import Flask, render_template, jsonify, request, redirect, url_for
+from services.contributions import get_total_contributions
 from services.event_log import log_event
 
 
@@ -169,6 +170,77 @@ except ImportError:
 # -----------------------------------------------------------------------------#
 # Helpers
 # -----------------------------------------------------------------------------#
+
+import sqlite3  # if not already imported at top
+
+def get_recent_news_for_symbol(symbol: str, limit: int = 5) -> list[dict]:
+    """
+    Read recent news headlines for a symbol from news_events (live.db).
+
+    Schema expectation for news_events:
+      id INTEGER PRIMARY KEY
+      symbol TEXT
+      headline TEXT
+      source TEXT
+      url TEXT
+      published_at TEXT (ISO or 'YYYY-MM-DD HH:MM:SS')
+    """
+    sym = (symbol or "").upper().strip()
+    if not sym:
+        return []
+
+    rows: list[dict] = []
+    try:
+        conn = sqlite3.connect(str(LIVE_DB))
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT
+                symbol,
+                headline,
+                source,
+                url,
+                published_at
+            FROM news_events
+            WHERE UPPER(symbol) = ?
+            ORDER BY published_at DESC
+            LIMIT ?
+            """,
+            (sym, int(limit)),
+        )
+        for s, headline, source, url, published_at in cur.fetchall():
+            rows.append(
+                {
+                    "symbol": s,
+                    "headline": headline or "",
+                    "source": source or "",
+                    "url": url or "",
+                    "published_at": published_at or "",
+                }
+            )
+        conn.close()
+    except Exception as e:
+        # don't crash the dashboard if news lookup fails
+        app.logger.error("get_recent_news_for_symbol(%s) failed: %s", sym, e)
+
+    return rows
+
+
+@app.route("/news/<symbol>")
+def view_symbol_news(symbol: str):
+    """
+    HTML view for a single symbol's news.
+    This is what the 📰 buttons on the Live holdings table link to.
+    """
+    sym = (symbol or "").upper().strip()
+    news_rows = get_recent_news_for_symbol(sym, limit=10)
+
+    return render_template(
+        "news_view.html",
+        symbol=sym,
+        news_rows=news_rows,
+    )
+
 import datetime as _dt
 
 try:
@@ -760,6 +832,7 @@ def _build_holdings_from_positions(
                 "day_pl_pct": round(day_pl_pct, 2),
                 "total_pl": total_pl,
                 "total_pl_pct": total_pl_pct,
+                "has_news": False,
             }
         )
 
@@ -778,6 +851,18 @@ def _etrade_log_wrap() -> None:
                 NEED_AUTH_FLAG.unlink(missing_ok=True)
     except Exception:
         pass
+
+@app.route("/news/latest")
+@always_json
+def news_latest():
+    rows = fetch_latest_news()
+    return {"ok": True, "items": rows}
+
+@app.route("/news/symbol/<symbol>")
+@always_json
+def news_for_symbol(symbol):
+    rows = fetch_news_for_symbol(symbol)
+    return {"ok": True, "items": rows}
 
 
 @app.route("/auth/etrade/reconnect", methods=["GET"])
@@ -965,8 +1050,7 @@ def live_status():
     from flask import request, current_app
     from services import etrade_service as et
     from services.trade_source import load_trades_merged
-    from services.trading_helpers import realized_buckets_from_live_db
-
+    
     debug = request.args.get("debug", "0") == "1"
     debug_raw: dict[str, Any] = {}
     etrade_ok = False

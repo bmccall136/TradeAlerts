@@ -1,0 +1,25 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2 class="mb-3">📰 News for {{ symbol }}</h2>
+
+  {% if not news_rows %}
+    <p>No recent headlines found for {{ symbol }}.</p>
+  {% else %}
+    <ul class="list-group">
+      {% for n in news_rows %}
+        <li class="list-group-item bg-dark text-light border-secondary">
+          <div class="d-flex flex-column">
+            <small class="text-muted">{{ n.ts }}</small>
+            <a href="{{ n.url }}" target="_blank" class="fw-semibold text-warning">
+              {{ n.headline }}
+            </a>
+            <small class="text-secondary">{{ n.source or 'Unknown source' }}</small>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</div>
+{% endblock %}

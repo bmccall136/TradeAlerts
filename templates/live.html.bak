@@ -80,6 +80,23 @@
   .text-muted {
     color: #e8e8e8 !important;
   }
+
+  /* Tiny news button */
+  .btn-news {
+    padding: 2px 6px;
+    font-size: 0.75rem;
+    border-radius: 3px;
+    border: 1px solid #ffeb3b;
+    background-color: #111111;
+    color: #ffeb3b;
+    text-decoration: none;
+  }
+  .btn-news:hover {
+    background-color: #ffeb3b;
+    color: #000000;
+    text-decoration: none;
+  }
+
 </style>
 
 <!-- Top status row: only E*TRADE API + account badge -->
@@ -92,15 +109,6 @@
     </div>
     <span id="acct-badge" class="badge bg-secondary"></span>
   </div>
-</div>
-
-<!-- Hero blurb centered -->
-<div class="hero-blurb mb-3">
-  Started with <span id="about-start-cash">$0.00</span> on
-  <span id="about-start-date">—</span>.
-  Since then we’ve added <span id="about-net-contrib">$0.00</span> and our P&amp;L is
-  <span id="about-since-pnl">$0.00</span> at
-  <span id="about-since-pct">0.00%</span>.
 </div>
 
 <!-- KPI Row -->
@@ -193,10 +201,11 @@
         <th>Total P&amp;L</th>
         <th>Total P&amp;L %</th>
         <th>Value</th>
+		<th>News</th>
       </tr>
     </thead>
     <tbody id="holdings-body">
-      <tr><td colspan="11" class="text-muted">Loading…</td></tr>
+      <tr><td colspan="12" class="text-muted">Loading…</td></tr>
     </tbody>
   </table>
 </div>
@@ -310,49 +319,74 @@
     dot.classList.add(ok ? 'dot-green' : 'dot-red');
   };
 
-  const renderHoldings = rows => {
-    const tb = document.getElementById('holdings-body');
-    if (!tb) return;
-    tb.innerHTML = '';
+renderHoldings = holdings => {
+  const tb = document.querySelector('#holdingsTableBody');
+  if (!tb) return;
 
-    if (!rows || !rows.length) {
-      tb.innerHTML = `<tr><td colspan="11" class="text-muted">No holdings.</td></tr>`;
-      return;
-    }
+  tb.innerHTML = '';
 
-    for (const h of rows) {
-      const sym = (h.symbol || '').toUpperCase();
-      const opened = h.opened_et || h.opened || '—';
+  if (!holdings || !holdings.length) {
+    tb.innerHTML = `<tr><td colspan="13" class="text-muted">No holdings.</td></tr>`;
+    return;
+  }
 
-      const qty  = Number(h.qty ?? 0);
-      const last = Number(h.last_price ?? 0);
-      const paid = Number(h.price_paid ?? 0);
-      const diff = last - paid;
+  for (const h of holdings) {
+    const sym = (h.symbol || '').toUpperCase();
+    const name = h.name || '—';
+    const qty = h.qty ?? 0;
+    const price = h.price != null ? money(h.price) : '—';
+    const value = h.value != null ? money(h.value) : '—';
+    const vwap = h.vwap != null ? money(h.vwap) : '—';
+    const vwapDiff = h.vwap_diff != null ? money(h.vwap_diff) : '—';
 
-      let value = (h.value != null) ? Number(h.value) : (qty * last);
-      if (!Number.isFinite(value)) value = 0;
+    const dayPL = h.day_pl != null ? money(h.day_pl) : '—';
+    const dayPLPct = h.day_pl_pct != null ? pct(h.day_pl_pct) : '—';
 
-      const dpl  = Number(h.day_pl ?? 0);
-      const dplp = Number(h.day_pl_pct ?? 0);
+    const diff = h.diff != null ? money(h.diff) : '—';
+    const diffPct = h.diff_pct != null ? pct(h.diff_pct) : '—';
 
-      const tpl  = Number(h.total_pl ?? 0);
-      const tplp = Number(h.total_pl_pct ?? 0);
+    // NEW: backend can send has_news / news_count, but default to true (current behavior)
+    const hasNews =
+      (typeof h.has_news === 'boolean' && h.has_news) ||
+      (typeof h.news_count === 'number' && h.news_count > 0) ||
+      (typeof h.newsCount === 'number' && h.newsCount > 0);
 
-      tb.insertAdjacentHTML('beforeend', `
-        <tr>
-          <td>${sym}</td>
-          <td>${opened}</td>
-          <td>${money(last)}</td>
-          <td>${qty}</td>
-          <td>${money(paid)}</td>
-          <td class="diff-pl">${money(diff)}</td>
-          <td class="day-pl">${money(dpl)}</td>
-          <td class="day-pl-pct">${pct(dplp)}</td>
-          <td class="tot-pl">${money(tpl)}</td>
-          <td class="tot-pl-pct">${pct(tplp)}</td>
-          <td>${money(value)}</td>
-        </tr>
-      `);
+    const newsCell = hasNews
+      ? `
+        <button class="btn btn-sm btn-outline-secondary btn-news"
+                type="button"
+                title="View news for ${sym}"
+                onclick="window.open('/news/${sym}', '_blank')">
+          📰
+        </button>
+      `
+      : `<span class="text-muted">—</span>`;
+
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${sym}</td>
+      <td>${name}</td>
+      <td class="text-center">
+        ${newsCell}
+      </td>
+      <td class="text-end">${qty}</td>
+      <td class="text-end">${price}</td>
+      <td class="text-end">${value}</td>
+      <td class="text-end">${vwap}</td>
+      <td class="text-end">${vwapDiff}</td>
+      <td class="text-end hold-day-pl">${dayPL}</td>
+      <td class="text-end hold-day-pl-pct">${dayPLPct}</td>
+      <td class="text-end hold-diff">${diff}</td>
+      <td class="text-end hold-diff-pct">${diffPct}</td>
+      <td class="text-center">
+        <button class="btn btn-sm btn-outline-secondary btn-clear" type="button" data-symbol="${sym}">
+          Clear
+        </button>
+      </td>
+    `;
+    tb.appendChild(row);
+  }
+};
 
       const row = tb.lastElementChild;
       setColor(row.querySelector('.diff-pl'), diff);
@@ -361,6 +395,7 @@
       setColor(row.querySelector('.tot-pl'), tpl);
       setColor(row.querySelector('.tot-pl-pct'), tplp);
     }
+	
   };
 
   const renderTrades = rows => {
@@ -415,19 +450,15 @@
       value.positions_value ??
       0
     );
-    if (!pv && holdings.length) {
-      pv = holdings.reduce((sum, h) => sum + num(h.value), 0);
-    }
+    if (!Number.isFinite(pv)) pv = 0;
 
-    // --- Buying power ---
+    // --- Buying power (from API, with fallback) ---
     let bp = num(
-      metrics.buying_power ??
-      account.cashBuyingPower ??
+      account.buying_power ??
       account.available_funds ??
       0
     );
 
-    // If BP is NaN but we have nav + pv, derive; otherwise default 0
     const nav = num(
       account.nav ??
       metrics.net_account_value ??
@@ -463,76 +494,107 @@
     setColor(document.querySelector('#kpi-pnl-day'), dAmt);
     setColor(document.querySelector('#kpi-pnl-day-pct'), dPct);
 
-    // All Time
+    // All time
     set('#kpi-pnl-all',     money(allAmt));
     set('#kpi-pnl-all-pct', pct(allPct));
     setColor(document.querySelector('#kpi-pnl-all'), allAmt);
     setColor(document.querySelector('#kpi-pnl-all-pct'), allPct);
 
-    // --- Realized buckets ---
-    const realized = (metrics && metrics.realized_buckets) || d.realized || {};
+    // --- Realized P&L tile ---
+    const realized = d.realized || {};
+    console.log("REALIZED FROM BACKEND:", realized);
 
-    const RB_MAP = [
-      ['day',       '#kpi-r-day',       '#kpi-r-day-pct'],
-      ['week',      '#kpi-r-week',      '#kpi-r-week-pct'],
-      ['last_week', '#kpi-r-lastweek',  '#kpi-r-lastweek-pct'],
-      ['month',     '#kpi-r-month',     '#kpi-r-month-pct'],
-      ['all',       '#kpi-r-all',       '#kpi-r-all-pct'],
-    ];
+    const day      = realized.day       || {};
+    const week     = realized.week      || {};
+    const lastWeek = realized.last_week || {};
+    const month    = realized.month     || {};
+    const allB     = realized.all       || {};
 
-    RB_MAP.forEach(([key, amtSel, pctSel]) => {
-      const row = realized[key] || { pnl: 0, pct: 0 };
-      const amt = Number.isFinite(row.pnl) ? row.pnl : 0;
-      const pctVal = Number.isFinite(row.pct) ? row.pct : 0;
+    const dR     = num(day.pnl);
+    const dRPct  = num(day.pct);
+    const wR     = num(week.pnl);
+    const wRPct  = num(week.pct);
+    const lwR    = num(lastWeek.pnl);
+    const lwRPct = num(lastWeek.pct);
+    const mR     = num(month.pnl);
+    const mRPct  = num(month.pct);
+    const aR     = num(allB.pnl);
+    const aRPct  = num(allB.pct);
 
-      set(amtSel, money(amt));
-      set(pctSel, pct(pctVal));
+    set('#kpi-r-day',          money(dR));
+    set('#kpi-r-day-pct',      pct(dRPct));
+    set('#kpi-r-week',         money(wR));
+    set('#kpi-r-week-pct',     pct(wRPct));
+    set('#kpi-r-lastweek',     money(lwR));
+    set('#kpi-r-lastweek-pct', pct(lwRPct));
+    set('#kpi-r-month',        money(mR));
+    set('#kpi-r-month-pct',    pct(mRPct));
+    set('#kpi-r-all',          money(aR));
+    set('#kpi-r-all-pct',      pct(aRPct));
 
-      const amtEl = document.querySelector(amtSel);
-      const pctEl = document.querySelector(pctSel);
-      if (amtEl) setColor(amtEl, amt);
-      if (pctEl) setColor(pctEl, pctVal);
-    });
+    setColor(document.querySelector('#kpi-r-day'),          dR);
+    setColor(document.querySelector('#kpi-r-day-pct'),      dRPct);
+    setColor(document.querySelector('#kpi-r-week'),         wR);
+    setColor(document.querySelector('#kpi-r-week-pct'),     wRPct);
+    setColor(document.querySelector('#kpi-r-lastweek'),     lwR);
+    setColor(document.querySelector('#kpi-r-lastweek-pct'), lwRPct);
+    setColor(document.querySelector('#kpi-r-month'),        mR);
+    setColor(document.querySelector('#kpi-r-month-pct'),    mRPct);
+    setColor(document.querySelector('#kpi-r-all'),          aR);
+    setColor(document.querySelector('#kpi-r-all-pct'),      aRPct);
 
-    // --- Hero blurb "since start" follows Realized ALL ---
-    const allBucket = realized['all'] || { pnl: 0, pct: 0 };
-    const sincePnl  = Number.isFinite(allBucket.pnl)
-      ? allBucket.pnl
-      : num(about.since_pnl);
-    const sincePct  = Number.isFinite(allBucket.pct)
-      ? allBucket.pct
-      : num(about.since_pct);
+    // --- About / hero blurb ---
+    const startCash = num(about.start_cash);
+    const netContrib = num(about.net_contrib);
+    const sincePnl   = num(about.since_pnl);
+    const sincePct   = num(about.since_pct);
 
-    const startCash   = num(about.start_cash);
-    const startDate   = about.start_date || START_DATE;
-    const netContrib  = num(about.net_contrib);
-
-    set('#about-start-cash',  money(startCash));
-    set('#about-start-date',  startDate);
+    set('#about-start-cash', money(startCash));
+    set('#about-start-date', about.start_date || START_DATE);
     set('#about-net-contrib', money(netContrib));
-    set('#about-since-pnl',   money(sincePnl));
-    set('#about-since-pct',   pct(sincePct));
+    set('#about-since-pnl', money(sincePnl));
+    set('#about-since-pct', pct(sincePct));
+
     setColor(document.querySelector('#about-since-pnl'), sincePnl);
     setColor(document.querySelector('#about-since-pct'), sincePct);
 
-    // --- Account badge ---
-    const { show } = preferNumericAccountId(account);
-    const badge = document.getElementById('acct-badge');
-    if (badge) {
-      const masked = maskAcctPretty(show);
-      badge.textContent = masked;
-      badge.title = show || '';
+    // --- Account badge (type + last 4) ---
+    const acctType = (account.account_type_display || account.account_type || '').toString();
+    const acctId   = preferNumericAccountId(account).show;
+    const badgeEl  = document.getElementById('acct-badge');
+    if (badgeEl) {
+      let label = '';
+
+      const t = acctType.toUpperCase();
+      if (t === 'CASH' || t === 'CASH_ACCOUNT') {
+        label = 'Cash Acct.';
+      } else if (t === 'MARGIN' || t === 'MARGIN_ACCOUNT') {
+        label = 'Margin Acct.';
+      } else if (t === 'PDT_ACCOUNT' || t === 'PDT') {
+        label = 'Cash (PDT)';
+      } else if (t) {
+        label = acctType;
+      } else {
+        label = 'Account';
+      }
+
+      if (acctId) {
+        badgeEl.textContent = `${label} • ${maskAcctPretty(acctId)}`;
+      } else {
+        badgeEl.textContent = label;
+      }
     }
   };
 
   const refreshLive = async () => {
-    const start = localStorage.getItem('live_start') || START_DATE;
-    const qs = new URLSearchParams({ start, debug: '1' });
-    const r = await fetch(`/live/status?${qs.toString()}`);
-    const d = await r.json();
+    const resp = await fetch('/live/status');
+    if (!resp.ok) {
+      paintStatus(false);
+      throw new Error('HTTP ' + resp.status);
+    }
+    const d = await resp.json();
 
-    const ok = !!(d.ok && !d.needs_reconnect);
-    paintStatus(ok);
+    paintStatus(!!d.ok);
     if (!d.ok) return;
 
     updateKPIs(d);
@@ -545,5 +607,27 @@
     setInterval(() => refreshLive().catch(console.error), 30000);
   });
 })();
+// assuming `row` is the holding for this <tr>
+const tdNews = document.createElement('td');
+tdNews.className = 'text-center';
+
+// row.news should be an array of headlines or news items
+const hasNews = row.news && Array.isArray(row.news) && row.news.length > 0;
+
+if (hasNews) {
+  tdNews.innerHTML = `
+    <button class="btn btn-sm btn-outline-info news-btn"
+            type="button"
+            data-symbol="${row.symbol}">
+      📰
+    </button>
+  `;
+} else {
+  // no news -> no icon; just keep the cell mostly blank
+  tdNews.innerHTML = '&nbsp;';
+}
+
+tr.appendChild(tdNews);
+
 </script>
 {% endblock %}

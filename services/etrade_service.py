@@ -85,6 +85,45 @@ def get_open_orders(account_id_key: str, days: int = 14) -> dict:
     then fall back to a recent window with both YYYY-MM-DD and MM/DD/YYYY.
     """
     import datetime as _dt
+
+    # 1) no dates – many tenants accept this and avoid 400s
+    try:
+        return _eget(
+            f"/accounts/{account_id_key}/orders.json",
+            params={"status": "OPEN"},
+        )
+    except Exception:
+        pass
+
+    end = _dt.date.today()
+    start = end - _dt.timedelta(days=max(1, int(days)))
+
+    params_list = [
+        {
+            "fromDate": start.strftime("%Y-%m-%d"),
+            "toDate": end.strftime("%Y-%m-%d"),
+            "status": "OPEN",
+        },
+        {
+            "fromDate": start.strftime("%m/%d/%Y"),
+            "toDate": end.strftime("%m/%d/%Y"),
+            "status": "OPEN",
+        },
+    ]
+
+    last_exc: Exception | None = None
+    for params in params_list:
+        try:
+            return _eget(
+                f"/accounts/{account_id_key}/orders.json",
+                params=params,
+            )
+        except Exception as exc:
+            last_exc = exc
+
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError("unable to fetch open-orders payload")
 # Backwards-compat alias for older callers
 def list_orders(
     account_id_key: str | None = None,
@@ -103,6 +142,7 @@ def list_orders(
 
     # We ignore `status` for now and always return OPEN orders.
     return get_open_orders(account_id_key=account_id_key, days=days)
+
     # 2) date window – try both formats
     for fmt in ("%Y-%m-%d", "%m/%d/%Y"):
         try:
