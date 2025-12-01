@@ -652,6 +652,110 @@ def realized_buckets_from_live_db(db_path: str) -> Dict[str, Dict[str, float]]:
         pass
 
     return buckets
+def _enrich_trades_from_realized(trades: list[dict]) -> list[dict]:
+    """
+    For SELL trades that have price_paid == 0 (or missing), patch them using
+    realized_trades from live.db so Recent Trades shows correct Price Paid and P&L.
+
+    Matching strategy:
+      - key = (symbol, close_date truncated to seconds)
+      - use trade['time_utc'] or trade['time'] for the timestamp
+    """
+    if not trades:
+        return trades
+
+    # Build an index of realized_trades keyed by (SYMBOL, CLOSE_TS)
+    try:
+        conn = sqlite3.connect(str(LIVE_DB))
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT
+                symbol,
+                close_date,
+                qty,
+                cost_share,
+                total_cost,
+                gain
+            FROM realized_trades
+            """
+        )
+        realized_index: dict[tuple[str, str], dict] = {}
+
+        def _norm_ts(s: str | None) -> str:
+            if not s:
+                return ""
+            s = str(s).replace("T", " ")
+            return s[:19]  # "YYYY-MM-DD HH:MM:SS"
+
+        for sym, close_date, qty, cost_share, total_cost, gain in cur.fetchall():
+            key = (str(sym or "").upper(), _norm_ts(close_date))
+            realized_index[key] = {
+                "qty": float(qty or 0.0),
+                "cost_share": float(cost_share or 0.0),
+                "total_cost": float(total_cost or 0.0),
+                "gain": float(gain or 0.0),
+            }
+
+        conn.close()
+    except Exception as exc:
+        log.error("_enrich_trades_from_realized: failed to read realized_trades: %s", exc)
+        return trades
+
+    def _norm_ts_trade(t: dict) -> str:
+        ts = t.get("time_utc") or t.get("time") or ""
+        ts = str(ts).replace("T", " ")
+        return ts[:19]
+
+    enriched: list[dict] = []
+
+    for t in trades:
+        action = (t.get("action") or t.get("side") or "").upper()
+        if action != "SELL":
+            enriched.append(t)
+            continue
+
+        price_paid = t.get("price_paid")
+        # Only patch clearly bogus values
+        if price_paid not in (None, 0, 0.0):
+            enriched.append(t)
+            continue
+
+        sym = (t.get("symbol") or "").upper()
+        if not sym:
+            enriched.append(t)
+            continue
+
+        key = (sym, _norm_ts_trade(t))
+        r = realized_index.get(key)
+        if not r:
+            enriched.append(t)
+            continue
+
+        qty = t.get("qty")
+        try:
+            qty_f = float(qty or r["qty"] or 0.0)
+        except Exception:
+            qty_f = float(r["qty"] or 0.0)
+
+        cost_share = r["cost_share"]
+        total_cost = r["total_cost"] or (cost_share * qty_f)
+        gain = r["gain"]
+
+        if qty_f <= 0 or cost_share <= 0:
+            enriched.append(t)
+            continue
+
+        pl = gain
+        pl_pct = (pl / total_cost * 100.0) if total_cost > 0 else 0.0
+
+        t2 = dict(t)
+        t2["price_paid"] = round(cost_share, 4)
+        t2["pl"] = round(pl, 2)
+        t2["pl_pct"] = round(pl_pct, 2)
+        enriched.append(t2)
+
+    return enriched
 
 def _normalize_positions_payload(raw: dict) -> list[dict]:
     """
@@ -1176,17 +1280,23 @@ def live_status():
         total_value += qty * last
         day_unreal += _safe_float(h.get("day_pl"), 0.0)
 
-    # ALL-TIME unrealized based on cost vs current value
+    # ALL-TIME unrealized in dollars
     total_unreal_pl = round(total_value - total_cost, 2) if total_cost > 0 else 0.0
-    total_unreal_pct = round(
-        (total_unreal_pl / total_cost) * 100.0, 2
-    ) if total_cost > 0 else 0.0
+
+    # For the "All Time" % tile, measure against the original project stake
+    # (8/22/2025 baseline), not just current open-position cost.
+    base_for_unreal = START_CASH_BASELINE
+    if base_for_unreal > 0:
+        total_unreal_pct = round((total_unreal_pl / base_for_unreal) * 100.0, 2)
+    else:
+        total_unreal_pct = 0.0
 
     # keep day unreal in case we want it later
     day_unrealized_pnl = round(day_unreal, 2)
     day_unrealized_pnl_pct = (
         round((day_unrealized_pnl / nav) * 100.0, 2) if nav > 0 else 0.0
     )
+
 
     # ---------- 6) TRADES TABLE (for history) ----------
     start = (request.args.get("start") or "").strip()
@@ -1198,6 +1308,9 @@ def live_status():
         start_iso=start,
         max_count=max_count,
     ) or []
+
+    # Fix SELL trades that are missing proper cost basis / P&L
+    trades = _enrich_trades_from_realized(trades)
 
     if debug:
         debug_raw["trades_raw"] = trades
@@ -1211,24 +1324,24 @@ def live_status():
     nav_ta = round(float(ui_buying_power) + float(positions_value), 2)
 
     # ---------- 9) ABOUT / SINCE START (NAV_TA + contributions) ----------
-    START_CASH = START_CASH_BASELINE
-    START_DATE = START_DATE_BASELINE
+    start_cash = START_CASH_BASELINE
+    start_date = START_DATE_BASELINE
 
     try:
-        net_contrib = float(get_total_contributions(START_DATE))
+        net_contrib = float(get_total_contributions(start_date))
     except Exception:
         net_contrib = 0.0
 
     # True gain = NAV_TA − start_cash − contributions
-    total_gain = round(nav_ta - START_CASH - net_contrib, 2)
+    total_gain = round(nav_ta - start_cash - net_contrib, 2)
 
     # Percent = gain / (start_cash + contributions)
-    denom = START_CASH + net_contrib
+    denom = start_cash + net_contrib
     total_gain_pct = round((total_gain / denom * 100.0), 2) if denom > 0 else 0.0
 
     about = {
-        "start_cash": START_CASH,
-        "start_date": START_DATE,
+        "start_cash": start_cash,
+        "start_date": start_date,
         "net_contrib": round(net_contrib, 2),
         "since_pnl": total_gain,       # <- this feeds the hero blurb
         "since_pct": total_gain_pct,
