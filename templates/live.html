@@ -234,6 +234,8 @@
   const ZERO = '#b8b8b8';
   const START_DATE = '2025-08-22';
 
+  let aiInitDone = false;
+
   const num = x => {
     if (x == null) return NaN;
     if (typeof x === 'number') return x;
@@ -375,7 +377,6 @@
       `;
       tb.appendChild(row);
 
-      // Colorize numbers
       setColor(row.querySelector('.hold-diff'), diffAmt);
       setColor(row.querySelector('.hold-day-pl'), dayPL);
       setColor(row.querySelector('.hold-day-pl-pct'), dayPP);
@@ -429,7 +430,6 @@
     const metrics  = d.metrics  || {};
     const about    = d.about    || {};
 
-    // Positions value
     let pv = num(
       metrics.positions_value ??
       value.positions_value ??
@@ -437,7 +437,6 @@
     );
     if (!Number.isFinite(pv)) pv = 0;
 
-    // Buying power
     let bp = num(
       account.buying_power ??
       account.available_funds ??
@@ -466,7 +465,6 @@
     set('#kpi-bp',     money(bp));
     set('#kpi-posval', money(pv));
 
-    // Unrealized P&L tile
     const dAmt    = num(metrics.day_unrealized_pnl);
     const dPct    = num(metrics.day_unrealized_pnl_pct);
     const allAmt  = num(metrics.unrealized_pl);
@@ -482,7 +480,6 @@
     setColor(document.querySelector('#kpi-pnl-all'), allAmt);
     setColor(document.querySelector('#kpi-pnl-all-pct'), allPct);
 
-    // Realized P&L tile
     const realized = d.realized || {};
     const day      = realized.day       || {};
     const week     = realized.week      || {};
@@ -523,7 +520,6 @@
     setColor(document.querySelector('#kpi-r-all'),          aR);
     setColor(document.querySelector('#kpi-r-all-pct'),      aRPct);
 
-    // Hero blurb
     const startCash = num(about.start_cash);
     const netContrib = num(about.net_contrib);
     const sincePnl   = num(about.since_pnl);
@@ -538,7 +534,6 @@
     setColor(document.querySelector('#about-since-pnl'), sincePnl);
     setColor(document.querySelector('#about-since-pct'), sincePct);
 
-    // Account badge
     const acctType = (account.account_type_display || account.account_type || '').toString();
     const acctId   = preferNumericAccountId(account).show;
     const badgeEl  = document.getElementById('acct-badge');
@@ -580,6 +575,7 @@
     renderHoldings(d.holdings || []);
     renderTrades(d.trades || []);
   };
+
 
   document.addEventListener('DOMContentLoaded', () => {
     refreshLive().catch(console.error);

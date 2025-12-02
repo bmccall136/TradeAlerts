@@ -40,5 +40,10 @@
     "max_place_attempts": 4,
     "normalize_tick": 0.01,
     "circuit_fail_threshold": 2
+  },
+  "ai": {
+    "enabled": true,
+    "use_entries": true,
+    "use_exits": true
   }
 }

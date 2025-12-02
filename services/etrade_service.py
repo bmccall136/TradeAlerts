@@ -160,6 +160,17 @@ def list_orders(
     # 3) last resort – bubble the error for visibility
     return _eget(f"/accounts/{account_id_key}/orders.json", params={"status": "OPEN"})
 
+def open_orders(
+    account_id_key: str | None = None,
+    status: str | None = None,
+    days: int = 14,
+) -> dict:
+    """
+    Backwards-compat alias used by older code (e.g. sell_guard).
+    Simply delegates to list_orders().
+    """
+    return list_orders(account_id_key=account_id_key, status=status, days=days)
+
 # services/etrade_service.py (add)
 import time
 import requests
@@ -3245,6 +3256,104 @@ def list_recent_trades(days: int = 5) -> list[dict[str, Any]]:
         log.exception("transactions fallback failed: %s", e)
 
     return out
+    
+    # =============================================================================
+# DIRECT EQUITY SELL (preview + place)
+# =============================================================================
+
+def place_equity_order_direct(
+    account_key: str,
+    symbol: str,
+    quantity: float,
+    action="SELL",
+    order_type="MARKET",
+    limit_price=None,
+):
+    """
+    Unified preview + place helper for Sell Guard.
+    This version:
+    - Builds the correct E*TRADE preview payload
+    - Calls the preview endpoint
+    - Extracts the previewId safely
+    - Places the real order using previewId
+    - Logs errors instead of raising "preview response missing Order[]"
+    """
+
+    session = ensure_session()
+    acct = get_account_id(account_key)
+
+    # E*TRADE wants quantity as integer if whole shares
+    qty = int(quantity) if float(quantity).is_integer() else float(quantity)
+
+    # Build preview payload
+    payload = {
+        "Order": [
+            {
+                "orderTerm": "GOOD_FOR_DAY",
+                "priceType": "MARKET" if order_type == "MARKET" else "LIMIT",
+                "limitPrice": limit_price if order_type == "LIMIT" else None,
+                "Quantity": [{"quantity": qty, "type": "QUANTITY"}],
+                "Instrument": [
+                    {
+                        "Product": {
+                            "symbol": symbol,
+                            "securityType": "EQ",
+                        },
+                        "orderAction": action,
+                    }
+                ],
+            }
+        ]
+    }
+
+    # -------------------------------
+    # 1. PREVIEW ORDER
+    # -------------------------------
+    prev_url = f"{BASE_URL}/v1/accounts/{acct}/orders/preview.json"
+    r = session.post(prev_url, json=payload)
+
+    try:
+        data = r.json()
+    except Exception:
+        raise RuntimeError(f"Preview JSON decode failed: {r.text}")
+
+    # Extract previewId safely
+    preview_resp = data.get("PreviewOrderResponse", {})
+    errs = preview_resp.get("PreviewMessage", [])
+
+    if errs:
+        # Log readable errors
+        msgs = ", ".join(m.get("description", "") for m in errs)
+        raise RuntimeError(f"E*TRADE preview rejected order: {msgs}")
+
+    preview_details = preview_resp.get("Order", [])
+    if not preview_details:
+        raise RuntimeError(
+            f"Preview missing Order[] — raw resp: {json.dumps(data, indent=2)}"
+        )
+
+    preview_id = preview_resp.get("previewId")
+    if not preview_id:
+        raise RuntimeError(
+            f"Preview missing previewId — raw resp: {json.dumps(data, indent=2)}"
+        )
+
+    # -------------------------------
+    # 2. PLACE ORDER
+    # -------------------------------
+    place_payload = {"PreviewIds": [preview_id]}
+    place_url = f"{BASE_URL}/v1/accounts/{acct}/orders/place.json"
+
+    r2 = session.post(place_url, json=place_payload)
+
+    try:
+        placed = r2.json()
+    except Exception:
+        raise RuntimeError(f"Place JSON decode failed: {r2.text}")
+
+    # Future: parse fills, confirmations, order IDs
+    return placed
+
 
 
 # ======= Backwards-compat shim for LiveBroker =======

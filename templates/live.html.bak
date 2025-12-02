@@ -50,7 +50,6 @@
     background-color: #222;
   }
 
-  /* Blurb centered under title */
   .hero-blurb {
     font-size: 0.95rem;
     color: #ddd;
@@ -75,13 +74,11 @@
     color: #ffc107 !important;
   }
 
-  /* Make Checkpoint / status text bright enough in dark mode */
   .form-check-label,
   .text-muted {
     color: #e8e8e8 !important;
   }
 
-  /* Tiny news button */
   .btn-news {
     padding: 2px 6px;
     font-size: 0.75rem;
@@ -96,10 +93,9 @@
     color: #000000;
     text-decoration: none;
   }
-
 </style>
 
-<!-- Top status row: only E*TRADE API + account badge -->
+<!-- Top status row -->
 <div class="d-flex justify-content-between align-items-center mb-2">
   <div></div>
   <div class="text-end">
@@ -127,7 +123,7 @@
     </div>
   </div>
 
-  <!-- UNREALIZED P&L tile (Day + All Time) -->
+  <!-- UNREALIZED P&L -->
   <div class="col-md-4">
     <div class="kpi-tile">
       <div class="kpi-label mb-2">P&amp;L (Unrealized)</div>
@@ -143,13 +139,10 @@
         <span id="kpi-pnl-all">$0.00</span>
         (<span id="kpi-pnl-all-pct">0.00%</span>)
       </div>
-
-      <div class="kpi-sub mt-2">
-      </div>
     </div>
   </div>
 
-  <!-- REALIZED P&L tile -->
+  <!-- REALIZED P&L -->
   <div class="col-md-4">
     <div class="kpi-tile">
       <div class="kpi-label mb-2">Realized P&amp;L</div>
@@ -201,7 +194,7 @@
         <th>Total P&amp;L</th>
         <th>Total P&amp;L %</th>
         <th>Value</th>
-		<th>News</th>
+        <th>News</th>
       </tr>
     </thead>
     <tbody id="holdings-body">
@@ -240,6 +233,8 @@
   const NEG  = '#ff6b6b';
   const ZERO = '#b8b8b8';
   const START_DATE = '2025-08-22';
+
+  let aiInitDone = false;
 
   const num = x => {
     if (x == null) return NaN;
@@ -319,83 +314,75 @@
     dot.classList.add(ok ? 'dot-green' : 'dot-red');
   };
 
-renderHoldings = holdings => {
-  const tb = document.querySelector('#holdingsTableBody');
-  if (!tb) return;
+  const renderHoldings = holdings => {
+    const tb = document.querySelector('#holdings-body');
+    if (!tb) return;
 
-  tb.innerHTML = '';
+    tb.innerHTML = '';
 
-  if (!holdings || !holdings.length) {
-    tb.innerHTML = `<tr><td colspan="13" class="text-muted">No holdings.</td></tr>`;
-    return;
-  }
-
-  for (const h of holdings) {
-    const sym = (h.symbol || '').toUpperCase();
-    const name = h.name || '—';
-    const qty = h.qty ?? 0;
-    const price = h.price != null ? money(h.price) : '—';
-    const value = h.value != null ? money(h.value) : '—';
-    const vwap = h.vwap != null ? money(h.vwap) : '—';
-    const vwapDiff = h.vwap_diff != null ? money(h.vwap_diff) : '—';
-
-    const dayPL = h.day_pl != null ? money(h.day_pl) : '—';
-    const dayPLPct = h.day_pl_pct != null ? pct(h.day_pl_pct) : '—';
-
-    const diff = h.diff != null ? money(h.diff) : '—';
-    const diffPct = h.diff_pct != null ? pct(h.diff_pct) : '—';
-
-    // NEW: backend can send has_news / news_count, but default to true (current behavior)
-    const hasNews =
-      (typeof h.has_news === 'boolean' && h.has_news) ||
-      (typeof h.news_count === 'number' && h.news_count > 0) ||
-      (typeof h.newsCount === 'number' && h.newsCount > 0);
-
-    const newsCell = hasNews
-      ? `
-        <button class="btn btn-sm btn-outline-secondary btn-news"
-                type="button"
-                title="View news for ${sym}"
-                onclick="window.open('/news/${sym}', '_blank')">
-          📰
-        </button>
-      `
-      : `<span class="text-muted">—</span>`;
-
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td>${sym}</td>
-      <td>${name}</td>
-      <td class="text-center">
-        ${newsCell}
-      </td>
-      <td class="text-end">${qty}</td>
-      <td class="text-end">${price}</td>
-      <td class="text-end">${value}</td>
-      <td class="text-end">${vwap}</td>
-      <td class="text-end">${vwapDiff}</td>
-      <td class="text-end hold-day-pl">${dayPL}</td>
-      <td class="text-end hold-day-pl-pct">${dayPLPct}</td>
-      <td class="text-end hold-diff">${diff}</td>
-      <td class="text-end hold-diff-pct">${diffPct}</td>
-      <td class="text-center">
-        <button class="btn btn-sm btn-outline-secondary btn-clear" type="button" data-symbol="${sym}">
-          Clear
-        </button>
-      </td>
-    `;
-    tb.appendChild(row);
-  }
-};
-
-      const row = tb.lastElementChild;
-      setColor(row.querySelector('.diff-pl'), diff);
-      setColor(row.querySelector('.day-pl'), dpl);
-      setColor(row.querySelector('.day-pl-pct'), dplp);
-      setColor(row.querySelector('.tot-pl'), tpl);
-      setColor(row.querySelector('.tot-pl-pct'), tplp);
+    if (!holdings || !holdings.length) {
+      tb.innerHTML = `<tr><td colspan="12" class="text-muted">No holdings.</td></tr>`;
+      return;
     }
-	
+
+    for (const h of holdings) {
+      const sym   = (h.symbol || '').toUpperCase();
+      const open  = h.opened_et || '—';
+      const last  = num(h.last_price);
+      const paid  = num(h.price_paid);
+      const qty   = h.qty ?? 0;
+      const dayPL = num(h.day_pl);
+      const dayPP = num(h.day_pl_pct);
+      const totPL = num(h.total_pl);
+      const totPP = num(h.total_pl_pct);
+      const value = num(h.value);
+
+      let diffAmt = NaN;
+      let diffPct = NaN;
+      if (Number.isFinite(last) && Number.isFinite(paid)) {
+        diffAmt = last - paid;
+        if (paid !== 0) diffPct = (diffAmt / paid) * 100.0;
+      }
+
+      const hasNews =
+        (typeof h.has_news === 'boolean' && h.has_news) ||
+        (typeof h.news_count === 'number' && h.news_count > 0) ||
+        (typeof h.newsCount === 'number' && h.newsCount > 0);
+
+      const newsCell = hasNews
+        ? `
+          <button class="btn btn-sm btn-outline-secondary btn-news"
+                  type="button"
+                  title="View news for ${sym}"
+                  onclick="window.open('/news/${sym}', '_blank')">
+            📰
+          </button>
+        `
+        : `<span class="text-muted">—</span>`;
+
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${sym}</td>
+        <td>${open}</td>
+        <td class="text-end">${Number.isFinite(last) ? money(last) : '—'}</td>
+        <td class="text-end">${qty}</td>
+        <td class="text-end">${Number.isFinite(paid) ? money(paid) : '—'}</td>
+        <td class="text-end hold-diff">${Number.isFinite(diffAmt) ? money(diffAmt) : '—'}</td>
+        <td class="text-end hold-day-pl">${money(dayPL)}</td>
+        <td class="text-end hold-day-pl-pct">${pct(dayPP)}</td>
+        <td class="text-end hold-total-pl">${money(totPL)}</td>
+        <td class="text-end hold-total-pl-pct">${pct(totPP)}</td>
+        <td class="text-end">${money(value)}</td>
+        <td class="text-center">${newsCell}</td>
+      `;
+      tb.appendChild(row);
+
+      setColor(row.querySelector('.hold-diff'), diffAmt);
+      setColor(row.querySelector('.hold-day-pl'), dayPL);
+      setColor(row.querySelector('.hold-day-pl-pct'), dayPP);
+      setColor(row.querySelector('.hold-total-pl'), totPL);
+      setColor(row.querySelector('.hold-total-pl-pct'), totPP);
+    }
   };
 
   const renderTrades = rows => {
@@ -441,10 +428,8 @@ renderHoldings = holdings => {
     const account  = d.account  || {};
     const value    = d.value    || {};
     const metrics  = d.metrics  || {};
-    const holdings = d.holdings || [];
     const about    = d.about    || {};
 
-    // --- Positions value ---
     let pv = num(
       metrics.positions_value ??
       value.positions_value ??
@@ -452,7 +437,6 @@ renderHoldings = holdings => {
     );
     if (!Number.isFinite(pv)) pv = 0;
 
-    // --- Buying power (from API, with fallback) ---
     let bp = num(
       account.buying_power ??
       account.available_funds ??
@@ -473,7 +457,6 @@ renderHoldings = holdings => {
       }
     }
 
-    // --- VALUE big number = BP + Positions ---
     const valTotal =
       (Number.isFinite(bp) ? bp : 0) +
       (Number.isFinite(pv) ? pv : 0);
@@ -482,28 +465,22 @@ renderHoldings = holdings => {
     set('#kpi-bp',     money(bp));
     set('#kpi-posval', money(pv));
 
-    // --- Unrealized P&L tile: Day + All Time ---
     const dAmt    = num(metrics.day_unrealized_pnl);
     const dPct    = num(metrics.day_unrealized_pnl_pct);
     const allAmt  = num(metrics.unrealized_pl);
     const allPct  = num(metrics.unrealized_pl_pct);
 
-    // Day
     set('#kpi-pnl-day',     money(dAmt));
     set('#kpi-pnl-day-pct', pct(dPct));
     setColor(document.querySelector('#kpi-pnl-day'), dAmt);
     setColor(document.querySelector('#kpi-pnl-day-pct'), dPct);
 
-    // All time
     set('#kpi-pnl-all',     money(allAmt));
     set('#kpi-pnl-all-pct', pct(allPct));
     setColor(document.querySelector('#kpi-pnl-all'), allAmt);
     setColor(document.querySelector('#kpi-pnl-all-pct'), allPct);
 
-    // --- Realized P&L tile ---
     const realized = d.realized || {};
-    console.log("REALIZED FROM BACKEND:", realized);
-
     const day      = realized.day       || {};
     const week     = realized.week      || {};
     const lastWeek = realized.last_week || {};
@@ -543,7 +520,6 @@ renderHoldings = holdings => {
     setColor(document.querySelector('#kpi-r-all'),          aR);
     setColor(document.querySelector('#kpi-r-all-pct'),      aRPct);
 
-    // --- About / hero blurb ---
     const startCash = num(about.start_cash);
     const netContrib = num(about.net_contrib);
     const sincePnl   = num(about.since_pnl);
@@ -558,13 +534,11 @@ renderHoldings = holdings => {
     setColor(document.querySelector('#about-since-pnl'), sincePnl);
     setColor(document.querySelector('#about-since-pct'), sincePct);
 
-    // --- Account badge (type + last 4) ---
     const acctType = (account.account_type_display || account.account_type || '').toString();
     const acctId   = preferNumericAccountId(account).show;
     const badgeEl  = document.getElementById('acct-badge');
     if (badgeEl) {
       let label = '';
-
       const t = acctType.toUpperCase();
       if (t === 'CASH' || t === 'CASH_ACCOUNT') {
         label = 'Cash Acct.';
@@ -597,6 +571,15 @@ renderHoldings = holdings => {
     paintStatus(!!d.ok);
     if (!d.ok) return;
 
+    // One-time AI checkbox init from backend
+    if (!aiInitDone) {
+      const aiToggle = document.getElementById('ai-enabled-toggle');
+      if (aiToggle && d.ai && typeof d.ai.enabled === 'boolean') {
+        aiToggle.checked = d.ai.enabled;
+        aiInitDone = true;
+      }
+    }
+
     updateKPIs(d);
     renderHoldings(d.holdings || []);
     renderTrades(d.trades || []);
@@ -607,27 +590,5 @@ renderHoldings = holdings => {
     setInterval(() => refreshLive().catch(console.error), 30000);
   });
 })();
-// assuming `row` is the holding for this <tr>
-const tdNews = document.createElement('td');
-tdNews.className = 'text-center';
-
-// row.news should be an array of headlines or news items
-const hasNews = row.news && Array.isArray(row.news) && row.news.length > 0;
-
-if (hasNews) {
-  tdNews.innerHTML = `
-    <button class="btn btn-sm btn-outline-info news-btn"
-            type="button"
-            data-symbol="${row.symbol}">
-      📰
-    </button>
-  `;
-} else {
-  // no news -> no icon; just keep the cell mostly blank
-  tdNews.innerHTML = '&nbsp;';
-}
-
-tr.appendChild(tdNews);
-
 </script>
 {% endblock %}

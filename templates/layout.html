@@ -137,36 +137,27 @@
       fetchMode();
     });
   </script>
-  <script>
-  (function () {
-    const aiToggle = document.getElementById("ai-enabled-toggle");
-    if (!aiToggle) return;
+	<script>
+	  (function () {
+		document.addEventListener('DOMContentLoaded', function () {
+		  const aiToggle = document.getElementById("ai-enabled-toggle");
+		  if (!aiToggle) return;
 
-    // 1) Initialize from /live/status (reuse your existing fetch if you have one)
-    fetch("/live/status")
-      .then(r => r.json())
-      .then(data => {
-        const ai = (data.ai || data.about?.ai || {});
-        if (typeof ai.enabled === "boolean") {
-          aiToggle.checked = ai.enabled;
-        }
-      })
-      .catch(() => {});
-
-    // 2) Push changes back when user clicks the robot toggle
-    aiToggle.addEventListener("change", () => {
-      const enabled = aiToggle.checked;
-      fetch("/live/ai_toggle", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled })
-      }).catch(() => {
-        // On error, revert checkbox
-        aiToggle.checked = !enabled;
-      });
-    });
-  })();
-</script>
+		  // When user clicks the AI Advisor checkbox, push state to backend
+		  aiToggle.addEventListener("change", () => {
+			const enabled = aiToggle.checked;
+			fetch("/live/ai_toggle", {
+			  method: "POST",
+			  headers: { "Content-Type": "application/json" },
+			  body: JSON.stringify({ enabled })
+			}).catch(() => {
+			  // On error, revert checkbox so UI doesn't lie
+			  aiToggle.checked = !enabled;
+			});
+		  });
+		});
+	  })();
+	</script>
 
 </body>
 </html>
