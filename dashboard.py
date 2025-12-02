@@ -428,6 +428,30 @@ def _safe_float(x: Any, default: float = 0.0) -> float:
     except Exception:
         return default
 
+ENABLE_AI_ENTRIES = False  # hard off switch for now
+ENABLE_AI_EXITS   = False
+
+def ai_decide_entry(snapshot: dict) -> dict:
+    if not ENABLE_AI_ENTRIES:
+        return {
+            "action": "SKIP",
+            "confidence": 0,
+            "sizing_hint": "AVOID_ADDING",
+            "reason_tags": ["ai_disabled"],
+            "comment": "AI advisor disabled; follow base rules only."
+        }
+    # ... existing OpenAI call ...
+
+def ai_decide_exit(snapshot: dict) -> dict:
+    if not ENABLE_AI_EXITS:
+        return {
+            "action": "HOLD",
+            "confidence": 0,
+            "sizing_hint": "AVOID_ADDING",
+            "reason_tags": ["ai_disabled"],
+            "comment": "AI exit advisor disabled; follow sell_guard rules only."
+        }
+    # ... existing OpenAI call ...
 
 def _et_midnight(d: date) -> datetime:
     return datetime.combine(d, datetime.min.time(), tzinfo=ET)
@@ -1069,6 +1093,37 @@ def inject_status():
 @app.route("/")
 def index():
     return redirect(url_for("live_view"))
+
+@app.route("/live/ai_toggle", methods=["POST"])
+@always_json
+def live_ai_toggle():
+    """
+    Toggle AI Advisor on/off for Day mode via the UI.
+    """
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        enabled = bool(body.get("enabled"))
+    except Exception:
+        enabled = False
+
+    # Load current day settings
+    day_settings_path = Path("C:/TradeAlerts/live_settings_day.json")
+    data = json.loads(day_settings_path.read_text(encoding="utf-8"))
+
+    ai_cfg = data.get("ai") or {}
+    ai_cfg["enabled"] = enabled
+    data["ai"] = ai_cfg
+
+    day_settings_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    return {
+        "ok": True,
+        "ai": {
+            "enabled": ai_cfg["enabled"],
+            "use_entries": ai_cfg.get("use_entries", True),
+            "use_exits": ai_cfg.get("use_exits", True),
+        },
+    }
 
 @app.route("/live/mode", methods=["GET", "POST"])
 @always_json

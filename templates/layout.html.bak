@@ -35,6 +35,13 @@
           <button type="button" class="btn btn-outline-secondary" data-mode="SWING">Swing Trader</button>
         </div>
       </div>
+	<div class="ai-toggle">
+	  <label class="ai-toggle-label">
+		<input type="checkbox" id="ai-enabled-toggle">
+		<span>AI Advisor</span>
+		<img src="/static/img/robot.png" alt="AI" class="ai-icon">
+	  </label>
+	</div>
 
       <!-- Center: big title -->
       <div class="trade-alerts-title position-absolute top-50 start-50 translate-middle text-center">
@@ -44,18 +51,9 @@
       <!-- Right: actions -->
       <div class="d-flex align-items-center gap-2 ms-auto">
         <!-- Checkpoint -->
-	<form action="{{ url_for('run_checkpoint') }}" method="get" class="m-0">
-	  <button class="btn btn-small btn-checkpoint">✅ Checkpoint</button>
-	</form>
-		<!-- Left: actions -->
-		<td class="text-center">
-	  <a href="{{ url_for('view_symbol_news', symbol=row.symbol) }}"
-		 target="_blank"
-		 class="btn btn-xs btn-news"
-		 title="View recent headlines">
-		📰
-	  </a>
-	</td>
+        <form action="{{ url_for('run_checkpoint') }}" method="get" class="m-0">
+          <button class="btn btn-small btn-checkpoint">✅ Checkpoint</button>
+        </form>
 
         <!-- Reconnect API -->
         <a class="btn btn-sm btn-outline-warning btn-fixed"
@@ -140,5 +138,36 @@
       fetchMode();
     });
   </script>
+  <script>
+  (function () {
+    const aiToggle = document.getElementById("ai-enabled-toggle");
+    if (!aiToggle) return;
+
+    // 1) Initialize from /live/status (reuse your existing fetch if you have one)
+    fetch("/live/status")
+      .then(r => r.json())
+      .then(data => {
+        const ai = (data.ai || data.about?.ai || {});
+        if (typeof ai.enabled === "boolean") {
+          aiToggle.checked = ai.enabled;
+        }
+      })
+      .catch(() => {});
+
+    // 2) Push changes back when user clicks the robot toggle
+    aiToggle.addEventListener("change", () => {
+      const enabled = aiToggle.checked;
+      fetch("/live/ai_toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled })
+      }).catch(() => {
+        // On error, revert checkbox
+        aiToggle.checked = !enabled;
+      });
+    });
+  })();
+</script>
+
 </body>
 </html>
