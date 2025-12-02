@@ -1117,7 +1117,6 @@ def live_ai_toggle():
     day_settings_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     return {
-        "ok": True,
         "ai": {
             "enabled": ai_cfg["enabled"],
             "use_entries": ai_cfg.get("use_entries", True),

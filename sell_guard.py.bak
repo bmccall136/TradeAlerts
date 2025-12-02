@@ -7,9 +7,7 @@ import sys
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Dict, List, Tuple
-
-from ai_advisor import get_ai_recommendation
+from typing import Any, Dict, Iterable, List, Tuple
 
 try:
     from zoneinfo import ZoneInfo
@@ -18,9 +16,6 @@ try:
 except Exception:  # pragma: no cover
     ETZ = None
 
-# --------------------------------------------------------------------------- #
-# Logging
-# --------------------------------------------------------------------------- #
 
 LOG = logging.getLogger("sell-guard")
 LOG.setLevel(logging.INFO)
@@ -35,125 +30,175 @@ _sh.setFormatter(
 )
 LOG.addHandler(_sh)
 
+try:
+    import services.etrade_service as et
+except Exception as exc:  # pragma: no cover
+    LOG.error("FATAL: cannot import services.etrade_service: %s", exc)
+    raise SystemExit(1)
 # --------------------------------------------------------------------------- #
-# Paths / imports
+# E*TRADE positions helper
 # --------------------------------------------------------------------------- #
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = HERE
+def get_positions_any() -> Dict[str, Any]:
+    """
+    Thin wrapper around et.get_positions() so the rest of the code can call
+    a single helper. Returns the raw E*TRADE payload.
+    """
+    if et is None:
+        raise RuntimeError("etrade_service import failed; et is None")
 
-sys.path.insert(0, ROOT)
+    try:
+        raw = et.get_positions()
+        LOG.debug(
+            "get_positions_any: type=%s",
+            type(raw).__name__,
+        )
+        return raw
+    except Exception:
+        LOG.exception("get_positions_any: error calling et.get_positions()")
+        raise
 
 try:
-    from services import etrade_service as et
-except Exception as exc:  # pragma: no cover
-    LOG.error("failed to import etrade_service: %s", exc)
-    et = None  # type: ignore[assignment]
+    from openai import OpenAI
+
+    _openai_client = OpenAI()
+except Exception:  # pragma: no cover
+    _openai_client = None
 
 
 # --------------------------------------------------------------------------- #
-# Time helpers
+# Defaults / settings
 # --------------------------------------------------------------------------- #
 
 
-def now_et() -> datetime:
-    dt = datetime.now(UTC)
-    if ETZ:
-        dt = dt.astimezone(ETZ)
-    return dt
-
-
-def parse_hhmm(s: str) -> Tuple[int, int]:
-    s = (s or "").strip()
-    if not s:
-        return (0, 0)
-    parts = s.split(":")
-    try:
-        h = int(parts[0])
-        m = int(parts[1]) if len(parts) > 1 else 0
-    except Exception:
-        return (0, 0)
-    return max(0, min(23, h)), max(0, min(59, m))
-
-
-def now_in_window(start_hhmm: str, end_hhmm: str) -> bool:
-    h1, m1 = parse_hhmm(start_hhmm)
-    h2, m2 = parse_hhmm(end_hhmm)
-    now = now_et()
-    cur = (now.hour, now.minute)
-
-    if (h1, m1) == (0, 0) and (h2, m2) == (0, 0):
-        return True
-
-    start = (h1, m1)
-    end = (h2, m2)
-
-    if start <= end:
-        return start <= cur <= end
-    else:
-        return cur >= start or cur <= end
-
-
-# --------------------------------------------------------------------------- #
-# Defaults + settings loader
-# --------------------------------------------------------------------------- #
-
-DEFAULTS = {
-    "normalize_tick": 0.01,
-    "sell_window_start_et": "09:35",
-    "sell_window_end_et": "15:55",
-    "throttle_ms": 30_000,
-    "use_extended_hours": False,
-    "market_fallback_for": ["SELL_STOP", "TIMEOUT"],
-    "max_place_attempts": 4,
-    "sell_guard": {
-        "allow_intraday_stoploss": True,
-        "avoid_daytrades": False,
-        "stop_bps": 100,
-        "target_bps": 200,
-        "min_hold_minutes": 0,
-        "max_hold_mins": 1_000_000,
-        "protect_trail_arm_pct": 3.0,
-        "protect_trail_pct": 3.0,
-        "protect_min_gain_pct": 1.5,
-        "blocklist": [],
-        "force_without_entry": False,
-    },
-}
-
-# 🔧 respect SELL_GUARD_SETTINGS from launcher; fall back to default file
 SETTINGS_FILE = os.environ.get(
-    "SELL_GUARD_SETTINGS", os.path.join(HERE, "sell_guard_settings.json")
+    "SELL_GUARD_SETTINGS", "C:/TradeAlerts/sell_guard_settings.json"
 )
 
 
-def _load_user_settings() -> Dict[str, Any]:
+@dataclass
+class SellGuardConfig:
+    mode: str
+    interval_sec: int
+    market_open: str
+    market_close: str
+    timezone: str
+    blocklist: List[str]
+    only_allow_symbol: str | None
+    min_hold_minutes: float
+    max_hold_minutes: float
+    min_gain_pct: float
+    target_gain_pct: float
+    trail_arm_gain_pct: float
+    trail_backoff_pct: float
+    timeout_exit_pct: float
+    avoid_daytrades: bool
+    max_place_attempts: int
+    normalize_tick: float
+    allow_intraday_stoploss: bool
+    market_fallback_for: List[str]
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "SellGuardConfig":
+        return cls(
+            mode=str(d.get("mode", "DAY")).upper(),
+            interval_sec=int(d.get("interval_sec", 30)),
+            market_open=str(d.get("market_open", "09:30")),
+            market_close=str(d.get("market_close", "16:00")),
+            timezone=str(d.get("timezone", "America/New_York")),
+            blocklist=list(d.get("blocklist", [])),
+            only_allow_symbol=d.get("only_allow_symbol"),
+            min_hold_minutes=float(d.get("min_hold_minutes", 0)),
+            max_hold_minutes=float(d.get("max_hold_minutes", 480)),
+            min_gain_pct=float(d.get("min_gain_pct", -5.0)),
+            target_gain_pct=float(d.get("target_gain_pct", 1.0)),
+            trail_arm_gain_pct=float(d.get("trail_arm_gain_pct", 1.5)),
+            trail_backoff_pct=float(d.get("trail_backoff_pct", 1.0)),
+            timeout_exit_pct=float(d.get("timeout_exit_pct", -1.0)),
+            avoid_daytrades=bool(d.get("avoid_daytrades", False)),
+            max_place_attempts=int(d.get("max_place_attempts", 4)),
+            normalize_tick=float(d.get("normalize_tick", 0.01)),
+            allow_intraday_stoploss=bool(d.get("allow_intraday_stoploss", True)),
+            market_fallback_for=list(d.get("market_fallback_for", [])),
+        )
+
+
+DEFAULTS: Dict[str, Any] = {
+    "sell_guard": {
+        "mode": "DAY",
+        "interval_sec": 30,
+        "market_open": "09:30",
+        "market_close": "16:00",
+        "timezone": "America/New_York",
+        "blocklist": [],
+        "only_allow_symbol": None,
+        "min_hold_minutes": 0,
+        "max_hold_minutes": 480,
+        "min_gain_pct": -5.0,
+        "target_gain_pct": 1.0,
+        "trail_arm_gain_pct": 1.5,
+        "trail_backoff_pct": 1.0,
+        "timeout_exit_pct": -1.0,
+        "avoid_daytrades": False,
+        "max_place_attempts": 4,
+        "normalize_tick": 0.01,
+        "allow_intraday_stoploss": True,
+        "market_fallback_for": [
+            "SELL_STOP",
+            "TIMEOUT",
+        ],
+    }
+}
+
+
+def _load_user_settings(path: str | os.PathLike[str]) -> Dict[str, Any]:
     try:
-        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
-            LOG.info("Loading sell guard settings from %s", SETTINGS_FILE)
-            return json.load(f)
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
     except FileNotFoundError:
-        LOG.warning("settings file not found: %s", SETTINGS_FILE)
-    except Exception as exc:  # pragma: no cover
-        LOG.error("failed to load %s: %s", SETTINGS_FILE, exc)
-    return {}
+        LOG.warning("Settings file %s not found; using defaults only", path)
+        return {}
+    except json.JSONDecodeError as exc:
+        LOG.error("Settings file %s is invalid JSON: %s", path, exc)
+        raise SystemExit(1)
+
+
+def merge_dict(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(base)
+    for k, v in override.items():
+        if isinstance(v, dict) and isinstance(base.get(k), dict):
+            merged[k] = merge_dict(base[k], v)
+        else:
+            merged[k] = v
+    return merged
 
 
 def load_settings() -> Dict[str, Any]:
-    user = _load_user_settings()
+    """
+    Load settings from SELL_GUARD_SETTINGS, merged over DEFAULTS.
+    """
+    user = _load_user_settings(SETTINGS_FILE)
+    if not isinstance(user, dict):
+        raise SystemExit(f"Settings root must be an object, got {type(user)!r}")
+
     merged = dict(DEFAULTS)
-    merged["sell_guard"] = dict(DEFAULTS["sell_guard"])
+    merged.update(user)
 
-    # top-level overrides
-    for k, v in user.items():
-        if k != "sell_guard":
-            merged[k] = v
-
-    # nested sell_guard overrides
-    if isinstance(user.get("sell_guard"), dict):
-        merged["sell_guard"].update(user["sell_guard"])
-
+    # Fill defaults for nested sell_guard block
+    merged.setdefault("sell_guard", {})
+    merged["sell_guard"] = merge_dict(DEFAULTS["sell_guard"], merged["sell_guard"])
     return merged
+
+
+def get_ai_flags(settings: Dict[str, Any]) -> tuple[bool, bool]:
+    """Extract AI enablement flags from settings.
+
+    Returns (ai_enabled, ai_use_exits).
+    """
+    ai = settings.get("ai") or {}
+    enabled = bool(ai.get("enabled", False))
+    use_exits = bool(ai.get("use_exits", True))
+    return enabled, use_exits
 
 
 # --------------------------------------------------------------------------- #
@@ -161,389 +206,324 @@ def load_settings() -> Dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 
-def get_account_key() -> str:
-    """
-    Use your existing et.get_account_summary() helper to find the primary
-    account_key, instead of a non-existent get_primary_account().
-    """
-    if not et:
-        raise RuntimeError("etrade_service not available")
+def account_id_key() -> str:
+    aid = et.account_id_key()
+    if not aid:
+        raise RuntimeError("account_id_key() returned empty")
+    return aid
 
+
+def fetch_positions() -> dict:
+    """
+    Fetch raw positions from E*TRADE and log a small snippet for debugging.
+    """
+    # 1) get the data
+    positions_raw = get_positions_any()
+
+    # 3) hand it back to the caller
+    return positions_raw
+
+
+def fetch_open_orders() -> List[Dict[str, Any]]:
     try:
-        summary = et.get_account_summary() or {}
+        res = et.open_orders()
+        if not res:
+            return []
+        return (res.get("OrdersResponse") or {}).get("Order", []) or []
     except Exception as exc:
-        raise RuntimeError(f"get_account_summary failed: {exc}") from exc
-
-    key = (
-        summary.get("account_key")
-        or summary.get("accountIdKey")
-        or summary.get("account_id_key")
-    )
-
-    # in case it's nested for any reason
-    if not key:
-        for v in summary.values():
-            if isinstance(v, dict):
-                key = (
-                    v.get("account_key")
-                    or v.get("accountIdKey")
-                    or v.get("account_id_key")
-                )
-                if key:
-                    break
-
-    if not key:
-        raise RuntimeError(f"could not determine account_key from {summary!r}")
-
-    return str(key)
-
-
-def get_positions_any(acct_key: str | None = None) -> Dict[str, Any]:
-    """Return raw positions payload from E*TRADE.
-
-    NOTE: We ignore acct_key for now. et.get_positions() already knows
-    the default account via account_summary, so we just call it with
-    no arguments and return the raw payload for iter_positions().
-    """
-    payload: Dict[str, Any] = {}
-    try:
-        payload = et.get_positions() or {}
-    except Exception as exc:  # pragma: no cover - defensive
-        LOG.warning("get_positions_any failed: %s", exc)
-    # Useful for debugging; leave structure intact for iter_positions()
-    return payload
-
-def get_open_orders(acct_key: str) -> Dict[str, Any]:
-    """Return open orders; your et.list_orders() does not take status= kwarg."""
-    if not et:
-        raise RuntimeError("etrade_service not available")
-    try:
-        # Assuming your wrapper already returns only OPEN orders or all orders.
-        return et.list_orders(acct_key)
-    except Exception as exc:  # pragma: no cover
-        LOG.error("get_open_orders failed: %s", exc)
-        return {}
-
-def preview(acct_key: str, sym: str, qty: int, price_type: str, limit_px: float | None):
-    if not et:
-        raise RuntimeError("etrade_service not available")
-    return et.preview_equity_order(
-        acct_key, symbol=sym, qty=qty, side="SELL", price_type=price_type, limit_price=limit_px
-    )
-
-
-def place(acct_key: str, sym: str, qty: int, price_type: str, limit_px: float | None):
-    if not et:
-        raise RuntimeError("etrade_service not available")
-    return et.place_equity_order(
-        acct_key, symbol=sym, qty=qty, side="SELL", price_type=price_type, limit_price=limit_px
-    )
-
-
-def best_bid(sym: str) -> float:
-    if not et:
-        return 0.0
-    try:
-        q = et.get_quote(sym) or {}
-        bd = q.get("quoteData", [{}])[0].get("all", {}).get("bid", 0.0)
-        return float(bd or 0.0)
-    except Exception as exc:  # pragma: no cover
-        LOG.error("best_bid(%s) failed: %s", sym, exc)
-        return 0.0
-
-
-def last_trade(sym: str) -> float:
-    if not et:
-        return 0.0
-    try:
-        q = et.get_quote(sym) or {}
-        lt = q.get("quoteData", [{}])[0].get("all", {}).get("lastTrade", 0.0)
-        return float(lt or 0.0)
-    except Exception as exc:  # pragma: no cover
-        LOG.error("last_trade(%s) failed: %s", sym, exc)
-        return 0.0
-
-
-# --------------------------------------------------------------------------- #
-# Position parsing
-# --------------------------------------------------------------------------- #
-
-
-def _glimpse(x: Any, limit: int = 200) -> str:
-    try:
-        s = json.dumps(x, default=str, separators=(",", ":"))
-    except Exception:
-        s = repr(x)
-    if len(s) > limit:
-        s = s[: limit - 3] + "..."
-    return s
-
-
-from typing import Iterable, Tuple
-
-def iter_positions(payload) -> Iterable[Tuple[str, float, float, float]]:
-    """
-    Yield (symbol, qty, market_value, avg_price) tuples from the raw
-    E*TRADE /portfolio.json payload.
-
-    This implementation is dictionary-only and does NOT depend on any
-    Position dataclass, so we avoid the 'name Position is not defined'
-    mess entirely.
-    """
-    if not payload:
+        LOG.warning("open_orders() failed: %s", exc)
         return []
 
-    # Accept both the raw json() and already-unwrapped dicts
-    pr = (
-        payload.get("PortfolioResponse")
-        or payload.get("portfolioResponse")
-        or payload
-    )
-
-    # AccountPortfolio can be a dict or list
-    acct_ports = (
-        pr.get("AccountPortfolio")
-        or pr.get("accountPortfolio")
-        or []
-    )
-    if isinstance(acct_ports, dict):
-        acct_ports = [acct_ports]
-
-    def _f(x, default=0.0):
-        try:
-            if x is None or x == "":
-                return float(default)
-            return float(str(x).replace(",", ""))
-        except Exception:
-            return float(default)
-
-    for acct in acct_ports:
-        positions = acct.get("Position") or acct.get("position") or []
-        if isinstance(positions, dict):
-            positions = [positions]
-
-        for pos in positions:
-            try:
-                prod = pos.get("Product") or pos.get("product") or {}
-                sym = (prod.get("symbol") or pos.get("symbol") or "").upper().strip()
-                if not sym:
-                    continue
-
-                qty = _f(
-                    pos.get("quantity")
-                    or pos.get("longQuantity")
-                    or pos.get("longQty")
-                    or pos.get("positionQty")
-                    or pos.get("positionQuantity")
-                    or 0.0
-                )
-
-                mkt_val = _f(
-                    pos.get("marketValue")
-                    or (qty * _f(pos.get("lastTrade") or pos.get("lastPrice") or 0.0))
-                )
-
-                avg = _f(
-                    pos.get("averagePrice")
-                    or pos.get("averageCost")
-                    or pos.get("costBasisPerShare")
-                    or pos.get("costBasis")
-                    or 0.0
-                )
-
-                # yield (symbol, qty, market_value, avg_price)
-                yield (sym, qty, mkt_val, avg)
-
-            except Exception as e:
-                LOG.warning("iter_positions: bad position row %r: %s", pos, e)
-
-def opened_today(sym: str) -> bool:
-    """
-    Rough PDT helper. We'll refine if needed.
-    """
-    if not et:
-        return False
-
-    try:
-        tx = et.get_transactions(sym) or {}
-    except Exception as exc:  # pragma: no cover
-        LOG.error("get_transactions(%s) failed: %s", sym, exc)
-        return False
-
-    arr = (
-        tx.get("TransactionDetails") or tx.get("Transactions") or tx.get("transactions") or []
-    )
-    if isinstance(arr, dict):
-        arr = [arr]
-
-    today = now_et().date()
-    for row in arr:
-        if not isinstance(row, dict):
-            continue
-        ttype = str(row.get("transactionType") or "").upper()
-        if "BUY" not in ttype and "BOUGHT" not in ttype:
-            continue
-        dt_str = str(row.get("transactionDate") or "").strip()
-        if not dt_str:
-            continue
-        try:
-            dt = datetime.fromisoformat(dt_str).date()
-        except Exception:
-            continue
-        if dt == today:
-            return True
-
-    return False
-
 
 # --------------------------------------------------------------------------- #
-# Settings wrapper
+# AI Advisor – exits
 # --------------------------------------------------------------------------- #
-
-
-@dataclass
-class GuardSettings:
-    normalize_tick: float
-    sell_window_start_et: str
-    sell_window_end_et: str
-    throttle_ms: int
-    max_place_attempts: int
-    market_fallback_for: List[str]
-    use_extended_hours: bool
-    sg: Dict[str, Any]
-
-
-TRAIL: Dict[str, Dict[str, float]] = {}  # sym -> {"hi": float, "trail_pct": float, "armed": 0/1}
-
-
-# --------------------------------------------------------------------------- #
-# Core helpers
-# --------------------------------------------------------------------------- #
-
-
-def compute_order_params(symbol: str, cfg: GuardSettings) -> Tuple[str, float | None]:
-    """Decide MARKET vs LIMIT and compute limit price when enabled."""
-    pt, limit_px = "MARKET", None
-    limit_from = (cfg.sg.get("limit_from") or "").lower()
-    tick = float(cfg.sg.get("normalize_tick") or cfg.normalize_tick or 0.01) or 0.01
-    offset_bps = int(cfg.sg.get("limit_offset_bps") or 0)
-
-    if limit_from in ("bid", "last"):
-        ref = best_bid(symbol) if limit_from == "bid" else last_trade(symbol)
-        if ref > 0:
-            if offset_bps:
-                limit_px = max(0.01, round(ref * (1 - offset_bps / 10_000.0), 2))
-            else:
-                limit_px = round(ref / tick) * tick
-
-    if limit_px is not None:
-        return "LIMIT", limit_px
-
-    return pt, None
 
 
 def ai_exit_check(
     symbol: str,
-    qty: int,
+    qty: float,
     pl_pct: float,
     hold_min: float,
-    entry_px: float,
-    last_px: float,
-) -> dict:
-    """Ask the AI advisor whether we should consider an early EXIT."""
-    sym = symbol.upper()
-    try:
-        snapshot = {
-            "decision_type": "EXIT",
-            "symbol": sym,
-            "qty": int(qty),
-            "entry_price": float(entry_px),
-            "last_price": float(last_px),
-            "unrealized_pct": float(pl_pct),
-            "hold_minutes": float(hold_min),
-            "timeframe": "short-term swing (1-3 days)",
-            "portfolio": {},
-            "news_headlines": [],
-        }
-    except Exception:
-        snapshot = {
-            "decision_type": "EXIT",
-            "symbol": sym,
-            "qty": int(qty),
-            "unrealized_pct": float(pl_pct),
-            "hold_minutes": float(hold_min),
-            "timeframe": "short-term swing (1-3 days)",
-        }
+    entry_price: float,
+    last_price: float,
+) -> Dict[str, Any]:
+    """
+    Call AI Advisor for exit recommendation.
 
-    return get_ai_recommendation(snapshot)
+    Returns a dict like:
+      {
+        "action": "SELL" | "HOLD" | "RED_FLAG",
+        "confidence": 0-100,
+        "reason": "...",
+        "reason_tags": ["tag1", "tag2"]
+      }
+    """
+    if not _openai_client:
+        return {"action": "HOLD", "confidence": 0, "reason": "no_client"}
+
+    prompt = f"""
+You are an intraday trading risk assistant. Evaluate whether we should EXIT a position.
+
+Data:
+- Symbol: {symbol}
+- Quantity: {qty}
+- Unrealized P/L: {pl_pct:.2f}%
+- Hold time (minutes): {hold_min:.1f}
+- Entry price: {entry_price:.2f}
+- Last price: {last_price:.2f}
+
+Respond with a concise JSON only, no extra text, like:
+{{
+  "action": "SELL" | "HOLD" | "RED_FLAG",
+  "confidence": 0-100,
+  "reason": "short explanation",
+  "reason_tags": ["risk", "trend", "volatility"]
+}}
+"""
+
+    try:
+        resp = _openai_client.responses.create(
+            model="gpt-4.1-mini",
+            input=prompt,
+            max_output_tokens=200,
+            temperature=0.1,
+            response_format={"type": "json_object"},
+        )
+        raw = resp.output[0].content[0].text
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            raise ValueError("AI response is not a JSON object")
+        return data
+    except Exception as exc:
+        LOG.warning("ai_exit_check error for %s: %s", symbol, exc)
+        return {"action": "HOLD", "confidence": 0, "reason": "error"}
+
+
+# --------------------------------------------------------------------------- #
+# Core logic
+# --------------------------------------------------------------------------- #
+
+
+@dataclass
+class PositionRow:
+    symbol: str
+    qty: float
+    mv: float
+    entry_price: float
+    last_trade: float
+    opened_at: datetime | None
+
+
+def parse_positions(rows) -> List[PositionRow]:
+    """
+    Normalize the E*TRADE PortfolioResponse into a flat list of
+    PositionRow objects. Accepts either:
+      - raw dict from et.positions()
+      - list/iterable of position dicts (legacy behaviour)
+    """
+    # --- Normalize input into a list of dicts called `items` ---
+
+    # Case 1: full E*TRADE response dict
+    if isinstance(rows, dict):
+        pr = rows.get("PortfolioResponse") or rows.get("portfolioResponse") or rows
+
+        # Some responses use AccountPortfolio, some AccountPositions
+        accounts = (
+            pr.get("AccountPortfolio")
+            or pr.get("AccountPositions")
+            or []
+        )
+
+        if isinstance(accounts, dict):
+            accounts = [accounts]
+
+        items: List[Dict[str, Any]] = []
+        for acct in accounts:
+            pos_list = acct.get("Position") or acct.get("positions") or []
+            if isinstance(pos_list, dict):
+                pos_list = [pos_list]
+            items.extend(pos_list)
+
+    # Case 2: JSON string (just in case)
+    elif isinstance(rows, str):
+        try:
+            parsed = json.loads(rows)
+            return parse_positions(parsed)
+        except Exception:
+            LOG.error("parse_positions: got string rows; JSON decode failed")
+            return []
+
+    # Case 3: already an iterable of dicts
+    else:
+        try:
+            items = list(rows or [])
+        except TypeError:
+            LOG.error("parse_positions: unsupported rows type %r", type(rows))
+            return []
+
+    holdings: List[PositionRow] = []
+
+    for r in items:
+        if not isinstance(r, dict):
+            LOG.warning("parse_positions: skipping non-dict row: %r", r)
+            continue
+
+        sym = str(r.get("symbolDescription") or r.get("symbol") or "").strip()
+        if not sym:
+            continue
+
+        qty = float(r.get("quantity") or 0)
+        price_paid = float(r.get("pricePaid") or r.get("costPerShare") or 0)
+        market_value = float(r.get("marketValue") or 0)
+        total_cost = float(r.get("totalCost") or (qty * price_paid))
+        total_gain = float(r.get("totalGain") or (market_value - total_cost))
+
+        # Best effort for last trade / current price (not strictly needed since we use mv/qty first)
+        try:
+            last_trade = float(
+                r.get("lastTrade") or r.get("price") or 0.0
+            )
+        except Exception:
+            last_trade = 0.0
+
+        # opened_at from dateAcquired (E*TRADE uses ms since epoch)
+        opened_at = None
+        ts = r.get("dateAcquired")
+        if ts:
+            try:
+                opened_at = datetime.fromtimestamp(float(ts) / 1000.0, tz=UTC)
+            except Exception:
+                opened_at = None
+
+        # Day P&L is currently unused in the PositionRow, but we keep the computation
+        # in case we want to log or extend PositionRow later.
+        # day_pnl = float(r.get("daysGain") or 0.0)
+
+        holdings.append(
+            PositionRow(
+                symbol=sym,
+                qty=qty,
+                mv=market_value,
+                entry_price=price_paid,
+                last_trade=last_trade,
+                opened_at=opened_at,
+            )
+        )
+
+    return holdings
+
+
+def within_session(now: datetime, cfg: SellGuardConfig) -> bool:
+    """
+    Return True if now is within the configured market session.
+    """
+    if ETZ is not None:
+        now_local = now.astimezone(ETZ)
+    else:  # pragma: no cover
+        now_local = now
+
+    h, m = map(int, cfg.market_open.split(":", 1))
+    open_dt = now_local.replace(hour=h, minute=m, second=0, microsecond=0)
+    h, m = map(int, cfg.market_close.split(":", 1))
+    close_dt = now_local.replace(hour=h, minute=m, second=0, microsecond=0)
+    return open_dt <= now_local <= close_dt
+
+
+def normalize_price(px: float, tick: float) -> float:
+    if tick <= 0:
+        return px
+    return round(px / tick) * tick
+
+
+def compute_order_params(
+    symbol: str,
+    cfg: SellGuardConfig,
+    *,
+    kind: str = "SELL",
+) -> Tuple[str, float | None]:
+    """
+    For now we mostly place market or stop orders; price logic is handled
+    elsewhere if needed.
+    """
+    if kind == "SELL":
+        return "MARKET", None
+    return "MARKET", None
 
 
 def place_with_adaptive_variants(
     acct_key: str,
-    sym: str,
-    qty: int,
-    price_type: str,
-    limit_or_none: float | None,
-    max_outer: int,
-) -> bool:
-    """Preview + place loop with basic venue error retries."""
-    for outer in range(1, max_outer + 1):
+    symbol: str,
+    qty: float,
+    order_type: str,
+    limit_price: float | None,
+    max_attempts: int,
+) -> None:
+    """
+    Try to place the order via services.etrade_service with a few variants,
+    similar to our other adaptive placement logic.
+    """
+    attempts = 0
+    last_err: Exception | None = None
+
+    while attempts < max_attempts:
+        attempts += 1
         try:
-            prev = preview(acct_key, sym, qty, price_type, limit_or_none)
-        except Exception as e:
-            LOG.error("preview failed for %s: %s", sym, e)
-            return False
-
-        if not isinstance(prev, dict) or "PreviewOrderResponse" not in prev:
-            LOG.error("preview response malformed for %s: %s", sym, _glimpse(prev))
-            return False
-
-        por = prev["PreviewOrderResponse"]
-        if por.get("orderType") != "EQ":
-            LOG.error("unexpected orderType in preview: %s", por.get("orderType"))
-            return False
-
-        msgs = por.get("PreviewMessage") or []
-        if isinstance(msgs, dict):
-            msgs = [msgs]
-
-        venue_err = False
-        for m in msgs:
-            code = str(m.get("code") or "")
-            text = str(m.get("text") or "")
-            LOG.info("[PREVIEW_MSG] code=%s text=%s", code, text)
-            if code == "100" or "venue" in text.lower():
-                venue_err = True
-
-        if venue_err:
-            LOG.warning(
-                "venue error on preview (attempt %d/%d); retrying with fresh quote",
-                outer,
-                max_outer,
+            LOG.info(
+                "place_with_adaptive_variants attempt %d: %s qty=%s type=%s limit=%s",
+                attempts,
+                symbol,
+                qty,
+                order_type,
+                limit_price,
             )
+
+            # Prefer the newer direct helper if available; otherwise fall back
+            if hasattr(et, "place_equity_order_direct"):
+                et.place_equity_order_direct(
+                    acct_key,
+                    symbol,
+                    qty,
+                    action="SELL",
+                    order_type=order_type,
+                    limit_price=limit_price,
+                )
+            elif hasattr(et, "place_equity_order"):
+                # Fall back to helper that expects a single payload dict
+                order_payload = {
+                    "accountIdKey": acct_key,
+                    "symbol": symbol,
+                    "orderAction": "SELL",
+                    "quantity": qty,
+                    "orderType": order_type,
+                }
+                if limit_price is not None:
+                    order_payload["limitPrice"] = limit_price
+
+                et.place_equity_order(order_payload)
+
+            else:
+                # Make it *very* obvious if neither helper exists
+                raise AttributeError(
+                    "services.etrade_service has no place_equity_order_direct or place_equity_order"
+                )
+
+            LOG.info("place_with_adaptive_variants success for %s", symbol)
+            return
+
+        except Exception as exc:
+            last_err = exc
+            LOG.warning(
+                "place_with_adaptive_variants attempt %d failed for %s: %s",
+                attempts,
+                symbol,
+                exc,
+            )
+            # tiny backoff to avoid hammering
             time.sleep(1.0)
-            continue
 
-        try:
-            placed = place(acct_key, sym, qty, price_type, limit_or_none)
-        except Exception as e:
-            LOG.error("place failed for %s: %s", sym, e)
-            return False
-
-        if not isinstance(placed, dict) or "PlaceOrderResponse" not in placed:
-            LOG.error("place response malformed for %s: %s", sym, _glimpse(placed))
-            return False
-
-        por2 = placed["PlaceOrderResponse"]
-        if por2.get("orderType") != "EQ":
-            LOG.error("unexpected orderType in place: %s", por2.get("orderType"))
-            return False
-
-        LOG.info("[PLACE_OK] %s qty=%d price_type=%s limit=%s", sym, qty, price_type, limit_or_none)
-        return True
-
-    LOG.error("max venue retries reached for %s; giving up", sym)
-    return False
+    # If we get here, all attempts failed
+    raise RuntimeError(f"Failed to place order for {symbol}: {last_err}")
 
 
 # --------------------------------------------------------------------------- #
@@ -552,258 +532,140 @@ def place_with_adaptive_variants(
 
 
 def main() -> None:
-    LOG.info("=== sell_guard starting ===")
+    LOG.info("sell_guard starting…")
+    LOG.info("Using SELL_GUARD_SETTINGS=%s", SETTINGS_FILE)
 
     settings = load_settings()
     sg = settings.get("sell_guard", {}) or {}
-    cfg = GuardSettings(
-        normalize_tick=float(settings.get("normalize_tick", 0.01)),
-        sell_window_start_et=str(settings.get("sell_window_start_et", "09:35")),
-        sell_window_end_et=str(settings.get("sell_window_end_et", "15:55")),
-        throttle_ms=int(settings.get("throttle_ms", 30_000)),
-        max_place_attempts=int(settings.get("max_place_attempts", 4)),
-        market_fallback_for=list(settings.get("market_fallback_for", ["SELL_STOP", "TIMEOUT"])),
-        use_extended_hours=bool(settings.get("use_extended_hours", False)),
-        sg=sg,
-    )
+    ai_enabled, ai_use_exits = get_ai_flags(settings)
+    LOG.info("AI exits config: enabled=%s use_exits=%s", ai_enabled, ai_use_exits)
 
-    acct_key = get_account_key()
-    LOG.info("Using account_key=%s", acct_key)
+    cfg = SellGuardConfig.from_dict(sg)
+    LOG.info("SellGuardConfig: %s", cfg)
 
-    throttle = max(1, int(cfg.throttle_ms / 1000))
+    acct_key = account_id_key()
+    LOG.info("account_id_key=%s", acct_key)
+
+    armed_trail: Dict[str, float] = {}
 
     while True:
-        # --- 1) Skip non-trading days (weekends) completely -------------------
-        now = datetime.now(ETZ or UTC)
-        if now.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
-            LOG.info("weekend (Sat/Sun); sell_guard idle, sleeping %ds", throttle)
-            time.sleep(throttle)
-            continue
-
-        # --- 2) Enforce intraday sell window (e.g. 09:30–16:00 ET) -----------
-        if not now_in_window(cfg.sell_window_start_et, cfg.sell_window_end_et):
-            LOG.info(
-                "outside sell window %s–%s ET; sleeping %ds",
-                cfg.sell_window_start_et,
-                cfg.sell_window_end_et,
-                throttle,
-            )
-            time.sleep(throttle)
-            continue
-
-        open_orders = get_open_orders(acct_key)
-        LOG.info("open orders glimpse: %s", _glimpse(open_orders))
-
-        open_map: Dict[str, datetime] = {}
-        try:
-            ords = (
-                open_orders.get("OrderResponse") or open_orders.get("Orders") or open_orders or {}
-            )
-            if isinstance(ords, dict):
-                ords = ords.get("Order") or ords.get("orders") or []
-            if isinstance(ords, dict):
-                ords = [ords]
-        except Exception:
-            ords = []
-
-        for row in ords:
-            if not isinstance(row, dict):
-                continue
-            sym = str(
-                row.get("symbolDescription") or row.get("symbol") or row.get("prodSym") or ""
-            ).upper()
-            ts = row.get("orderTime") or row.get("placedTime") or row.get("timePlaced")
-            if not sym or not ts:
-                continue
-            try:
-                dt = datetime.fromisoformat(ts)
-                if dt.tzinfo is None:
-                    if ETZ:
-                        dt = dt.replace(tzinfo=ETZ)
-                else:
-                    if ETZ:
-                        dt = dt.astimezone(ETZ)
-                open_map[sym] = dt
-            except Exception:
-                continue
+        loop_start = datetime.now(tz=UTC)
 
         try:
-            pos = get_positions_any(acct_key)
-        except Exception as e:
-            LOG.warning("get_positions failed: %s", e)
-            time.sleep(throttle)
-            continue
+            if not within_session(loop_start, cfg):
+                LOG.info(
+                    "Outside market session %s–%s; sleeping %ss",
+                    cfg.market_open,
+                    cfg.market_close,
+                    cfg.interval_sec,
+                )
+                time.sleep(cfg.interval_sec)
+                continue
 
-        LOG.info("positions raw glimpse: %s", _glimpse(pos))
+            positions_raw = fetch_positions()
+            positions = parse_positions(positions_raw)
+            if not positions:
+                LOG.info("No positions; sleeping %ss", cfg.interval_sec)
+                time.sleep(cfg.interval_sec)
+                continue
 
-        rows: List[Tuple[str, float, float, float]] = list(iter_positions(pos))
-
-        block = set(map(str.upper, cfg.sg.get("blocklist") or []))
-        force_without_entry = bool(cfg.sg.get("force_without_entry", False))
-
-        candidates: List[Tuple[str, int, float, float, float]] = []
-
-        for (sym, qty, mv, entry_price) in rows:
-            opened = open_map.get(sym)
-
-            # If we don't have an opened_at record, treat it as 0-minute hold
-            # but still let other guards decide whether it’s eligible.
-            hold_min = 0.0
-            if opened:
+            open_orders = fetch_open_orders()
+            open_map: Dict[str, datetime] = {}
+            for o in open_orders:
                 try:
-                    hold_sec = (tnow - opened).total_seconds()
-                    hold_min = max(0.0, hold_sec / 60.0)
+                    sym = (
+                        (o.get("Instrument") or [{}])[0]
+                        .get("Product", {})
+                        .get("symbol", "")
+                        .strip()
+                    )
+                    if not sym:
+                        continue
+                    ot = o.get("orderTime")
+                    if not ot:
+                        continue
+                    opened_at = datetime.fromtimestamp(ot / 1000.0, tz=UTC)
+                    if sym not in open_map or opened_at < open_map[sym]:
+                        open_map[sym] = opened_at
                 except Exception:
+                    continue
+
+            LOG.info(
+                "positions raw glimpse: %s",
+                json.dumps(positions_raw, default=str)[:400] + "..."
+)
+            LOG.info(
+                "eligible final -> %s",
+                [
+                    (p.symbol, p.qty)
+                    for p in positions
+                    if p.symbol not in cfg.blocklist
+                ],
+            )
+
+            for p in positions:
+                s = p.symbol
+                qty = p.qty
+                mv = p.mv
+                entry_px = p.entry_price
+                last_trade = p.last_trade
+
+                if s in cfg.blocklist:
+                    LOG.info("[SKIP] %s is in blocklist", s)
+                    continue
+
+                if cfg.only_allow_symbol and s != cfg.only_allow_symbol:
+                    LOG.info("[SKIP] %s not equal to only_allow_symbol=%s", s, cfg.only_allow_symbol)
+                    continue
+
+                if qty <= 0:
+                    continue
+
+                if mv and qty:
+                    cur_px = mv / qty
+                elif last_trade:
+                    cur_px = last_trade
+                else:
+                    cur_px = entry_px or 0.0
+
+                if not entry_px:
+                    LOG.info("[SKIP] %s has no entry price", s)
+                    continue
+
+                pl_pct = ((cur_px - entry_px) / entry_px) * 100.0
+
+                opened = p.opened_at or open_map.get(s)
+                if opened:
+                    hold_sec = (loop_start - opened).total_seconds()
+                    hold_min = max(0.0, hold_sec / 60.0)
+                else:
                     hold_min = 0.0
 
-            pl_pct = 0.0
-            if qty and entry_price and entry_price > 0:
-                try:
-                    pl_pct = ((mv / qty) - entry_price) / entry_price * 100.0
-                except Exception:
-                    pl_pct = 0.0
-
-            candidates.append((sym, qty, pl_pct, hold_min, entry_price))
-
-        LOG.info("eligible final -> %s", [(s, q) for s, q, _, _, _ in candidates])
-        if not candidates:
-            LOG.info("candidates: (none)")
-            LOG.info("sleeping %ds", throttle)
-            time.sleep(throttle)
-            continue
-
-        LOG.info(
-            "candidates: %s",
-            ",".join(f"{s}x{q}" for s, q, _, _, _ in candidates),
-        )
-
-        stop_pct = abs(float(cfg.sg.get("stop_bps", 100))) / 100.0
-        target_pct = abs(float(cfg.sg.get("target_bps", 200))) / 100.0
-        min_hold = float(cfg.sg.get("min_hold_minutes", 0))
-        max_hold = float(cfg.sg.get("max_hold_mins", 1_000_000))
-
-        arm_at = float(cfg.sg.get("protect_trail_arm_pct", 3.0))
-        trail_pct_cfg = float(cfg.sg.get("protect_trail_pct", 3.0))
-        min_gain_lock = float(cfg.sg.get("protect_min_gain_pct", 1.5))
-
-        allow_intraday_stop = bool(cfg.sg.get("allow_intraday_stoploss", True))
-        avoid_daytrades = bool(cfg.sg.get("avoid_daytrades", False))
-
-        for s, qty, pl_pct, hold_min, entry_px in candidates:
-            # PDT guard (you've said it's irrelevant in cash-mode, but we keep it optional)
-            if avoid_daytrades and opened_today(s):
                 LOG.info(
-                    "[PDT] Skipping %s (opened today; avoid_daytrades on)", s
-                )
-                continue
-
-            # --- AI emergency exit (FULL SEND) ---
-            try:
-                last_px = entry_px * (1.0 + (pl_pct / 100.0)) if entry_px else 0.0
-                ai = ai_exit_check(s, qty, pl_pct, hold_min, entry_px, last_px)
-                ai_action = str(ai.get("action", "HOLD")).upper()
-                ai_conf = int(ai.get("confidence", 0) or 0)
-                ai_tags = ai.get("reason_tags") or []
-
-                if ai_action in {"SELL", "RED_FLAG"} and ai_conf >= 80:
-                    pt, lim = compute_order_params(s, cfg)
-                    LOG.info(
-                        "[AI_EXIT] %s qty=%d pl=%.2f%% hold=%.1f mins → %s (%d%%) tags=%s → place %s%s",
-                        s,
-                        qty,
-                        pl_pct,
-                        hold_min,
-                        ai_action,
-                        ai_conf,
-                        ",".join(ai_tags),
-                        pt,
-                        f" {lim:.2f}" if lim else "",
-                    )
-                    place_with_adaptive_variants(
-                        acct_key,
-                        s,
-                        qty,
-                        pt,
-                        lim if pt == "LIMIT" else None,
-                        cfg.max_place_attempts,
-                    )
-                    continue
-            except Exception as exc:
-                LOG.warning("[AI_EXIT] error for %s: %s", s, exc)
-
-            # Intraday stop-loss
-            if allow_intraday_stop and pl_pct <= -stop_pct:
-                pt, lim = compute_order_params(s, cfg)
-                LOG.info(
-                    "[STOP] %s %.2f%% ≤ -%.2f%% → place %s%s",
+                    "[HOLD] %s gain=%.2f%% hold=%.1f mins (waiting for trail/target/timeout)",
                     s,
                     pl_pct,
-                    stop_pct,
-                    pt,
-                    f" {lim:.2f}" if lim else "",
-                )
-                place_with_adaptive_variants(
-                    acct_key,
-                    s,
-                    qty,
-                    pt,
-                    lim if pt == "LIMIT" else None,
-                    cfg.max_place_attempts,
-                )
-                continue
-
-            # Max-hold timeout
-            if hold_min >= max_hold >= 0:
-                pt, lim = compute_order_params(s, cfg)
-                LOG.info(
-                    "[TIMEOUT] %s hold %.1f mins ≥ %.1f mins → place %s%s",
-                    s,
                     hold_min,
-                    max_hold,
-                    pt,
-                    f" {lim:.2f}" if lim else "",
-                )
-                place_with_adaptive_variants(
-                    acct_key,
-                    s,
-                    qty,
-                    pt,
-                    lim if pt == "LIMIT" else None,
-                    cfg.max_place_attempts,
-                )
-                continue
-
-            # --- Trailing logic ---
-            cur = pl_pct
-            hi = TRAIL.get(s, {}).get("hi", cur)
-            hi = max(hi, cur)
-            TRAIL.setdefault(s, {})["hi"] = hi
-
-            if cur >= arm_at and not TRAIL[s].get("armed"):
-                TRAIL[s]["armed"] = 1
-                TRAIL[s]["trail_pct"] = max(0.5, trail_pct_cfg)
-                LOG.info(
-                    "[TRAIL_ARM] %s gain=%.2f%% ≥ %.2f%% → armed trail=%.2f%% (hi=%.2f%%)",
-                    s,
-                    cur,
-                    arm_at,
-                    TRAIL[s]["trail_pct"],
-                    hi,
                 )
 
-            if TRAIL[s].get("armed"):
-                trail = TRAIL[s]["trail_pct"]
-                if cur <= (hi - trail):
-                    pt, lim = compute_order_params(s, cfg)
+                if hold_min < cfg.min_hold_minutes:
                     LOG.info(
-                        "[TRAIL_SELL] %s gain %.2f%% fell from hi %.2f%% by ≥ %.2f%% → place %s%s",
+                        "[HOLD] %s hold_min=%.1f < min_hold=%.1f → skipping",
                         s,
-                        cur,
-                        hi,
-                        trail,
-                        pt,
-                        f" {lim:.2f}" if lim else "",
+                        hold_min,
+                        cfg.min_hold_minutes,
                     )
+                    continue
+
+                if hold_min > cfg.max_hold_minutes:
+                    LOG.info(
+                        "[TIMEOUT] %s hold_min=%.1f > max_hold=%.1f, pl=%.2f%% → exit",
+                        s,
+                        hold_min,
+                        cfg.max_hold_minutes,
+                        pl_pct,
+                    )
+                    pt, lim = compute_order_params(s, cfg, kind="TIMEOUT")
                     place_with_adaptive_variants(
                         acct_key,
                         s,
@@ -813,74 +675,160 @@ def main() -> None:
                         cfg.max_place_attempts,
                     )
                     continue
+
+                # --- AI emergency exit (FULL SEND) ---
+                if ai_enabled and ai_use_exits:
+                    try:
+                        last_px = entry_px * (1.0 + (pl_pct / 100.0)) if entry_px else 0.0
+                        ai = ai_exit_check(s, qty, pl_pct, hold_min, entry_px, last_px)
+                        ai_action = str(ai.get("action", "HOLD")).upper()
+                        ai_conf = int(ai.get("confidence", 0) or 0)
+                        ai_tags = ai.get("reason_tags") or []
+
+                        if ai_action in {"SELL", "RED_FLAG"} and ai_conf >= 80:
+                            pt, lim = compute_order_params(s, cfg)
+                            LOG.info(
+                                "[AI_EXIT] %s qty=%d pl=%.2f%% hold=%.1f mins → %s (%d%%) tags=%s → place %s%s",
+                                s,
+                                qty,
+                                pl_pct,
+                                hold_min,
+                                ai_action,
+                                ai_conf,
+                                ",".join(ai_tags),
+                                pt,
+                                f" {lim:.2f}" if lim else "",
+                            )
+                            place_with_adaptive_variants(
+                                acct_key,
+                                s,
+                                qty,
+                                pt,
+                                lim if pt == "LIMIT" else None,
+                                cfg.max_place_attempts,
+                            )
+                            continue
+                    except Exception as exc:
+                        LOG.warning("[AI_EXIT] error for %s: %s", s, exc)
                 else:
-                    LOG.info(
-                        "[ARMED] %s hi=%.2f%% gain=%.2f%% trail=%.2f%% (holding)",
+                    LOG.debug(
+                        "[AI_EXIT] disabled for %s (ai_enabled=%s use_exits=%s)",
                         s,
-                        hi,
-                        cur,
-                        trail,
+                        ai_enabled,
+                        ai_use_exits,
                     )
 
-            if hold_min < min_hold:
-                LOG.info(
-                    "[HOLD] %s hold %.1f mins < %.1f mins (min_hold); gain=%.2f%%",
-                    s,
-                    hold_min,
-                    min_hold,
-                    cur,
-                )
-                continue
+                # Intraday stop-loss
+                if cfg.allow_intraday_stoploss and pl_pct <= cfg.timeout_exit_pct:
+                    LOG.info(
+                        "[STOPLOSS] %s pl=%.2f%% <= timeout_exit_pct=%.2f%% → exit",
+                        s,
+                        pl_pct,
+                        cfg.timeout_exit_pct,
+                    )
+                    pt, lim = compute_order_params(s, cfg, kind="SELL_STOP")
+                    place_with_adaptive_variants(
+                        acct_key,
+                        s,
+                        qty,
+                        pt,
+                        lim if pt == "LIMIT" else None,
+                        cfg.max_place_attempts,
+                    )
+                    continue
 
-            if cur >= target_pct:
-                pt, lim = compute_order_params(s, cfg)
-                LOG.info(
-                    "[TARGET] %s gain %.2f%% ≥ %.2f%% → place %s%s",
-                    s,
-                    cur,
-                    target_pct,
-                    pt,
-                    f" {lim:.2f}" if lim else "",
-                )
-                place_with_adaptive_variants(
-                    acct_key,
-                    s,
-                    qty,
-                    pt,
-                    lim if pt == "LIMIT" else None,
-                    cfg.max_place_attempts,
-                )
-                continue
+                if pl_pct >= cfg.trail_arm_gain_pct:
+                    prev = armed_trail.get(s)
+                    new_floor = pl_pct - cfg.trail_backoff_pct
+                    if prev is None or new_floor > prev:
+                        armed_trail[s] = new_floor
+                        LOG.info(
+                            "[TRAIL_ARM] %s pl=%.2f%% arm_floor=%.2f%% (prev=%s)",
+                            s,
+                            pl_pct,
+                            new_floor,
+                            f"{prev:.2f}%" if prev is not None else "None",
+                        )
+                else:
+                    if s in armed_trail:
+                        LOG.info("[TRAIL_RESET] %s pl=%.2f%% < arm gain → disarm", s, pl_pct)
+                        armed_trail.pop(s, None)
 
-            if cur >= min_gain_lock:
-                pt, lim = compute_order_params(s, cfg)
-                LOG.info(
-                    "[LOCK] %s gain %.2f%% ≥ %.2f%% (min_gain_lock) → place %s%s",
-                    s,
-                    cur,
-                    min_gain_lock,
-                    pt,
-                    f" {lim:.2f}" if lim else "",
-                )
-                place_with_adaptive_variants(
-                    acct_key,
-                    s,
-                    qty,
-                    pt,
-                    lim if pt == "LIMIT" else None,
-                    cfg.max_place_attempts,
-                )
-                continue
+                if s in armed_trail:
+                    floor = armed_trail[s]
+                    if pl_pct <= floor:
+                        LOG.info(
+                            "[TRAIL_EXIT] %s pl=%.2f%% <= trail_floor=%.2f%% → exit",
+                            s,
+                            pl_pct,
+                            floor,
+                        )
+                        pt, lim = compute_order_params(s, cfg)
+                        place_with_adaptive_variants(
+                            acct_key,
+                            s,
+                            qty,
+                            pt,
+                            lim if pt == "LIMIT" else None,
+                            cfg.max_place_attempts,
+                        )
+                        armed_trail.pop(s, None)
+                        continue
 
-            LOG.info(
-                "[HOLD] %s gain=%.2f%% hold=%.1f mins (waiting for trail/target/timeout)",
-                s,
-                cur,
-                hold_min,
-            )
+                if pl_pct >= cfg.target_gain_pct:
+                    LOG.info(
+                        "[TARGET_EXIT] %s pl=%.2f%% >= target_gain_pct=%.2f%% → exit",
+                        s,
+                        pl_pct,
+                        cfg.target_gain_pct,
+                    )
+                    pt, lim = compute_order_params(s, cfg)
+                    place_with_adaptive_variants(
+                        acct_key,
+                        s,
+                        qty,
+                        pt,
+                        lim if pt == "LIMIT" else None,
+                        cfg.max_place_attempts,
+                    )
+                    armed_trail.pop(s, None)
+                    continue
 
-        LOG.info("sleeping %ds", throttle)
-        time.sleep(throttle)
+            loop_end = datetime.now(tz=UTC)
+            elapsed = (loop_end - loop_start).total_seconds()
+            sleep_for = max(1.0, cfg.interval_sec - elapsed)
+            LOG.info("sleeping %.1fs", sleep_for)
+            time.sleep(sleep_for)
+
+        except KeyboardInterrupt:
+            LOG.info("KeyboardInterrupt → exiting")
+            break
+        except Exception as e:
+            # Robust logging that cannot crash
+            try:
+                glimpse = None
+                if "positions_raw" in locals():
+                    glimpse = positions_raw
+
+                if glimpse is not None:
+                    dump = json.dumps(glimpse, default=str)
+                    LOG.error(
+                        "Unexpected error in main loop: %s | positions_raw glimpse: %s",
+                        e,
+                        dump[:400] + "...",
+                    )
+                else:
+                    LOG.error("Unexpected error in main loop (no positions_raw yet): %s", e)
+
+            except Exception as log_err:
+                # Last-ditch logging so logging itself never crashes
+                LOG.error(
+                    "Unexpected error in main loop AND while logging (%s): %s",
+                    log_err,
+                    e,
+                )
+
+            time.sleep(cfg.interval_sec)
 
 
 if __name__ == "__main__":

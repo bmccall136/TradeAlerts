@@ -35,6 +35,28 @@ try:
 except Exception as exc:  # pragma: no cover
     LOG.error("FATAL: cannot import services.etrade_service: %s", exc)
     raise SystemExit(1)
+# --------------------------------------------------------------------------- #
+# E*TRADE positions helper
+# --------------------------------------------------------------------------- #
+
+def get_positions_any() -> Dict[str, Any]:
+    """
+    Thin wrapper around et.get_positions() so the rest of the code can call
+    a single helper. Returns the raw E*TRADE payload.
+    """
+    if et is None:
+        raise RuntimeError("etrade_service import failed; et is None")
+
+    try:
+        raw = et.get_positions()
+        LOG.debug(
+            "get_positions_any: type=%s",
+            type(raw).__name__,
+        )
+        return raw
+    except Exception:
+        LOG.exception("get_positions_any: error calling et.get_positions()")
+        raise
 
 try:
     from openai import OpenAI
@@ -191,19 +213,15 @@ def account_id_key() -> str:
     return aid
 
 
-def fetch_positions() -> List[Dict[str, Any]]:
+def fetch_positions() -> dict:
     """
-    Fetch positions via services.etrade_service and return a flat list of rows.
+    Fetch raw positions from E*TRADE and log a small snippet for debugging.
     """
-    res = et.positions_with_quotes()
-    acct = (res or {}).get("AccountPortfolio") or []
-    if not acct:
-        return []
-    rows: List[Dict[str, Any]] = []
-    for acct_row in acct:
-        for pos in acct_row.get("Position", []) or []:
-            rows.append(pos)
-    return rows
+    # 1) get the data
+    positions_raw = get_positions_any()
+
+    # 3) hand it back to the caller
+    return positions_raw
 
 
 def fetch_open_orders() -> List[Dict[str, Any]]:
@@ -297,40 +315,103 @@ class PositionRow:
     opened_at: datetime | None
 
 
-def parse_positions(rows: Iterable[Dict[str, Any]]) -> List[PositionRow]:
-    out: List[PositionRow] = []
-    for r in rows:
+def parse_positions(rows) -> List[PositionRow]:
+    """
+    Normalize the E*TRADE PortfolioResponse into a flat list of
+    PositionRow objects. Accepts either:
+      - raw dict from et.positions()
+      - list/iterable of position dicts (legacy behaviour)
+    """
+    # --- Normalize input into a list of dicts called `items` ---
+
+    # Case 1: full E*TRADE response dict
+    if isinstance(rows, dict):
+        pr = rows.get("PortfolioResponse") or rows.get("portfolioResponse") or rows
+
+        # Some responses use AccountPortfolio, some AccountPositions
+        accounts = (
+            pr.get("AccountPortfolio")
+            or pr.get("AccountPositions")
+            or []
+        )
+
+        if isinstance(accounts, dict):
+            accounts = [accounts]
+
+        items: List[Dict[str, Any]] = []
+        for acct in accounts:
+            pos_list = acct.get("Position") or acct.get("positions") or []
+            if isinstance(pos_list, dict):
+                pos_list = [pos_list]
+            items.extend(pos_list)
+
+    # Case 2: JSON string (just in case)
+    elif isinstance(rows, str):
+        try:
+            parsed = json.loads(rows)
+            return parse_positions(parsed)
+        except Exception:
+            LOG.error("parse_positions: got string rows; JSON decode failed")
+            return []
+
+    # Case 3: already an iterable of dicts
+    else:
+        try:
+            items = list(rows or [])
+        except TypeError:
+            LOG.error("parse_positions: unsupported rows type %r", type(rows))
+            return []
+
+    holdings: List[PositionRow] = []
+
+    for r in items:
+        if not isinstance(r, dict):
+            LOG.warning("parse_positions: skipping non-dict row: %r", r)
+            continue
+
         sym = str(r.get("symbolDescription") or r.get("symbol") or "").strip()
         if not sym:
             continue
-        qty = float(r.get("quantity", 0) or 0)
-        if qty <= 0:
-            continue
 
-        mv = float(r.get("marketValue", 0) or 0)
-        avg = float(r.get("pricePaid", 0) or 0)
-        last_trade = float(r.get("lastTrade", 0) or 0)
+        qty = float(r.get("quantity") or 0)
+        price_paid = float(r.get("pricePaid") or r.get("costPerShare") or 0)
+        market_value = float(r.get("marketValue") or 0)
+        total_cost = float(r.get("totalCost") or (qty * price_paid))
+        total_gain = float(r.get("totalGain") or (market_value - total_cost))
 
-        # Best-effort opened_at: use dateAcquired if present
+        # Best effort for last trade / current price (not strictly needed since we use mv/qty first)
+        try:
+            last_trade = float(
+                r.get("lastTrade") or r.get("price") or 0.0
+            )
+        except Exception:
+            last_trade = 0.0
+
+        # opened_at from dateAcquired (E*TRADE uses ms since epoch)
         opened_at = None
-        da = r.get("dateAcquired")
-        if da:
+        ts = r.get("dateAcquired")
+        if ts:
             try:
-                opened_at = datetime.fromtimestamp(da / 1000.0, tz=UTC)
+                opened_at = datetime.fromtimestamp(float(ts) / 1000.0, tz=UTC)
             except Exception:
                 opened_at = None
 
-        out.append(
+        # Day P&L is currently unused in the PositionRow, but we keep the computation
+        # in case we want to log or extend PositionRow later.
+        # day_pnl = float(r.get("daysGain") or 0.0)
+
+        holdings.append(
             PositionRow(
                 symbol=sym,
                 qty=qty,
-                mv=mv,
-                entry_price=avg,
+                mv=market_value,
+                entry_price=price_paid,
                 last_trade=last_trade,
                 opened_at=opened_at,
             )
         )
-    return out
+
+    return holdings
 
 
 def within_session(now: datetime, cfg: SellGuardConfig) -> bool:
@@ -379,43 +460,67 @@ def place_with_adaptive_variants(
     max_attempts: int,
 ) -> None:
     """
-    Try to place the order via services.etrade_service with a few variants,
-    similar to our other adaptive placement logic.
+    Try to place a SELL order, retrying on transient E*TRADE errors.
+
+    This version only uses the high-level preview_equity_order /
+    place_equity_order helpers from services.etrade_service.
+    It does NOT depend on any older place_equity_order_direct
+    or ensure_session() helpers.
     """
+    # Normalize the order type
+    order_type = (order_type or "MARKET").upper()
+    price_type = "MARKET" if order_type == "MARKET" else "LIMIT"
+
+    from importlib import import_module
+
+    et = import_module("services.etrade_service")
+
     attempts = 0
     last_err: Exception | None = None
+
     while attempts < max_attempts:
         attempts += 1
         try:
             LOG.info(
-                "place_with_adaptive_variants attempt %d: %s qty=%s type=%s limit=%s",
+                "place_with_adaptive_variants attempt %s: %s qty=%s type=%s limit=%s",
                 attempts,
                 symbol,
                 qty,
                 order_type,
                 limit_price,
             )
-            et.place_equity_order_direct(
+
+            # For MARKET we must not send a limit price; for LIMIT we pass it through.
+            limit = None
+            if price_type == "LIMIT" and limit_price is not None:
+                limit = float(limit_price)
+
+            # Use the canonical preview + place helpers from etrade_service.
+            preview = et.preview_equity_order(
                 acct_key,
                 symbol,
-                qty,
+                int(qty),
+                limit,
                 action="SELL",
-                order_type=order_type,
-                limit_price=limit_price,
+                price_type=price_type,
             )
+            et.place_equity_order(preview, qty=int(qty))
+
             LOG.info("place_with_adaptive_variants success for %s", symbol)
             return
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             last_err = exc
             LOG.warning(
-                "place_with_adaptive_variants attempt %d failed for %s: %s",
+                "place_with_adaptive_variants attempt %s failed for %s: %s",
                 attempts,
                 symbol,
                 exc,
             )
             time.sleep(1.0)
 
+    # If we get here, all attempts failed.
     raise RuntimeError(f"Failed to place order for {symbol}: {last_err}")
+
 
 
 # --------------------------------------------------------------------------- #
@@ -484,8 +589,8 @@ def main() -> None:
 
             LOG.info(
                 "positions raw glimpse: %s",
-                json.dumps(positions_raw[:1], default=str)[:400] + "...",
-            )
+                json.dumps(positions_raw, default=str)[:400] + "..."
+)
             LOG.info(
                 "eligible final -> %s",
                 [
@@ -695,8 +800,31 @@ def main() -> None:
         except KeyboardInterrupt:
             LOG.info("KeyboardInterrupt → exiting")
             break
-        except Exception as exc:
-            LOG.exception("Unexpected error in main loop: %s", exc)
+        except Exception as e:
+            # Robust logging that cannot crash
+            try:
+                glimpse = None
+                if "positions_raw" in locals():
+                    glimpse = positions_raw
+
+                if glimpse is not None:
+                    dump = json.dumps(glimpse, default=str)
+                    LOG.error(
+                        "Unexpected error in main loop: %s | positions_raw glimpse: %s",
+                        e,
+                        dump[:400] + "...",
+                    )
+                else:
+                    LOG.error("Unexpected error in main loop (no positions_raw yet): %s", e)
+
+            except Exception as log_err:
+                # Last-ditch logging so logging itself never crashes
+                LOG.error(
+                    "Unexpected error in main loop AND while logging (%s): %s",
+                    log_err,
+                    e,
+                )
+
             time.sleep(cfg.interval_sec)
 
 

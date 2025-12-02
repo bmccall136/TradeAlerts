@@ -1094,6 +1094,37 @@ def inject_status():
 def index():
     return redirect(url_for("live_view"))
 
+@app.route("/live/ai_toggle", methods=["POST"])
+@always_json
+def live_ai_toggle():
+    """
+    Toggle AI Advisor on/off for Day mode via the UI.
+    """
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        enabled = bool(body.get("enabled"))
+    except Exception:
+        enabled = False
+
+    # Load current day settings
+    day_settings_path = Path("C:/TradeAlerts/live_settings_day.json")
+    data = json.loads(day_settings_path.read_text(encoding="utf-8"))
+
+    ai_cfg = data.get("ai") or {}
+    ai_cfg["enabled"] = enabled
+    data["ai"] = ai_cfg
+
+    day_settings_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    return {
+        "ok": True,
+        "ai": {
+            "enabled": ai_cfg["enabled"],
+            "use_entries": ai_cfg.get("use_entries", True),
+            "use_exits": ai_cfg.get("use_exits", True),
+        },
+    }
+
 @app.route("/live/mode", methods=["GET", "POST"])
 @always_json
 def live_mode():
