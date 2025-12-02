@@ -11,7 +11,7 @@
     "min_hold_minutes": 0,
 
     "allow_intraday_stoploss": true,
-    "pdt_allow_stop": true,
+    "pdt_allow_stop": false,
 
     "target_bps": 200,
     "stop_bps": 100,

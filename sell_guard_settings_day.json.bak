@@ -7,7 +7,7 @@
     "sell_window_end_et": "15:55",
 
     "avoid_daytrades": false,
-    "min_hold_days": 1,
+    "min_hold_days": 0,
     "min_hold_minutes": 0,
 
     "allow_intraday_stoploss": true,

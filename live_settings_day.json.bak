@@ -75,7 +75,7 @@
   "take_profit_pct": 0.0,
   "stop_loss_pct": 0.0,
 
-  "max_per_trade": 250.0,
+  "max_per_trade": 150.0,
   "market_session": "REGULAR",
   "order_term": "GOOD_UNTIL_CANCEL",
 
@@ -83,10 +83,4 @@
   "market_gate_on": true,
   "realized_since": "2025-08-22",
   "realized_tz": "America/New_York"
-}
-{
-  "ai": {
-    "enabled": true,      
-    "use_entries": true
-    "use_exits": true       
 }

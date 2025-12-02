@@ -569,22 +569,27 @@ def main() -> None:
 
     acct_key = get_account_key()
     LOG.info("Using account_key=%s", acct_key)
+
     throttle = max(1, int(cfg.throttle_ms / 1000))
 
     while True:
-        # Current time in ET
-        tnow = now_et()
+        # --- 1) Skip non-trading days (weekends) completely -------------------
+        now = datetime.now(ETZ or UTC)
+        if now.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
+            LOG.info("weekend (Sat/Sun); sell_guard idle, sleeping %ds", throttle)
+            time.sleep(throttle)
+            continue
 
-        # Only run on weekdays (0=Mon … 4=Fri) *and* inside the configured window
-        in_window = now_in_window(cfg.sell_window_start_et, cfg.sell_window_end_et)
-        if tnow.weekday() >= 5 or not in_window:
+        # --- 2) Enforce intraday sell window (e.g. 09:30–16:00 ET) -----------
+        if not now_in_window(cfg.sell_window_start_et, cfg.sell_window_end_et):
             LOG.info(
-                "outside trading window (%s–%s ET, weekdays only); "
-                "exiting sell_guard to avoid extra API usage",
+                "outside sell window %s–%s ET; sleeping %ds",
                 cfg.sell_window_start_et,
                 cfg.sell_window_end_et,
+                throttle,
             )
-            break  # <-- stop the script entirely
+            time.sleep(throttle)
+            continue
 
         open_orders = get_open_orders(acct_key)
         LOG.info("open orders glimpse: %s", _glimpse(open_orders))
@@ -630,12 +635,6 @@ def main() -> None:
             continue
 
         LOG.info("positions raw glimpse: %s", _glimpse(pos))
-        # Snapshot current time once per loop for hold-time calculations
-        # (used below when we compute hold_min from order open times)
-        # tnow was already created at the top of the loop but we keep this
-        # comment here as a reminder that all hold_min math is relative to it.
-        # (no need to redefine; just rely on the tnow from the while-loop)
-
 
         rows: List[Tuple[str, float, float, float]] = list(iter_positions(pos))
 

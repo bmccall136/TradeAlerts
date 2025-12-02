@@ -766,3 +766,26 @@ h2 {
   color: #000000;
   text-decoration: none;
 }
+.ai-toggle {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 1rem;
+}
+
+.ai-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.ai-toggle-label input[type="checkbox"] {
+  transform: scale(1.1);
+}
+
+.ai-icon {
+  width: 18px;
+  height: 18px;
+  filter: drop-shadow(0 0 2px rgba(0, 255, 255, 0.7));
+}

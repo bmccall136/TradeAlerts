@@ -428,6 +428,30 @@ def _safe_float(x: Any, default: float = 0.0) -> float:
     except Exception:
         return default
 
+ENABLE_AI_ENTRIES = False  # hard off switch for now
+ENABLE_AI_EXITS   = False
+
+def ai_decide_entry(snapshot: dict) -> dict:
+    if not ENABLE_AI_ENTRIES:
+        return {
+            "action": "SKIP",
+            "confidence": 0,
+            "sizing_hint": "AVOID_ADDING",
+            "reason_tags": ["ai_disabled"],
+            "comment": "AI advisor disabled; follow base rules only."
+        }
+    # ... existing OpenAI call ...
+
+def ai_decide_exit(snapshot: dict) -> dict:
+    if not ENABLE_AI_EXITS:
+        return {
+            "action": "HOLD",
+            "confidence": 0,
+            "sizing_hint": "AVOID_ADDING",
+            "reason_tags": ["ai_disabled"],
+            "comment": "AI exit advisor disabled; follow sell_guard rules only."
+        }
+    # ... existing OpenAI call ...
 
 def _et_midnight(d: date) -> datetime:
     return datetime.combine(d, datetime.min.time(), tzinfo=ET)
@@ -1280,13 +1304,14 @@ def live_status():
         total_value += qty * last
         day_unreal += _safe_float(h.get("day_pl"), 0.0)
 
-    # ALL-TIME unrealized based on cost vs current value
+    # ALL-TIME unrealized in dollars
     total_unreal_pl = round(total_value - total_cost, 2) if total_cost > 0 else 0.0
 
-    # For the "All Time" % tile, use the original project stake as baseline
-    base = START_CASH  # 392.67 from your config
-    if base > 0:
-        total_unreal_pct = round((total_unreal_pl / base) * 100.0, 2)
+    # For the "All Time" % tile, measure against the original project stake
+    # (8/22/2025 baseline), not just current open-position cost.
+    base_for_unreal = START_CASH_BASELINE
+    if base_for_unreal > 0:
+        total_unreal_pct = round((total_unreal_pl / base_for_unreal) * 100.0, 2)
     else:
         total_unreal_pct = 0.0
 
@@ -1295,6 +1320,7 @@ def live_status():
     day_unrealized_pnl_pct = (
         round((day_unrealized_pnl / nav) * 100.0, 2) if nav > 0 else 0.0
     )
+
 
     # ---------- 6) TRADES TABLE (for history) ----------
     start = (request.args.get("start") or "").strip()
