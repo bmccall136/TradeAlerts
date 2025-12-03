@@ -63,7 +63,7 @@
   "trail_tiers": [],
   "take_profit_pct": 0.0,
   "stop_loss_pct": 0.0,
-  "max_per_trade": 250.0,
+  "max_per_trade": 350.0,
   "market_session": "REGULAR",
   "order_term": "GOOD_UNTIL_CANCEL",
   "prefer_quotes": false,
