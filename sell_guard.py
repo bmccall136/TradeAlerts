@@ -8,6 +8,8 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Dict, Iterable, List, Tuple
+# sell_guard.py (top-ish)
+from services.realized_service import insert_realized_trade
 
 try:
     from zoneinfo import ZoneInfo
@@ -15,6 +17,8 @@ try:
     ETZ = ZoneInfo("America/New_York")
 except Exception:  # pragma: no cover
     ETZ = None
+
+LIVE_DB = "live.db"  # adjust if your path is different
 
 
 LOG = logging.getLogger("sell-guard")
@@ -29,6 +33,9 @@ _sh.setFormatter(
     )
 )
 LOG.addHandler(_sh)
+
+# Backwards-compat alias used deeper in the file
+_lg = LOG
 
 try:
     import services.etrade_service as et
@@ -225,12 +232,11 @@ def fetch_positions() -> dict:
 
 
 def fetch_open_orders() -> List[Dict[str, Any]]:
+    """Return a flat list of open orders from E*TRADE, or [] on error."""
     try:
-        res = et.open_orders()
-        if not res:
-            return []
-        return (res.get("OrdersResponse") or {}).get("Order", []) or []
-    except Exception as exc:
+        # list_open_orders() already flattens the E*TRADE response for us
+        return et.list_open_orders()
+    except Exception as exc:  # pragma: no cover
         LOG.warning("open_orders() failed: %s", exc)
         return []
 
@@ -508,17 +514,32 @@ def place_with_adaptive_variants(
 
             LOG.info("place_with_adaptive_variants success for %s", symbol)
             return
+
         except Exception as exc:  # noqa: BLE001
             last_err = exc
+            msg = str(exc)
+
+            # Special-case E*TRADE 1514:
+            # "We did not find this security in your account for the closing order..."
+            if "code': 1514" in msg or '"code": 1514' in msg:
+                LOG.error(
+                    "place_with_adaptive_variants: E*TRADE code 1514 for %s; "
+                    "symbol/account mismatch for closing order, skipping auto-sell. Error: %s",
+                    symbol,
+                    msg,
+                )
+                # Do NOT keep retrying; just give up on this symbol for now.
+                return
+
             LOG.warning(
                 "place_with_adaptive_variants attempt %s failed for %s: %s",
                 attempts,
                 symbol,
-                exc,
+                msg,
             )
             time.sleep(1.0)
 
-    # If we get here, all attempts failed.
+    # If we get here, all attempts failed with non-1514 errors.
     raise RuntimeError(f"Failed to place order for {symbol}: {last_err}")
 
 
@@ -570,22 +591,47 @@ def main() -> None:
             open_map: Dict[str, datetime] = {}
             for o in open_orders:
                 try:
-                    sym = (
-                        (o.get("Instrument") or [{}])[0]
-                        .get("Product", {})
-                        .get("symbol", "")
-                        .strip()
-                    )
+                    sym = (o.get("symbol") or "").strip()
                     if not sym:
                         continue
                     ot = o.get("orderTime")
                     if not ot:
                         continue
-                    opened_at = datetime.fromtimestamp(ot / 1000.0, tz=UTC)
+                    # E*TRADE generally returns ISO strings here, but be defensive
+                    dt: Optional[datetime] = None
+                    if isinstance(ot, (int, float)):
+                        dt = datetime.fromtimestamp(ot / 1000.0, tz=UTC)
+                    elif isinstance(ot, str):
+                        s = ot.strip()
+                        if not s:
+                            continue
+
+                        # Normalize common E*TRADE formats
+                        # e.g. "2025-12-03T14:26:01.000Z" or with +0000
+                        s = s.replace("Z", "+00:00")
+                        if len(s) > 5 and (s[-5:].endswith("0000") and s[-5] in "+-"):
+                            # "...+0000" -> "...+00:00"
+                            s = s[:-5] + s[-5:-2] + ":" + s[-2:]
+                        try:
+                            dt = datetime.fromisoformat(s)
+                        except Exception:
+                            # maybe it's actually epoch ms in a string
+                            if s.isdigit():
+                                val = int(s)
+                                # assume ms if it looks too large
+                                if val > 10**11:
+                                    dt = datetime.fromtimestamp(val / 1000.0, tz=UTC)
+                                else:
+                                    dt = datetime.fromtimestamp(val, tz=UTC)
+                    if dt is None:
+                        continue
+
+                    opened_at = dt.astimezone(UTC)
                     if sym not in open_map or opened_at < open_map[sym]:
                         open_map[sym] = opened_at
                 except Exception:
                     continue
+
 
             LOG.info(
                 "positions raw glimpse: %s",

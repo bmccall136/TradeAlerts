@@ -3059,7 +3059,7 @@ def place_equity_order(preview: dict, qty: float | None = None) -> dict:
                 err = (err_json or {}).get("Error") or {}
                 code = str(err.get("code")) if err else None
                 if code == "100":
-                    _lg.warning(
+                    LOG.warning(
                         "place_equity_order transient venue error for %s (outer=%s): %s",
                         symbol or "?",
                         outer,

@@ -26,6 +26,7 @@ from services.broker_live import (
 )
 
 log = logging.getLogger("etrade_service")
+_lg = LOG
 
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
@@ -159,6 +160,17 @@ def list_orders(
 
     # 3) last resort – bubble the error for visibility
     return _eget(f"/accounts/{account_id_key}/orders.json", params={"status": "OPEN"})
+
+def open_orders(
+    account_id_key: str | None = None,
+    status: str | None = None,
+    days: int = 14,
+) -> dict:
+    """
+    Backwards-compat alias used by older code (e.g. sell_guard).
+    Simply delegates to list_orders().
+    """
+    return list_orders(account_id_key=account_id_key, status=status, days=days)
 
 # services/etrade_service.py (add)
 import time
@@ -3048,7 +3060,7 @@ def place_equity_order(preview: dict, qty: float | None = None) -> dict:
                 err = (err_json or {}).get("Error") or {}
                 code = str(err.get("code")) if err else None
                 if code == "100":
-                    _lg.warning(
+                    LOG.warning(
                         "place_equity_order transient venue error for %s (outer=%s): %s",
                         symbol or "?",
                         outer,

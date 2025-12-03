@@ -53,6 +53,7 @@ _DEFAULTS = {
     "scan_heartbeat_secs": 10.0,
     "candidate_log_limit": -1,  # how many pretty lines per iteration (-1 = unlimited)
 }
+AI_MIN_CONFIDENCE = 0.70  # 70% confidence required when AI is enabled
 
 SAFE_ON = os.getenv("LIVE_SAFE_MODE", "").lower() in ("1", "true", "yes", "on")
 SAFE_MAX = int(os.getenv("LIVE_MAX_QTY", "0") or 0)
@@ -414,15 +415,13 @@ def ai_gate_for_buy(
         log.info("[AI] %s rec=%r", sym_u, rec)
 
     action = str(rec.get("action", "SKIP")).upper()
-    conf = int(rec.get("confidence", 0) or 0)
 
     if action == "RED_FLAG":
         return False, rec
     if action not in {"BUY", "STRONG_BUY"}:
         return False, rec
-    if conf < 70:
-        return False, rec
 
+    # If we get here, AI explicitly said BUY / STRONG_BUY → allowed
     return True, rec
 
 

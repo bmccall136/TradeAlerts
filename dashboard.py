@@ -52,8 +52,6 @@ except ImportError:
 
 ETZ = ZoneInfo("America/New_York")
 
-log = logging.getLogger(__name__)
-
 from flask import (
 
     Flask,
@@ -539,10 +537,7 @@ def compute_value_card(account_ui: Dict[str, Any],
     total_unreal_pl = round(
         sum(_safe_float(h.get("total_pl"), 0.0) for h in holdings_rows), 2
     )
-    total_unreal_pct = (
-        round((total_unreal_pl / positions_value) * 100.0, 2)
-        if positions_value > 0 else 0.0
-    )
+    total_unreal_pct = round((total_unreal_pl / start_cash * 100.0), 2) if start_cash > 0 else 0.0
 
     return {
         "buying_power": round(buying_power, 2),
@@ -1386,18 +1381,18 @@ def live_status():
     except Exception:
         net_contrib = 0.0
 
-    # True gain = NAV_TA − start_cash − contributions
-    total_gain = round(nav_ta - start_cash - net_contrib, 2)
+    # True all-time gain vs baseline start_cash (ignore contributions for %)
+    total_gain = round(nav_ta - start_cash, 2)
 
-    # Percent = gain / (start_cash + contributions)
-    denom = start_cash + net_contrib
+    # Percent = gain / start_cash (392.67)
+    denom = start_cash
     total_gain_pct = round((total_gain / denom * 100.0), 2) if denom > 0 else 0.0
 
     about = {
         "start_cash": start_cash,
         "start_date": start_date,
         "net_contrib": round(net_contrib, 2),
-        "since_pnl": total_gain,       # <- this feeds the hero blurb
+        "since_pnl": total_gain,       # hero blurb
         "since_pct": total_gain_pct,
     }
 
