@@ -1,0 +1,20 @@
+# C:\TradeAlerts\update_sp500_task.ps1
+
+$ErrorActionPreference = 'Stop'
+
+# 1) Work from the TradeAlerts folder
+Set-Location 'C:\TradeAlerts'
+
+# 2) Ensure logs folder exists
+$logDir = Join-Path (Get-Location) 'logs'
+if (-not (Test-Path $logDir)) {
+    New-Item -ItemType Directory -Path $logDir | Out-Null
+}
+
+# 3) Define paths
+$python = 'C:\Users\bmccall\AppData\Local\Programs\Python\Python311\python.exe'
+$script = 'C:\TradeAlerts\update_sp500_symbols.py'
+$log    = Join-Path $logDir 'update_sp500_symbols.log'
+
+# 4) Run the updater and append all output to the log
+"& `"$python`" `"$script`"" >> $log 2>&1

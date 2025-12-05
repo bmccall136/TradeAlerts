@@ -1,34 +1,21 @@
 #!/usr/bin/env python
 """
-update_sp500_symbols.py
-
-Fetch the current S&P 500 constituents from Wikipedia and refresh
-sp500_symbols.txt for the scanner.
-
-- Uses pandas.read_html to parse the first table on the page.
-- Normalizes tickers for Yahoo-style symbols (BRK.B -> BRK-B, etc.).
-- Backs up the old file to sp500_symbols.txt.bak (overwritten each run).
-- Prints a small diff summary to stdout.
-
-Run manually:
-    python update_sp500_symbols.py
-
-Then wire this into Windows Task Scheduler (e.g., once a week).
+update_sp500_symbols.py – FIXED VERSION
 """
+from __future__ import annotations
 
 import datetime as dt
-import sys
+import json
+from io import StringIO  # <-- add this
 from pathlib import Path
+from typing import List
 
 import pandas as pd
 import requests
-import requests
-from datetime import datetime
 
-URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+WIKI_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
 
 HEADERS = {
-    # Identify yourself as a browser-ish client + a small hint what you are
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -38,60 +25,49 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
-def fetch_sp500_html():
-    print(f"[{datetime.now()}] Fetching S&P 500 symbols from Wikipedia…")
-    resp = requests.get(URL, headers=HEADERS, timeout=15)
-    resp.raise_for_status()  # <- this is where the 403 was coming from
-    return resp.text
-
-
-WIKI_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
 HERE = Path(__file__).resolve().parent
 SYMBOL_FILE = HERE / "sp500_symbols.txt"
 BACKUP_FILE = HERE / "sp500_symbols.txt.bak"
 
 
-def fetch_sp500_symbols() -> list[str]:
-    """Fetch S&P 500 tickers from Wikipedia and return a cleaned list."""
-    resp = requests.get(WIKI_URL, timeout=30)
+def fetch_sp500_html() -> str:
+    """Fetch the Wikipedia page HTML with browser headers."""
+    resp = requests.get(WIKI_URL, headers=HEADERS, timeout=30)
     resp.raise_for_status()
+    return resp.text
 
-    # Use pandas to read all tables, grab the first one that has a "Symbol" column
-    tables = pd.read_html(resp.text)
+
+def fetch_sp500_symbols() -> list[str]:
+    """Parse the S&P 500 table and return cleaned tickers."""
+    html = fetch_sp500_html()
+
+    # pandas will find the table containing the Symbol column
+    tables = pd.read_html(html)
     df = None
     for t in tables:
-        cols = [str(c).strip().lower() for c in t.columns]
-        if any("symbol" in c for c in cols):
+        if any("symbol" in str(c).lower() for c in t.columns):
             df = t
             break
 
     if df is None:
-        raise RuntimeError("Could not find S&P 500 table with a 'Symbol' column")
+        raise RuntimeError("Could not locate S&P 500 symbol table")
 
-    # Find the actual symbol column name
-    sym_col = None
-    for c in df.columns:
-        if "symbol" in str(c).strip().lower():
-            sym_col = c
-            break
-
+    # Locate the actual 'Symbol' column
+    sym_col = next((c for c in df.columns if "symbol" in str(c).lower()), None)
     if sym_col is None:
-        raise RuntimeError("No 'Symbol' column found in the S&P 500 table")
+        raise RuntimeError("Symbol column missing")
 
-    raw_syms = df[sym_col].astype(str).tolist()
+    raw = df[sym_col].astype(str)
 
-    cleaned: list[str] = []
-    for s in raw_syms:
-        s = s.strip().upper()
-        if not s:
-            continue
-        # Normalize Wikipedia's dot style to Yahoo-style hyphens (BRK.B → BRK-B)
-        s = s.replace(".", "-")
-        cleaned.append(s)
+    cleaned = []
+    for s in raw:
+        s = s.strip().upper().replace(".", "-")
+        if s:
+            cleaned.append(s)
 
-    # De-dup while preserving order
+    # Remove duplicates while keeping order
+    uniq = []
     seen = set()
-    uniq: list[str] = []
     for s in cleaned:
         if s not in seen:
             seen.add(s)
@@ -100,70 +76,37 @@ def fetch_sp500_symbols() -> list[str]:
     return uniq
 
 
-def read_existing_symbols(path: Path) -> list[str]:
-    """Read existing sp500_symbols.txt if it exists."""
-    if not path.exists():
-        return []
-    with path.open("r", encoding="utf-8") as f:
-        return [line.strip() for line in f if line.strip()]
-
-
-def write_symbols(path: Path, symbols: list[str]) -> None:
-    """Write the symbols to the given file, one per line."""
-    with path.open("w", encoding="utf-8", newline="\n") as f:
-        for s in symbols:
-            f.write(s + "\n")
-
-
-def main() -> int:
+def main():
     print("=== update_sp500_symbols.py ===")
     print(f"[{dt.datetime.now()}] Fetching S&P 500 symbols from Wikipedia…")
 
     try:
         new_syms = fetch_sp500_symbols()
     except Exception as e:
-        print(f"[ERROR] Failed to fetch/parse S&P 500 list: {e}")
+        print(f"[ERROR] Failed to update symbols: {e}")
         return 1
 
-    old_syms = read_existing_symbols(SYMBOL_FILE)
+    old_syms = SYMBOL_FILE.read_text().splitlines() if SYMBOL_FILE.exists() else []
 
     print(f"[INFO] Existing count: {len(old_syms)}")
     print(f"[INFO] New count     : {len(new_syms)}")
 
-    old_set = set(old_syms)
-    new_set = set(new_syms)
-
-    added = sorted(new_set - old_set)
-    removed = sorted(old_set - new_set)
+    added = sorted(set(new_syms) - set(old_syms))
+    removed = sorted(set(old_syms) - set(new_syms))
 
     if added:
-        print(f"[INFO] Added  ({len(added)}): {', '.join(added[:15])}"
-              + (" ..." if len(added) > 15 else ""))
-    else:
-        print("[INFO] No added symbols.")
-
+        print(f"[INFO] Added {len(added)}: {', '.join(added[:10])}{'...' if len(added) > 10 else ''}")
     if removed:
-        print(f"[INFO] Removed ({len(removed)}): {', '.join(removed[:15])}"
-              + (" ..." if len(removed) > 15 else ""))
-    else:
-        print("[INFO] No removed symbols.")
+        print(f"[INFO] Removed {len(removed)}: {', '.join(removed[:10])}{'...' if len(removed) > 10 else ''}")
 
-    # Backup existing file (simple overwrite backup)
+    # Backup old file
     if SYMBOL_FILE.exists():
-        try:
-            BACKUP_FILE.write_text(SYMBOL_FILE.read_text(encoding="utf-8"),
-                                   encoding="utf-8")
-            print(f"[INFO] Backed up old file to {BACKUP_FILE.name}")
-        except Exception as e:
-            print(f"[WARN] Could not create backup: {e}")
+        BACKUP_FILE.write_text(SYMBOL_FILE.read_text())
+    print(f"[INFO] Backup saved -> {BACKUP_FILE}")
 
-    # Write new file
-    try:
-        write_symbols(SYMBOL_FILE, new_syms)
-        print(f"[OK] Wrote {len(new_syms)} symbols to {SYMBOL_FILE.name}")
-    except Exception as e:
-        print(f"[ERROR] Failed to write {SYMBOL_FILE}: {e}")
-        return 1
+    # Write new symbols
+    SYMBOL_FILE.write_text("\n".join(new_syms) + "\n")
+    print(f"[INFO] Backup saved -> {BACKUP_FILE}")
 
     print("=== Done ===")
     return 0

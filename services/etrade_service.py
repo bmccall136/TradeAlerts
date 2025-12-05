@@ -77,6 +77,21 @@ _DOT_TICKER_FIXES = {
 
 # aliases so legacy calls don't blow up
 
+import sqlite3 as _sqlite
+import datetime as _dt
+from typing import Dict, Tuple
+
+try:
+    from zoneinfo import ZoneInfo as _ZoneInfo
+    ET = _ZoneInfo("America/New_York")
+except Exception:  # pragma: no cover
+    ET = _dt.timezone(_dt.timedelta(hours=-5))
+
+# When did the live project really start?
+REALIZED_START_DATE = _dt.date(2025, 8, 22)
+
+# Your original all-time baseline (already used elsewhere in the project)
+START_CASH = 392.67
 
 # ---------- OPEN ORDERS (robust) ----------
 def get_open_orders(account_id_key: str, days: int = 14) -> dict:
@@ -3417,4 +3432,356 @@ ETradeService.get_account_summary = staticmethod(get_account_summary)
 get_positions = get_positions_raw
 get_account_summary = get_account_summary
 
+def _ensure_realized_table(conn: _sqlite.Connection) -> None:
+    """
+    Make sure realized_trades exists. We keep it minimal:
+    id, gain, close_date. If your existing table has *more* columns,
+    this will NOT overwrite it (CREATE TABLE IF NOT EXISTS is harmless).
+    """
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS realized_trades (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            gain       REAL NOT NULL,
+            close_date TEXT NOT NULL
+        )
+        """
+    )
+    conn.commit()
+def sync_realized_trades_from_etrade(
+    db_path: str,
+    start_date: _dt.date | None = None,
+) -> Dict[str, object]:
+    """
+    Pull executions from E*TRADE and (re)build realized_trades from them.
+
+    We treat each SELL-like execution row's `pl` as realized P&L for that day.
+    This gives us a clean, E*TRADE-sourced realized_trades table that your
+    dashboard bucket logic can query.
+
+    Returns a small summary dict.
+    """
+    if start_date is None:
+        start_date = REALIZED_START_DATE
+
+    # How far back to look
+    today = _dt.datetime.now(ET).date()
+    days = max(1, (today - start_date).days + 1)
+
+    # Use the canonical trade normalizer
+    trades, _realized_sum = get_recent_trades_and_realized(days=days)
+
+    # Open / create DB
+    conn = _sqlite.connect(db_path)
+    _ensure_realized_table(conn)
+    cur = conn.cursor()
+
+    # Clear any overlapping rows so repeated syncs don't double-count
+    cur.execute(
+        "DELETE FROM realized_trades WHERE date(close_date) >= date(?)",
+        (start_date.isoformat(),),
+    )
+
+    inserted = 0
+
+    for t in trades:
+        try:
+            action = str(t.get("action", "")).upper()
+            if not action.startswith("SELL"):
+                # We only treat sales as realizing P&L
+                continue
+
+            pl = float(t.get("pl", 0.0) or 0.0)
+
+            # `time` is epoch ms per recent_executions_as_trades
+            ts = t.get("time")
+            if ts is None:
+                continue
+            ts = int(ts)
+            if ts <= 0:
+                continue
+
+            dt_et = _dt.datetime.fromtimestamp(ts / 1000.0, tz=ET).date()
+            if dt_et < start_date:
+                continue
+
+            cur.execute(
+                "INSERT INTO realized_trades (gain, close_date) VALUES (?, ?)",
+                (pl, dt_et.isoformat()),
+            )
+            inserted += 1
+        except Exception:
+            # Be conservative; we don't let one bad row kill the sync
+            continue
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "ok": True,
+        "inserted": inserted,
+        "start": start_date.isoformat(),
+        "end": today.isoformat(),
+    }
+def realized_pnl_buckets_from_db(
+    db_path: str,
+    all_start_date: _dt.date | None = None,
+) -> Dict[str, Dict[str, float]]:
+    """
+    Compute Day / Week / Last Week / Month / All realized P&L buckets
+    from the local realized_trades table.
+
+    Assumes each row is:
+        gain       REAL
+        close_date TEXT (YYYY-MM-DD)
+
+    and that gains are already E*TRADE-sourced via sync_realized_trades_from_etrade.
+    """
+    if all_start_date is None:
+        all_start_date = REALIZED_START_DATE
+
+    conn = _sqlite.connect(db_path)
+    cur = conn.cursor()
+
+    def _f(x: float | None) -> float:
+        try:
+            return round(float(x or 0.0), 2)
+        except Exception:
+            return 0.0
+
+    def bucket(start: _dt.date, end: _dt.date) -> Tuple[float, float]:
+        """
+        Inclusive date window [start, end] where start/end are date objects.
+        Returns (gain, total_cost).
+
+        NOTE: total_cost is currently 0.0 because our realized_trades table
+        only stores `gain`. If you later extend schema with `total_cost`,
+        you can wire it in here.
+        """
+        s = start.isoformat()
+        e = end.isoformat()
+        sql = """
+            SELECT
+              COALESCE(SUM(gain), 0.0)       AS gain
+              -- If you add total_cost column later, sum it here too
+            FROM realized_trades
+            WHERE date(close_date) >= date(?)
+              AND date(close_date) <= date(?)
+              AND (symbol IS NULL OR symbol != 'GEVO')
+        """
+        try:
+            cur.execute(sql, (s, e))
+            row = cur.fetchone() or (0.0,)
+        except Exception as exc:
+            print(f"[realized] query failed for window {s}..{e}: {exc}")
+            return 0.0, 0.0
+        gain = _f(row[0])
+        # Without total_cost we can't compute a true % for the bucket,
+        # but START_CASH is used below for the All %.
+        return gain, 0.0
+
+    # ---------- Date windows (ET) ----------
+    now_et = _dt.datetime.now(ET)
+    today = now_et.date()
+
+    # Current week (Mon..Sun)
+    dow = today.weekday()  # Mon=0 .. Sun=6
+    week_start = today - _dt.timedelta(days=dow)
+    week_end = week_start + _dt.timedelta(days=6)
+
+    # Previous week
+    last_week_end = week_start - _dt.timedelta(days=1)
+    last_week_start = last_week_end - _dt.timedelta(days=6)
+
+    # Current month (1st -> today)
+    month_start = today.replace(day=1)
+    month_end = today
+
+    # All (project start -> today)
+    all_start = all_start_date
+    all_end = today
+
+    buckets: Dict[str, Dict[str, float]] = {}
+
+    # Day
+    day_gain, day_cost = bucket(today, today)
+    day_pct = round((day_gain / day_cost) * 100.0, 2) if day_cost > 0 else 0.0
+    buckets["day"] = {"pnl": day_gain, "pct": day_pct}
+
+    # Week (current)
+    week_gain, week_cost = bucket(week_start, week_end)
+    week_pct = round((week_gain / week_cost) * 100.0, 2) if week_cost > 0 else 0.0
+    buckets["week"] = {"pnl": week_gain, "pct": week_pct}
+
+    # Last week
+    lw_gain, lw_cost = bucket(last_week_start, last_week_end)
+    lw_pct = round((lw_gain / lw_cost) * 100.0, 2) if lw_cost > 0 else 0.0
+    buckets["last_week"] = {"pnl": lw_gain, "pct": lw_pct}
+
+    # Month (current)
+    mon_gain, mon_cost = bucket(month_start, month_end)
+    mon_pct = round((mon_gain / mon_cost) * 100.0, 2) if mon_cost > 0 else 0.0
+    buckets["month"] = {"pnl": mon_gain, "pct": mon_pct}
+
+    # All (since project start, using START_CASH as baseline)
+    all_gain, _all_cost = bucket(all_start, all_end)
+    all_pct = round((all_gain / START_CASH) * 100.0, 2) if START_CASH > 0 else 0.0
+    buckets["all"] = {"pnl": all_gain, "pct": all_pct}
+
+    try:
+        conn.close()
+    except Exception:
+        pass
+
+    return buckets
+# services/etrade_service.py
+def realized_pnl_buckets_from_etrade() -> dict[str, dict[str, float]]:
+    """
+    Returns:
+      {
+        "day":       {"pnl": float, "pct": float},
+        "week":      {"pnl": float, "pct": float},
+        "last_week": {"pnl": float, "pct": float},
+        "month":     {"pnl": float, "pct": float},
+        "all":       {"pnl": float, "pct": float},  # "All" using ALL_START_DATE (2025-08-22)
+      }
+    """
+    ...
+# --------------------------------------------------------------------------- #
+# Realized P&L buckets from E*TRADE transactions
+# --------------------------------------------------------------------------- #
+from dataclasses import dataclass
+from datetime import datetime, UTC, timedelta
+from typing import Dict, List, Any
+
+try:
+    from zoneinfo import ZoneInfo
+
+    ETZ = ZoneInfo("America/New_York")
+except Exception:  # pragma: no cover
+    ETZ = None
+
+
+@dataclass
+class RealizedTrade:
+    symbol: str
+    close_time: datetime  # UTC
+    pl: float             # profit/loss in account currency
+
+
+def _fetch_realized_trades_from_etrade(
+    account_key: str,
+    days_back: int = 365,
+) -> List[RealizedTrade]:
+    """
+    Fetch realized trades from E*TRADE transactions.
+
+    NOTE: This assumes you already have a low-level helper that calls the
+    E*TRADE 'transactions' or 'orders' API and returns parsed JSON.
+    If the name differs, just swap in your existing function.
+    """
+    end = datetime.now(tz=UTC)
+    start = end - timedelta(days=days_back)
+
+    # TODO: if you already have a helper like `fetch_transactions`,
+    # call it here instead of `et_get_transactions`.
+    raw = et_get_transactions(  # <-- replace with your real function name
+        account_key=account_key,
+        start_date=start,
+        end_date=end,
+        types=["TRADE"],  # only trades
+    )
+
+    trades: List[RealizedTrade] = []
+
+    # Shape of `raw` depends on your existing helper; adjust as needed.
+    for tx in raw:
+        try:
+            # You will need to map these keys to your actual structure.
+            sym = tx.get("symbol") or tx.get("securitySymbol")
+            if not sym:
+                continue
+
+            # Only closed / realized legs
+            pos_eff = (tx.get("positionEffect") or "").upper()
+            if pos_eff not in {"CLOSING", "CLOSE", "CLOSE_SHORT", "COVER"}:
+                continue
+
+            pl = float(tx.get("realizedPL") or 0.0)
+            if pl == 0.0:
+                # skip flat legs if you prefer
+                continue
+
+            ts_ms = tx.get("transactionDate") or tx.get("orderTime")
+            if ts_ms is None:
+                continue
+            # E*TRADE timestamps are usually ms since epoch
+            close_time = datetime.fromtimestamp(ts_ms / 1000.0, tz=UTC)
+
+            trades.append(RealizedTrade(symbol=sym, close_time=close_time, pl=pl))
+        except Exception:
+            continue
+
+    return trades
+
+
+# === PATCH: E*TRADE-based realized P&L buckets ================================
+def realized_buckets_from_etrade(account_key: str) -> Dict[str, float]:
+    """
+    Build realized P&L buckets from E*TRADE data:
+      - today       (calendar day)
+      - week        (this calendar week, Monday → today)
+      - last_week   (previous calendar week)
+      - month       (calendar month-to-date)
+      - all         (all fetched trades)
+    """
+    trades = _fetch_realized_trades_from_etrade(
+        account_key=account_key,
+        days_back=365,
+    )
+
+    if ETZ is not None:
+        now_local = datetime.now(tz=ETZ)
+    else:  # pragma: no cover
+        now_local = datetime.now(tz=UTC)
+
+    today = now_local.date()
+    # calendar week boundaries (Mon–Sun)
+    this_week_start = today - timedelta(days=today.weekday())
+    last_week_start = this_week_start - timedelta(days=7)
+    last_week_end = this_week_start - timedelta(days=1)
+    # calendar month start
+    month_start = today.replace(day=1)
+
+    buckets: Dict[str, float] = {
+        "today": 0.0,
+        "week": 0.0,
+        "last_week": 0.0,
+        "month": 0.0,
+        "all": 0.0,
+    }
+
+    for t in trades:
+        try:
+            # t.close_time is tz-aware
+            t_local = t.close_time.astimezone(now_local.tzinfo)
+            d = t_local.date()
+            pl = float(t.pl or 0.0)
+        except Exception:
+            # Defensive: bad trade rows are ignored, not fatal
+            continue
+
+        buckets["all"] += pl
+
+        if d == today:
+            buckets["today"] += pl
+        if d >= this_week_start:
+            buckets["week"] += pl
+        if last_week_start <= d <= last_week_end:
+            buckets["last_week"] += pl
+        if d >= month_start:
+            buckets["month"] += pl
+
+    return buckets
 __all__ = ["ETradeService", "RateLimitError"]
