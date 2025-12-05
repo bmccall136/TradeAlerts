@@ -514,17 +514,32 @@ def place_with_adaptive_variants(
 
             LOG.info("place_with_adaptive_variants success for %s", symbol)
             return
+
         except Exception as exc:  # noqa: BLE001
             last_err = exc
+            msg = str(exc)
+
+            # Special-case E*TRADE 1514:
+            # "We did not find this security in your account for the closing order..."
+            if "code': 1514" in msg or '"code": 1514' in msg:
+                LOG.error(
+                    "place_with_adaptive_variants: E*TRADE code 1514 for %s; "
+                    "symbol/account mismatch for closing order, skipping auto-sell. Error: %s",
+                    symbol,
+                    msg,
+                )
+                # Do NOT keep retrying; just give up on this symbol for now.
+                return
+
             LOG.warning(
                 "place_with_adaptive_variants attempt %s failed for %s: %s",
                 attempts,
                 symbol,
-                exc,
+                msg,
             )
             time.sleep(1.0)
 
-    # If we get here, all attempts failed.
+    # If we get here, all attempts failed with non-1514 errors.
     raise RuntimeError(f"Failed to place order for {symbol}: {last_err}")
 
 
@@ -662,10 +677,30 @@ def main() -> None:
 
                 pl_pct = ((cur_px - entry_px) / entry_px) * 100.0
 
+                # Determine hold time:
+                # - Prefer any explicit opened_at from the position.
+                # - Fall back to earliest open order time for that symbol.
+                # - BUT: if the only timestamp we have is a same-day dateAcquired
+                #   (E*TRADE often uses midnight local), treat it as "new today"
+                #   so we do NOT instantly timeout a fresh intraday entry.
                 opened = p.opened_at or open_map.get(s)
                 if opened:
-                    hold_sec = (loop_start - opened).total_seconds()
-                    hold_min = max(0.0, hold_sec / 60.0)
+                    if ETZ is not None:
+                        opened_local = opened.astimezone(ETZ)
+                        now_local = loop_start.astimezone(ETZ)
+                    else:  # pragma: no cover
+                        opened_local = opened
+                        now_local = loop_start
+
+                    if opened_local.date() < now_local.date():
+                        # Prior-day (or older) position → use real age in minutes
+                        hold_sec = (loop_start - opened).total_seconds()
+                        hold_min = max(0.0, hold_sec / 60.0)
+                    else:
+                        # Same-day position → treat as "fresh" for timeout purposes.
+                        # Timeouts are meant for multi-day bags; intraday exits
+                        # will rely on targets, trails, stoploss, and AI exits.
+                        hold_min = 0.0
                 else:
                     hold_min = 0.0
 

@@ -294,8 +294,8 @@ Respond with a concise JSON only, no extra text, like:
             input=prompt,
             max_output_tokens=200,
             temperature=0.1,
-            response_format={"type": "json_object"},
         )
+        # Expect a JSON string back from the model
         raw = resp.output[0].content[0].text
         data = json.loads(raw)
         if not isinstance(data, dict):
@@ -677,10 +677,30 @@ def main() -> None:
 
                 pl_pct = ((cur_px - entry_px) / entry_px) * 100.0
 
+                # Determine hold time:
+                # - Prefer any explicit opened_at from the position.
+                # - Fall back to earliest open order time for that symbol.
+                # - BUT: if the only timestamp we have is a same-day dateAcquired
+                #   (E*TRADE often uses midnight local), treat it as "new today"
+                #   so we do NOT instantly timeout a fresh intraday entry.
                 opened = p.opened_at or open_map.get(s)
                 if opened:
-                    hold_sec = (loop_start - opened).total_seconds()
-                    hold_min = max(0.0, hold_sec / 60.0)
+                    if ETZ is not None:
+                        opened_local = opened.astimezone(ETZ)
+                        now_local = loop_start.astimezone(ETZ)
+                    else:  # pragma: no cover
+                        opened_local = opened
+                        now_local = loop_start
+
+                    if opened_local.date() < now_local.date():
+                        # Prior-day (or older) position → use real age in minutes
+                        hold_sec = (loop_start - opened).total_seconds()
+                        hold_min = max(0.0, hold_sec / 60.0)
+                    else:
+                        # Same-day position → treat as "fresh" for timeout purposes.
+                        # Timeouts are meant for multi-day bags; intraday exits
+                        # will rely on targets, trails, stoploss, and AI exits.
+                        hold_min = 0.0
                 else:
                     hold_min = 0.0
 

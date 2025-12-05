@@ -78,9 +78,11 @@ try:
     from zoneinfo import ZoneInfo  # py3.9+
 except Exception:  # pragma: no cover
     from backports.zoneinfo import ZoneInfo  # type: ignore
+from services import etrade_service as et
 
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
+from services.etrade_service import realized_pnl_buckets_from_etrade
 
 ET = ZoneInfo("America/New_York")
 
@@ -98,8 +100,16 @@ LIVE_DB = os.environ.get("LIVE_DB", os.path.join(ROOT, "live.db"))
 
 # --- Live tracking config ---
 PROJECT_START_DATE = date(2025, 8, 22)
-LIVE_APP_STARTING_EQUITY =  392.67
+LIVE_APP_STARTING_EQUITY = 392.67  # original cash size
 START_CASH = LIVE_APP_STARTING_EQUITY  # used for "All" realized %
+ALL_START_DATE = date(2025, 8, 22)
+START_DATE_BASELINE = "2025-08-22"
+LIVE_APP_START_DATE = START_DATE_BASELINE  # backward compat for older code
+# Canonical baseline for “since start” calcs
+START_CASH_BASELINE = LIVE_APP_STARTING_EQUITY  # 392.67
+
+# This is the canonical baseline start date string for hero text
+START_DATE_BASELINE = "2025-08-22"
 
 IGNORED_TICKERS = {"GEVO"}
 
@@ -112,10 +122,6 @@ CHECKPOINT_BAT = r"C:\TradeAlerts\checkpoint.bat"  # adjust if needed
 # -----------------------------------------------------------------------------#
 # Flask app + logging
 # -----------------------------------------------------------------------------#
-
-# --- Live baseline config (Money Machine) ---
-START_CASH_BASELINE  = 392.67   # 8/22/2025 confirmed baseline NAV start
-START_DATE_BASELINE  = "2025-08-22"
 
 app = Flask(__name__)
 
@@ -168,6 +174,37 @@ except ImportError:
 # -----------------------------------------------------------------------------#
 # Helpers
 # -----------------------------------------------------------------------------#
+
+# --- NEW: Fetch realized P&L from E*TRADE (surgical add) ---
+def etrade_realized_pnl(start_date, end_date):
+    """
+    Returns total realized gain (float) between start_date and end_date.
+    start_date, end_date are datetime.date
+    """
+    from services import etrade_service as et
+    import datetime
+
+    try:
+        acct = et.get_account_id_key()
+    except Exception:
+        return 0.0
+
+    # Convert to E*TRADE expected string YYYY-MM-DD
+    sd = start_date.strftime("%Y-%m-%d")
+    ed = end_date.strftime("%Y-%m-%d")
+
+    try:
+        tx = et.list_transactions(acct, sd, ed)
+    except Exception:
+        return 0.0
+
+    total = 0.0
+    for t in tx or []:
+        if t.get("transactionType") == "SELL":
+            gain = float(t.get("gain", 0) or 0)
+            total += gain
+
+    return round(total, 2)
 
 import sqlite3  # if not already imported at top
 
@@ -370,6 +407,10 @@ def _realized_buckets_from_trades(trades):
 from services import live_guardrails as gr
 from zoneinfo import ZoneInfo
 ETZ = ZoneInfo("America/New_York")
+from services.etrade_service import (
+    realized_pnl_buckets_from_etrade,
+    REALIZED_START_DATE,
+)
 
 def get_opened_at_map():
     """
@@ -552,125 +593,108 @@ def compute_value_card(account_ui: Dict[str, Any],
 
 def realized_buckets_from_live_db(db_path: str) -> Dict[str, Dict[str, float]]:
     """
-    Compute realized gain buckets (Day / Week / Last Week / Month / All)
-    from live.db -> realized_trades.
+    Legacy name kept for compatibility, but this now prefers REAL data
+    from the E*TRADE API. If the API fails for any reason, it falls back
+    to the local live.db realized_trades table.
 
-    Schema expectation for realized_trades:
-      id INTEGER PRIMARY KEY
-      symbol TEXT
-      action TEXT
-      qty REAL
-      open_date TEXT  -- "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS"
-      close_date TEXT -- "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS"
-      price_share REAL
-      proceeds REAL
-      cost_share REAL
-      total_cost REAL
-      gain REAL
-      term TEXT
-
-    Rules:
-      * GEVO is excluded (defensive filter even though CSV sync already skips it).
-      * "Day"       : trades with close_date == today (ET).
-      * "Week"      : trades with close_date in the current Mon–Sun week.
-      * "Last Week" : trades in the prior Mon–Sun week.
-      * "Month"     : trades with close_date in the current calendar month.
-      * "All"       : all trades since ALL_START_DATE.
-    Percentages:
-      * Day / Week / Last Week / Month: gain ÷ cost in that bucket.
-      * All: cumulative_gain ÷ START_CASH.
+    Returns:
+        {
+          "pnl": {
+            "today": float,
+            "week": float,
+            "month": float,
+            "all": float,
+          }
+        }
     """
+    # --- 1) Try E*TRADE-based buckets first -------------------------------
     try:
-        conn = sqlite3.connect(db_path)
-        cur = conn.cursor()
+        # If you already have account_key in scope, you can skip this call
+        # and just reuse the existing variable.
+        acct = et.get_primary_account()  # or your existing account helper
+        account_key = acct["accountIdKey"]
+
+        buckets = et.realized_buckets_from_etrade(account_key)
+        # Shape it the same way the old DB helper returned it:
+        return {
+            "pnl": {
+                "today": float(buckets.get("today", 0.0)),
+                "week": float(buckets.get("week", 0.0)),
+                "month": float(buckets.get("month", 0.0)),
+                "all": float(buckets.get("all", 0.0)),
+            }
+        }
     except Exception as exc:
-        print(f"[realized] failed to open DB {db_path}: {exc}")
-        return {}
+        # Log and fall back to the SQLite version so the widget never breaks.
+        LOG.warning("realized_buckets_from_live_db: E*TRADE API failed, "
+                    "falling back to DB: %s", exc)
 
-    def _f(x) -> float:
-        try:
-            return float(x)
-        except Exception:
-            return 0.0
-
-    def bucket(start, end) -> Tuple[float, float]:
-        """
-        Inclusive date window [start, end] where start/end are date objects.
-        Returns (gain, total_cost).
-        """
-        s = start.isoformat()
-        e = end.isoformat()
-        sql = """
-            SELECT
-              COALESCE(SUM(gain), 0.0)       AS gain,
-              COALESCE(SUM(total_cost), 0.0) AS total_cost
-            FROM realized_trades
-            WHERE date(close_date) >= date(?)
-              AND date(close_date) <= date(?)
-              AND (symbol IS NULL OR symbol != 'GEVO')
-        """
-        try:
-            cur.execute(sql, (s, e))
-            row = cur.fetchone() or (0.0, 0.0)
-        except Exception as exc:
-            print(f"[realized] query failed for window {s}..{e}: {exc}")
-            return 0.0, 0.0
-        return _f(row[0]), _f(row[1])
-
-    # ---------- Date windows (ET) ----------
-    now_et = _dt.datetime.now(ET)
-    today = now_et.date()
-
-    # Current week (Mon..Sun)
-    dow = today.weekday()  # Mon=0 .. Sun=6
-    week_start = today - _dt.timedelta(days=dow)
-    week_end = week_start + _dt.timedelta(days=6)
-
-    # Previous week
-    last_week_end = week_start - _dt.timedelta(days=1)
-    last_week_start = last_week_end - _dt.timedelta(days=6)
-
-    # Current month (1st -> today)
-    month_start = today.replace(day=1)
-    month_end = today
-
-    # All (project start -> today)
-    all_start = ALL_START_DATE
-    all_end = today
-
-    buckets: Dict[str, Dict[str, float]] = {}
-
-    # Day
-    day_gain, day_cost = bucket(today, today)
-    day_pct = round((day_gain / day_cost) * 100.0, 2) if day_cost > 0 else 0.0
-    buckets["day"] = {"pnl": round(day_gain, 2), "pct": day_pct}
-
-    # Week (current)
-    week_gain, week_cost = bucket(week_start, week_end)
-    week_pct = round((week_gain / week_cost) * 100.0, 2) if week_cost > 0 else 0.0
-    buckets["week"] = {"pnl": round(week_gain, 2), "pct": week_pct}
-
-    # Last week
-    lw_gain, lw_cost = bucket(last_week_start, last_week_end)
-    lw_pct = round((lw_gain / lw_cost) * 100.0, 2) if lw_cost > 0 else 0.0
-    buckets["last_week"] = {"pnl": round(lw_gain, 2), "pct": lw_pct}
-
-    # Month (current)
-    mon_gain, mon_cost = bucket(month_start, month_end)
-    mon_pct = round((mon_gain / mon_cost) * 100.0, 2) if mon_cost > 0 else 0.0
-    buckets["month"] = {"pnl": round(mon_gain, 2), "pct": mon_pct}
-
-    # All (since project start, using START_CASH as baseline)
-    all_gain, _all_cost = bucket(all_start, all_end)
-    all_pct = round((all_gain / START_CASH) * 100.0, 2) if START_CASH > 0 else 0.0
-    buckets["all"] = {"pnl": round(all_gain, 2), "pct": all_pct}
-
+    # --- 2) Fallback: use existing SQLite realized_trades logic ----------
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
     try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT
+              close_date,
+              gain
+            FROM realized_trades
+            ORDER BY close_date DESC
+            """
+        )
+        rows = cur.fetchall()
+    finally:
         conn.close()
-    except Exception:
-        pass
 
-    return buckets
+    # If you were already doing this logic before, you can keep your
+    # existing bucketing code here; I’m showing one standard version:
+    if ETZ is not None:
+        now_local = datetime.now(tz=ETZ)
+    else:  # pragma: no cover
+        now_local = datetime.now()
+
+    today = now_local.date()
+    week_start = today - timedelta(days=6)
+    month_start = today.replace(day=1)
+
+    buckets = {
+        "today": 0.0,
+        "week": 0.0,
+        "month": 0.0,
+        "all": 0.0,
+    }
+
+    for r in rows:
+        try:
+            ts = r["close_date"]
+            if isinstance(ts, (int, float)):
+                dt = datetime.fromtimestamp(ts, tz=UTC)
+            else:
+                dt = datetime.fromisoformat(str(ts)).replace(tzinfo=UTC)
+
+            dt_local = dt.astimezone(now_local.tzinfo)
+            d = dt_local.date()
+
+            gain = float(r["gain"] or 0.0)
+            buckets["all"] += gain
+            if d == today:
+                buckets["today"] += gain
+            if d >= week_start:
+                buckets["week"] += gain
+            if d >= month_start:
+                buckets["month"] += gain
+        except Exception:
+            continue
+
+    return {
+        "pnl": {
+            "today": buckets["today"],
+            "week": buckets["week"],
+            "month": buckets["month"],
+            "all": buckets["all"],
+        }
+    }
 def _enrich_trades_from_realized(trades: list[dict]) -> list[dict]:
     """
     For SELL trades that have price_paid == 0 (or missing), patch them using
@@ -1203,7 +1227,7 @@ def live_status():
     from flask import request, current_app
     from services import etrade_service as et
     from services.trade_source import load_trades_merged
-    
+    about: Dict[str, Any] = {}
     debug = request.args.get("debug", "0") == "1"
     debug_raw: dict[str, Any] = {}
     etrade_ok = False
@@ -1363,36 +1387,84 @@ def live_status():
 
     if debug:
         debug_raw["trades_raw"] = trades
+        
+    # -----------7) Realized P&L buckets (from E*TRADE) ------------------------
+    # 'about' has already been built above and should contain net_contrib.
+    # If anything failed earlier, it’s at least {} thanks to the default at the top.
+    account_key = (account or {}).get("account_key") or ""
+    net_contrib = float((about or {}).get("net_contrib") or 0.0)
 
-    # ---------- 7) REALIZED P&L BUCKETS (from live.db) ----------
-    realized_obj = realized_buckets_from_live_db(str(LIVE_DB)) or {}
+    try:
+        realized_obj = build_realized_view_from_etrade(
+            account_key=account_key,
+            net_contrib=net_contrib,
+        )
+    except Exception as exc:  # extra safety – dashboard still works if E*TRADE call fails
+        LOG.exception("Failed to build realized P&L view from E*TRADE in live_status: %s", exc)
+        realized_obj = {
+            "day": {"pnl": 0.0, "pct": 0.0},
+            "week": {"pnl": 0.0, "pct": 0.0},
+            "last_week": {"pnl": 0.0, "pct": 0.0},
+            "month": {"pnl": 0.0, "pct": 0.0},
+            "all": {"pnl": 0.0, "pct": 0.0},
+        }
 
     # ---------- 8) VALUE / TRADEALERTS NAV (BP + positions) ----------
     # nav_ta = TradeAlerts computed NAV: cash we can deploy (BP) + positions value.
     # This matches the 4,381.31 number you see on the web UI when you’re all in cash.
     nav_ta = round(float(ui_buying_power) + float(positions_value), 2)
 
-    # ---------- 9) ABOUT / SINCE START (NAV_TA + contributions) ----------
-    start_cash = START_CASH_BASELINE
-    start_date = START_DATE_BASELINE
+    # ---------- 9) ACCOUNT GROWTH SINCE START (NAV-based) ----------
+    # Baseline seed and start date for “Since Start” stats
+    start_cash = START_CASH_BASELINE          # 392.67
+    start_date = LIVE_APP_START_DATE          # "2025-08-22"
 
+    # Total contributions you've added since go-live
     try:
         net_contrib = float(get_total_contributions(start_date))
     except Exception:
         net_contrib = 0.0
 
-    # True all-time gain vs baseline start_cash (ignore contributions for %)
-    total_gain = round(nav_ta - start_cash, 2)
+    # Use broker NAV as the truth for account value
+    ui_buying_power = float(account.get("buying_power") or 0.0)
+    positions_value = float(account.get("positions_value") or 0.0)
+    nav_ta = round(float(nav or 0.0), 2)  # now matched to E*TRADE NAV (within timing)
 
-    # Percent = gain / start_cash (392.67)
-    denom = start_cash
-    total_gain_pct = round((total_gain / denom * 100.0), 2) if denom > 0 else 0.0
+    # True growth since start: current NAV minus initial cash + all contributions
+    total_gain = round(nav_ta - start_cash - net_contrib, 2)
 
+    # % growth relative to original seed capital
+    total_gain_pct = 0.0
+    if start_cash:
+        total_gain_pct = round((total_gain / start_cash) * 100.0, 2)
+
+    # VALUE tile (left card)
+    value_obj = {
+        "net_account_value": nav,      # broker NAV from account summary
+        "positions_value": positions_value,
+        "buying_power": ui_buying_power,
+        "value": nav_ta,               # this now ≈ E*TRADE Net Account Value
+    }
+
+    # Metrics used by the tiles + hero sentence
+    metrics = {
+        "net_account_value": nav,
+        "buying_power": ui_buying_power,
+        "positions_value": positions_value,
+        "day_unrealized_pnl": day_unrealized_pnl,
+        "day_unrealized_pnl_pct": day_unrealized_pnl_pct,
+        "unrealized_pl": total_unreal_pl,
+        "unrealized_pl_pct": total_unreal_pct,
+        "total_gain_nav": total_gain,
+        "total_gain_nav_pct": total_gain_pct,
+    }
+
+    # ABOUT header – start, contribs, growth since start
     about = {
         "start_cash": start_cash,
         "start_date": start_date,
         "net_contrib": round(net_contrib, 2),
-        "since_pnl": total_gain,       # hero blurb
+        "since_pnl": total_gain,
         "since_pct": total_gain_pct,
     }
 
@@ -1450,6 +1522,154 @@ def live_status():
         payload["debug_raw"] = debug_raw
 
     return payload
+
+from datetime import datetime, timedelta
+from typing import Any, Dict, List
+
+try:
+    from zoneinfo import ZoneInfo
+    ETZ = ZoneInfo("America/New_York")
+except Exception:  # pragma: no cover
+    ETZ = None
+
+
+def compute_realized_buckets_from_trades(
+    trades: List[Dict[str, Any]],
+    start_cash: float,
+) -> Dict[str, Dict[str, float]]:
+    """
+    Build realized P&L buckets (day/week/last_week/month/all) from the
+    E*TRADE trades list like the one in your JSON.
+
+    Only counts SELL trades with a non-null 'pl'.
+    Percentages are vs start_cash.
+    """
+    if ETZ is not None:
+        now_local = datetime.now(tz=ETZ)
+    else:  # pragma: no cover
+        now_local = datetime.now()
+
+    today = now_local.date()
+    week_start = today - timedelta(days=6)         # last 7 days incl. today
+    last_week_start = week_start - timedelta(days=7)
+    last_week_end = week_start - timedelta(days=1)
+    month_start = today.replace(day=1)
+
+    pnl = {
+        "day": 0.0,
+        "week": 0.0,
+        "last_week": 0.0,
+        "month": 0.0,
+        "all": 0.0,
+    }
+
+    for t in trades:
+        if t.get("action") != "SELL":
+            continue
+
+        pl = t.get("pl")
+        if pl is None:
+            continue
+
+        try:
+            pl_val = float(pl)
+        except Exception:
+            continue
+
+        # Prefer ISO time with offset (time_utc) if present
+        ts = t.get("time_utc") or t.get("time")
+        if not ts:
+            continue
+
+        try:
+            dt = datetime.fromisoformat(ts)
+        except Exception:
+            # Fallback: ignore if we can't parse
+            continue
+
+        if dt.tzinfo is None:
+            # Assume ET if missing tz info
+            if ETZ is not None:
+                dt = dt.replace(tzinfo=ETZ)
+        if ETZ is not None:
+            d_local = dt.astimezone(ETZ).date()
+        else:
+            d_local = dt.date()
+
+        # Accumulate into buckets
+        pnl["all"] += pl_val
+        if d_local == today:
+            pnl["day"] += pl_val
+        if d_local >= week_start:
+            pnl["week"] += pl_val
+        if last_week_start <= d_local <= last_week_end:
+            pnl["last_week"] += pl_val
+        if d_local >= month_start:
+            pnl["month"] += pl_val
+
+    base = float(start_cash or 0) or 1.0  # avoid div-by-zero
+
+    result: Dict[str, Dict[str, float]] = {}
+    for key, dollars in pnl.items():
+        pct = (dollars / base) * 100.0
+        result[key] = {
+            "pnl": round(dollars, 2),
+            "pct": round(pct, 2),
+        }
+
+    return result
+# === E*TRADE realized → UI buckets ===========================================
+def build_realized_view_from_etrade(
+    account_key: str,
+    net_contrib: float,
+) -> Dict[str, Dict[str, float]]:
+    """
+    Build realized P&L buckets (day/week/last_week/month/all) using the same
+    E*TRADE-sourced trades that power the Recent Trades table.
+
+    - We use load_trades_merged(...) to pull SELL trades with 'pl'
+    - We bucket them with compute_realized_buckets_from_trades()
+    - We then recompute pct vs *net_contrib* (your true $$ put in)
+    """
+    try:
+        # Pull full trade history since REALIZED_START_DATE (imported above)
+        trades = load_trades_merged(
+            days=None,
+            start_iso=str(REALIZED_START_DATE),
+            max_count=5000,
+        ) or []
+
+        # This helper gives us per-bucket "pnl" based on SELL trades
+        buckets = compute_realized_buckets_from_trades(
+            trades=trades,
+            start_cash=1.0,  # pct from this is ignored; we only want the dollars
+        )
+    except Exception as exc:  # pragma: no cover
+        LOG.exception(
+            "build_realized_view_from_etrade: failed to build buckets from trades: %s",
+            exc,
+        )
+        buckets = {}
+
+    def fmt_bucket(name: str) -> Dict[str, float]:
+        b = buckets.get(name) or {}
+        amount = float(b.get("pnl") or 0.0)
+        if net_contrib:
+            pct = (amount / float(net_contrib)) * 100.0
+        else:
+            pct = 0.0
+        return {
+            "pnl": round(amount, 2),
+            "pct": round(pct, 2),
+        }
+
+    return {
+        "day":       fmt_bucket("day"),
+        "week":      fmt_bucket("week"),
+        "last_week": fmt_bucket("last_week"),
+        "month":     fmt_bucket("month"),
+        "all":       fmt_bucket("all"),
+    }
 
 # -----------------------------------------------------------------------------#
 # Entrypoint

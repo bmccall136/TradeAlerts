@@ -2,9 +2,15 @@
 """
 update_sp500_symbols.py – FIXED VERSION
 """
+from __future__ import annotations
 
 import datetime as dt
+import json
+from io import StringIO  # <-- add this
 from pathlib import Path
+from typing import List
+from io import StringIO
+
 import pandas as pd
 import requests
 
@@ -36,8 +42,9 @@ def fetch_sp500_symbols() -> list[str]:
     """Parse the S&P 500 table and return cleaned tickers."""
     html = fetch_sp500_html()
 
-    # pandas will find the table containing the Symbol column
-    tables = pd.read_html(html)
+    # Use StringIO to avoid the FutureWarning about literal HTML
+    tables = pd.read_html(StringIO(html))
+
     df = None
     for t in tables:
         if any("symbol" in str(c).lower() for c in t.columns):
@@ -61,8 +68,8 @@ def fetch_sp500_symbols() -> list[str]:
             cleaned.append(s)
 
     # Remove duplicates while keeping order
-    uniq = []
-    seen = set()
+    uniq: list[str] = []
+    seen: set[str] = set()
     for s in cleaned:
         if s not in seen:
             seen.add(s)
@@ -97,11 +104,11 @@ def main():
     # Backup old file
     if SYMBOL_FILE.exists():
         BACKUP_FILE.write_text(SYMBOL_FILE.read_text())
-        print(f"[INFO] Backup saved → {BACKUP_FILE}")
+    print(f"[INFO] Backup saved -> {BACKUP_FILE}")
 
     # Write new symbols
     SYMBOL_FILE.write_text("\n".join(new_syms) + "\n")
-    print(f"[OK] Updated → {SYMBOL_FILE}")
+    print(f"[INFO] Backup saved -> {BACKUP_FILE}")
 
     print("=== Done ===")
     return 0
