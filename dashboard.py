@@ -1,14 +1,14 @@
 ﻿# -*- coding: utf-8 -*-
 """
-TradeAlerts â€“ LIVE Dashboard
+TradeAlerts – LIVE Dashboard
 
 - VALUE = Buying Power + Positions Value
 - Holdings & account info from services.etrade_service
-- Realized P&L buckets read from live.db (realized_trades)
-- All % = cumulative_gain / LIVE_APP_STARTING_EQUITY
+- Realized P&L buckets read from E*TRADE
+- All % = cumulative_gain / START_CASH_BASELINE
 - Day/Week/LW/Month % = gain / total_cost
 - Exclude GEVO
-- ET timezone; weeks are Monâ€“Fri
+- ET timezone; weeks are Mon–Fri
 - "All" window since 2025-08-22
 
 This file exposes:
@@ -16,44 +16,23 @@ This file exposes:
 - /live/status : JSON the Live UI expects
 - /auth/etrade/reconnect, /checkpoint helpers
 """
-# services
-from __future__ import annotations
-from services import etrade_service as et
-from services.trade_source import load_trades_merged
 
-import os
-import math
+from __future__ import annotations
+
 import json
-import sys
 import logging
+import math
+import os
 import sqlite3
-import threading
 import subprocess
-import pathlib
+import sys
+import threading
+from dataclasses import dataclass
+from datetime import UTC, datetime, date, timedelta
 from pathlib import Path
-from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Tuple
 
-from flask import Flask, render_template, jsonify, request, redirect, url_for
-from services.contributions import get_total_contributions
-from services.event_log import log_event
-
-
-import logging, os
-from datetime import datetime
-from zoneinfo import ZoneInfo
-from services import live_guardrails as gr
-
-# live guardrails holds opened_at for live trades
-try:
-    from services import live_guardrails as gr
-except ImportError:
-    gr = None  # if not available, we'll just show "â€”"
-
-ETZ = ZoneInfo("America/New_York")
-
-from flask import (
-
+from flask import (
     Flask,
     jsonify,
     render_template,
@@ -64,8 +43,20 @@ from flask import (
 )
 from dotenv import load_dotenv
 
+# services
+from services import etrade_service as et
+from services.trade_source import load_trades_merged
+from services.contributions import get_total_contributions
+from services.event_log import log_event
+
+# live guardrails holds opened_at for live trades
+try:
+    from services import live_guardrails as gr
+except ImportError:  # pragma: no cover
+    gr = None
+
 # -----------------------------------------------------------------------------#
-# Path / env setup
+# Path / env + timezone
 # -----------------------------------------------------------------------------#
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -78,45 +69,43 @@ try:
     from zoneinfo import ZoneInfo  # py3.9+
 except Exception:  # pragma: no cover
     from backports.zoneinfo import ZoneInfo  # type: ignore
-from services import etrade_service as et
 
-from datetime import datetime, date, timedelta
-from zoneinfo import ZoneInfo
-from services.etrade_service import realized_pnl_buckets_from_etrade
+ETZ = ZoneInfo("America/New_York")
 
-ET = ZoneInfo("America/New_York")
+# -----------------------------------------------------------------------------#
+# Live tracking config
+# -----------------------------------------------------------------------------#
 
-LIVE_DB = os.environ.get("LIVE_DB", r"C:\TradeAlerts\live.db")
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-LIVE_MODE_FILE = os.path.join(os.path.dirname(__file__), "live_mode.txt")
-VALID_LIVE_MODES = {"DAY", "SWING"}
-ALL_START_DATE = date(2025, 8, 22)
-LIVE_APP_STARTING_EQUITY =  392.67  # your original starting amount
-IGNORED_TICKERS = {"GEVO"}
-
-# --- DB paths ---
+# DB paths
 LIVE_DB = os.environ.get("LIVE_DB", os.path.join(ROOT, "live.db"))
 
-# --- Live tracking config ---
+# Project baseline
 PROJECT_START_DATE = date(2025, 8, 22)
-LIVE_APP_STARTING_EQUITY = 392.67  # original cash size
-START_CASH = LIVE_APP_STARTING_EQUITY  # used for "All" realized %
-ALL_START_DATE = date(2025, 8, 22)
+ALL_START_DATE = PROJECT_START_DATE
+START_CASH_BASELINE = 392.67
+START_DATE = "2025-08-22"
+
+# Original starting cash (what you began with in this app)
+LIVE_APP_STARTING_EQUITY = 392.67
+START_CASH = LIVE_APP_STARTING_EQUITY  # used for unrealized % if needed
+
+# Canonical baseline for “since start” calcs (hero text + since %)
 START_DATE_BASELINE = "2025-08-22"
 LIVE_APP_START_DATE = START_DATE_BASELINE  # backward compat for older code
-# Canonical baseline for “since start” calcs
 START_CASH_BASELINE = LIVE_APP_STARTING_EQUITY  # 392.67
-
-# This is the canonical baseline start date string for hero text
-START_DATE_BASELINE = "2025-08-22"
 
 IGNORED_TICKERS = {"GEVO"}
 
-# --- Auth / reconnect flags ---
-NEED_AUTH_FLAG = Path("need_oauth.flag")
+# Live mode toggle
+LIVE_MODE_FILE = os.path.join(os.path.dirname(__file__), "live_mode.txt")
+VALID_LIVE_MODES = {"DAY", "SWING"}
+LIVE_MODE_DEFAULT = "DAY"
 
-# --- Checkpoint script ---
+# Auth / reconnect flags
+NEED_AUTH_FLAG = Path("need_oauth.flag")
+FLAG_FILE = os.path.join(os.path.dirname(__file__), "need_oauth.flag")
+
+# Checkpoint script
 CHECKPOINT_BAT = r"C:\TradeAlerts\checkpoint.bat"  # adjust if needed
 
 # -----------------------------------------------------------------------------#
@@ -125,11 +114,17 @@ CHECKPOINT_BAT = r"C:\TradeAlerts\checkpoint.bat"  # adjust if needed
 
 app = Flask(__name__)
 
-import os
-
-# --- E*TRADE reconnect flag (need_oauth.flag) ---
-FLAG_FILE = os.path.join(os.path.dirname(__file__), "need_oauth.flag")
-
+LOG = logging.getLogger("dashboard")
+LOG.setLevel(logging.INFO)
+if not LOG.handlers:
+    _h = logging.StreamHandler(sys.stdout)
+    _h.setFormatter(
+        logging.Formatter(
+            "%(asctime)s %(levelname)s dashboard: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    )
+    LOG.addHandler(_h)
 
 def read_flag_file() -> bool:
     """
@@ -174,6 +169,26 @@ except ImportError:
 # -----------------------------------------------------------------------------#
 # Helpers
 # -----------------------------------------------------------------------------#
+
+def compute_true_about(nav: float, start_cash: float, net_contrib: float, start_date: str):
+    """
+    Return a corrected about dict with real performance numbers.
+
+    nav          -> current account NAV (e.g. from E*TRADE summary)
+    start_cash   -> starting balance on day 0
+    net_contrib  -> total deposits since start (withdrawals negative)
+    start_date   -> 'YYYY-MM-DD'
+    """
+    true_pnl = nav - net_contrib - start_cash
+    true_pct = (true_pnl / start_cash * 100.0) if start_cash else 0.0
+
+    return {
+        "start_date": start_date,
+        "start_cash": round(start_cash, 2),
+        "net_contrib": round(net_contrib, 2),
+        "since_pnl": round(true_pnl, 2),   # <-- corrected dollars
+        "since_pct": round(true_pct, 2),   # <-- corrected %
+    }
 
 # --- NEW: Fetch realized P&L from E*TRADE (surgical add) ---
 def etrade_realized_pnl(start_date, end_date):
@@ -493,11 +508,13 @@ def ai_decide_exit(snapshot: dict) -> dict:
     # ... existing OpenAI call ...
 
 def _et_midnight(d: date) -> datetime:
-    return datetime.combine(d, datetime.min.time(), tzinfo=ET)
+    tz = ETZ or UTC
+    return datetime.combine(d, datetime.min.time(), tzinfo=tz)
 
 
 def _et_eod(d: date) -> datetime:
-    return datetime.combine(d, datetime.max.time(), tzinfo=ET)
+    tz = ETZ or UTC
+    return datetime.combine(d, datetime.max.time(), tzinfo=tz)
 
 def _normalize_account(summ: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -536,60 +553,86 @@ def _normalize_account(summ: Dict[str, Any]) -> Dict[str, Any]:
         "nav":                   nav,
     }
 
-def compute_value_card(account_ui: Dict[str, Any],
-                       holdings_rows: List[Dict[str, Any]]) -> Dict[str, float]:
+def compute_value_card(
+    account_ui: Dict[str, Any],
+    holdings_rows: List[Dict[str, Any]],
+) -> Dict[str, float]:
     """
     VALUE tile logic:
 
-    - If NAV present: use it directly as 'value'.
-      Positions Value = sum of holdings
-      Buying Power:
-         - prefer E*TRADE cash/BP if provided
-         - otherwise NAV - PositionsValue (>= 0)
-    - If NAV missing: fall back to BP + PositionsValue.
+    - If E*TRADE NAV (NetAccountValue) is present, use it directly as `value`.
+    - Positions Value = sum of holdings
+    - Buying Power:
+        * prefer E*TRADE cash / BP fields if provided
+        * otherwise derive from NAV - PositionsValue (>= 0)
+    - If NAV is missing, fall back to BP + PositionsValue.
     """
+
+    # Sum of all current positions from holdings table
     positions_value = round(
-        sum(_safe_float(h.get("value"), 0.0) for h in holdings_rows), 2
+        sum(_safe_float(h.get("value"), 0.0) for h in holdings_rows),
+        2,
     )
 
+    # True NAV from E*TRADE account summary, if available
     nav = _safe_float(
-        account_ui.get("nav")
+        account_ui.get("NetAccountValue")
         or account_ui.get("net_account_value")
-        or account_ui.get("NetAccountValue"),
+        or account_ui.get("nav"),
         0.0,
     )
 
+    # Explicit buying power / cash from E*TRADE, if present
     explicit_bp = _safe_float(
-        account_ui.get("available_funds")
-        or account_ui.get("cashPurchasingPower")
-        or account_ui.get("cash_available_for_investment")
-        or account_ui.get("buying_power"),
+        account_ui.get("cashPurchasingPower")
+        or account_ui.get("available_funds")
+        or account_ui.get("BuyingPower")
+        or account_ui.get("buying_power")
+        or account_ui.get("cash_balance"),
         0.0,
     )
 
     if nav > 0:
-        buying_power = explicit_bp if explicit_bp > 0 else max(0.0, nav - positions_value)
-        value = nav
+        # NAV is authoritative. Use it as VALUE.
+        if explicit_bp > 0:
+            buying_power = round(explicit_bp, 2)
+        else:
+            # Derive BP from NAV - positions (never below 0)
+            derived_bp = max(0.0, round(nav - positions_value, 2))
+            buying_power = derived_bp
+
+        value = round(nav, 2)
     else:
-        buying_power = explicit_bp
-        value = buying_power + positions_value
+        # No NAV in account_ui → fall back to old behavior
+        buying_power = round(explicit_bp, 2)
+        value = round(positions_value + buying_power, 2)
+
+    return {
+        "value": value,                 # should match E*TRADE NetAccountValue
+        "positions_value": positions_value,
+        "buying_power": buying_power,
+    }
+
 
     # --- Unrealized ALL P&L from holdings table ---
     total_unreal_pl = round(
         sum(_safe_float(h.get("total_pl"), 0.0) for h in holdings_rows), 2
     )
-    total_unreal_pct = round((total_unreal_pl / start_cash * 100.0), 2) if start_cash > 0 else 0.0
+    baseline = float(START_CASH_BASELINE or 0.0)
+    if baseline > 0:
+        total_unreal_pct = round((total_unreal_pl / baseline) * 100.0, 2)
+    else:
+        total_unreal_pct = 0.0
 
     return {
         "buying_power": round(buying_power, 2),
         "positions_value": round(positions_value, 2),
         "value": round(value, 2),
 
-        # NEW: full unrealized (ALL)
+        # full unrealized (ALL)
         "unrealized_pl": total_unreal_pl,
         "unrealized_pl_pct": total_unreal_pct,
     }
-
 
 def realized_buckets_from_live_db(db_path: str) -> Dict[str, Dict[str, float]]:
     """
@@ -1026,9 +1069,9 @@ def etrade_reconnect():
         if os.name == "nt":
             # Windows: spawn new console
             subprocess.Popen(
-                [exe, "-u", script],
-                creationflags=subprocess.CREATE_NEW_CONSOLE,
-                cwd=ROOT,
+                ["cmd.exe", "/c", "start", "", CHECKPOINT_BAT],
+                cwd=str(Path(CHECKPOINT_BAT).parent),
+                creationflags=0x00000008,  # CREATE_NEW_CONSOLE
             )
         else:
             # *nix: background thread
@@ -1047,19 +1090,24 @@ def etrade_reconnect():
 # -----------------------------------------------------------------------------#
 
 
+CHECKPOINT_BAT = r"C:\TradeAlerts\checkpoint.bat"  # keep your path if it's different
+
 @app.route("/checkpoint", methods=["GET"])
 @always_json
 def run_checkpoint():
     try:
         if not os.path.exists(CHECKPOINT_BAT):
             return {"ok": False, "error": f"Missing {CHECKPOINT_BAT}"}
+
         subprocess.Popen(
             ["cmd.exe", "/c", "start", "", CHECKPOINT_BAT],
-            cwd=str(pathlib.Path(CHECKPOINT_BAT).parent),
+            cwd=str(Path(CHECKPOINT_BAT).parent),
             creationflags=0x00000008,  # CREATE_NEW_CONSOLE
         )
+
         return {"ok": True, "launched": CHECKPOINT_BAT}
     except Exception as e:
+        current_app.logger.exception("checkpoint error: %s", e)
         return {"ok": False, "error": str(e)}
 
 # -----------------------------------------------------------------------------#
@@ -1211,6 +1259,33 @@ def live_view():
 
     return render_template("live.html", account=account, holdings=holdings)
 
+def compute_since_start_summary(
+    *,
+    nav_now: float,
+    start_cash: float,
+    net_contrib: float,
+    start_date: str,
+) -> dict:
+    baseline = start_cash + net_contrib
+    if baseline <= 0:
+        since_pnl = 0.0
+        since_pct = 0.0
+    else:
+        since_pnl = nav_now - baseline
+        since_pct = (since_pnl / baseline) * 100.0
+
+    return {
+        "start_cash": float(start_cash),
+        "start_date": start_date,
+        "net_contrib": round(float(net_contrib), 2),
+        "since_pnl": round(float(since_pnl), 2),
+        "since_pct": round(float(since_pct), 2),
+        "summary_line": (
+            f"Started with ${start_cash:,.2f} on {start_date}."
+            f" Since then we’ve added ${net_contrib:,.2f}"
+            f" and our P&L is ${since_pnl:,.2f} at {since_pct:.2f}%."
+        ),
+    }
 
 @app.route("/live/status")
 @always_json
@@ -1227,13 +1302,14 @@ def live_status():
     from flask import request, current_app
     from services import etrade_service as et
     from services.trade_source import load_trades_merged
+
     about: Dict[str, Any] = {}
     debug = request.args.get("debug", "0") == "1"
-    debug_raw: dict[str, Any] = {}
+    debug_raw: Dict[str, Any] = {}
     etrade_ok = False
 
-    # ---------- 1) ACCOUNT SUMMARY (raw balances) ----------
-    acct_summary_raw: dict[str, Any] = {}
+    # ---------- 1) ACCOUNT SUMMARY (REAL E*TRADE NUMBERS) ----------
+    acct_summary_raw: Dict[str, Any] = {}
     try:
         acct_summary_raw = et.get_account_summary() or {}
         etrade_ok = True
@@ -1241,21 +1317,33 @@ def live_status():
         current_app.logger.exception("account summary error: %s", e)
 
     raw = acct_summary_raw.get("raw") or {}
+    comp = raw.get("Computed") or {}
     if debug:
         debug_raw["acct_summary_raw"] = acct_summary_raw
 
-    comp = raw.get("Computed") or {}
-
-    # Buying power = what you can actually deploy
-    buying_power = _safe_float(
-        comp.get("cashAvailableForInvestment")
-        or comp.get("cashBuyingPower")
-        or acct_summary_raw.get("available_funds")
+    # Pull the same fields we saw in your snapshot
+    # Example:
+    #   cash_balance = 4098.29
+    #   cash_buying_power = 4098.29
+    #   positions_market_value = separate call
+    cash_balance = _safe_float(
+        comp.get("cashBalance")
+        or acct_summary_raw.get("cash_balance")
         or 0.0
     )
 
+    cash_buying_power = _safe_float(
+        comp.get("cashBuyingPower")
+        or comp.get("cashAvailableForInvestment")
+        or acct_summary_raw.get("available_funds")
+        or cash_balance
+    )
+
+    # NAV = cash + positions (positions added later)
+    nav = None  # will compute after positions_value
+
     # ---------- 2) POSITIONS -> HOLDINGS + POSITIONS VALUE ----------
-    holdings: list[dict] = []
+    holdings: List[Dict[str, Any]] = []
     positions_value = 0.0
 
     try:
@@ -1270,36 +1358,25 @@ def live_status():
 
     positions_value = _safe_float(positions_value, 0.0)
 
-    # ---------- 3) APPROX NAV USING CASH BALANCE + NET CASH ----------
-    # E*TRADE UI:
-    #   Cash row ~= cashBalance - netCash
-    #   NAV      ~= Cash row + positions_value
-    # --- NAV (Net Account Value) ---
-    # Prefer E*TRADE's own computed netAccountValue or nav from the
-    # summary. Only fall back to a derived value if those are missing.
-    cash_balance = _safe_float(
-        comp.get("cashBalance"),
-        _safe_float(acct_summary_raw.get("cash_balance"), 0.0),
-    )
-    net_cash = _safe_float(comp.get("netCash"), 0.0)
+    # ---------- 3) NAV FROM CASH + POSITIONS ----------
+    # For your cash account, NAV ≈ cashBalance + positions_market_value
+    nav = round(cash_balance + positions_value, 2)
 
-    nav = _safe_float(
-        comp.get("netAccountValue") or acct_summary_raw.get("nav")
-    )
+    # ---------- 4) NORMALIZED ACCOUNT OBJECT + UI BUYING POWER ----------
+    # For your cash / PDT account, E*TRADE reports:
+    #   cash_balance = what you can really deploy
+    #   cashBuyingPower / cashAvailableForInvestment ~ same number
+    #
+    # For the left tile we want that real cash as "buying power" in CASH/PDT.
+    acct_mode = (raw.get("accountType") or raw.get("accountMode") or "").upper()
+    if acct_mode in {"PDT_ACCOUNT", "CASH", "CASH_ACCOUNT"}:
+        ui_buying_power = cash_balance
+    else:
+        # margin or weird cases – fall back sensibly to the broker BP if present
+        ui_buying_power = cash_buying_power if cash_buying_power is not None else cash_balance
 
-    # If nav wasn't present or came back non-finite, derive a best-effort
-    # value from cash + positions, adjusted by net_cash if we have it.
-    if not math.isfinite(nav) or nav <= 0:
-        effective_cash = cash_balance
-        if math.isfinite(net_cash):
-            effective_cash = cash_balance - net_cash
-        nav = round(effective_cash + positions_value, 2)
+    ui_buying_power = round(_safe_float(ui_buying_power, 0.0), 2)
 
-    nav = round(nav, 2)
-    buying_power = round(buying_power, 2)
-    positions_value = round(positions_value, 2)
-
-    # ---------- 4) NORMALIZED ACCOUNT OBJECT ----------
     account = {
         "account_id": (
             acct_summary_raw.get("account_id")
@@ -1319,24 +1396,12 @@ def live_status():
             or raw.get("accountMode")
         ),
         "nav": nav,
-        "available_funds": buying_power,
+        # "available_funds" should reflect what broker says you can deploy
+        "available_funds": cash_buying_power,
+        "cash_balance": cash_balance,
+        "buying_power": ui_buying_power,
+        "positions_value": positions_value,
     }
-    # --- UI buying power choice ---
-    # For your cash / PDT account, E*TRADE reports:
-    #   cash_balance = 2012.77  (what you can really deploy)
-    #   available_funds = 12.77 (tiny computed BP)
-    #
-    # For the left tile we want the *cash_balance* number.
-    acct_mode = (acct_summary_raw.get("raw", {})
-                 .get("accountType", "")).upper()
-    if acct_mode in {"PDT_ACCOUNT", "CASH", "CASH_ACCOUNT"}:
-        ui_buying_power = cash_balance
-    else:
-        # margin or weird cases – fall back sensibly
-        cash_balance = account.get("cash_balance")
-
-        available_funds = account.get("available_funds")
-        ui_buying_power = available_funds if available_funds is not None else cash_balance
 
     # ---------- 5) UNREALIZED & DAY P&L ----------
     total_cost = 0.0
@@ -1370,7 +1435,6 @@ def live_status():
         round((day_unrealized_pnl / nav) * 100.0, 2) if nav > 0 else 0.0
     )
 
-
     # ---------- 6) TRADES TABLE (for history) ----------
     start = (request.args.get("start") or "").strip()
     days = request.args.get("days", type=int)
@@ -1387,116 +1451,97 @@ def live_status():
 
     if debug:
         debug_raw["trades_raw"] = trades
-        
-    # -----------7) Realized P&L buckets (from E*TRADE) ------------------------
-    # 'about' has already been built above and should contain net_contrib.
-    # If anything failed earlier, it’s at least {} thanks to the default at the top.
-    account_key = (account or {}).get("account_key") or ""
-    net_contrib = float((about or {}).get("net_contrib") or 0.0)
 
+    # ---------- 7) REALIZED P&L (Option A: E*TRADE) ----------
     try:
+        account_key = (account or {}).get("account_key") or ""
+        if not account_key:
+            raise ValueError("account_key missing from E*TRADE summary")
+
+        try:
+            net_contrib_for_realized = float(get_total_contributions())
+        except Exception:
+            LOG.exception("get_total_contributions() failed; using 0.0")
+            net_contrib_for_realized = 0.0
+
         realized_obj = build_realized_view_from_etrade(
-            account_key=account_key,
-            net_contrib=net_contrib,
+            account_key,
+            net_contrib_for_realized,
         )
-    except Exception as exc:  # extra safety – dashboard still works if E*TRADE call fails
-        LOG.exception("Failed to build realized P&L view from E*TRADE in live_status: %s", exc)
+
+    except Exception as exc:
+        LOG.exception(
+            "Failed to build realized view from E*TRADE, falling back to zeros: %s",
+            exc,
+        )
         realized_obj = {
-            "day": {"pnl": 0.0, "pct": 0.0},
-            "week": {"pnl": 0.0, "pct": 0.0},
-            "last_week": {"pnl": 0.0, "pct": 0.0},
-            "month": {"pnl": 0.0, "pct": 0.0},
-            "all": {"pnl": 0.0, "pct": 0.0},
+            "day":       {"pnl": 0.0, "cost": 0.0},
+            "week":      {"pnl": 0.0, "cost": 0.0},
+            "last_week": {"pnl": 0.0, "cost": 0.0},  # <- use last_week
+            "month":     {"pnl": 0.0, "cost": 0.0},
+            "all":       {"pnl": 0.0, "cost": 0.0},
         }
 
-    # ---------- 8) VALUE / TRADEALERTS NAV (BP + positions) ----------
-    # nav_ta = TradeAlerts computed NAV: cash we can deploy (BP) + positions value.
-    # This matches the 4,381.31 number you see on the web UI when you’re all in cash.
-    nav_ta = round(float(ui_buying_power) + float(positions_value), 2)
 
     # ---------- 9) ACCOUNT GROWTH SINCE START (NAV-based) ----------
-    # Baseline seed and start date for “Since Start” stats
-    start_cash = START_CASH_BASELINE          # 392.67
-    start_date = LIVE_APP_START_DATE          # "2025-08-22"
+    # Use the baseline (START_CASH_BASELINE on START_DATE) plus real contributions.
+    start_cash = START_CASH_BASELINE
+    start_date = START_DATE  # or LIVE_APP_START_DATE if you prefer that baseline
 
-    # Total contributions you've added since go-live
     try:
+        # Total deposits/withdrawals since start_date, from contributions helper
         net_contrib = float(get_total_contributions(start_date))
     except Exception:
         net_contrib = 0.0
 
-    # Use broker NAV as the truth for account value
-    ui_buying_power = float(account.get("buying_power") or 0.0)
-    positions_value = float(account.get("positions_value") or 0.0)
-    nav_ta = round(float(nav or 0.0), 2)  # now matched to E*TRADE NAV (within timing)
+    total_in = _safe_float(start_cash, 0.0) + _safe_float(net_contrib, 0.0)
 
-    # True growth since start: current NAV minus initial cash + all contributions
-    total_gain = round(nav_ta - start_cash - net_contrib, 2)
-
-    # % growth relative to original seed capital
-    total_gain_pct = 0.0
-    if start_cash:
-        total_gain_pct = round((total_gain / start_cash) * 100.0, 2)
+    if total_in > 0:
+        # NAV-based growth:
+        #   since_pnl = current NAV - (original seed + all contributions)
+        since_pnl = nav - total_in
+        since_pct = round((since_pnl / total_in) * 100.0, 2)
+    else:
+        since_pnl = 0.0
+        since_pct = 0.0
 
     # VALUE tile (left card)
-    value_obj = {
-        "net_account_value": nav,      # broker NAV from account summary
-        "positions_value": positions_value,
-        "buying_power": ui_buying_power,
-        "value": nav_ta,               # this now ≈ E*TRADE Net Account Value
-    }
-
-    # Metrics used by the tiles + hero sentence
-    metrics = {
-        "net_account_value": nav,
-        "buying_power": ui_buying_power,
-        "positions_value": positions_value,
-        "day_unrealized_pnl": day_unrealized_pnl,
-        "day_unrealized_pnl_pct": day_unrealized_pnl_pct,
-        "unrealized_pl": total_unreal_pl,
-        "unrealized_pl_pct": total_unreal_pct,
-        "total_gain_nav": total_gain,
-        "total_gain_nav_pct": total_gain_pct,
-    }
-
-    # ABOUT header – start, contribs, growth since start
-    about = {
-        "start_cash": start_cash,
-        "start_date": start_date,
-        "net_contrib": round(net_contrib, 2),
-        "since_pnl": total_gain,
-        "since_pct": total_gain_pct,
-    }
-
-    # ---------- 10) VALUE OBJECT FOR LEFT TILE ----------
-    # Keep the left tile showing the raw broker NAV (2,927.61) so you can still
-    # see exactly what the API is giving us, but expose nav_ta as "value".
     value_obj = {
         "net_account_value": nav,      # broker NAV from get_account_summary()
         "positions_value": positions_value,
         "buying_power": ui_buying_power,
-        "value": nav_ta,              # TA computed NAV (BP + PV)
     }
 
-    # ---------- 11) METRICS / VALUE FOR TILES ----------
+    # ---------- 10) METRICS / VALUE FOR TILES ----------
+    # For now, use the NAV-based growth numbers here as well.
+    total_gain = since_pnl
+    total_gain_pct = since_pct
+
     metrics = {
         # Left tile
         "net_account_value": nav,
-        "nav_ta": nav_ta,             # TA-computed NAV (for debugging / future UI)
         "buying_power": ui_buying_power,
         "positions_value": positions_value,
 
         # Center tile: Day vs All-Time
-        # Day = today's move (sum of daysGain / day_pl)
-        # All Time = full unrealized based on cost vs current value
         "day_unrealized_pnl": day_unrealized_pnl,
         "day_unrealized_pnl_pct": day_unrealized_pnl_pct,
         "unrealized_pl": total_unreal_pl,
         "unrealized_pl_pct": total_unreal_pct,
 
-        # Hero blurb “since start” (NAV-based)
+        # NAV-based growth (kept for debugging / future UI)
         "total_gain_nav": total_gain,
         "total_gain_nav_pct": total_gain_pct,
+    }
+
+    # ---------- 11) P&L SINCE START (for hero blurb) ----------
+    # Drives the “Started with $X on Y…” sentence in the UI.
+    about = {
+        "start_cash": start_cash,
+        "start_date": start_date,
+        "net_contrib": round(net_contrib, 2),
+        "since_pnl": since_pnl,
+        "since_pct": since_pct,
     }
 
     # ---------- 12) AUTH / STATUS ----------
@@ -1505,7 +1550,7 @@ def live_status():
         or os.path.exists(str(NEED_AUTH_FLAG))
     )
 
-    payload: dict[str, Any] = {
+    payload: Dict[str, Any] = {
         "ok": True,
         "etrade_ok": etrade_ok,
         "needs_reconnect": needs_reconnect,
@@ -1522,17 +1567,6 @@ def live_status():
         payload["debug_raw"] = debug_raw
 
     return payload
-
-from datetime import datetime, timedelta
-from typing import Any, Dict, List
-
-try:
-    from zoneinfo import ZoneInfo
-    ETZ = ZoneInfo("America/New_York")
-except Exception:  # pragma: no cover
-    ETZ = None
-
-
 def compute_realized_buckets_from_trades(
     trades: List[Dict[str, Any]],
     start_cash: float,

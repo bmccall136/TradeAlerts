@@ -305,6 +305,24 @@ def _headline_looks_bad(headline: str, compound_threshold: float = -0.25) -> boo
     score = sia.polarity_scores(headline)["compound"]
     return score <= compound_threshold
 
+def news_headlines_for_symbol(symbol: str, limit: int = 5) -> List[str]:
+    """
+    Convenience helper: return a list of short headline strings for a symbol.
+
+    Pure DB read, uses recent_news_for_symbol(). Does NOT call NewsAPI.
+    """
+    rows = recent_news_for_symbol(symbol, limit=limit)
+    headlines: List[str] = []
+    for row in rows:
+        title = (row.get("headline") or "").strip()
+        if not title:
+            continue
+        src = (row.get("source") or "").strip()
+        if src:
+            headlines.append(f"{src}: {title}")
+        else:
+            headlines.append(title)
+    return headlines
 
 def has_fresh_bad_news(
     symbol: str,
