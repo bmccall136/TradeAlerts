@@ -7,9 +7,11 @@ import sys
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Tuple, Optional
 # sell_guard.py (top-ish)
 from services.realized_service import insert_realized_trade
+from ai_advisor import get_ai_recommendation
+from services.news_service import news_headlines_for_symbol, has_fresh_bad_news
 
 try:
     from zoneinfo import ZoneInfo
@@ -42,6 +44,119 @@ try:
 except Exception as exc:  # pragma: no cover
     LOG.error("FATAL: cannot import services.etrade_service: %s", exc)
     raise SystemExit(1)
+
+# === AI Advisor JSON log ==========================================
+AI_LOG = logging.getLogger("ai-advisor")
+
+if not AI_LOG.handlers:
+    AI_LOG.setLevel(logging.INFO)
+    try:
+        log_dir = os.path.join(os.path.dirname(__file__), "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, "ai_advisor.log")
+    except Exception:
+        # Fallback if something weird happens with paths
+        log_path = "ai_advisor.log"
+
+    ai_fh = logging.FileHandler(log_path, encoding="utf-8")
+    # We log pure JSON per line, so no extra prefix
+    ai_fh.setFormatter(logging.Formatter("%(message)s"))
+    AI_LOG.addHandler(ai_fh)
+    AI_LOG.propagate = False
+
+def log_ai_decision(
+    *,
+    symbol: str,
+    mode: str,
+    qty: float,
+    pl_pct: float,
+    hold_min: float,
+    action: str,
+    confidence: int,
+    reason_tags: list[str] | None,
+    reason: str,
+    has_bad_news: bool = False,
+    headlines: list[str] | None = None,
+    market_regime: str | None = None,
+) -> None:
+    """Write a single JSON record for each AI exit decision."""
+    try:
+        record = {
+            "ts": datetime.now(tz=UTC).isoformat(),
+            "symbol": symbol,
+            "mode": mode,
+            "qty": float(qty),
+            "pl_pct": float(pl_pct),
+            "hold_min": float(hold_min),
+            "action": action,
+            "confidence": int(confidence),
+            "reason_tags": reason_tags or [],
+            "reason": reason,
+            "has_bad_news": bool(has_bad_news),
+        }
+        if market_regime:
+            record["market_regime"] = market_regime
+        if headlines:
+            record["headlines"] = headlines[:3]  # keep it short for readability
+        AI_LOG.info(json.dumps(record, ensure_ascii=False))
+    except Exception as exc:
+        LOG.warning("Failed to log AI decision for %s: %s", symbol, exc)
+
+# === Market regime helper (SPY-based) =======================================
+_last_regime: str = "unknown"
+_last_regime_ts: float = 0.0
+
+def get_market_regime() -> str:
+    """
+    Classify the current intraday market regime using SPY.
+
+    Returns one of: "uptrend", "downtrend", "chop", or "unknown".
+
+    Uses a small cache so we don't hammer yfinance / the network
+    more than once per minute.
+    """
+    global _last_regime, _last_regime_ts
+    now = time.time()
+
+    # Reuse last value if it's fresh and not unknown
+    if _last_regime != "unknown" and (now - _last_regime_ts) < 60:
+        return _last_regime
+
+    try:
+        import yfinance as yf  # scanner already uses this; safe to depend on
+    except ImportError:
+        return _last_regime or "unknown"
+
+    try:
+        # 1-day, 5-minute bars gives a good intraday picture
+        df = yf.download("SPY", period="1d", interval="5m", progress=False)
+        close = df["Close"].dropna()
+        if len(close) < 5:
+            return _last_regime or "unknown"
+
+        start = float(close.iloc[0])
+        end = float(close.iloc[-1])
+        intraday_ret = (end / start) - 1.0
+
+        intraday_range = (float(close.max()) - float(close.min())) / start
+
+        # Simple rules – tweak thresholds later if needed
+        if abs(intraday_ret) < 0.002 and intraday_range < 0.004:
+            regime = "chop"
+        elif intraday_ret > 0.004:
+            regime = "uptrend"
+        elif intraday_ret < -0.004:
+            regime = "downtrend"
+        else:
+            regime = "chop"
+
+    except Exception:
+        regime = _last_regime or "unknown"
+
+    _last_regime = regime
+    _last_regime_ts = now
+    return regime
+
 # --------------------------------------------------------------------------- #
 # E*TRADE positions helper
 # --------------------------------------------------------------------------- #
@@ -255,56 +370,86 @@ def ai_exit_check(
     last_price: float,
 ) -> Dict[str, Any]:
     """
-    Call AI Advisor for exit recommendation.
+    Ask AI Advisor (via ai_advisor.get_ai_recommendation) for an exit
+    recommendation, including recent news context.
 
     Returns a dict like:
       {
         "action": "SELL" | "HOLD" | "RED_FLAG",
-        "confidence": 0-100,
+        "confidence": int,
         "reason": "...",
-        "reason_tags": ["tag1", "tag2"]
+        "reason_tags": [...],
       }
+
+    NOTE: ai_advisor.get_ai_recommendation() is designed to NEVER raise; it
+    returns a neutral recommendation on error. We still wrap in try/except as
+    a final safety net.
     """
-    if not _openai_client:
-        return {"action": "HOLD", "confidence": 0, "reason": "no_client"}
-
-    prompt = f"""
-You are an intraday trading risk assistant. Evaluate whether we should EXIT a position.
-
-Data:
-- Symbol: {symbol}
-- Quantity: {qty}
-- Unrealized P/L: {pl_pct:.2f}%
-- Hold time (minutes): {hold_min:.1f}
-- Entry price: {entry_price:.2f}
-- Last price: {last_price:.2f}
-
-Respond with a concise JSON only, no extra text, like:
-{{
-  "action": "SELL" | "HOLD" | "RED_FLAG",
-  "confidence": 0-100,
-  "reason": "short explanation",
-  "reason_tags": ["risk", "trend", "volatility"]
-}}
-"""
-
     try:
-        resp = _openai_client.responses.create(
-            model="gpt-4.1-mini",
-            input=prompt,
-            max_output_tokens=200,
-            temperature=0.1,
+        # --- 1) Build news context from our DB (no external calls here) ---
+        headlines = news_headlines_for_symbol(symbol, limit=5)
+        bad_flag, bad_rows = has_fresh_bad_news(
+            symbol,
+            lookback_minutes=240,
+            max_rows=20,
         )
-        # Expect a JSON string back from the model
-        raw = resp.output[0].content[0].text
-        data = json.loads(raw)
-        if not isinstance(data, dict):
-            raise ValueError("AI response is not a JSON object")
-        return data
+        if bad_flag:
+            headlines.insert(
+                0,
+                f"BAD NEWS FLAG: {len(bad_rows)} negative headline(s) in last 4h.",
+            )
+        if not headlines:
+            headlines = [
+                "No major recent news found for this symbol in the last few hours."
+            ]
+
+        # --- 2) Compute market regime (SPY intraday) ---
+        market_regime = get_market_regime()
+
+        # --- 3) Build snapshot for ai_advisor.get_ai_recommendation() ---
+        price = float(last_price or 0.0)
+        vwap = float(entry_price or price)
+        vwap_diff = float(price - vwap)
+
+        snapshot: Dict[str, Any] = {
+            "symbol": symbol,
+            "name": symbol,
+            "price": price,
+            "vwap": vwap,
+            "vwap_diff": vwap_diff,
+            "indicators": {
+                "pl_pct": float(pl_pct),
+                "hold_minutes": float(hold_min),
+            },
+            "position": {
+                "qty": float(qty),
+                "entry_price": float(entry_price or 0.0),
+                "unrealized_pl_pct": float(pl_pct),
+            },
+            "portfolio": None,
+            "news_headlines": headlines,
+            "timeframe": "intraday/swing exit (next 1-3 days)",
+            "market_regime": market_regime,
+        }
+
+        rec = get_ai_recommendation(snapshot)
+        action = str(rec.get("action", "HOLD")).upper()
+        confidence = int(rec.get("confidence") or 0)
+        reason_tags = rec.get("reason_tags") or []
+        comment = rec.get("comment") or rec.get("reason") or ""
+
+        return {
+            "action": action,
+            "confidence": confidence,
+            "reason_tags": reason_tags,
+            "reason": comment,
+            "market_regime": market_regime,
+            "has_bad_news": bool(bad_flag),
+        }
+
     except Exception as exc:
         LOG.warning("ai_exit_check error for %s: %s", symbol, exc)
-        return {"action": "HOLD", "confidence": 0, "reason": "error"}
-
+        return {"action": "HOLD", "confidence": 0, "reason": "error", "reason_tags": []}
 
 # --------------------------------------------------------------------------- #
 # Core logic
@@ -711,6 +856,7 @@ def main() -> None:
                     hold_min,
                 )
 
+                # Min hold: don’t touch very fresh entries
                 if hold_min < cfg.min_hold_minutes:
                     LOG.info(
                         "[HOLD] %s hold_min=%.1f < min_hold=%.1f → skipping",
@@ -720,35 +866,43 @@ def main() -> None:
                     )
                     continue
 
-                if hold_min > cfg.max_hold_minutes:
-                    LOG.info(
-                        "[TIMEOUT] %s hold_min=%.1f > max_hold=%.1f, pl=%.2f%% → exit",
-                        s,
-                        hold_min,
-                        cfg.max_hold_minutes,
-                        pl_pct,
-                    )
-                    pt, lim = compute_order_params(s, cfg, kind="TIMEOUT")
-                    place_with_adaptive_variants(
-                        acct_key,
-                        s,
-                        qty,
-                        pt,
-                        lim if pt == "LIMIT" else None,
-                        cfg.max_place_attempts,
-                    )
-                    continue
+                # --- AI EXIT: Max says goes (except hard stoploss) ---
+                ai_action = None
+                ai_conf = 0
+                ai_tags: List[str] = []
+                ai_veto_profit_exits = False
 
-                # --- AI emergency exit (FULL SEND) ---
-                if ai_enabled and ai_use_exits:
+                if ai_enabled and ai_use_exits and qty > 0:
                     try:
                         last_px = entry_px * (1.0 + (pl_pct / 100.0)) if entry_px else 0.0
                         ai = ai_exit_check(s, qty, pl_pct, hold_min, entry_px, last_px)
-                        ai_action = str(ai.get("action", "HOLD")).upper()
-                        ai_conf = int(ai.get("confidence", 0) or 0)
-                        ai_tags = ai.get("reason_tags") or []
 
-                        if ai_action in {"SELL", "RED_FLAG"} and ai_conf >= 80:
+                        ai_action = str(ai.get("action", "HOLD")).upper()
+                        ai_conf = int(ai.get("confidence") or 0)
+                        ai_tags = ai.get("reason_tags") or []
+                        ai_reason = ai.get("reason") or ""
+
+                        has_bad = bool(ai.get("has_bad_news"))
+                        regime = ai.get("market_regime")
+
+                        # 🔎 Log every AI decision as JSON (for analysis/backtest later)
+                        log_ai_decision(
+                            symbol=s,
+                            mode=cfg.mode,
+                            qty=qty,
+                            pl_pct=pl_pct,
+                            hold_min=hold_min,
+                            action=ai_action,
+                            confidence=ai_conf,
+                            reason_tags=ai_tags,
+                            reason=ai_reason,
+                            has_bad_news=has_bad,
+                            headlines=None,
+                            market_regime=regime,
+                        )
+
+                        # 🟥 If Max says SELL or RED_FLAG → we SELL. No confidence threshold.
+                        if ai_action in {"SELL", "RED_FLAG"}:
                             pt, lim = compute_order_params(s, cfg)
                             LOG.info(
                                 "[AI_EXIT] %s qty=%d pl=%.2f%% hold=%.1f mins → %s (%d%%) tags=%s → place %s%s",
@@ -771,6 +925,19 @@ def main() -> None:
                                 cfg.max_place_attempts,
                             )
                             continue
+
+                        # 🟩 If Max says HOLD → veto profit-style exits this loop
+                        if ai_action == "HOLD":
+                            ai_veto_profit_exits = True
+                            LOG.info(
+                                "[AI_EXIT_VETO] %s pl=%.2f%% hold=%.1f mins → HOLD (%d%%) tags=%s → veto profit exits this loop",
+                                s,
+                                pl_pct,
+                                hold_min,
+                                ai_conf,
+                                ",".join(ai_tags),
+                            )
+
                     except Exception as exc:
                         LOG.warning("[AI_EXIT] error for %s: %s", s, exc)
                 else:
@@ -781,7 +948,44 @@ def main() -> None:
                         ai_use_exits,
                     )
 
-                # Intraday stop-loss
+                # ⏰ AI-aware timeout for stale losers only
+                # Only trigger if:
+                #   - max_hold_minutes > 0 (timeout enabled)
+                #   - position is older than max_hold_minutes
+                #   - AND P/L is worse than timeout_exit_pct (e.g. <= -1.0%)
+                if (
+                    cfg.max_hold_minutes > 0
+                    and hold_min > cfg.max_hold_minutes
+                    and pl_pct <= cfg.timeout_exit_pct
+                ):
+                    if ai_enabled and ai_use_exits and ai_action == "HOLD":
+                        LOG.info(
+                            "[TIMEOUT_VETO_AI] %s hold_min=%.1f > max_hold=%.1f, pl=%.2f%% but AI says HOLD → skip timeout",
+                            s,
+                            hold_min,
+                            cfg.max_hold_minutes,
+                            pl_pct,
+                        )
+                    else:
+                        LOG.info(
+                            "[TIMEOUT] %s hold_min=%.1f > max_hold=%.1f, pl=%.2f%% → exit",
+                            s,
+                            hold_min,
+                            cfg.max_hold_minutes,
+                            pl_pct,
+                        )
+                        pt, lim = compute_order_params(s, cfg, kind="TIMEOUT")
+                        place_with_adaptive_variants(
+                            acct_key,
+                            s,
+                            qty,
+                            pt,
+                            lim if pt == "LIMIT" else None,
+                            cfg.max_place_attempts,
+                        )
+                    continue
+
+                # Intraday stop-loss (hard floor, AI cannot veto)
                 if cfg.allow_intraday_stoploss and pl_pct <= cfg.timeout_exit_pct:
                     LOG.info(
                         "[STOPLOSS] %s pl=%.2f%% <= timeout_exit_pct=%.2f%% → exit",
@@ -799,6 +1003,7 @@ def main() -> None:
                         cfg.max_place_attempts,
                     )
                     continue
+
 
                 if pl_pct >= cfg.trail_arm_gain_pct:
                     prev = armed_trail.get(s)
@@ -820,11 +1025,46 @@ def main() -> None:
                 if s in armed_trail:
                     floor = armed_trail[s]
                     if pl_pct <= floor:
+                        if ai_veto_profit_exits:
+                            LOG.info(
+                                "[TRAIL_EXIT_VETO] %s pl=%.2f%% <= trail_floor=%.2f%% but AI vetoed profit exits this loop",
+                                s,
+                                pl_pct,
+                                floor,
+                            )
+                        else:
+                            LOG.info(
+                                "[TRAIL_EXIT] %s pl=%.2f%% <= trail_floor=%.2f%% → exit",
+                                s,
+                                pl_pct,
+                                floor,
+                            )
+                            pt, lim = compute_order_params(s, cfg)
+                            place_with_adaptive_variants(
+                                acct_key,
+                                s,
+                                qty,
+                                pt,
+                                lim if pt == "LIMIT" else None,
+                                cfg.max_place_attempts,
+                            )
+                            armed_trail.pop(s, None)
+                            continue
+
+                if pl_pct >= cfg.target_gain_pct:
+                    if ai_veto_profit_exits:
                         LOG.info(
-                            "[TRAIL_EXIT] %s pl=%.2f%% <= trail_floor=%.2f%% → exit",
+                            "[TARGET_EXIT_VETO] %s pl=%.2f%% >= target_gain_pct=%.2f%% but AI vetoed profit exits this loop",
                             s,
                             pl_pct,
-                            floor,
+                            cfg.target_gain_pct,
+                        )
+                    else:
+                        LOG.info(
+                            "[TARGET_EXIT] %s pl=%.2f%% >= target_gain_pct=%.2f%% → exit",
+                            s,
+                            pl_pct,
+                            cfg.target_gain_pct,
                         )
                         pt, lim = compute_order_params(s, cfg)
                         place_with_adaptive_variants(
@@ -837,25 +1077,6 @@ def main() -> None:
                         )
                         armed_trail.pop(s, None)
                         continue
-
-                if pl_pct >= cfg.target_gain_pct:
-                    LOG.info(
-                        "[TARGET_EXIT] %s pl=%.2f%% >= target_gain_pct=%.2f%% → exit",
-                        s,
-                        pl_pct,
-                        cfg.target_gain_pct,
-                    )
-                    pt, lim = compute_order_params(s, cfg)
-                    place_with_adaptive_variants(
-                        acct_key,
-                        s,
-                        qty,
-                        pt,
-                        lim if pt == "LIMIT" else None,
-                        cfg.max_place_attempts,
-                    )
-                    armed_trail.pop(s, None)
-                    continue
 
             loop_end = datetime.now(tz=UTC)
             elapsed = (loop_end - loop_start).total_seconds()

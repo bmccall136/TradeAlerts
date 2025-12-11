@@ -9,6 +9,9 @@ from typing import Any, Dict
 from dotenv import load_dotenv
 from openai import OpenAI, OpenAIError
 
+# NEW: simple budget + throttle helper
+from ai_budget import allow_ai_call, note_ai_call, budget_summary
+
 # Load .env if present
 load_dotenv()
 
@@ -54,6 +57,27 @@ def _neutral_recommendation(reason: str) -> Dict[str, Any]:
     }
 
 
+def _budget_block_recommendation() -> Dict[str, Any]:
+    """
+    Special neutral rec used when the budget/throttle blocks an AI call.
+    Behaves like _neutral_recommendation, but with a distinct tag so we
+    can see it in logs if needed.
+    """
+    try:
+        summary = budget_summary()
+    except Exception:
+        summary = "AI budget/throttle limit reached."
+
+    return {
+        "action": "SKIP",
+        "confidence": 0,
+        "sizing_hint": "AVOID_ADDING",
+        "reason_tags": ["ai_budget_block"],
+        "comment": f"AI call blocked by budget/throttle. {summary}",
+        "raw": {"error": "ai_budget_block"},
+    }
+
+
 def get_ai_recommendation(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     """
     Given a snapshot describing a potential trade (symbol, price, indicators, news),
@@ -67,6 +91,16 @@ def get_ai_recommendation(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         snapshot_json = json.dumps(snapshot)
     except TypeError as exc:
         return _neutral_recommendation(f"snapshot_not_serializable: {exc}")
+
+    # --- Budget / throttle gate (hard stop) ---
+    # If this says "no", we *do not* call OpenAI at all.
+    try:
+        if not allow_ai_call("generic"):
+            return _budget_block_recommendation()
+    except Exception:
+        # If the budget module itself fails, fail open rather than
+        # breaking trading logic; we'll just proceed without throttling.
+        pass
 
     client = _get_client()
     if client is None:
@@ -122,7 +156,6 @@ Here is the snapshot to evaluate:
     except OpenAIError as exc:
         # Any API problem → safe neutral rec, don't crash your loop
         global _ai_enabled
-        # For hard quota/auth errors we could disable permanently; for now we just log in tags
         return _neutral_recommendation(f"openai_error: {exc}")
 
     raw = resp.choices[0].message.content
@@ -130,6 +163,16 @@ Here is the snapshot to evaluate:
         data = json.loads(raw)
     except json.JSONDecodeError:
         return _neutral_recommendation("json_parse_error")
+
+    # --- Record this call in the budget tracker ---
+    try:
+        # For now we just use the estimated per-call cost.
+        # If you want to use token-precise pricing later, you can
+        # compute it from resp.usage and pass a float to note_ai_call().
+        note_ai_call()
+    except Exception:
+        # Never let budget logging break trading
+        pass
 
     # Normalize and enforce keys
     action = str(data.get("action", "SKIP")).upper()

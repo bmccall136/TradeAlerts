@@ -10,7 +10,17 @@ import logging
 from .etrade_auth_flow import get_oauth_session
 
 
-log = logging.getLogger(__name__)
+import logging
+import sys
+
+LOG = logging.getLogger("etrade")
+LOG.setLevel(logging.INFO)
+if not LOG.handlers:
+    h = logging.StreamHandler(sys.stdout)
+    h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s etrade: %(message)s"))
+    LOG.addHandler(h)
+
+_lg = LOG  # <<< add this line
 
 from services.broker_live import (
     BASE as _BASE,  # https://api.etrade.com/v1
@@ -2627,15 +2637,19 @@ def get_account_summary(account_id_key: str | None = None) -> dict:
 
     def _extract_balance_view(raw: dict) -> dict | None:
         """
-        Accepts a variety of E*TRADE balance shapes and returns the inner
-        "one account" dict, or None if we can't recognize it.
+        Accepts a variety of E*TRADE balance shapes (XML->dict or JSON) and
+        returns the inner "one account" dict, or None if we can't recognize it.
         """
         if not isinstance(raw, dict):
             return None
 
-        bal = raw.get("BalanceResponse") or raw.get("balanceResponse") or raw
+        bal = (
+            raw.get("BalanceResponse")
+            or raw.get("balanceResponse")
+            or raw
+        )
 
-        # Common shape: { "BalanceResponse": { "balance": [ { ... } ] } }
+        # Common XML->dict shape: { "BalanceResponse": { "balance": [ { ... } ] } }
         if isinstance(bal, dict) and isinstance(bal.get("balance"), list) and bal["balance"]:
             bal = bal["balance"][0]
 
@@ -2709,38 +2723,46 @@ def get_account_summary(account_id_key: str | None = None) -> dict:
 
     raw: dict = {}
 
-    # ---------- 1) Try resilient helper if present ----------
-    if "fetch_balances_resilient" in globals():
+    # ---------- 1) Preferred path: XML /balance with BROKERAGE + realTimeNAV ----------
+    try:
+        import xmltodict  # type: ignore
+    except Exception:
+        xmltodict = None  # type: ignore
+
+    acct_for_call = aid_key or aid_num
+
+    if xmltodict and acct_for_call:
         try:
-            candidate = fetch_balances_resilient(
-                sess,
-                aid_key or aid_num,
-                aid_num or aid_key,
+            url = f"{ETRADE_BASE_URL}/v1/accounts/{acct_for_call}/balance"
+            params = {"instType": "BROKERAGE", "realTimeNAV": "true"}
+            r = sess.get(
+                url,
+                params=params,
+                headers={"Accept": "application/xml"},
+                timeout=15,
             )
-            if isinstance(candidate, dict) and candidate:
-                raw = candidate
+            if r.status_code == 200 and (r.text or "").strip():
+                raw_xml = xmltodict.parse(r.text) or {}
+                if isinstance(raw_xml, dict) and raw_xml:
+                    raw = raw_xml
         except Exception:
             raw = {}
 
-    # ---------- 2) Fallback: direct /balance.json calls ----------
-    if not raw:
-        candidates = [c for c in (aid_key, aid_num) if c]
-        for acct in candidates:
-            try:
-                url = f"{ETRADE_BASE_URL}/v1/accounts/{acct}/balance.json"
-                r = sess.get(
-                    url,
-                    headers={"Accept": "application/json"},
-                    timeout=15,
-                )
-                # treat non-200 as "no data", do NOT raise
-                if r.status_code == 200 and (r.text or "").strip():
-                    maybe = r.json() or {}
-                    if isinstance(maybe, dict) and maybe:
-                        raw = maybe
-                        break
-            except Exception:
-                continue
+    # ---------- 2) Fallback: old JSON /balance.json (legacy) ----------
+    if not raw and acct_for_call:
+        try:
+            url = f"{ETRADE_BASE_URL}/v1/accounts/{acct_for_call}/balance.json"
+            r = sess.get(
+                url,
+                headers={"Accept": "application/json"},
+                timeout=15,
+            )
+            if r.status_code == 200 and (r.text or "").strip():
+                maybe = r.json() or {}
+                if isinstance(maybe, dict) and maybe:
+                    raw = maybe
+        except Exception:
+            raw = {}
 
     # ---------- 3) Parse balances ----------
     bal = _extract_balance_view(raw)
@@ -2756,18 +2778,24 @@ def get_account_summary(account_id_key: str | None = None) -> dict:
         })
         return out
 
-    comp = (bal.get("Computed")
-            or bal.get("computedBalance")
-            or {})
+    comp = (
+        bal.get("Computed")
+        or bal.get("computedBalance")
+        or {}
+    )
 
     # --- Core fields from E*TRADE ---
+    # From your good snapshot:
+    #   cashBalance       : 4098.29
+    #   cashBuyingPower   : 4098.29
+    #   netCash           : 4098.29
     cash_balance = _f(
         comp.get("cashBalance")
         or bal.get("cashBalance"),
         0.0,
     )
 
-    # Settled cash for investment (if E*TRADE reports it – often 0 in practice)
+    # Settled cash for investment (if reported)
     settled_cash = _f(
         comp.get("settledCashForInvestment")
         or bal.get("settledCashForInvestment"),
@@ -2775,7 +2803,9 @@ def get_account_summary(account_id_key: str | None = None) -> dict:
     )
 
     # ---------- NAV (Net Account Value) ----------
-    # First try the obvious fields on the primary balance dict
+    # Many balance payloads don't expose NAV directly for cash accounts,
+    # so we grab whatever NAV-like thing we can find, and let callers
+    # recompute NAV using positions when needed.
     nav = _f(
         comp.get("netAccountValue")
         or bal.get("netAccountValue")
@@ -2786,16 +2816,13 @@ def get_account_summary(account_id_key: str | None = None) -> dict:
         0.0,
     )
 
-    # If the direct fields aren't populated, try a deep search over the full payload
     if nav == 0.0:
         deep_nav = _dig_nav(raw)
         if deep_nav is not None:
             nav = _f(deep_nav, 0.0)
 
-    # Fallback NAV:
-    # If the standard NAV fields are missing/zero, try cashBuyingPower / totalBuyingPower,
-    # which for a flat cash account should match "Net Account Value" on E*TRADE.
     if nav == 0.0:
+        # Fallback: use cash buying power as a proxy NAV for a pure cash account.
         nav_from_bp = _f(
             comp.get("cashBuyingPower")
             or bal.get("cashBuyingPower")
@@ -2809,8 +2836,8 @@ def get_account_summary(account_id_key: str | None = None) -> dict:
             nav = cash_balance
 
     # --- Buying power / available funds ---
-    # For a cash account, the cleanest "what can I actually deploy" is netCash,
-    # with fallbacks to cashBuyingPower / cashAvailableForInvestment, etc.
+    # For your cash/PDT account, the clean "what can I deploy right now"
+    # is essentially the cash buying power.
     net_cash = _f(
         comp.get("netCash")
         or bal.get("netCash"),
@@ -2831,8 +2858,8 @@ def get_account_summary(account_id_key: str | None = None) -> dict:
         0.0,
     )
 
-    # Prefer netCash if present, otherwise fall back through the others.
-    available = net_cash or cash_bp or alt_bp or cash_balance
+    # Prefer cash buying power / net cash, then fall back to cash balance.
+    available = cash_bp or net_cash or alt_bp or cash_balance
 
     out = dict(base)
     out.update({

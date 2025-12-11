@@ -3726,45 +3726,62 @@ def _fetch_realized_trades_from_etrade(
     return trades
 
 
+# === PATCH: E*TRADE-based realized P&L buckets ================================
 def realized_buckets_from_etrade(account_key: str) -> Dict[str, float]:
     """
     Build realized P&L buckets from E*TRADE data:
-      - today
-      - week (last 7 days, including today)
-      - month (calendar month-to-date)
-      - all (all fetched)
+      - today       (calendar day)
+      - week        (this calendar week, Monday → today)
+      - last_week   (previous calendar week)
+      - month       (calendar month-to-date)
+      - all         (all fetched trades)
     """
-    trades = _fetch_realized_trades_from_etrade(account_key=account_key, days_back=365)
+    trades = _fetch_realized_trades_from_etrade(
+        account_key=account_key,
+        days_back=365,
+    )
+
     if ETZ is not None:
         now_local = datetime.now(tz=ETZ)
     else:  # pragma: no cover
         now_local = datetime.now(tz=UTC)
 
     today = now_local.date()
-    week_start = today - timedelta(days=6)
+    # calendar week boundaries (Mon–Sun)
+    this_week_start = today - timedelta(days=today.weekday())
+    last_week_start = this_week_start - timedelta(days=7)
+    last_week_end = this_week_start - timedelta(days=1)
+    # calendar month start
     month_start = today.replace(day=1)
 
-    buckets = {
+    buckets: Dict[str, float] = {
         "today": 0.0,
         "week": 0.0,
+        "last_week": 0.0,
         "month": 0.0,
         "all": 0.0,
     }
 
     for t in trades:
         try:
+            # t.close_time is tz-aware
             t_local = t.close_time.astimezone(now_local.tzinfo)
             d = t_local.date()
-            buckets["all"] += t.pl
-            if d == today:
-                buckets["today"] += t.pl
-            if d >= week_start:
-                buckets["week"] += t.pl
-            if d >= month_start:
-                buckets["month"] += t.pl
+            pl = float(t.pl or 0.0)
         except Exception:
+            # Defensive: bad trade rows are ignored, not fatal
             continue
 
-    return buckets
+        buckets["all"] += pl
 
+        if d == today:
+            buckets["today"] += pl
+        if d >= this_week_start:
+            buckets["week"] += pl
+        if last_week_start <= d <= last_week_end:
+            buckets["last_week"] += pl
+        if d >= month_start:
+            buckets["month"] += pl
+
+    return buckets
 __all__ = ["ETradeService", "RateLimitError"]
