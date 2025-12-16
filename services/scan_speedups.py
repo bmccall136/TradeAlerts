@@ -188,21 +188,20 @@ def _yf_latest_price(sym: str) -> float | None:
     return None
 
 
-def fetch_intraday_prices_with_fallback(
-    broker, symbols: Sequence[str]
-) -> dict[str, float]:
+def fetch_intraday_prices_with_fallback(broker, symbols):
     """
-    First try E*TRADE batch quotes; fill in any missing symbols with yfinance.
+    LIVE SAFETY:
+    - E*TRADE only
+    - No Yahoo fallback
     """
     prices = fetch_intraday_prices_et(broker, symbols)
     missing = [s for s in symbols if s not in prices]
-    if not missing or yf is None:
-        return prices
-
-    for s in missing:
-        p = _yf_latest_price(s)
-        if p is not None:
-            prices[s] = p
+    if missing:
+        log.warning(
+            "[LIVE] Missing E*TRADE prices for %d symbols (no Yahoo fallback): %s",
+            len(missing),
+            missing[:5],
+        )
     return prices
 
 

@@ -1,65 +1,62 @@
-import logging
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
-from datetime import datetime
+﻿# services/data_fetch.py
+# Small HTTP helper with timeout + safe JSON handling.
 
-import pandas as pd
-import pytz
-import yfinance as yf
+from __future__ import annotations
 
-logger = logging.getLogger(__name__)
-ET = pytz.timezone("US/Eastern")
+import json
+from typing import Any, Dict, Optional
 
-
-def fetch_data_with_timeout(sym, period="1d", interval="5m", timeout=10):
-    def _fetch():
-        try:
-            return yf.download(
-                sym,
-                period=period,
-                interval=interval,
-                auto_adjust=False,
-                progress=False,
-                threads=False,
-            )
-        except Exception as e:
-            logger.error(f"[ERROR] Yahoo download {sym} failed: {e}")
-            return None
-
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(_fetch)
-        try:
-            return future.result(timeout=timeout)
-        except TimeoutError:
-            logger.error(f"[ERROR] Yahoo download {sym} timed out after {timeout}s")
-            return None
+import requests
 
 
-def fetch_intraday_vwap(symbol: str) -> float:
+# --- LIVE SAFE: VWAP from E*TRADE quote (no yfinance) --------------------------
+
+def fetch_intraday_vwap(symbol: str, broker=None):
     """
-    Fetch today's 1‑minute bars for `symbol` and return the intraday VWAP.
+    Return (vwap, last_price) using E*TRADE quote fields when available.
+
+    - No Yahoo/yfinance usage.
+    - broker is optional; if not provided we import the E*TRADE quote helper.
     """
-    now_et = datetime.now(ET)
-    today_start = now_et.replace(hour=0, minute=0, second=0, microsecond=0)
+    try:
+        if broker is None:
+            # adjust this import if your quote helper lives elsewhere
+            from services.etrade_service import fetch_etrade_quote  # type: ignore
+            q = fetch_etrade_quote(symbol)
+        else:
+            q = broker.quote(symbol)
 
-    raw = fetch_data_with_timeout(symbol, period="1d", interval="1m")
-    if raw is None or raw.empty:
-        raise ValueError(f"No intraday data for {symbol}")
+        # Be defensive about quote shapes.
+        # Common paths we’ve seen in your project:
+        def _dig(d, *keys):
+            cur = d
+            for k in keys:
+                if cur is None:
+                    return None
+                if isinstance(cur, dict):
+                    cur = cur.get(k)
+                else:
+                    return None
+            return cur
 
-    df = raw
-    # flatten MultiIndex from yfinance (('SYM','Open'), …)
-    if isinstance(df.columns, pd.MultiIndex):
-        # take the second level name
-        df.columns = df.columns.get_level_values(1)
+        # Try several likely VWAP/last paths:
+        last = (
+            _dig(q, "All", "lastTrade")
+            or _dig(q, "All", "lastTradePrice")
+            or _dig(q, "QuoteResponse", "QuoteData", "All", "lastTrade")
+            or _dig(q, "QuoteResponse", "QuoteData", "All", "lastTradePrice")
+        )
+        vwap = (
+            _dig(q, "All", "vwap")
+            or _dig(q, "All", "VWAP")
+            or _dig(q, "QuoteResponse", "QuoteData", "All", "vwap")
+            or _dig(q, "QuoteResponse", "QuoteData", "All", "VWAP")
+        )
 
-    # lowercase everything
-    df.columns = [col.lower() for col in df.columns]
+        # Normalize to floats if possible
+        last_f = float(last) if last is not None else None
+        vwap_f = float(vwap) if vwap is not None else None
+        return vwap_f, last_f
 
-    for col in ("high", "low", "close", "volume"):
-        if col not in df:
-            raise KeyError(f"Missing {col} in intraday data for {symbol}")
-
-    df["pv"] = df["close"] * df["volume"]
-    df["cum_pv"] = df["pv"].cumsum()
-    df["cum_vol"] = df["volume"].cumsum()
-
-    return float(df["cum_pv"].iat[-1] / df["cum_vol"].iat[-1])
+    except Exception:
+        return None, None

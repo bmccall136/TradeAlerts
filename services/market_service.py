@@ -1,14 +1,17 @@
+﻿# C:\TradeAlerts\services\market_service.py
+from __future__ import annotations
+
 import logging
 import os
 from datetime import datetime
+from typing import Any, Iterable, List, Tuple
 
-from dotenv import load_dotenv
-
-load_dotenv(override=True)
 import pandas as pd
 
-from services.data_fetch import fetch_data_with_timeout
+# HISTORICAL ONLY (bars for indicators). Live price comes from E*TRADE.
+from .data_fetch import fetch_data_with_timeout
 from services.etrade_service import fetch_etrade_quote
+
 from services.indicators import (
     compute_atr,
     compute_bollinger_bands,
@@ -20,236 +23,193 @@ from services.indicators import (
     daily_range_pct,
     gap_up_pct,
 )
-from services.settings_schema import SimulationSettings
 
-logger = logging.getLogger(__name__)
-
-
-def _match_tags(conds):
-    return [tag for cond, tag in conds if cond]
+log = logging.getLogger("market")
 
 
-import logging
-from typing import Any
-
-from services.trading_helpers import (
-    compute_qty,
-)
-
-logger = logging.getLogger("market")
-
-
-def analyze_symbol(symbol: str, settings: SimulationSettings) -> dict[str, Any]:
+def get_symbols(path: str) -> List[str]:
     """
-    Run all toggles and indicators for `symbol` under simulation settings,
-    fetches price & quantity, applies filters, and returns an alert payload dict.
+    Load symbols from a local file path (preferred).
+    Each line: SYMBOL or SYMBOL,anything...
+    Returns uppercase, dot -> dash normalized (BRK.B -> BRK-B).
     """
-    # 1) Unpack settings
-    s = settings.__dict__
+    if not path:
+        return []
 
-    # 2) Fetch intraday bars
+    if os.path.exists(path):
+        out: List[str] = []
+        with open(path, encoding="utf-8") as f:
+            for ln in f:
+                s = (ln.strip().split(",")[0] if ln else "").strip()
+                if not s:
+                    continue
+                out.append(s.replace(".", "-").upper())
+        return out
+
+    # If the file is missing, fail loudly-ish but safely.
+    log.warning("[SYMS] symbols file not found: %s", path)
+    return []
+
+
+def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool]:
+    """
+    LIVE analyzer.
+    Returns: (price_live, triggers, passed)
+
+    - price_live: ALWAYS from E*TRADE (no yfinance price fallback)
+    - bars: fetched via fetch_data_with_timeout() for indicator inputs
+    """
+    # allow dict or object settings
+    s = settings if isinstance(settings, dict) else getattr(settings, "__dict__", {})
+
+    # 1) Intraday bars (for VWAP / volume, etc.)
     df = fetch_data_with_timeout(symbol)
     if df is None or df.empty:
-        logger.warning(f"[DATA] {symbol}: no intraday bars → skip")
-        return {}
+        logger.warning("[DATA] %s: no intraday bars -> skip", symbol)
+        return (None, [], False)
 
-    # ── normalize intraday columns ────────────────────────
-    df.columns = [
-        c[0].lower() if isinstance(c, tuple) else c.lower() for c in df.columns
-    ]
+    # normalize intraday columns
+    df.columns = [c[0].lower() if isinstance(c, tuple) else str(c).lower() for c in df.columns]
 
-    # 3) Fetch daily bars (for range, gap, ATR, etc)
+    # 2) Daily bars (for SMA/ATR/range/gap, etc.)
     df_daily = fetch_data_with_timeout(symbol, period="60d", interval="1d")
     if df_daily is None or df_daily.empty:
-        logger.warning(f"[DATA] {symbol}: no daily bars → skip")
-        return {}
+        logger.warning("[DATA] %s: no daily bars -> skip", symbol)
+        return (None, [], False)
 
-    # ── normalize daily columns ────────────────────────────
-    df_daily.columns = [
-        c[0].lower() if isinstance(c, tuple) else c.lower() for c in df_daily.columns
-    ]
+    df_daily.columns = [c[0].lower() if isinstance(c, tuple) else str(c).lower() for c in df_daily.columns]
 
-    # now it’s safe to pull from lowercase names
-    close_col = df["close"]
-    if isinstance(close_col, pd.DataFrame):
-        # multi-column case: pick first column
-        close_series = close_col.iloc[:, 0]
-    else:
-        close_series = close_col
-
-    # 4) “Live” price: always use E*TRADE, but fallback to bar-close on error
+    # 3) Live price (E*TRADE ONLY)
     try:
-        price_live = fetch_etrade_quote(symbol)
-        logger.info(f"[E*TRADE] {symbol}: price = {price_live:.2f}")
+        price_live = float(fetch_etrade_quote(symbol))
     except Exception as e:
-        # if E*TRADE fails, fall back
-        fallback = float(close_series.iat[-1])
-        logger.warning(
-            f"[E*TRADE] {symbol}: fetch failed ({e}) — using close={fallback:.2f}"
-        )
-        price_live = fallback
+        logger.warning("[E*TRADE] %s: quote failed (%s) -> skip", symbol, e)
+        return (None, [], False)
 
-    logger.debug(f"[PRICE] {symbol}: price_live = {price_live:.2f}")
+    if price_live <= 0:
+        return (None, [], False)
 
-    # ─── 5) Run indicators and collect tags ─────────────────────────────────
-    tags = []
+    triggers: list[str] = []
 
-    # use our squeezed series for all further indicator calls
-    close = close_series
-    high = df_daily["high"].iloc[-1]
-    low = df_daily["low"].iloc[-1]
-    prev_close = df_daily["close"].shift(1).iloc[-1]
+    # ----------------------------
+    # Pull series for indicators
+    # ----------------------------
+    close_i = df.get("close")
+    if close_i is None:
+        return (None, [], False)
 
-    # — SMA —
-    if s.get("sma_on"):
-        sma_val = compute_sma(close, s["sma_length"])
-        if price_live > sma_val:
-            tags.append(f"SMA 📈({s['sma_length']})")
+    # flatten multi-column close if it happens
+    if hasattr(close_i, "iloc") and getattr(close_i, "ndim", 1) > 1:
+        close_i = close_i.iloc[:, 0]
 
-    # — RSI —
-    if s.get("rsi_on"):
-        rsi_series = compute_rsi(close, s["rsi_len"])
-        rsi_val = rsi_series.iloc[-1]
-        if rsi_val > s["rsi_overbought"]:
-            tags.append("RSI 📈")
+    close_d = df_daily.get("close")
+    high_d = df_daily.get("high")
+    low_d = df_daily.get("low")
 
-    # — MACD —
-    if s.get("macd_on"):
-        macd_line, signal = compute_macd(
-            close,
-            s["macd_fast"],
-            s["macd_slow"],
-            s["macd_signal"],
-        )
-        if macd_line.iloc[-1] > signal.iloc[-1]:
-            tags.append("MACD 🚀")
+    if close_d is None or high_d is None or low_d is None:
+        return (None, [], False)
 
-    # — Bollinger Bands —
-    if s.get("bb_on"):
-        up, mid, lowb = compute_bollinger_bands(close, s["bb_length"], s["bb_std"])
-        if price_live > up.iloc[-1]:
-            tags.append("BB 📈")
-
-    # — Volume Multiplier —
-    if s.get("vol_on"):
-        # compute_volume_multiplier(df, window=20) by default
-        vol_ratio = compute_volume_multiplier(df)
-        # now compare against your threshold
-        if vol_ratio >= s["vol_multiplier"]:
-            tags.append(f"VOL 🔊({vol_ratio:.1f}×)")
-
-    # — VWAP Threshold —
-    if s.get("vwap_on"):
-        vwap_val = compute_vwap(df, s["vwap_threshold"])
-        if price_live - vwap_val >= s["vwap_threshold"]:
-            tags.append("VWAP+ 💰")
-
-    # — Price vs. SMA —
-    if s.get("price_sma_on"):
-        sma_last = compute_sma(close, s["sma_length"])  # float
-        if price_live > sma_last:
-            tags.append(f"Price>SMA({s['sma_length']})")
-
-    # — ATR14 ≥ X —
-    if s.get("atr_on"):
-        atr_val = compute_atr(df_daily, period=s.get("atr_len", 14))
-        if atr_val >= s.get("atr_threshold", 0.0):
-            tags.append(f"ATR{s.get('atr_len',14)} ≥ {s['atr_threshold']:.1f}")
-
-    # — ATR % ≥ Y —
-    if s.get("atr_pct_on"):
-        atr_val = compute_atr(df_daily, period=s.get("atr_len", 14))
-        atr_percent = (atr_val / price_live * 100) if price_live > 0 else 0.0
-        if atr_percent >= s.get("atr_pct", 0.0):
-            tags.append(f"ATR % ≥ {s['atr_pct']:.1f}%")
-
-    # — Range % ≥ Z —
-    if s.get("range_on"):
-        range_pct = daily_range_pct(df_daily)
-        if range_pct >= s.get("range_pct", 0.0):
-            tags.append(f"Range % ≥ {s['range_pct']:.1f}%")
-
-    # — Gap % ≥ W —
-    if s.get("gap_on"):
-        gap_pct = gap_up_pct(df_daily)
-        if gap_pct >= s.get("gap_pct", 0.0):
-            tags.append(f"Gap % ≥ {s['gap_pct']:.1f}%")
-
-    # — Price vs. SMA —
-    if s.get("price_sma_on"):
-        sma_last = compute_sma(close, s["sma_length"])  # ← returns float
-        if price_live > sma_last:
-            tags.append(f"Price>SMA({s['sma_length']})")
-
-    # — Risk / wash‐sale / settlement (if you use them) —
-    # enforce_wash_sale, enforce_settlement can be called here if desired
-
-    # 6) Compute trade quantity under simulation
-    qty = compute_qty(settings, price_live)
-
-    # 7) Build the payload dictionary
-    payload = {
-        "symbol": symbol,
-        "price": price_live,
-        "qty": qty,
-        "timestamp": datetime.utcnow().isoformat(),
-        # keep the raw list so we can count it
-        "triggers": tags,
-    }
-
-    logger.info(f"[SIM] ALERT {symbol}: {tags}")
-    return payload
-
-
-def get_symbols(simulation=False, clean_path="sp500_symbols_clean.txt"):
-    if simulation:
+    # ----------------------------
+    # Indicator toggles
+    # ----------------------------
+    # SMA
+    sma_on = bool(s.get("sma_on", False) or s.get("price_sma_on", False) or s.get("require_sma20", False))
+    sma_len = int(s.get("sma_length", 20))
+    if sma_on:
         try:
-            with open(clean_path) as f:
-                return [l.strip().upper() for l in f if l.strip()]
-        except FileNotFoundError:
-            logger.warning(f"'{clean_path}' not found → no symbols")
-            return []
-    try:
-        tables = pd.read_html(
-            "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies", header=0
-        )
-        df_sp = tables[0]
-        col = "Symbol" if "Symbol" in df_sp.columns else df_sp.columns[0]
-        return (
-            df_sp[col]
-            .astype(str)
-            .str.replace(".", "-", regex=False)
-            .str.upper()
-            .tolist()
-        )
-    except Exception:
-        fallback = os.path.join(os.path.dirname(__file__), "symbols.txt")
-        return [l.strip().upper() for l in open(fallback) if l.strip()]
+            sma_val = float(compute_sma(close_d, sma_len))
+            if price_live > sma_val:
+                triggers.append(f"Price>SMA({sma_len})")
+        except Exception:
+            pass
 
+    # RSI (optional)
+    if bool(s.get("rsi_on", False)):
+        try:
+            rsi_len = int(s.get("rsi_len", s.get("rsi_length", 14)))
+            rsi_over = float(s.get("rsi_overbought", 70))
+            rsi_series = compute_rsi(close_d, rsi_len)
+            rsi_val = float(rsi_series.iloc[-1])
+            if rsi_val >= rsi_over:
+                triggers.append("RSI")
+        except Exception:
+            pass
 
-def fetch_etrade_quote(symbol):
-    """
-    Fetch the latest trade price for a symbol from the E*TRADE API.
-    Falls back to 0.0 if the API call fails or credentials are missing.
-    """
-    if not all([CONSUMER_KEY, CONSUMER_SECRET, OAUTH_TOKEN, OAUTH_TOKEN_SECRET]):
-        raise RuntimeError("E*TRADE credentials not set in environment")
-    session = OAuth1Session(
-        CONSUMER_KEY,
-        client_secret=CONSUMER_SECRET,
-        resource_owner_key=OAUTH_TOKEN,
-        resource_owner_secret=OAUTH_TOKEN_SECRET,
-    )
-    url = f"https://api.etrade.com/v1/market/quote/{symbol}.json"
-    resp = session.get(url)
-    resp.raise_for_status()
-    data = resp.json()
-    # USE PROPER CASE for keys!
-    quote_data = data.get("QuoteResponse", {}).get("QuoteData", [])
-    if quote_data and "All" in quote_data[0]:
-        # Grab lastTrade from the All block (this is what your sample response has!)
-        return float(quote_data[0]["All"].get("lastTrade", 0.0))
-    elif quote_data:
-        # fallback if All block missing
-        return float(quote_data[0].get("lastTrade", 0.0))
-    return 0.0
+    # MACD
+    if bool(s.get("macd_on", False)) or "macd" in [str(x).lower() for x in (s.get("req") or s.get("required") or [])]:
+        try:
+            fast = int(s.get("macd_fast", 12))
+            slow = int(s.get("macd_slow", 26))
+            sig = int(s.get("macd_signal", 9))
+            macd_line, signal = compute_macd(close_d, fast, slow, sig)
+            if float(macd_line.iloc[-1]) > float(signal.iloc[-1]):
+                triggers.append("MACD")
+        except Exception:
+            pass
+
+    # Bollinger (optional)
+    if bool(s.get("bb_on", False)):
+        try:
+            bb_len = int(s.get("bb_length", 20))
+            bb_std = float(s.get("bb_std", 2))
+            up, mid, lowb = compute_bollinger_bands(close_d, bb_len, bb_std)
+            if price_live > float(up.iloc[-1]):
+                triggers.append("BB")
+        except Exception:
+            pass
+
+    # Volume multiplier (optional)
+    if bool(s.get("vol_on", False)) or "vol" in [str(x).lower() for x in (s.get("req") or s.get("required") or [])]:
+        try:
+            thresh = float(s.get("vol_multiplier", 1.5))
+            vol_ratio = float(compute_volume_multiplier(df))
+            if vol_ratio >= thresh:
+                triggers.append("VOL")
+        except Exception:
+            pass
+
+    # VWAP threshold (optional)
+    if bool(s.get("vwap_on", False)) or "vwap" in [str(x).lower() for x in (s.get("req") or s.get("required") or [])]:
+        try:
+            vwap_threshold = float(s.get("vwap_threshold", 0.0))
+            vwap_val = float(compute_vwap(df, vwap_threshold))
+            # mark trigger if above vwap by threshold
+            if (price_live - vwap_val) >= vwap_threshold:
+                triggers.append("VWAP")
+        except Exception:
+            pass
+
+    # ATR / range / gap are optional and do not affect req filtering unless you later require them
+    if bool(s.get("atr_on", False)):
+        try:
+            atr_len = int(s.get("atr_len", 14))
+            atr_val = float(compute_atr(df_daily, period=atr_len))
+            if atr_val > 0:
+                triggers.append(f"ATR{atr_len}")
+        except Exception:
+            pass
+
+    if bool(s.get("range_on", False)):
+        try:
+            rp = float(daily_range_pct(df_daily))
+            if rp > 0:
+                triggers.append("RANGE")
+        except Exception:
+            pass
+
+    if bool(s.get("gap_on", False)):
+        try:
+            gp = float(gap_up_pct(df_daily))
+            if gp > 0:
+                triggers.append("GAP")
+        except Exception:
+            pass
+
+    # ----------------------------
+    # PASS/FAIL logic
+    # ----------------------------
+    # Basic definition: passed if it produced any triggers.
+    # live_loop applies the stricter req filters after this anyway.
+    passed = len(triggers) > 0
+
+    return (price_live, triggers, passed)
