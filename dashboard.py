@@ -1067,10 +1067,11 @@ def etrade_reconnect():
             return jsonify({"ok": False, "error": "auth_shortcut.py not found"}), 404
 
         if os.name == "nt":
-            # Windows: spawn new console
+            assert script.endswith("auth_shortcut.py"), "Reconnect must launch auth_shortcut.py"
+            # Windows: spawn new console running auth_shortcut.py (PIN flow)
             subprocess.Popen(
-                ["cmd.exe", "/c", "start", "", CHECKPOINT_BAT],
-                cwd=str(Path(CHECKPOINT_BAT).parent),
+                ["cmd.exe", "/c", "start", "", exe, "-u", script],
+                cwd=str(ROOT),
                 creationflags=0x00000008,  # CREATE_NEW_CONSOLE
             )
         else:
