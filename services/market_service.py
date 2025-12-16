@@ -50,6 +50,25 @@ def get_symbols(path: str) -> List[str]:
     log.warning("[SYMS] symbols file not found: %s", path)
     return []
 
+# --- compat shim: live_loop expects analyze_symbol_live -----------------------
+def analyze_symbol_live(symbol: str, *args, **kwargs):
+    """
+    Compatibility wrapper: older/newer live_loop imports analyze_symbol_live.
+    Route to whichever analyzer exists in this module.
+    """
+    # common candidates in different versions
+    if "analyze_symbol" in globals() and callable(globals().get("analyze_symbol")):
+        return globals()["analyze_symbol"](symbol, *args, **kwargs)
+
+    if "analyze" in globals() and callable(globals().get("analyze")):
+        return globals()["analyze"](symbol, *args, **kwargs)
+
+    if "scan_symbol" in globals() and callable(globals().get("scan_symbol")):
+        return globals()["scan_symbol"](symbol, *args, **kwargs)
+
+    raise ImportError(
+        "market_service has no analyze_symbol/analyze/scan_symbol to alias for analyze_symbol_live"
+    )
 
 def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool]:
     """

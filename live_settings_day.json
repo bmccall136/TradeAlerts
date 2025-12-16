@@ -71,7 +71,7 @@
   "realized_since": "2025-08-22",
   "realized_tz": "America/New_York",
   "ai": {
-    "enabled": false,
+    "enabled": true,
     "use_entries": true,
     "use_exits": true
   }
