@@ -17,7 +17,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
-from services.market_service import analyze_symbol_live as analyze_symbol
+from services.market_service import analyze_symbol
 
 from ai_advisor import get_ai_recommendation
 

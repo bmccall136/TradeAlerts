@@ -8,6 +8,47 @@ from typing import Any, Dict, Optional
 
 import requests
 
+# --- compat shim: market_service expects this name ----------------------------
+def fetch_data_with_timeout(*args, **kwargs):
+    """
+    Compatibility wrapper for older/newer code paths.
+    If a more specific fetch function exists in this module, use it.
+    Otherwise fall back to a basic requests call with a timeout.
+    """
+    # Prefer an existing function if your module already has one
+    if "fetch_data" in globals() and callable(globals().get("fetch_data")):
+        return globals()["fetch_data"](*args, **kwargs)
+
+    if "fetch_json" in globals() and callable(globals().get("fetch_json")):
+        return globals()["fetch_json"](*args, **kwargs)
+
+    # Last-resort fallback (keeps the app from crashing even if older code)
+    import requests
+
+    if not args:
+        raise TypeError("fetch_data_with_timeout() missing required positional arg: url")
+
+    url = args[0]
+    timeout = kwargs.pop("timeout", 10)
+    method = kwargs.pop("method", "GET").upper()
+
+    headers = kwargs.pop("headers", None)
+    params = kwargs.pop("params", None)
+    data = kwargs.pop("data", None)
+    json_body = kwargs.pop("json", None)
+
+    if method == "POST":
+        r = requests.post(url, headers=headers, params=params, data=data, json=json_body, timeout=timeout)
+    else:
+        r = requests.get(url, headers=headers, params=params, timeout=timeout)
+
+    r.raise_for_status()
+
+    # If it looks like JSON, return JSON; else return text
+    ctype = (r.headers.get("Content-Type") or "").lower()
+    if "json" in ctype:
+        return r.json()
+    return r.text
 
 # --- LIVE SAFE: VWAP from E*TRADE quote (no yfinance) --------------------------
 
@@ -60,3 +101,30 @@ def fetch_intraday_vwap(symbol: str, broker=None):
 
     except Exception:
         return None, None
+
+# --- compat shim: used by market_service --------------------------------------
+def fetch_data_with_timeout(
+    url: str,
+    *,
+    timeout: float = 10.0,
+    headers: Optional[Dict[str, str]] = None,
+    params: Optional[Dict[str, Any]] = None,
+    method: str = "GET",
+) -> Any:
+    """
+    Simple HTTP fetch with timeout + safe JSON handling.
+    Returns parsed JSON when possible, otherwise returns raw text.
+    """
+    m = (method or "GET").upper()
+    if m == "POST":
+        r = requests.post(url, headers=headers, params=params, timeout=timeout)
+    else:
+        r = requests.get(url, headers=headers, params=params, timeout=timeout)
+
+    r.raise_for_status()
+
+    # Try JSON first; fall back to text
+    try:
+        return r.json()
+    except Exception:
+        return r.text
