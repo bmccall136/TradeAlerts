@@ -1,13 +1,16 @@
-import pytz
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
-from datetime import datetime, timedelta
-import yfinance as yf
 import logging
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from datetime import datetime
+
+import pandas as pd
+import pytz
+import yfinance as yf
 
 logger = logging.getLogger(__name__)
 ET = pytz.timezone("US/Eastern")
 
-def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
+
+def fetch_data_with_timeout(sym, period="1d", interval="5m", timeout=10):
     def _fetch():
         try:
             return yf.download(
@@ -16,7 +19,7 @@ def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
                 interval=interval,
                 auto_adjust=False,
                 progress=False,
-                threads=False
+                threads=False,
             )
         except Exception as e:
             logger.error(f"[ERROR] Yahoo download {sym} failed: {e}")
@@ -30,38 +33,33 @@ def fetch_data_with_timeout(sym, period='1d', interval='5m', timeout=10):
             logger.error(f"[ERROR] Yahoo download {sym} timed out after {timeout}s")
             return None
 
+
 def fetch_intraday_vwap(symbol: str) -> float:
     """
     Fetch today's 1‑minute bars for `symbol` and return the intraday VWAP.
     """
-    # Determine start of today in ET
     now_et = datetime.now(ET)
     today_start = now_et.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # Pull 1‑min bars from start of day until now
-    # Assumes your fetch_data_with_timeout can accept `interval='1m'`
-    df = fetch_data_with_timeout(
-        symbol,
-        period="1d",
-        interval="1m"
-    )
-
-    if df is None or df.empty:
+    raw = fetch_data_with_timeout(symbol, period="1d", interval="1m")
+    if raw is None or raw.empty:
         raise ValueError(f"No intraday data for {symbol}")
 
-    # Normalize column names
-    df = df.rename(columns={c: c.lower() for c in df.columns})
+    df = raw
+    # flatten MultiIndex from yfinance (('SYM','Open'), …)
+    if isinstance(df.columns, pd.MultiIndex):
+        # take the second level name
+        df.columns = df.columns.get_level_values(1)
 
-    # Make sure we have the right fields
+    # lowercase everything
+    df.columns = [col.lower() for col in df.columns]
+
     for col in ("high", "low", "close", "volume"):
         if col not in df:
             raise KeyError(f"Missing {col} in intraday data for {symbol}")
 
-    # You can choose typical price or just use close; here we use close:
     df["pv"] = df["close"] * df["volume"]
     df["cum_pv"] = df["pv"].cumsum()
     df["cum_vol"] = df["volume"].cumsum()
 
-    # VWAP is at last timestamp
-    vwap = df["cum_pv"].iat[-1] / df["cum_vol"].iat[-1]
-    return float(vwap)
+    return float(df["cum_pv"].iat[-1] / df["cum_vol"].iat[-1])

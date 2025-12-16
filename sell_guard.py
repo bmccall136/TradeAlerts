@@ -27,14 +27,24 @@ LOG = logging.getLogger("sell-guard")
 LOG.setLevel(logging.INFO)
 for h in list(LOG.handlers):
     LOG.removeHandler(h)
+
 _sh = logging.StreamHandler(sys.stdout)
-_sh.setFormatter(
-    logging.Formatter(
-        "%(asctime)s,%(msecs)03d %(levelname)s sell-guard: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-)
+_sh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s sell-guard: %(message)s"))
 LOG.addHandler(_sh)
+
+from logging.handlers import RotatingFileHandler
+
+try:
+    log_dir = os.path.join(os.path.dirname(__file__), "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    sg_log_path = os.path.join(log_dir, "sell_guard.log")
+except Exception:
+    sg_log_path = "sell_guard.log"
+
+_sg_fh = RotatingFileHandler(sg_log_path, maxBytes=5_000_000, backupCount=5, encoding="utf-8")
+_sg_fh.setFormatter(_sh.formatter)
+LOG.addHandler(_sg_fh)
+
 
 # Backwards-compat alias used deeper in the file
 _lg = LOG
@@ -55,14 +65,35 @@ if not AI_LOG.handlers:
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, "ai_advisor.log")
     except Exception:
-        # Fallback if something weird happens with paths
         log_path = "ai_advisor.log"
 
-    ai_fh = logging.FileHandler(log_path, encoding="utf-8")
-    # We log pure JSON per line, so no extra prefix
+    ai_fh = RotatingFileHandler(
+        log_path,
+        maxBytes=5_000_000,
+        backupCount=5,
+        encoding="utf-8",
+    )
     ai_fh.setFormatter(logging.Formatter("%(message)s"))
     AI_LOG.addHandler(ai_fh)
     AI_LOG.propagate = False
+
+def _scalar_float(x) -> float:
+    # pandas Series -> first element
+    try:
+        import pandas as pd  # local import ok
+        if isinstance(x, pd.Series):
+            x = x.iloc[0]
+    except Exception:
+        pass
+
+    # numpy scalar -> python scalar
+    if hasattr(x, "item"):
+        try:
+            x = x.item()
+        except Exception:
+            pass
+
+    return float(x)
 
 def log_ai_decision(
     *,
@@ -106,57 +137,94 @@ def log_ai_decision(
 _last_regime: str = "unknown"
 _last_regime_ts: float = 0.0
 
+def _safe_float(x):
+    try:
+        return float(x)
+    except Exception:
+        return None
+
+def _extract_spy_pct_from_quote(payload: dict) -> float | None:
+    """
+    Try to extract SPY % change from common E*TRADE quote shapes.
+    Returns a decimal (e.g. 0.004 = +0.4%), or None if unavailable.
+    """
+    if not isinstance(payload, dict):
+        return None
+
+    # Common: {"QuoteResponse":{"QuoteData":[{"All":{...}}]}}
+    qd = (
+        payload.get("QuoteResponse", {})
+              .get("QuoteData", [])
+    )
+    if isinstance(qd, list) and qd:
+        allblk = qd[0].get("All", {}) if isinstance(qd[0], dict) else {}
+        # Prefer explicit percent fields if present
+        for k in ("changeClosePercentage", "changePercent", "percentChange", "chgPct"):
+            v = _safe_float(allblk.get(k))
+            if v is not None:
+                # E*TRADE often returns percent as "0.12" meaning 0.12% (or sometimes 12.0)
+                # We'll assume it's percent points and convert to decimal.
+                return v / 100.0
+
+        # Otherwise compute from last + prev close
+        last = _safe_float(allblk.get("lastTrade") or allblk.get("lastTradePrice") or allblk.get("last"))
+        prev = _safe_float(allblk.get("previousClose") or allblk.get("prevClose") or allblk.get("close"))
+        if last is not None and prev not in (None, 0.0):
+            return (last / prev) - 1.0
+
+    return None
+
+def _fetch_spy_quote_pct() -> float | None:
+    """
+    Call into services.etrade_service using whatever quote function exists.
+    Returns decimal % change, or None.
+    """
+    if et is None:
+        return None
+
+    # Try a few likely function names without breaking if missing.
+    for fn_name in ("fetch_etrade_quote", "fetch_quote", "get_quote", "get_quotes", "quote"):
+        fn = getattr(et, fn_name, None)
+        if callable(fn):
+            try:
+                resp = fn("SPY")
+                pct = _extract_spy_pct_from_quote(resp if isinstance(resp, dict) else {})
+                if pct is not None:
+                    return pct
+            except Exception:
+                continue
+    return None
+
 def get_market_regime() -> str:
     """
-    Classify the current intraday market regime using SPY.
-
-    Returns one of: "uptrend", "downtrend", "chop", or "unknown".
-
-    Uses a small cache so we don't hammer yfinance / the network
-    more than once per minute.
+    Classify the current market regime using SPY from E*TRADE only.
+    Returns: "uptrend", "downtrend", "chop", or "unknown".
+    Cached for 60s to avoid hammering quote calls.
     """
     global _last_regime, _last_regime_ts
     now = time.time()
 
-    # Reuse last value if it's fresh and not unknown
     if _last_regime != "unknown" and (now - _last_regime_ts) < 60:
         return _last_regime
 
     try:
-        import yfinance as yf  # scanner already uses this; safe to depend on
-    except ImportError:
-        return _last_regime or "unknown"
-
-    try:
-        # 1-day, 5-minute bars gives a good intraday picture
-        df = yf.download("SPY", period="1d", interval="5m", progress=False)
-        close = df["Close"].dropna()
-        if len(close) < 5:
-            return _last_regime or "unknown"
-
-        start = float(close.iloc[0])
-        end = float(close.iloc[-1])
-        intraday_ret = (end / start) - 1.0
-
-        intraday_range = (float(close.max()) - float(close.min())) / start
-
-        # Simple rules – tweak thresholds later if needed
-        if abs(intraday_ret) < 0.002 and intraday_range < 0.004:
-            regime = "chop"
-        elif intraday_ret > 0.004:
-            regime = "uptrend"
-        elif intraday_ret < -0.004:
-            regime = "downtrend"
+        pct = _fetch_spy_quote_pct()
+        if pct is None:
+            regime = _last_regime or "unknown"
         else:
-            regime = "chop"
-
+            # Keep your same thresholds
+            if pct > 0.004:
+                regime = "uptrend"
+            elif pct < -0.004:
+                regime = "downtrend"
+            else:
+                regime = "chop"
     except Exception:
         regime = _last_regime or "unknown"
 
     _last_regime = regime
     _last_regime_ts = now
     return regime
-
 # --------------------------------------------------------------------------- #
 # E*TRADE positions helper
 # --------------------------------------------------------------------------- #

@@ -17,6 +17,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
+from services.market_service import analyze_symbol_live as analyze_symbol
 
 from ai_advisor import get_ai_recommendation
 
@@ -26,12 +27,13 @@ from services.scan_speedups import (
     log_candidate,
     preload_history_yahoo,
 )
-from services.simulation_service import (
-    _is_market_open,
-    analyze_symbol,
-    seconds_until_open,
-)
 from services.trading_helpers import get_holdings, get_trades
+
+# --- HARD BLOCK: yfinance is forbidden in LIVE ---
+if os.getenv("BROKER_MODE", "").upper() == "LIVE":
+    import sys
+    if "yfinance" in sys.modules:
+        raise RuntimeError("❌ yfinance loaded in LIVE mode — this is forbidden")
 
 log = logging.getLogger("live")
 
@@ -59,6 +61,45 @@ SAFE_ON = os.getenv("LIVE_SAFE_MODE", "").lower() in ("1", "true", "yes", "on")
 SAFE_MAX = int(os.getenv("LIVE_MAX_QTY", "0") or 0)
 _BP_BUFFER = float(os.getenv("LIVE_BP_BUFFER", "5"))  # dollars cushion
 _LIVE_TPLUS_DAYS = int(os.getenv("LIVE_TPLUS_DAYS", "0") or 0)  # 0 = off
+
+from datetime import datetime, time as dtime
+from zoneinfo import ZoneInfo
+
+_ET = ZoneInfo("America/New_York")
+
+def _is_market_open(now: datetime | None = None) -> bool:
+    """
+    Basic market-hours gate (no holiday calendar).
+    Mon–Fri, 09:30–16:00 ET.
+    """
+    now = now or datetime.now(tz=_ET)
+    if now.weekday() >= 5:
+        return False
+    t = now.time()
+    return dtime(9, 30) <= t <= dtime(16, 0)
+
+def seconds_until_open(now: datetime | None = None) -> int:
+    """
+    Seconds until next 09:30 ET on a weekday (no holiday calendar).
+    Returns 0 if already open.
+    """
+    now = now or datetime.now(tz=_ET)
+    if _is_market_open(now):
+        return 0
+
+    # Move to next weekday if weekend
+    while now.weekday() >= 5:
+        now = now.replace(hour=12, minute=0, second=0, microsecond=0)  # midday
+        now = now.fromtimestamp(now.timestamp() + 86400, tz=_ET)
+
+    open_dt = now.replace(hour=9, minute=30, second=0, microsecond=0)
+    if now > open_dt:
+        # next day
+        open_dt = open_dt.fromtimestamp(open_dt.timestamp() + 86400, tz=_ET)
+        while open_dt.weekday() >= 5:
+            open_dt = open_dt.fromtimestamp(open_dt.timestamp() + 86400, tz=_ET)
+
+    return max(0, int((open_dt - now).total_seconds()))
 
 
 def _select_funds(summary: dict, settings: dict) -> tuple[float, str]:
@@ -480,7 +521,11 @@ def run_live_loop(settings, symbols, broker_mode=None):
     )
 
     HEARTBEAT_SEC = float(getattr(settings, "scan_heartbeat_secs", 10.0))
-    preload_history_yahoo(symbols, months=6)
+
+    if mode != "LIVE":
+        preload_history_yahoo(symbols, months=6)
+    else:
+        log.info("[LIVE] Yahoo history preload disabled (LIVE mode)")
 
     while True:
         if settings.pause_when_market_closed and not _is_market_open():
@@ -524,11 +569,21 @@ def run_live_loop(settings, symbols, broker_mode=None):
             try:
                 price, triggered, passed = analyze_symbol(sym, settings)
             except Exception as e:
+                log.warning("[LIVE] SKIP %s: analyze_symbol exception: %s", sym, e)
                 skipped += 1
-                log.debug("%s: analyze_symbol failed: %s", sym, e)
-                price = None
-                passed = False
-                triggered = None
+                continue
+
+            if price is None:
+                log.warning("[LIVE] SKIP %s: analyze_symbol returned price=None", sym)
+                skipped += 1
+                continue
+
+            if not passed:
+                continue
+
+            # ... rest of your logic
+
+            # ... candidate logic continues ...
 
             now = time.time()
             if now - last_ping >= HEARTBEAT_SEC:

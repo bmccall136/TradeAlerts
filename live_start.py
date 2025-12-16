@@ -179,9 +179,7 @@ def main():
     raw_mode = data.get("broker_mode", "LIVE")
     mode = _norm_mode(os.getenv("BROKER_MODE") or raw_mode)
 
-    from services.market_service import get_symbols
-
-    symbols = get_symbols(SYMS_PATH)
+    symbols = load_symbols(SYMS_PATH)
     log.info("Scanning %d symbols from %s", len(symbols), SYMS_PATH)
 
     from services.live_loop import run_live_loop
