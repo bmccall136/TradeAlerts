@@ -1,13 +1,5 @@
 ﻿{% extends "layout.html" %}
 {% block content %}
-  <!-- Hero blurb -->
-  <div class="hero-blurb mb-4 text-center">
-    Started with <span id="about-start-cash">$0.00</span> on
-    <span id="about-start-date">—</span>.
-    Since then we’ve added <span id="about-net-contrib">$0.00</span> and our P&L is
-    <span id="about-since-pnl">$0.00</span> at
-    <span id="about-since-pct">0.00%</span>.
-  </div>
 
 <style>
   body {
@@ -157,19 +149,9 @@
         (<span id="kpi-r-week-pct">0.00%</span>)
       </div>
       <div class="kpi-sub mb-1">
-        <strong>Last Week</strong>:
-        <span id="kpi-r-lastweek">$0.00</span>
-        (<span id="kpi-r-lastweek-pct">0.00%</span>)
-      </div>
-      <div class="kpi-sub mb-1">
         <strong>Month</strong>:
         <span id="kpi-r-month">$0.00</span>
         (<span id="kpi-r-month-pct">0.00%</span>)
-      </div>
-      <div class="kpi-sub">
-        <strong>All</strong>:
-        <span id="kpi-r-all">$0.00</span>
-        (<span id="kpi-r-all-pct">0.00%</span>)
       </div>
     </div>
   </div>
@@ -468,57 +450,61 @@
     const dAmt    = num(metrics.day_unrealized_pnl);
     const dPct    = num(metrics.day_unrealized_pnl_pct);
     const allAmt  = num(metrics.unrealized_pl);
-    const allPct  = num(metrics.unrealized_pl_pct);
 
     set('#kpi-pnl-day',     money(dAmt));
     set('#kpi-pnl-day-pct', pct(dPct));
     setColor(document.querySelector('#kpi-pnl-day'), dAmt);
     setColor(document.querySelector('#kpi-pnl-day-pct'), dPct);
 
-    set('#kpi-pnl-all',     money(allAmt));
-    set('#kpi-pnl-all-pct', pct(allPct));
-    setColor(document.querySelector('#kpi-pnl-all'), allAmt);
-    setColor(document.querySelector('#kpi-pnl-all-pct'), allPct);
+	// --- REALIZED P&L (supports both payload shapes) -----------------------------
 
-    const realized = d.realized || {};
-    const day      = realized.day       || {};
-    const week     = realized.week      || {};
-    const lastWeek = realized.last_week || {};
-    const month    = realized.month     || {};
-    const allB     = realized.all       || {};
+	const realizedRaw = d.realized ?? d.realized_pnl ?? {};
 
-    const dR     = num(day.pnl);
-    const dRPct  = num(day.pct);
-    const wR     = num(week.pnl);
-    const wRPct  = num(week.pct);
-    const lwR    = num(lastWeek.pnl);
-    const lwRPct = num(lastWeek.pct);
-    const mR     = num(month.pnl);
-    const mRPct  = num(month.pct);
-    const aR     = num(allB.pnl);
-    const aRPct  = num(allB.pct);
+	// If backend sends floats: { day: 1.23, week: 4.56, month: 7.89 }
+	const isFlatNumbers =
+	  typeof realizedRaw.day === 'number' ||
+	  typeof realizedRaw.week === 'number' ||
+	  typeof realizedRaw.month === 'number';
 
-    set('#kpi-r-day',          money(dR));
-    set('#kpi-r-day-pct',      pct(dRPct));
-    set('#kpi-r-week',         money(wR));
-    set('#kpi-r-week-pct',     pct(wRPct));
-    set('#kpi-r-lastweek',     money(lwR));
-    set('#kpi-r-lastweek-pct', pct(lwRPct));
-    set('#kpi-r-month',        money(mR));
-    set('#kpi-r-month-pct',    pct(mRPct));
-    set('#kpi-r-all',          money(aR));
-    set('#kpi-r-all-pct',      pct(aRPct));
+	// Normalize to: { day:{pnl,pct}, week:{pnl,pct}, month:{pnl,pct} }
+	const realized = isFlatNumbers
+	  ? {
+		  day:   { pnl: num(realizedRaw.day),   pct: num(realizedRaw.day_pct)   },
+		  week:  { pnl: num(realizedRaw.week),  pct: num(realizedRaw.week_pct)  },
+		  month: { pnl: num(realizedRaw.month), pct: num(realizedRaw.month_pct) },
+		}
+	  : realizedRaw;
+
+	// Hard defaults (don’t let {} propagate silently)
+	const day   = realized.day   || { pnl: 0, pct: 0 };
+	const week  = realized.week  || { pnl: 0, pct: 0 };
+	const month = realized.month || { pnl: 0, pct: 0 };
+
+	const dR    = num(day.pnl);
+	const dRPct = num(day.pct);
+	const wR    = num(week.pnl);
+	const wRPct = num(week.pct);
+	const mR    = num(month.pnl);
+	const mRPct = num(month.pct);
+
+	set('#kpi-r-day',       money(dR));
+	set('#kpi-r-day-pct',   pct(dRPct));
+	set('#kpi-r-week',      money(wR));
+	set('#kpi-r-week-pct',  pct(wRPct));
+	set('#kpi-r-month',     money(mR));
+	set('#kpi-r-month-pct', pct(mRPct));
+
+	// Optional: one-line debug so you can SEE what shape is coming in
+	// console.log('realized payload:', realizedRaw);
+	
+	
 
     setColor(document.querySelector('#kpi-r-day'),          dR);
     setColor(document.querySelector('#kpi-r-day-pct'),      dRPct);
     setColor(document.querySelector('#kpi-r-week'),         wR);
     setColor(document.querySelector('#kpi-r-week-pct'),     wRPct);
-    setColor(document.querySelector('#kpi-r-lastweek'),     lwR);
-    setColor(document.querySelector('#kpi-r-lastweek-pct'), lwRPct);
     setColor(document.querySelector('#kpi-r-month'),        mR);
     setColor(document.querySelector('#kpi-r-month-pct'),    mRPct);
-    setColor(document.querySelector('#kpi-r-all'),          aR);
-    setColor(document.querySelector('#kpi-r-all-pct'),      aRPct);
 
     const startCash = num(about.start_cash);
     const netContrib = num(about.net_contrib);
@@ -530,9 +516,6 @@
     set('#about-net-contrib', money(netContrib));
     set('#about-since-pnl', money(sincePnl));
     set('#about-since-pct', pct(sincePct));
-
-    setColor(document.querySelector('#about-since-pnl'), sincePnl);
-    setColor(document.querySelector('#about-since-pct'), sincePct);
 
     const acctType = (account.account_type_display || account.account_type || '').toString();
     const acctId   = preferNumericAccountId(account).show;
