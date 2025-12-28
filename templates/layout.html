@@ -43,7 +43,10 @@
 	  </label>
 	</div>
 	<div class="trade-alerts-title position-absolute top-50 start-50 translate-middle text-center">
-	  <b>$$Machine</b> <span class="ms-2" style="opacity:.7;">⚙️</span>
+	  <b>$$Machine</b>
+	  <img id="maxInsideBadge" class="ms-2 mm-gear"
+		   src="{{ url_for('static', filename='Max.png') }}"
+		   alt="Max">
 	</div>
 
       <!-- Right: actions -->
@@ -142,16 +145,31 @@
 		  const aiToggle = document.getElementById("ai-enabled-toggle");
 		  if (!aiToggle) return;
 
+		  const badge = document.getElementById("maxInsideBadge");
+
+		  function applyGlow() {
+			if (!badge) return;
+			badge.classList.toggle("max-ai-glow", !!aiToggle.checked);
+		  }
+
+		  // Set initial state on load
+		  applyGlow();
+
 		  // When user clicks the AI Advisor checkbox, push state to backend
 		  aiToggle.addEventListener("change", () => {
 			const enabled = aiToggle.checked;
+
+			// Optimistic UI: glow immediately
+			applyGlow();
+
 			fetch("/live/ai_toggle", {
 			  method: "POST",
 			  headers: { "Content-Type": "application/json" },
 			  body: JSON.stringify({ enabled })
 			}).catch(() => {
-			  // On error, revert checkbox so UI doesn't lie
+			  // On error, revert checkbox + glow so UI doesn't lie
 			  aiToggle.checked = !enabled;
+			  applyGlow();
 			});
 		  });
 		});

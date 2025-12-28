@@ -169,6 +169,42 @@ except ImportError:
 # -----------------------------------------------------------------------------#
 # Helpers
 # -----------------------------------------------------------------------------#
+def fifo_debug_unmatched_sells(days: int = 120) -> dict:
+    """
+    Returns unmatched SELL qty per symbol when FIFO has no lots.
+    Useful to explain small deltas vs broker reports.
+    """
+    fills = _iter_executed_fills(days=days)
+    lots: Dict[str, List[List[float]]] = {}
+    unmatched: Dict[str, float] = {}
+
+    for f in fills:
+        sym = f["symbol"]
+        side = f["side"]
+        qty = float(f["qty"])
+        price = float(f["price"])
+
+        lots.setdefault(sym, [])
+
+        if side == "BUY":
+            lots[sym].append([qty, price])
+            continue
+
+        sell_qty = qty
+        while sell_qty > 0 and lots[sym]:
+            lot_qty, lot_cost = lots[sym][0]
+            take = min(sell_qty, lot_qty)
+            lot_qty -= take
+            sell_qty -= take
+            if lot_qty <= 1e-9:
+                lots[sym].pop(0)
+            else:
+                lots[sym][0][0] = lot_qty
+
+        if sell_qty > 1e-9:
+            unmatched[sym] = unmatched.get(sym, 0.0) + sell_qty
+
+    return dict(sorted(unmatched.items(), key=lambda kv: kv[1], reverse=True))
 
 def compute_true_about(nav: float, start_cash: float, net_contrib: float, start_date: str):
     """
@@ -1224,6 +1260,20 @@ def live_view():
 
         # ---- balances ----
         acct_summary = et.get_account_summary() or {}
+
+        # Prefer the newest/expected name, but gracefully fall back to older names.
+        try:
+            if hasattr(et, "fetch_account_summary"):
+                acct_summary = et.fetch_account_summary() or {}
+            elif hasattr(et, "get_account_summary"):
+                acct_summary = et.get_account_summary() or {}
+            elif hasattr(et, "account_summary"):
+                acct_summary = et.account_summary() or {}
+            elif hasattr(et, "fetch_balance"):
+                # Some builds expose balance/snapshot under other names
+                acct_summary = et.fetch_balance() or {}
+        except Exception:
+            acct_summary = {}
         account = _normalize_account(acct_summary) or {}
 
         # Raw fields from summary
@@ -1453,38 +1503,38 @@ def live_status():
     if debug:
         debug_raw["trades_raw"] = trades
 
-    # ---------- 7) REALIZED P&L (Option A: E*TRADE) ----------
-    try:
-        account_key = (account or {}).get("account_key") or ""
-        if not account_key:
-            raise ValueError("account_key missing from E*TRADE summary")
 
+    # ---------- 7) REALIZED P&L (E*TRADE, canonical) ----------
+    # pct denom: start_cash + net_contrib (your rule)
+    denom = float(about.get("start_cash") or 0.0) + float(about.get("net_contrib") or 0.0)
+    if denom <= 0:
+        denom = 1.0
+
+    def _pct(x: float) -> float:
         try:
-            net_contrib_for_realized = float(get_total_contributions())
+            return round((float(x) / denom) * 100.0, 2)
         except Exception:
-            LOG.exception("get_total_contributions() failed; using 0.0")
-            net_contrib_for_realized = 0.0
+            return 0.0
 
-        realized_obj = build_realized_view_from_etrade(
-            account_key,
-            net_contrib_for_realized,
-        )
-
+    try:
+        # This function pulls directly from E*TRADE Transactions + detailsURI
+        b = et.realized_pnl_buckets_from_etrade(2000) or {}
+        day_pnl = float(b.get("today", 0.0) or 0.0)
+        week_pnl = float(b.get("week", 0.0) or 0.0)
+        month_pnl = float(b.get("month", 0.0) or 0.0)
     except Exception as exc:
-        LOG.exception(
-            "Failed to build realized view from E*TRADE, falling back to zeros: %s",
-            exc,
-        )
-        realized_obj = {
-            "day":       {"pnl": 0.0, "cost": 0.0},
-            "week":      {"pnl": 0.0, "cost": 0.0},
-            "last_week": {"pnl": 0.0, "cost": 0.0},  # <- use last_week
-            "month":     {"pnl": 0.0, "cost": 0.0},
-            "all":       {"pnl": 0.0, "cost": 0.0},
-        }
+        LOG.warning("realized pnl: etrade failed (using zeros): %s", exc)
+        day_pnl = week_pnl = month_pnl = 0.0
+
+    realized_obj = {
+        "day":   {"pnl": round(day_pnl, 2),   "pct": _pct(day_pnl)},
+        "week":  {"pnl": round(week_pnl, 2),  "pct": _pct(week_pnl)},
+        "month": {"pnl": round(month_pnl, 2), "pct": _pct(month_pnl)},
+    }
 
 
     # ---------- 9) ACCOUNT GROWTH SINCE START (NAV-based) ----------
+
     # Use the baseline (START_CASH_BASELINE on START_DATE) plus real contributions.
     start_cash = START_CASH_BASELINE
     start_date = START_DATE  # or LIVE_APP_START_DATE if you prefer that baseline
@@ -1658,6 +1708,12 @@ def build_realized_view_from_etrade(
     account_key: str,
     net_contrib: float,
 ) -> Dict[str, Dict[str, float]]:
+    LOG.warning(
+        "REALIZED_FN_LINE=%s FILE=%s",
+        getattr(et.realized_pnl_buckets_from_etrade, "__code__", None).co_firstlineno
+        if hasattr(et.realized_pnl_buckets_from_etrade, "__code__") else "n/a",
+        getattr(et, "__file__", "n/a"),
+    )
     """
     Build realized P&L buckets (day/week/last_week/month/all) using the same
     E*TRADE-sourced trades that power the Recent Trades table.
@@ -1709,6 +1765,8 @@ def build_realized_view_from_etrade(
 # -----------------------------------------------------------------------------#
 # Entrypoint
 # -----------------------------------------------------------------------------#
+def fetch_account_summary():
+    return get_account_summary()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
