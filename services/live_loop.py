@@ -14,7 +14,7 @@ import os
 import re
 import time
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 from services.market_service import analyze_symbol
@@ -28,6 +28,7 @@ from services.scan_speedups import (
     preload_history_yahoo,
 )
 from services.trading_helpers import get_holdings, get_trades
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 # --- HARD BLOCK: yfinance is forbidden in LIVE ---
 if os.getenv("BROKER_MODE", "").upper() == "LIVE":
@@ -36,6 +37,20 @@ if os.getenv("BROKER_MODE", "").upper() == "LIVE":
         raise RuntimeError("❌ yfinance loaded in LIVE mode — this is forbidden")
 
 log = logging.getLogger("live")
+def _dbg_gate(sym: str, msg: str, *, force: bool = False):
+    """
+    Gate debug logger.
+    Enable with:
+      $env:MM_DEBUG_ALL="1"   (all symbols)
+      $env:MM_DEBUG_SYMBOL="AAPL" (single symbol)
+    """
+    ds = (os.getenv("MM_DEBUG_SYMBOL") or "").strip().upper()
+    da = (os.getenv("MM_DEBUG_ALL") or "").strip().lower() in ("1", "true", "yes", "on")
+    sym_u = (sym or "").strip().upper()
+
+    if force or da or (ds and ds == sym_u):
+        log.warning("[GATE] %s %s", sym_u, msg)
+
 
 _DEFAULTS = {
     "broker_mode": "LIVE",
@@ -504,13 +519,23 @@ def ai_gate_for_buy(
 
     if action == "RED_FLAG":
         return False, rec
+
     if action not in {"BUY", "STRONG_BUY"}:
         return False, rec
 
-    # If we get here, AI explicitly said BUY / STRONG_BUY → allowed
+    # Only check confidence AFTER action is approved
+    conf = rec.get("confidence")
+    try:
+        conf = float(conf) if conf is not None else None
+    except Exception:
+        conf = None
+
+    if conf is None or conf < AI_MIN_CONFIDENCE:
+        return False, rec
+
     return True, rec
-
-
+    # If we get here, AI explicitly said BUY / STRONG_BUY and confidence passed
+    return True, rec
 def run_live_loop(settings, symbols, broker_mode=None):
     settings = _normalize_settings(settings)
     mode = _norm_mode(broker_mode or settings.broker_mode)
@@ -600,7 +625,6 @@ def run_live_loop(settings, symbols, broker_mode=None):
         candidates: list[tuple[str, float, list[str]]] = []
         scanned = 0
         skipped = 0
-        cand_logs_emitted = 0
 
         # 🔁 scan the universe
         for sym in symbols:
@@ -608,33 +632,11 @@ def run_live_loop(settings, symbols, broker_mode=None):
             try:
                 price, triggered, passed = analyze_symbol(sym, settings)
             except Exception as e:
-                log.warning("[LIVE] SKIP %s: analyze_symbol exception: %s", sym, e)
+                log.warning("[LIVE] SKIP %s: analyze_symbol exception: %s", sym, e, exc_info=True)
                 skipped += 1
                 continue
 
-            if price is None:
-                log.warning("[LIVE] SKIP %s: analyze_symbol returned price=None", sym)
-                LOG.warning("[LIVE] SKIP %s: analyze_symbol exception: %s", sym, e, exc_info=True)
-                skipped += 1
-                continue
-
-            if not passed:
-                continue
-
-            # --- Wash-sale avoidance: block re-buy after loss sell -------------------------
-            try:
-                live_db_path = os.path.join(ROOT, "live.db")  # ROOT already exists in this file
-                blocked, why = wash_sale_blocked(sym, live_db_path)
-                if blocked:
-                    log.info("[BUY_BLOCK] %s -> %s", sym, why)
-                    continue
-            except Exception:
-                pass
-
-            # --- Candidate passed: continue into BUY logic --------------------------------
-
-            
-            
+            # --- heartbeat/progress (log even if not passed) ---
             now = time.time()
             if now - last_ping >= HEARTBEAT_SEC:
                 rate = scanned / max(now - iter_start, 1e-6)
@@ -651,23 +653,34 @@ def run_live_loop(settings, symbols, broker_mode=None):
                 )
                 last_ping = now
 
-            if not passed or price is None:
+            # --- hard skips ---
+            if price is None:
+                log.warning("[LIVE] SKIP %s: analyze_symbol returned price=None", sym)
+                skipped += 1
                 continue
+
+            if not passed:
+                continue
+
+            # --- Wash-sale avoidance ---
+            try:
+                live_db_path = os.path.join(ROOT, "live.db")
+                blocked, why = wash_sale_blocked(sym, live_db_path)
+                if blocked:
+                    _dbg_gate(sym, f"BLOCK {why}", force=False)
+                    continue
+            except Exception:
+                pass
 
             tokens = [(t or "").strip() for t in (triggered or [])]
             tokens_lc = [t.replace(" ", "").lower() for t in tokens]
 
-            # ---- SMA gate (respect JSON: price_sma_len / sma_length) ----------------------
             sma_len = int(getattr(settings, "price_sma_len", getattr(settings, "sma_length", 20)) or 20)
-
-            # Accept multiple SMA token spellings (market_service emits these)
             has_sma = any(
                 (f"price>sma{sma_len}" in t) or (f"price>sma({sma_len})" in t)
                 for t in tokens_lc
             )
 
-            # If your live_loop config flag is still named require_sma20, keep it,
-            # but make it mean "require configured SMA" instead of hardcoded 20.
             has_adx  = any(t.startswith("adx") or "adx>=" in t for t in tokens_lc)
             has_macd = any("macd" in t for t in tokens_lc)
             has_vwap = any("vwap" in t for t in tokens_lc)
@@ -681,12 +694,21 @@ def run_live_loop(settings, symbols, broker_mode=None):
             )
 
             if not meets_reqs:
+                missing = []
+                if "adx" in req and not has_adx:   missing.append("adx")
+                if "macd" in req and not has_macd: missing.append("macd")
+                if "vwap" in req and not has_vwap: missing.append("vwap")
+                if "vol" in req and not has_vol:   missing.append("vol")
+                _dbg_gate(sym, f"REQ miss={missing} tokens={tokens}", force=False)
                 continue
 
             if require_sma20 and not has_sma:
+                _dbg_gate(sym, f"SMA miss (need price>sma{sma_len}) tokens={tokens}", force=False)
                 continue
 
+            _dbg_gate(sym, f"PROMOTE candidate triggers={len(triggered or [])}", force=False)
             candidates.append((sym, float(price), list(triggered or [])))
+
 
         elapsed = time.time() - iter_start
         log.info(
@@ -757,7 +779,9 @@ def run_live_loop(settings, symbols, broker_mode=None):
 
         purchased = False
         for sym, price, triggered in ranked:
-            if len(triggered) < getattr(settings, "strict_buy_signals", 4):
+            strict_n = getattr(settings, "strict_buy_signals", 4)
+            if len(triggered) < strict_n:
+                _dbg_gate(sym, f"STRICT miss triggers={len(triggered)} need>={strict_n} triggered={triggered}")
                 continue
 
             max_per_trade = float("inf")
