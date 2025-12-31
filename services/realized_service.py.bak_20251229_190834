@@ -110,119 +110,101 @@ def insert_realized_trade(
         conn.close()
 
     return float(gain)
-# In services/realized_service.py
-
-def realized_buckets_from_live_db(db_path: str, denom_value: float = 0.0):
+def realized_buckets_from_live_db(db_path, now=None, all_start_date=None):
     """
-    ...
-    denom_value: if provided (>0), pct is computed vs this value (ex: account NAV).
-                 otherwise, falls back to total_cost (if available).
+    DB-only realized P&L buckets from sqlite table realized_trades.
+
+    Returns the shape dashboard expects:
+      {day:{pnl,pct}, week:{pnl,pct}, last_week:{pnl,pct}, month:{pnl,pct}, all:{pnl,pct}}
+    pct is 0.0 (no cost basis in realized_trades).
     """
     import sqlite3
-    from datetime import datetime, date, timedelta
-    try:
-        from zoneinfo import ZoneInfo
-        ETZ = ZoneInfo("America/New_York")
-    except Exception:
-        ETZ = None
+    import datetime as _dt
 
-    def _today_et() -> date:
-        if ETZ:
-            return datetime.now(tz=ETZ).date()
-        return datetime.now().date()
+    # Use ET date boundaries; but because close_date is stored as YYYY-MM-DD,
+    # string comparisons work safely if we normalize to 10 chars.
+    if now is None:
+        today = _dt.date.today()
+    else:
+        # accept date/datetime/iso string
+        if isinstance(now, _dt.datetime):
+            today = now.date()
+        elif isinstance(now, _dt.date):
+            today = now
+        else:
+            s = str(now).strip()[:10]
+            try:
+                today = _dt.date.fromisoformat(s)
+            except Exception:
+                today = _dt.date.today()
 
-    def _monday(d: date) -> date:
-        return d - timedelta(days=d.weekday())
-
-    def _pct(pnl: float, cost: float) -> float:
-        # ✅ NEW: percent vs account value if provided
-        try:
-            dv = float(denom_value or 0.0)
-            if dv > 0:
-                return round((float(pnl) / dv) * 100.0, 2)
-        except Exception:
-            pass
-
-        # fallback: percent vs total_cost if present
-        try:
-            if not cost or float(cost) == 0.0:
-                return 0.0
-            return round((float(pnl) / float(cost)) * 100.0, 2)
-        except Exception:
-            return 0.0
-
-    today = _today_et()
-    mon = _monday(today)
-    last_mon = mon - timedelta(days=7)
-    last_fri = mon - timedelta(days=3)
-
+    week_start = today - _dt.timedelta(days=today.weekday())          # Mon
+    last_week_end = week_start - _dt.timedelta(days=1)               # Sun
+    last_week_start = last_week_end - _dt.timedelta(days=6)          # Mon
     month_start = today.replace(day=1)
 
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
+    all_start = None
+    if all_start_date is not None:
+        if isinstance(all_start_date, _dt.datetime):
+            all_start = all_start_date.date()
+        elif isinstance(all_start_date, _dt.date):
+            all_start = all_start_date
+        else:
+            s = str(all_start_date).strip()[:10]
+            try:
+                all_start = _dt.date.fromisoformat(s)
+            except Exception:
+                all_start = None
 
-    # detect if total_cost exists
-    cols = [r[1] for r in cur.execute("pragma table_info(realized_trades)").fetchall()]
-    has_cost = "total_cost" in cols
-
-    # Pull rows
-    if has_cost:
-        rows = cur.execute(
-            "SELECT close_date, gain, total_cost FROM realized_trades WHERE close_date IS NOT NULL"
-        ).fetchall()
-    else:
-        rows = cur.execute(
-            "SELECT close_date, gain FROM realized_trades WHERE close_date IS NOT NULL"
-        ).fetchall()
-
-    conn.close()
-
-    buckets = {
-        "day": {"pnl": 0.0, "cost": 0.0},
-        "week": {"pnl": 0.0, "cost": 0.0},
-        "last_week": {"pnl": 0.0, "cost": 0.0},
-        "month": {"pnl": 0.0, "cost": 0.0},
-        "all": {"pnl": 0.0, "cost": 0.0},
-    }
-
-    for r in rows:
+    def _pack(x):
         try:
-            d = datetime.strptime(r["close_date"], "%Y-%m-%d").date()
+            x = float(x or 0.0)
         except Exception:
-            continue
+            x = 0.0
+        return {"pnl": round(x, 2), "pct": 0.0}
 
-        pnl = float(r["gain"] or 0.0)
-        cost = float(r["total_cost"] or 0.0) if has_cost else 0.0
+    con = sqlite3.connect(db_path)
+    try:
+        cur = con.cursor()
 
-        # all
-        buckets["all"]["pnl"] += pnl
-        buckets["all"]["cost"] += cost
+        # Normalize close_date to YYYY-MM-DD (first 10 chars)
+        # IMPORTANT: use COALESCE(SUM(...),0) so empty buckets are 0 not None.
+        day = cur.execute(
+            "SELECT COALESCE(SUM(gain),0) FROM realized_trades WHERE substr(close_date,1,10)=?",
+            (today.isoformat(),)
+        ).fetchone()[0]
 
-        # month-to-date (true MTD)
-        if month_start <= d <= today:
-            buckets["month"]["pnl"] += pnl
-            buckets["month"]["cost"] += cost
+        week = cur.execute(
+            "SELECT COALESCE(SUM(gain),0) FROM realized_trades WHERE substr(close_date,1,10) BETWEEN ? AND ?",
+            (week_start.isoformat(), today.isoformat())
+        ).fetchone()[0]
 
-        # week-to-date (Mon..today)
-        if mon <= d <= today:
-            buckets["week"]["pnl"] += pnl
-            buckets["week"]["cost"] += cost
+        last_week = cur.execute(
+            "SELECT COALESCE(SUM(gain),0) FROM realized_trades WHERE substr(close_date,1,10) BETWEEN ? AND ?",
+            (last_week_start.isoformat(), last_week_end.isoformat())
+        ).fetchone()[0]
 
-        # last week (Mon..Fri)
-        if last_mon <= d <= last_fri:
-            buckets["last_week"]["pnl"] += pnl
-            buckets["last_week"]["cost"] += cost
+        month = cur.execute(
+            "SELECT COALESCE(SUM(gain),0) FROM realized_trades WHERE substr(close_date,1,10) BETWEEN ? AND ?",
+            (month_start.isoformat(), today.isoformat())
+        ).fetchone()[0]
 
-        # day
-        if d == today:
-            buckets["day"]["pnl"] += pnl
-            buckets["day"]["cost"] += cost
+        if all_start is None:
+            allv = cur.execute(
+                "SELECT COALESCE(SUM(gain),0) FROM realized_trades"
+            ).fetchone()[0]
+        else:
+            allv = cur.execute(
+                "SELECT COALESCE(SUM(gain),0) FROM realized_trades WHERE substr(close_date,1,10) >= ?",
+                (all_start.isoformat(),)
+            ).fetchone()[0]
 
-    out = {}
-    for k in ("day", "week", "last_week", "month", "all"):
-        pnl = round(buckets[k]["pnl"], 2)
-        out[k] = {"pnl": pnl, "pct": 0.0}  # pct is computed in dashboard.py using VALUE (period % increase)
-
-    return out
-
+        return {
+            "day": _pack(day),
+            "week": _pack(week),
+            "last_week": _pack(last_week),
+            "month": _pack(month),
+            "all": _pack(allv),
+        }
+    finally:
+        con.close()

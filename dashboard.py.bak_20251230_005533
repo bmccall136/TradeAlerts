@@ -1547,28 +1547,41 @@ def live_status():
         LOG.warning("realized sync failed: %s", exc)
 
 
-    # ---------- 7) REALIZED P&L (live.db realized_trades) ----------
-    # pct is computed vs **account NAV** (not vs sum(total_cost))
-    try:
-        _denom_value = float((account or {}).get("nav") or (value_obj or {}).get("value") or 0.0)
-    except Exception:
-        _denom_value = 0.0
+    # ---------- 7) REALIZED P&L (E*TRADE, canonical) ----------
+    # pct denom: start_cash + net_contrib (your rule)
+    denom = float(about.get("start_cash") or 0.0) + float(about.get("net_contrib") or 0.0)
+    if denom <= 0:
+        denom = None
+
+    def _pct(x: float) -> float:
+        try:
+            if not denom:
+                return 0.0
+            return round((float(x) / float(denom)) * 100.0, 2)
+        except Exception:
+            return 0.0
+
+    def _pct(x: float) -> float:
+        try:
+            return round((float(x) / denom) * 100.0, 2)
+        except Exception:
+            return 0.0
 
     try:
-        realized_obj_full = realized_buckets_from_live_db_db(str(LIVE_DB), denom_value=_denom_value) or {}
-        realized_obj = {
-            "day":   realized_obj_full.get("day",   {"pnl": 0.0, "pct": 0.0}),
-            "week":  realized_obj_full.get("week",  {"pnl": 0.0, "pct": 0.0}),
-            "month": realized_obj_full.get("month", {"pnl": 0.0, "pct": 0.0}),
-        }
+        rb = realized_buckets_from_live_db_db(str(LIVE_DB)) or {}
+        pnl = (rb.get("pnl") or {})
+        day_pnl   = float(pnl.get("today", 0.0) or 0.0)
+        week_pnl  = float(pnl.get("week", 0.0) or 0.0)
+        month_pnl = float(pnl.get("month", 0.0) or 0.0)
     except Exception as exc:
-        LOG.warning("realized pnl: realized_service failed (using zeros): %s", exc)
-        realized_obj = {
-            "day":   {"pnl": 0.0, "pct": 0.0},
-            "week":  {"pnl": 0.0, "pct": 0.0},
-            "month": {"pnl": 0.0, "pct": 0.0},
-        }
+        LOG.warning("realized pnl: live.db failed (using zeros): %s", exc)
+        day_pnl = week_pnl = month_pnl = 0.0
 
+    realized_obj = {
+        "day":   {"pnl": round(day_pnl, 2),   "pct": _pct(day_pnl)},
+        "week":  {"pnl": round(week_pnl, 2),  "pct": _pct(week_pnl)},
+        "month": {"pnl": round(month_pnl, 2), "pct": _pct(month_pnl)},
+    }
 
 
     # ---------- 9) ACCOUNT GROWTH SINCE START (NAV-based) ----------

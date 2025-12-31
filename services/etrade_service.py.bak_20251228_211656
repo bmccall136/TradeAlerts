@@ -3520,14 +3520,83 @@ def sync_realized_trades_from_etrade(
     start_date: _dt.date | None = None,
 ) -> Dict[str, object]:
     """
-    Disabled.
+    Pull executions from E*TRADE and (re)build realized_trades from them.
 
-    Your E*TRADE executions feed currently returns pl=0.0 for SELL rows,
-    so it cannot be used to compute realized P&L. We instead write realized
-    P&L into live.db at SELL fill time (method #1).
+    We treat each SELL-like execution row's `pl` as realized P&L for that day.
+    This gives us a clean, E*TRADE-sourced realized_trades table that your
+    dashboard bucket logic can query.
+
+    Returns a small summary dict.
     """
-    today = _dt.date.today()
-    return {"ok": False, "disabled": True, "reason": "executions pl is 0.0; use SELL fill-time DB writes", "end": today.isoformat()}
+    if start_date is None:
+        start_date = REALIZED_START_DATE
+
+    # How far back to look
+    today = _dt.datetime.now(ET).date()
+    days = max(1, (today - start_date).days + 1)
+
+    # Use the canonical trade normalizer
+    trades = recent_executions_as_trades(days=days)
+    _realized_sum = None
+
+    # Open / create DB
+    conn = _sqlite.connect(db_path)
+    _ensure_realized_table(conn)
+    cur = conn.cursor()
+
+    # Clear any overlapping rows so repeated syncs don't double-count
+    cur.execute(
+        "DELETE FROM realized_trades WHERE date(close_date) >= date(?)",
+        (start_date.isoformat(),),
+    )
+
+    inserted = 0
+
+    for t in trades:
+        try:
+            action = str(t.get("action", "")).upper()
+            if not action.startswith("SELL"):
+                # We only treat sales as realizing P&L
+                continue
+
+            pl = float(t.get("pl", 0.0) or 0.0)
+
+            # `time` is epoch ms per recent_executions_as_trades
+            ts = t.get("time")
+            if ts is None:
+                continue
+            ts = int(ts)
+            if ts <= 0:
+                continue
+
+            dt_et = _dt.datetime.fromtimestamp(ts / 1000.0, tz=ET).date()
+            if dt_et < start_date:
+                continue
+
+            sym = str(t.get("symbol", "") or "").strip().upper()
+            if not sym:
+                continue
+            qty = float(t.get("qty", 0.0) or 0.0)
+            if qty <= 0:
+                continue
+            cur.execute(
+                "INSERT INTO realized_trades (symbol, action, qty, close_date, gain) VALUES (?, ?, ?, ?, ?)",
+                (sym, action, qty, dt_et.isoformat(), pl),
+            )
+            inserted += 1
+        except Exception:
+            # Be conservative; we don't let one bad row kill the sync
+            continue
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "ok": True,
+        "inserted": inserted,
+        "start": start_date.isoformat(),
+        "end": today.isoformat(),
+    }
 def realized_pnl_buckets_from_db(
     db_path: str,
     all_start_date: _dt.date | None = None,

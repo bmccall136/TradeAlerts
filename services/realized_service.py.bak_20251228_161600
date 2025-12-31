@@ -110,119 +110,68 @@ def insert_realized_trade(
         conn.close()
 
     return float(gain)
-# In services/realized_service.py
-
-def realized_buckets_from_live_db(db_path: str, denom_value: float = 0.0):
+def realized_buckets_from_live_db(db_path, now=None):
     """
-    ...
-    denom_value: if provided (>0), pct is computed vs this value (ex: account NAV).
-                 otherwise, falls back to total_cost (if available).
+    DB-only realized P&L buckets from sqlite table realized_trades.
+
+    Expects table:
+      realized_trades(symbol TEXT, action TEXT, qty REAL, close_date TEXT, gain REAL)
+
+    Buckets returned are true:
+      - day (today)
+      - week-to-date (Mon -> today)
+      - month-to-date (1st -> today)
+      - year-to-date (Jan 1 -> today)
     """
     import sqlite3
-    from datetime import datetime, date, timedelta
-    try:
-        from zoneinfo import ZoneInfo
-        ETZ = ZoneInfo("America/New_York")
-    except Exception:
-        ETZ = None
+    import datetime as _dt
 
-    def _today_et() -> date:
-        if ETZ:
-            return datetime.now(tz=ETZ).date()
-        return datetime.now().date()
-
-    def _monday(d: date) -> date:
-        return d - timedelta(days=d.weekday())
-
-    def _pct(pnl: float, cost: float) -> float:
-        # ✅ NEW: percent vs account value if provided
+    def _to_date(v):
+        if v is None:
+            return None
+        if isinstance(v, _dt.date) and not isinstance(v, _dt.datetime):
+            return v
+        s = str(v).strip()
+        if not s:
+            return None
+        s10 = s[:10]  # accept YYYY-MM-DD or ISO string
         try:
-            dv = float(denom_value or 0.0)
-            if dv > 0:
-                return round((float(pnl) / dv) * 100.0, 2)
+            return _dt.date.fromisoformat(s10)
         except Exception:
-            pass
+            return None
 
-        # fallback: percent vs total_cost if present
-        try:
-            if not cost or float(cost) == 0.0:
-                return 0.0
-            return round((float(pnl) / float(cost)) * 100.0, 2)
-        except Exception:
-            return 0.0
-
-    today = _today_et()
-    mon = _monday(today)
-    last_mon = mon - timedelta(days=7)
-    last_fri = mon - timedelta(days=3)
-
+    today = _to_date(now) or _dt.datetime.now().date()
+    week_start = today - _dt.timedelta(days=today.weekday())  # Monday
     month_start = today.replace(day=1)
+    year_start = today.replace(month=1, day=1)
 
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
+    buckets = {"day": 0.0, "week": 0.0, "month": 0.0, "year": 0.0}
 
-    # detect if total_cost exists
-    cols = [r[1] for r in cur.execute("pragma table_info(realized_trades)").fetchall()]
-    has_cost = "total_cost" in cols
-
-    # Pull rows
-    if has_cost:
+    con = sqlite3.connect(db_path)
+    try:
+        cur = con.cursor()
         rows = cur.execute(
-            "SELECT close_date, gain, total_cost FROM realized_trades WHERE close_date IS NOT NULL"
-        ).fetchall()
-    else:
-        rows = cur.execute(
-            "SELECT close_date, gain FROM realized_trades WHERE close_date IS NOT NULL"
+            "SELECT close_date, gain FROM realized_trades WHERE gain IS NOT NULL"
         ).fetchall()
 
-    conn.close()
+        for close_date, gain in rows:
+            d = _to_date(close_date)
+            if d is None:
+                continue
+            try:
+                g = float(gain or 0.0)
+            except Exception:
+                continue
 
-    buckets = {
-        "day": {"pnl": 0.0, "cost": 0.0},
-        "week": {"pnl": 0.0, "cost": 0.0},
-        "last_week": {"pnl": 0.0, "cost": 0.0},
-        "month": {"pnl": 0.0, "cost": 0.0},
-        "all": {"pnl": 0.0, "cost": 0.0},
-    }
+            if d == today:
+                buckets["day"] += g
+            if week_start <= d <= today:
+                buckets["week"] += g
+            if month_start <= d <= today:
+                buckets["month"] += g
+            if year_start <= d <= today:
+                buckets["year"] += g
 
-    for r in rows:
-        try:
-            d = datetime.strptime(r["close_date"], "%Y-%m-%d").date()
-        except Exception:
-            continue
-
-        pnl = float(r["gain"] or 0.0)
-        cost = float(r["total_cost"] or 0.0) if has_cost else 0.0
-
-        # all
-        buckets["all"]["pnl"] += pnl
-        buckets["all"]["cost"] += cost
-
-        # month-to-date (true MTD)
-        if month_start <= d <= today:
-            buckets["month"]["pnl"] += pnl
-            buckets["month"]["cost"] += cost
-
-        # week-to-date (Mon..today)
-        if mon <= d <= today:
-            buckets["week"]["pnl"] += pnl
-            buckets["week"]["cost"] += cost
-
-        # last week (Mon..Fri)
-        if last_mon <= d <= last_fri:
-            buckets["last_week"]["pnl"] += pnl
-            buckets["last_week"]["cost"] += cost
-
-        # day
-        if d == today:
-            buckets["day"]["pnl"] += pnl
-            buckets["day"]["cost"] += cost
-
-    out = {}
-    for k in ("day", "week", "last_week", "month", "all"):
-        pnl = round(buckets[k]["pnl"], 2)
-        out[k] = {"pnl": pnl, "pct": 0.0}  # pct is computed in dashboard.py using VALUE (period % increase)
-
-    return out
-
+        return buckets
+    finally:
+        con.close()

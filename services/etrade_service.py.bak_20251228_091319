@@ -395,9 +395,6 @@ def open_sell_qty_map(account_id_key: str) -> dict[str, float]:
 # --- add near imports ---
 import threading
 
-# --- Added by patch: missing constant used by list_trade_transactions()
-API_BASE = "https://api.etrade.com/v1"
-
 _QUOTE_CACHE = {"key": None, "asof": 0.0, "data": None}
 _QUOTE_LOCK = threading.Lock()
 
@@ -1740,107 +1737,71 @@ def list_executed_orders(days: int = 5) -> dict:
     return r.json()
 
 
-def list_trade_transactions(days=90, account_id=None, account_key=None, count=200):
-    """
-    Fetch TRADE transactions from E*TRADE.
-
-    IMPORTANT:
-      - Some E*TRADE endpoints tolerate accountIdKey; transactions often wants numeric accountId.
-      - E*TRADE can return HTTP 500 (code 100) transiently or when given the "wrong" id form.
-      - This function should not crash the app on 500; it will retry once and then return {}.
-    """
-    import datetime as _dt
-
-    # Decide which account identifier to use.
-    # Prefer numeric id if we have it.
-    aid_numeric = None
-    try:
-        aid_numeric = str(globals().get("_primary_account_id") or "").strip()
-        if not aid_numeric.isdigit():
-            aid_numeric = None
-    except Exception:
-        aid_numeric = None
-
-    aid_key = None
-    try:
-        aid_key = str(globals().get("_primary_account_key") or "").strip()
-        if not aid_key:
-            aid_key = None
-    except Exception:
-        aid_key = None
-
-    # Caller overrides
-    if account_id:
-        s = str(account_id).strip()
-        if s.isdigit():
-            aid_numeric = s
-        else:
-            # allow caller to pass key here; we'll treat as key
-            aid_key = s
-    if account_key:
-        s = str(account_key).strip()
-        if s:
-            aid_key = s
-
-    # Primary choice: numeric if present, else key
-    first = aid_numeric or aid_key
-    second = None
-    if first == aid_numeric and aid_key:
-        second = aid_key
-    elif first == aid_key and aid_numeric:
-        second = aid_numeric
-
-    if not first:
-        raise RuntimeError("No E*TRADE account id/key available for transactions call")
-
-    # Date range
-    today = _dt.date.today()
-    start = today - _dt.timedelta(days=int(days or 0))
-    end = today  # never ask for future dates
-
+def list_trade_transactions(days: int = 5) -> dict:
+    aid = account_id_key()
+    ses = get_oauth_session()
+    end = datetime.utcnow()
+    start = end - timedelta(days=days)
+    url = f"{API_BASE}/accounts/{aid}/transactions.json"
     params = {
-        "startDate": start.isoformat(),
-        "endDate": end.isoformat(),
+        "startDate": _ymd(start),
+        "endDate": _ymd(end),
         "category": "TRADE",
-        "count": int(count or 200),
+        "count": 200,
     }
-
-    def _do(aid_value):
-        url = f"{API_BASE}/accounts/{aid_value}/transactions.json"
-        r = _oauth_get(url, params=params)
-        if r is None:
-            return None, None
-        return r, url
-
-    # Attempt 1
-    r, url = _do(first)
-    if r is None:
+    r = ses.get(url, params=params, timeout=15)
+    if r.status_code == 204:
         return {}
-
-    # If 500, retry with alternate id form (if available)
-    if r.status_code >= 500 and second:
-        try:
-            r2, url2 = _do(second)
-            if r2 is not None:
-                r = r2
-                url = url2
-        except Exception:
-            pass
-
-    # Still 500? fail soft
-    if r.status_code >= 500:
-        try:
-            _lg.warning("E*TRADE transactions HTTP %s for %s (returning empty)", r.status_code, url)
-        except Exception:
-            pass
-        return {}
-
-    # Non-500 errors: keep existing behavior (raise)
     r.raise_for_status()
-    try:
-        return r.json() or {}
-    except Exception:
-        return {}
+    return _json_or_empty(r)
+
+
+def get_recent_trades_and_realized(days: int = 5):
+    """
+    Returns (trades_list, realized_sum_float) for the last `days`.
+    trades_list items: {time, symbol, action, qty, price, amount}
+    """
+    # Executions -> recent trades
+    orders = list_executed_orders(days) or {}
+    raw_orders = (orders.get("OrderListResponse", {}) or {}).get("orders", []) or []
+    trades = []
+    for o in raw_orders:
+        ts = o.get("executedTime") or o.get("placedTime") or o.get("updateTime")
+        for leg in o.get("orderLegs") or []:
+            sym = (leg.get("symbol") or "").upper()
+            side = (leg.get("side") or o.get("orderAction") or "").upper()
+            for ex in leg.get("executions") or []:
+                price = float(ex.get("avgExecPrice") or ex.get("price") or 0)
+                qty = int(ex.get("quantity") or 0)
+                trades.append(
+                    {
+                        "time": ts,
+                        "symbol": sym,
+                        "action": side,  # BUY / SELL
+                        "qty": qty,
+                        "price": price,
+                        "amount": round(price * qty * (1 if side == "SELL" else -1), 2),
+                    }
+                )
+    trades.sort(key=lambda x: str(x.get("time") or ""), reverse=True)
+    trades = trades[:50]
+
+    # Transactions -> realized P&L sum
+    realized = 0.0
+    tx = list_trade_transactions(days) or {}
+    for t in (tx.get("TransactionListResponse", {}) or {}).get(
+        "transactions", []
+    ) or []:
+        gl = t.get("gainLoss") or t.get("gain")
+        try:
+            if gl is not None:
+                realized += float(gl)
+        except Exception:
+            pass
+
+    return trades, round(realized, 2)
+
+
 from datetime import timedelta
 
 # ---- Canonical helpers (no self-imports, no class dependency) ---------------
@@ -3520,14 +3481,82 @@ def sync_realized_trades_from_etrade(
     start_date: _dt.date | None = None,
 ) -> Dict[str, object]:
     """
-    Disabled.
+    Pull executions from E*TRADE and (re)build realized_trades from them.
 
-    Your E*TRADE executions feed currently returns pl=0.0 for SELL rows,
-    so it cannot be used to compute realized P&L. We instead write realized
-    P&L into live.db at SELL fill time (method #1).
+    We treat each SELL-like execution row's `pl` as realized P&L for that day.
+    This gives us a clean, E*TRADE-sourced realized_trades table that your
+    dashboard bucket logic can query.
+
+    Returns a small summary dict.
     """
-    today = _dt.date.today()
-    return {"ok": False, "disabled": True, "reason": "executions pl is 0.0; use SELL fill-time DB writes", "end": today.isoformat()}
+    if start_date is None:
+        start_date = REALIZED_START_DATE
+
+    # How far back to look
+    today = _dt.datetime.now(ET).date()
+    days = max(1, (today - start_date).days + 1)
+
+    # Use the canonical trade normalizer
+    trades, _realized_sum = get_recent_trades_and_realized(days=days)
+
+    # Open / create DB
+    conn = _sqlite.connect(db_path)
+    _ensure_realized_table(conn)
+    cur = conn.cursor()
+
+    # Clear any overlapping rows so repeated syncs don't double-count
+    cur.execute(
+        "DELETE FROM realized_trades WHERE date(close_date) >= date(?)",
+        (start_date.isoformat(),),
+    )
+
+    inserted = 0
+
+    for t in trades:
+        try:
+            action = str(t.get("action", "")).upper()
+            if not action.startswith("SELL"):
+                # We only treat sales as realizing P&L
+                continue
+
+            pl = float(t.get("pl", 0.0) or 0.0)
+
+            # `time` is epoch ms per recent_executions_as_trades
+            ts = t.get("time")
+            if ts is None:
+                continue
+            ts = int(ts)
+            if ts <= 0:
+                continue
+
+            dt_et = _dt.datetime.fromtimestamp(ts / 1000.0, tz=ET).date()
+            if dt_et < start_date:
+                continue
+
+            cur.execute(
+            sym = str(t.get("symbol", "") or "").strip().upper()
+            if not sym:
+                continue
+            qty = float(t.get("qty", 0.0) or 0.0)
+            if qty <= 0:
+                continue
+                "INSERT INTO realized_trades (symbol, action, qty, close_date, gain) VALUES (?, ?, ?, ?, ?)",
+                (sym, action, qty, dt_et.isoformat(), pl),
+            )
+            inserted += 1
+        except Exception:
+            # Be conservative; we don't let one bad row kill the sync
+            continue
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "ok": True,
+        "inserted": inserted,
+        "start": start_date.isoformat(),
+        "end": today.isoformat(),
+    }
 def realized_pnl_buckets_from_db(
     db_path: str,
     all_start_date: _dt.date | None = None,
