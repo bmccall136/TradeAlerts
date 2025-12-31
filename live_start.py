@@ -4,11 +4,11 @@ import logging
 from logging.handlers import RotatingFileHandler
 import os
 import sys
-
-# --- Small JSON helper for live_start ---
-import json
 from pathlib import Path
 
+# -----------------------------------------------------------------------------
+# Small JSON helper for live_start
+# -----------------------------------------------------------------------------
 def load_json(path, default=None):
     """
     Load JSON from `path`. If file is missing or invalid, return `default`.
@@ -24,20 +24,27 @@ def load_json(path, default=None):
         print(f"[live_start] ERROR reading {path}: {e}")
         return default
 
+
 # -----------------------------------------------------------------------------
 # Emoji-safe console stream (Windows cp1252 console)
 # -----------------------------------------------------------------------------
 class SafeStdout:
+    """
+    Wrap an underlying stream and strip non-ascii only if the console can't render.
+    This avoids recursion if sys.stdout ever gets reassigned.
+    """
+    def __init__(self, stream):
+        self._stream = stream
+
     def write(self, s):
         try:
-            sys.stdout.write(s)
+            self._stream.write(s)
         except UnicodeEncodeError:
-            # Fallback: strip characters the console can't render
             safe = s.encode("ascii", "ignore").decode("ascii", errors="ignore")
-            sys.stdout.write(safe)
+            self._stream.write(safe)
 
     def flush(self):
-        sys.stdout.flush()
+        self._stream.flush()
 
 
 # -----------------------------------------------------------------------------
@@ -54,7 +61,7 @@ root_logger.handlers.clear()
 _fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 # Console handler (emoji-safe)
-_console = logging.StreamHandler(SafeStdout())
+_console = logging.StreamHandler(SafeStdout(sys.stdout))
 _console.setFormatter(_fmt)
 root_logger.addHandler(_console)
 
@@ -75,10 +82,8 @@ log = logging.getLogger("launcher")
 # -----------------------------------------------------------------------------
 ROOT = os.path.abspath(os.path.dirname(__file__))
 
-# Default / legacy settings file
 DEFAULT_SETTINGS = os.path.join(ROOT, "live_settings.json")
 
-# Mode-specific settings files
 SETTINGS_BY_MODE = {
     "DAY": os.path.join(ROOT, "live_settings_day.json"),
     "SWING": os.path.join(ROOT, "live_settings_swing.json"),
@@ -91,15 +96,9 @@ LIVE_MODE_DEFAULT = "DAY"
 SYMS_PATH = os.path.join(ROOT, "sp500_symbols.txt")
 
 
-load_json
-
 def load_symbols(path):
     with open(path, encoding="utf-8") as f:
-        return [
-            ln.strip().split(",")[0].upper()
-            for ln in f
-            if ln.strip()
-        ]
+        return [ln.strip().split(",")[0].upper() for ln in f if ln.strip()]
 
 
 def _norm_mode(v):
@@ -135,21 +134,12 @@ def _resolve_settings_path() -> str:
         if os.path.exists(env_path):
             log.info("Using LIVE_SETTINGS_PATH from env: %s", env_path)
             return env_path
-        else:
-            log.warning(
-                "LIVE_SETTINGS_PATH=%s does not exist; falling back to mode mapping",
-                env_path,
-            )
+        log.warning("LIVE_SETTINGS_PATH=%s does not exist; falling back to mode mapping", env_path)
 
     mode = _read_live_mode()
     path = SETTINGS_BY_MODE.get(mode, DEFAULT_SETTINGS)
     if not os.path.exists(path):
-        log.warning(
-            "Mode %s mapped to %s but it does not exist; falling back to %s",
-            mode,
-            path,
-            DEFAULT_SETTINGS,
-        )
+        log.warning("Mode %s mapped to %s but it does not exist; falling back to %s", mode, path, DEFAULT_SETTINGS)
         return DEFAULT_SETTINGS
 
     log.info("Mode %s → live settings from %s", mode, path)
@@ -159,23 +149,13 @@ def _resolve_settings_path() -> str:
 def main():
     log.info("▶️  Live launcher starting…")
 
-    # Guardrails banner (these env flags can still be used if you want)
-    log.info(
-        "GUARDRAILS_ENABLED = %s",
-        str(os.getenv("GUARDRAILS_ENABLED", "true")).lower(),
-    )
-    log.info(
-        "LIVE_SAFE_MODE     = %s",
-        str(os.getenv("LIVE_SAFE_MODE", "true")).lower(),
-    )
+    # Banner (env flags can still be used)
+    log.info("GUARDRAILS_ENABLED = %s", str(os.getenv("GUARDRAILS_ENABLED", "true")).lower())
+    log.info("LIVE_SAFE_MODE     = %s", str(os.getenv("LIVE_SAFE_MODE", "true")).lower())
 
-    # 1) Resolve settings path based on env + live_mode.txt
     settings_path = _resolve_settings_path()
+    data = load_json(settings_path, default={}) or {}
 
-    # 2) Load settings JSON
-    data = load_json(settings_path)
-
-    # 3) Normalize broker mode (LIVE vs SIM)
     raw_mode = data.get("broker_mode", "LIVE")
     mode = _norm_mode(os.getenv("BROKER_MODE") or raw_mode)
 

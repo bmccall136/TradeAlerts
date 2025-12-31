@@ -25,6 +25,13 @@ from services.indicators import (
 )
 
 log = logging.getLogger("market")
+DEBUG_SYMBOL = (os.getenv("MM_DEBUG_SYMBOL") or "").strip().upper()  # e.g. set MM_DEBUG_SYMBOL=AAPL
+DEBUG_ALL = os.getenv("MM_DEBUG_ALL", "").strip().lower() in ("1", "true", "yes")
+
+def _dbg(sym: str) -> bool:
+    sym = (sym or "").strip().upper()
+    return DEBUG_ALL or (DEBUG_SYMBOL and sym == DEBUG_SYMBOL)
+
 
 def compute_adx(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
     # Wilder's ADX
@@ -105,63 +112,71 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
     - price_live: ALWAYS from E*TRADE (no yfinance price fallback)
     - bars: fetched via fetch_data_with_timeout() for indicator inputs
     """
+    sym = (symbol or "").strip().upper()
+    log.warning("[SCAN] %s analyze_symbol() entered", sym)  # always visible
+
     # allow dict or object settings
     s = settings if isinstance(settings, dict) else getattr(settings, "__dict__", {})
-    # --- bulletproof required list (accept legacy + current keys)
+
+    # bulletproof required list (accept legacy + current keys)
     _raw_req = (s.get("required_filters") or s.get("required") or s.get("req") or [])
-    req_list = [str(x).strip().lower()
-                for x in (_raw_req if isinstance(_raw_req, (list, tuple)) else [_raw_req])
-                if str(x).strip()]
+    req_list = [
+        str(x).strip().lower()
+        for x in (_raw_req if isinstance(_raw_req, (list, tuple)) else [_raw_req])
+        if str(x).strip()
+    ]
 
-    log.warning("[DEBUG] settings keys=%s required=%s", sorted(list(s.keys())), req_list)
-
-
-    # --- bulletproof required list (accept legacy + current keys)
-    _raw_req = (s.get("required_filters") or s.get("required") or s.get("req") or [])
-    req_list = [str(x).strip().lower()
-                for x in (_raw_req if isinstance(_raw_req, (list, tuple)) else [_raw_req])
-                if str(x).strip()]
+    if _dbg(sym):
+        log.warning("[DEBUG] MM_DEBUG_SYMBOL=%r MM_DEBUG_ALL=%r", DEBUG_SYMBOL, DEBUG_ALL)
+        log.warning("[DEBUG] settings keys=%s required=%s", sorted(list(s.keys())), req_list)
 
     # 1) Intraday bars (for VWAP / volume, etc.)
-    df = fetch_data_with_timeout(symbol=symbol)
-
+    df = fetch_data_with_timeout(symbol=sym)
     if df is None or df.empty:
-        log.warning("[DATA] %s: no intraday bars -> skip", symbol)
+        log.warning("[DATA] %s: no intraday bars -> skip", sym)
+        if _dbg(sym):
+            log.warning("[DEBUG] EXIT: intraday df missing/empty")
         return (None, [], False)
 
     # normalize intraday columns
     df.columns = [c[0].lower() if isinstance(c, tuple) else str(c).lower() for c in df.columns]
 
     # 2) Daily bars (for SMA/ATR/range/gap, etc.)
-    df_daily = fetch_data_with_timeout(symbol, period="60d", interval="1d")
+    df_daily = fetch_data_with_timeout(sym, period="60d", interval="1d")
     if df_daily is None or df_daily.empty:
-        log.warning("[DATA] %s: no daily bars -> skip", symbol)
+        log.warning("[DATA] %s: no daily bars -> skip", sym)
+        if _dbg(sym):
+            log.warning("[DEBUG] EXIT: daily df missing/empty")
         return (None, [], False)
 
     df_daily.columns = [c[0].lower() if isinstance(c, tuple) else str(c).lower() for c in df_daily.columns]
-    log.warning("[DEBUG] intraday: rows=%s cols=%s", getattr(df, "shape", None), list(getattr(df, "columns", []))[:12])
-    log.warning("[DEBUG] daily:    rows=%s cols=%s", getattr(df_daily, "shape", None), list(getattr(df_daily, "columns", []))[:12])
 
-    # show last few values so we know if series are empty/nan
-    try:
-        log.warning("[DEBUG] daily close tail=%s", list(df_daily["close"].tail(5).astype(float).round(4)))
-    except Exception as e:
-        log.warning("[DEBUG] daily close tail failed: %s", e)
+    if _dbg(sym):
+        log.warning("[DEBUG] intraday: rows=%s cols=%s", getattr(df, "shape", None), list(getattr(df, "columns", []))[:12])
+        log.warning("[DEBUG] daily:    rows=%s cols=%s", getattr(df_daily, "shape", None), list(getattr(df_daily, "columns", []))[:12])
 
-    try:
-        log.warning("[DEBUG] intraday close tail=%s", list(df["close"].tail(5).astype(float).round(4)))
-    except Exception as e:
-        log.warning("[DEBUG] intraday close tail failed: %s", e)
+        try:
+            log.warning("[DEBUG] daily close tail=%s", list(df_daily["close"].tail(5).astype(float).round(4)))
+        except Exception as e:
+            log.warning("[DEBUG] daily close tail failed: %s", e)
 
+        try:
+            log.warning("[DEBUG] intraday close tail=%s", list(df["close"].tail(5).astype(float).round(4)))
+        except Exception as e:
+            log.warning("[DEBUG] intraday close tail failed: %s", e)
 
     # 3) Live price (E*TRADE ONLY)
     try:
-        price_live = float(fetch_etrade_quote(symbol))
+        price_live = float(fetch_etrade_quote(sym))
     except Exception as e:
-        log.warning("[E*TRADE] %s: quote failed (%s) -> skip", symbol, e)
+        log.warning("[E*TRADE] %s: quote failed (%s) -> skip", sym, e)
+        if _dbg(sym):
+            log.warning("[DEBUG] EXIT: E*TRADE quote exception")
         return (None, [], False)
 
     if price_live <= 0:
+        if _dbg(sym):
+            log.warning("[DEBUG] EXIT: price_live <= 0 (%s)", price_live)
         return (None, [], False)
 
     triggers: list[str] = []
@@ -171,6 +186,8 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
     # ----------------------------
     close_i = df.get("close")
     if close_i is None:
+        if _dbg(sym):
+            log.warning("[DEBUG] EXIT: intraday close column missing. cols=%s", list(df.columns))
         return (None, [], False)
 
     # flatten multi-column close if it happens
@@ -180,8 +197,9 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
     close_d = df_daily.get("close")
     high_d = df_daily.get("high")
     low_d = df_daily.get("low")
-
     if close_d is None or high_d is None or low_d is None:
+        if _dbg(sym):
+            log.warning("[DEBUG] EXIT: daily close/high/low missing. cols=%s", list(df_daily.columns))
         return (None, [], False)
 
     # ----------------------------
@@ -197,7 +215,6 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
                 triggers.append(f"Price>SMA({sma_len})")
                 triggers.append(f"price>sma{sma_len}")
                 triggers.append(f"price>sma({sma_len})")
-
         except Exception:
             pass
 
@@ -224,7 +241,7 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
                 triggers.append("MACD")
         except Exception:
             pass
-    
+
     # ADX (optional / supports required_filters containing "adx")
     if bool(s.get("adx_on", False)) or ("adx" in req_list):
         try:
@@ -233,7 +250,6 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
             adx_series = compute_adx(high_d, low_d, close_d, adx_len)
             adx_val = float(adx_series.iloc[-1])
             if adx_val >= adx_thr:
-                # live_loop checks tokens like startswith("adx") or contains "adx>="
                 triggers.append(f"ADX>={adx_thr:g}")
         except Exception:
             pass
@@ -264,13 +280,12 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
         try:
             vwap_threshold = float(s.get("vwap_threshold", 0.0))
             vwap_val = float(compute_vwap(df, vwap_threshold))
-            # mark trigger if above vwap by threshold
             if (price_live - vwap_val) >= vwap_threshold:
                 triggers.append("VWAP")
         except Exception:
             pass
 
-    # ATR / range / gap are optional and do not affect req filtering unless you later require them
+    # ATR / range / gap optional
     if bool(s.get("atr_on", False)):
         try:
             atr_len = int(s.get("atr_len", 14))
@@ -295,13 +310,47 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
                 triggers.append("GAP")
         except Exception:
             pass
-    
-    # ----------------------------
-    # PASS/FAIL logic
-    # ----------------------------
-    # Basic definition: passed if it produced any triggers.
-    # live_loop applies the stricter req filters after this anyway.
+
     passed = len(triggers) > 0
 
+    if _dbg(sym):
+        log.warning("[DEBUG] RESULT: price_live=%s triggers=%s passed=%s", price_live, triggers, passed)
+
     return (price_live, triggers, passed)
-    log.warning("[DEBUG] price_live=%s", price_live)
+
+def _norm_trigger(t: str) -> str:
+    """
+    Normalize triggers so 'MACD', 'macd', 'Macd', 'price>sma(50)', etc. compare reliably.
+    """
+    if not t:
+        return ""
+    s = str(t).strip().lower()
+    # collapse common punctuation/spacing differences
+    for ch in [" ", "_", "-", ">", "<", "(", ")", "[", "]", "{", "}", ":", ";", ","]:
+        s = s.replace(ch, "")
+    # normalize some known variants
+    if s.startswith("pricesma"):
+        return "pricesma"
+    if s.startswith("price>sma") or s.startswith("pricesma"):
+        return "pricesma"
+    if "sma20" in s:
+        return "sma20"
+    if "sma50" in s:
+        return "sma50"
+    if "macd" in s:
+        return "macd"
+    if "adx" in s:
+        return "adx"
+    if "vwap" in s:
+        return "vwap"
+    if "vol" in s or "volume" in s:
+        return "vol"
+    if "atr" in s:
+        return "atr"
+    if "gap" in s:
+        return "gap"
+    if "range" in s:
+        return "range"
+    if "rsi" in s:
+        return "rsi"
+    return s
