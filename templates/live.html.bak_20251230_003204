@@ -460,40 +460,22 @@
 
 	const realizedRaw = d.realized ?? d.realized_pnl ?? {};
 
-	// Normalize:
-	// - Shape A: { day:{pnl,pct}, week:{...}, month:{...}, ... }
-	// - Shape B (flat): { day: 1.23, week: 4.56, month: 7.89 }
-	const flat =
+	// If backend sends floats: { day: 1.23, week: 4.56, month: 7.89 }
+	const isFlatNumbers =
 	  typeof realizedRaw.day === 'number' ||
 	  typeof realizedRaw.week === 'number' ||
 	  typeof realizedRaw.month === 'number';
 
-	const realized = flat
+	// Normalize to: { day:{pnl,pct}, week:{pnl,pct}, month:{pnl,pct} }
+	const realized = isFlatNumbers
 	  ? {
-		  day:   { pnl: num(realizedRaw.day),   pct: 0 },
-		  week:  { pnl: num(realizedRaw.week),  pct: 0 },
-		  month: { pnl: num(realizedRaw.month), pct: 0 },
-		  last_week: { pnl: num(realizedRaw.last_week), pct: 0 },
-		  all:   { pnl: num(realizedRaw.all),   pct: 0 },
+		  day:   { pnl: num(realizedRaw.day),   pct: num(realizedRaw.day_pct)   },
+		  week:  { pnl: num(realizedRaw.week),  pct: num(realizedRaw.week_pct)  },
+		  month: { pnl: num(realizedRaw.month), pct: num(realizedRaw.month_pct) },
 		}
 	  : realizedRaw;
 
-	// IMPORTANT: reuse the existing nav you already computed above in updateKPIs()
-	// (do NOT redeclare const nav here)
-	function pctOfNav(pnl) {
-	  const p = num(pnl);
-	  if (!nav || nav <= 0) return 0;
-	  return Math.round((p / nav) * 10000) / 100; // 2 decimals
-	}
-
-	// compute pct vs NAV
-	if (realized?.day)       realized.day.pct       = pctOfNav(realized.day.pnl);
-	if (realized?.week)      realized.week.pct      = pctOfNav(realized.week.pnl);
-	if (realized?.month)     realized.month.pct     = pctOfNav(realized.month.pnl);
-	if (realized?.last_week) realized.last_week.pct = pctOfNav(realized.last_week.pnl);
-	if (realized?.all)       realized.all.pct       = pctOfNav(realized.all.pnl);
-
-	// Hard defaults
+	// Hard defaults (don’t let {} propagate silently)
 	const day   = realized.day   || { pnl: 0, pct: 0 };
 	const week  = realized.week  || { pnl: 0, pct: 0 };
 	const month = realized.month || { pnl: 0, pct: 0 };

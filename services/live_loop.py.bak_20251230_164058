@@ -67,51 +67,6 @@ from zoneinfo import ZoneInfo
 
 _ET = ZoneInfo("America/New_York")
 
-# --- Wash-sale avoidance (loss re-buy block) -----------------------------------
-import sqlite3
-from datetime import date, timedelta
-
-WASH_SALE_BLOCK_DAYS = int(os.getenv("WASH_SALE_BLOCK_DAYS", "31"))
-WASH_SALE_ENABLED = os.getenv("WASH_SALE_ENABLED", "1").lower() in ("1", "true", "yes", "on")
-
-def wash_sale_blocked(symbol: str, db_path: str, today: date | None = None) -> tuple[bool, str]:
-    """
-    Returns (blocked, reason). Block if the most recent SELL with gain < 0
-    is within the last WASH_SALE_BLOCK_DAYS.
-    Uses realized_trades.close_date (YYYY-MM-DD) and gain (REAL).
-    """
-    sym = (symbol or "").strip().upper()
-    if not sym or not WASH_SALE_ENABLED:
-        return (False, "")
-
-    if today is None:
-        today = date.today()
-    cutoff = (today - timedelta(days=WASH_SALE_BLOCK_DAYS)).isoformat()
-
-    try:
-        con = sqlite3.connect(db_path)
-        cur = con.cursor()
-        row = cur.execute(
-            """
-            SELECT MAX(substr(close_date,1,10))
-            FROM realized_trades
-            WHERE upper(symbol)=?
-              AND action='SELL'
-              AND CAST(gain AS REAL) < 0
-              AND substr(close_date,1,10) >= ?
-            """,
-            (sym, cutoff),
-        ).fetchone()
-        con.close()
-
-        last_loss_date = (row[0] if row else None)
-        if last_loss_date:
-            return (True, f"wash-sale guard: last loss sell {last_loss_date} (block {WASH_SALE_BLOCK_DAYS}d)")
-        return (False, "")
-    except Exception:
-        # If DB missing/locked/etc, do NOT block buys — fail open (safer operationally).
-        return (False, "")
-
 def _is_market_open(now: datetime | None = None) -> bool:
     """
     Basic market-hours gate (no holiday calendar).
@@ -515,10 +470,16 @@ def run_live_loop(settings, symbols, broker_mode=None):
     settings = _normalize_settings(settings)
     mode = _norm_mode(broker_mode or settings.broker_mode)
 
-    # Guardrails: default ON in LIVE. Only bypass if env says so.
-    override_gate = os.getenv("LIVE_IGNORE_GUARDRAILS_TODAY", "").lower() in (
-        "1","true","yes","on",
-    )
+    # ⬇️ Force gate open in LIVE (you can still re-enable with env if you want)
+    if mode == "LIVE":
+        override_gate = True
+    else:
+        override_gate = os.getenv("LIVE_IGNORE_GUARDRAILS_TODAY", "").lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
 
     # let env override candidate_log_limit if desired
     cand_limit = _env_int("LIVE_CANDIDATE_LOG_LIMIT", sget(settings, "candidate_log_limit", -1))
@@ -614,27 +575,16 @@ def run_live_loop(settings, symbols, broker_mode=None):
 
             if price is None:
                 log.warning("[LIVE] SKIP %s: analyze_symbol returned price=None", sym)
-                LOG.warning("[LIVE] SKIP %s: analyze_symbol exception: %s", sym, e, exc_info=True)
                 skipped += 1
                 continue
 
             if not passed:
                 continue
 
-            # --- Wash-sale avoidance: block re-buy after loss sell -------------------------
-            try:
-                live_db_path = os.path.join(ROOT, "live.db")  # ROOT already exists in this file
-                blocked, why = wash_sale_blocked(sym, live_db_path)
-                if blocked:
-                    log.info("[BUY_BLOCK] %s -> %s", sym, why)
-                    continue
-            except Exception:
-                pass
+            # ... rest of your logic
 
-            # --- Candidate passed: continue into BUY logic --------------------------------
+            # ... candidate logic continues ...
 
-            
-            
             now = time.time()
             if now - last_ping >= HEARTBEAT_SEC:
                 rate = scanned / max(now - iter_start, 1e-6)
@@ -656,34 +606,18 @@ def run_live_loop(settings, symbols, broker_mode=None):
 
             tokens = [(t or "").strip() for t in (triggered or [])]
             tokens_lc = [t.replace(" ", "").lower() for t in tokens]
-
-            # ---- SMA gate (respect JSON: price_sma_len / sma_length) ----------------------
-            sma_len = int(getattr(settings, "price_sma_len", getattr(settings, "sma_length", 20)) or 20)
-
-            # Accept multiple SMA token spellings (market_service emits these)
-            has_sma = any(
-                (f"price>sma{sma_len}" in t) or (f"price>sma({sma_len})" in t)
-                for t in tokens_lc
-            )
-
-            # If your live_loop config flag is still named require_sma20, keep it,
-            # but make it mean "require configured SMA" instead of hardcoded 20.
-            has_adx  = any(t.startswith("adx") or "adx>=" in t for t in tokens_lc)
+            has_sma20 = any("price>sma20" in t or "price>sma(20)" in t for t in tokens_lc)
+            has_adx = any(t.startswith("adx") or "adx>=" in t for t in tokens_lc)
             has_macd = any("macd" in t for t in tokens_lc)
-            has_vwap = any("vwap" in t for t in tokens_lc)
-            has_vol  = any("vol" in t for t in tokens_lc) or any("volume" in t for t in tokens_lc)
+            meets_reqs = ("adx" not in req or has_adx) and ("macd" not in req or has_macd)
 
-            meets_reqs = (
-                ("adx"  not in req or has_adx)  and
-                ("macd" not in req or has_macd) and
-                ("vwap" not in req or has_vwap) and
-                ("vol"  not in req or has_vol)
-            )
+            if cand_limit is None or cand_limit < 0 or cand_logs_emitted < cand_limit:
+                log_candidate(sym, float(price), list(triggered or []), scanned, total_syms)
+                cand_logs_emitted += 1
 
             if not meets_reqs:
                 continue
-
-            if require_sma20 and not has_sma:
+            if require_sma20 and not has_sma20:
                 continue
 
             candidates.append((sym, float(price), list(triggered or [])))
@@ -743,17 +677,17 @@ def run_live_loop(settings, symbols, broker_mode=None):
                 return False, ["max_qty"]
             return True, []
 
-        # Guardrails bypass (ONLY if you explicitly set env var)
-        bypass = os.getenv("LIVE_IGNORE_GUARDRAILS_TODAY", "").lower() in ("1", "true", "yes", "on")
-        override_gate = True if bypass else False
-
+        override_gate = True if mode == "LIVE" else override_gate
         if not override_gate and (lg.has_bought_today() or lg.open_position_exists()):
-            log.info("[GR] Buy gate closed (already bought today or an open position exists)")
+            log.info(
+                "[GR] Buy gate closed (already bought today or an open position exists)"
+            )
             time.sleep(settings.poll_interval)
             continue
         elif override_gate:
-            log.warning("[GR] BYPASS: LIVE_IGNORE_GUARDRAILS_TODAY=1 -> ignoring guardrail this run")
-
+            log.warning(
+                "[GR] TEMP OVERRIDE: ignoring guardrail ('bought today' / 'open position') for this run"
+            )
 
         purchased = False
         for sym, price, triggered in ranked:

@@ -26,6 +26,33 @@ from services.indicators import (
 
 log = logging.getLogger("market")
 
+def compute_adx(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
+    # Wilder's ADX
+    high = high.astype(float)
+    low = low.astype(float)
+    close = close.astype(float)
+
+    up_move = high.diff()
+    down_move = -low.diff()
+
+    plus_dm = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
+    minus_dm = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
+
+    tr1 = (high - low).abs()
+    tr2 = (high - close.shift(1)).abs()
+    tr3 = (low - close.shift(1)).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+    atr = tr.ewm(alpha=1/period, adjust=False).mean().replace(0, pd.NA)
+
+    plus_di = 100 * (plus_dm.ewm(alpha=1/period, adjust=False).mean() / atr)
+    minus_di = 100 * (minus_dm.ewm(alpha=1/period, adjust=False).mean() / atr)
+
+    denom = (plus_di + minus_di).replace(0, pd.NA)
+    dx = (100 * (plus_di - minus_di).abs() / denom)
+    adx = dx.ewm(alpha=1/period, adjust=False).mean()
+
+    return adx.fillna(0.0)
 
 def get_symbols(path: str) -> List[str]:
     """
@@ -80,11 +107,26 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
     """
     # allow dict or object settings
     s = settings if isinstance(settings, dict) else getattr(settings, "__dict__", {})
+    # --- bulletproof required list (accept legacy + current keys)
+    _raw_req = (s.get("required_filters") or s.get("required") or s.get("req") or [])
+    req_list = [str(x).strip().lower()
+                for x in (_raw_req if isinstance(_raw_req, (list, tuple)) else [_raw_req])
+                if str(x).strip()]
+
+    log.warning("[DEBUG] settings keys=%s required=%s", sorted(list(s.keys())), req_list)
+
+
+    # --- bulletproof required list (accept legacy + current keys)
+    _raw_req = (s.get("required_filters") or s.get("required") or s.get("req") or [])
+    req_list = [str(x).strip().lower()
+                for x in (_raw_req if isinstance(_raw_req, (list, tuple)) else [_raw_req])
+                if str(x).strip()]
 
     # 1) Intraday bars (for VWAP / volume, etc.)
-    df = fetch_data_with_timeout(symbol)
+    df = fetch_data_with_timeout(symbol=symbol)
+
     if df is None or df.empty:
-        logger.warning("[DATA] %s: no intraday bars -> skip", symbol)
+        log.warning("[DATA] %s: no intraday bars -> skip", symbol)
         return (None, [], False)
 
     # normalize intraday columns
@@ -93,16 +135,30 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
     # 2) Daily bars (for SMA/ATR/range/gap, etc.)
     df_daily = fetch_data_with_timeout(symbol, period="60d", interval="1d")
     if df_daily is None or df_daily.empty:
-        logger.warning("[DATA] %s: no daily bars -> skip", symbol)
+        log.warning("[DATA] %s: no daily bars -> skip", symbol)
         return (None, [], False)
 
     df_daily.columns = [c[0].lower() if isinstance(c, tuple) else str(c).lower() for c in df_daily.columns]
+    log.warning("[DEBUG] intraday: rows=%s cols=%s", getattr(df, "shape", None), list(getattr(df, "columns", []))[:12])
+    log.warning("[DEBUG] daily:    rows=%s cols=%s", getattr(df_daily, "shape", None), list(getattr(df_daily, "columns", []))[:12])
+
+    # show last few values so we know if series are empty/nan
+    try:
+        log.warning("[DEBUG] daily close tail=%s", list(df_daily["close"].tail(5).astype(float).round(4)))
+    except Exception as e:
+        log.warning("[DEBUG] daily close tail failed: %s", e)
+
+    try:
+        log.warning("[DEBUG] intraday close tail=%s", list(df["close"].tail(5).astype(float).round(4)))
+    except Exception as e:
+        log.warning("[DEBUG] intraday close tail failed: %s", e)
+
 
     # 3) Live price (E*TRADE ONLY)
     try:
         price_live = float(fetch_etrade_quote(symbol))
     except Exception as e:
-        logger.warning("[E*TRADE] %s: quote failed (%s) -> skip", symbol, e)
+        log.warning("[E*TRADE] %s: quote failed (%s) -> skip", symbol, e)
         return (None, [], False)
 
     if price_live <= 0:
@@ -133,12 +189,15 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
     # ----------------------------
     # SMA
     sma_on = bool(s.get("sma_on", False) or s.get("price_sma_on", False) or s.get("require_sma20", False))
-    sma_len = int(s.get("sma_length", 20))
+    sma_len = int(s.get("price_sma_len", s.get("sma_length", 20)))
     if sma_on:
         try:
             sma_val = float(compute_sma(close_d, sma_len))
             if price_live > sma_val:
                 triggers.append(f"Price>SMA({sma_len})")
+                triggers.append(f"price>sma{sma_len}")
+                triggers.append(f"price>sma({sma_len})")
+
         except Exception:
             pass
 
@@ -155,7 +214,7 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
             pass
 
     # MACD
-    if bool(s.get("macd_on", False)) or "macd" in [str(x).lower() for x in (s.get("req") or s.get("required") or [])]:
+    if bool(s.get("macd_on", False)) or ("macd" in req_list):
         try:
             fast = int(s.get("macd_fast", 12))
             slow = int(s.get("macd_slow", 26))
@@ -163,6 +222,19 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
             macd_line, signal = compute_macd(close_d, fast, slow, sig)
             if float(macd_line.iloc[-1]) > float(signal.iloc[-1]):
                 triggers.append("MACD")
+        except Exception:
+            pass
+    
+    # ADX (optional / supports required_filters containing "adx")
+    if bool(s.get("adx_on", False)) or ("adx" in req_list):
+        try:
+            adx_len = int(s.get("adx_len", 14))
+            adx_thr = float(s.get("adx_threshold", 25))
+            adx_series = compute_adx(high_d, low_d, close_d, adx_len)
+            adx_val = float(adx_series.iloc[-1])
+            if adx_val >= adx_thr:
+                # live_loop checks tokens like startswith("adx") or contains "adx>="
+                triggers.append(f"ADX>={adx_thr:g}")
         except Exception:
             pass
 
@@ -178,7 +250,7 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
             pass
 
     # Volume multiplier (optional)
-    if bool(s.get("vol_on", False)) or "vol" in [str(x).lower() for x in (s.get("req") or s.get("required") or [])]:
+    if bool(s.get("vol_on", False)) or ("vol" in req_list) or ("volume" in req_list):
         try:
             thresh = float(s.get("vol_multiplier", 1.5))
             vol_ratio = float(compute_volume_multiplier(df))
@@ -188,7 +260,7 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
             pass
 
     # VWAP threshold (optional)
-    if bool(s.get("vwap_on", False)) or "vwap" in [str(x).lower() for x in (s.get("req") or s.get("required") or [])]:
+    if bool(s.get("vwap_on", False)) or ("vwap" in req_list):
         try:
             vwap_threshold = float(s.get("vwap_threshold", 0.0))
             vwap_val = float(compute_vwap(df, vwap_threshold))
@@ -223,7 +295,7 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
                 triggers.append("GAP")
         except Exception:
             pass
-
+    
     # ----------------------------
     # PASS/FAIL logic
     # ----------------------------
@@ -232,3 +304,4 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
     passed = len(triggers) > 0
 
     return (price_live, triggers, passed)
+    log.warning("[DEBUG] price_live=%s", price_live)
