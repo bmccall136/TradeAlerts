@@ -630,7 +630,20 @@ def run_live_loop(settings, symbols, broker_mode=None):
         for sym in symbols:
             scanned += 1
             try:
-                price, triggered, passed = analyze_symbol(sym, settings)
+                res = analyze_symbol(sym, settings)
+
+                # HARD GUARD: analyzer MUST return (price, triggered, passed)
+                if not (isinstance(res, tuple) and len(res) == 3):
+                    try:
+                        fn = getattr(analyze_symbol, "__module__", "?") + "." + getattr(analyze_symbol, "__name__", "?")
+                    except Exception:
+                        fn = str(analyze_symbol)
+                    log.warning("[LIVE] SKIP %s: analyze_symbol returned %r (type=%s) fn=%s",
+                                sym, res, type(res).__name__, fn)
+                    continue
+
+                price, triggered, passed = res
+
             except Exception as e:
                 log.warning("[LIVE] SKIP %s: analyze_symbol exception: %s", sym, e, exc_info=True)
                 skipped += 1
@@ -758,11 +771,17 @@ def run_live_loop(settings, symbols, broker_mode=None):
         tplus_days = _LIVE_TPLUS_DAYS if mode == "LIVE" else 2
 
         def _pyramid_ok(sym: str, price: float, qty: int, rules: dict[str, Any]):
-            # Allow adds; only guard total position size.
-            max_pos = int(rules.get("max_position_qty", 1_000_000))
             pos = holdingsL.get(sym, {"qty": 0})
-            if (pos.get("qty", 0) + qty) > max_pos:
-                return False, ["max_qty"]
+            cur_qty = int(pos.get("qty", 0) or 0)
+
+            # Conservative default: if we already hold it, do NOT add unless explicitly allowed
+            if cur_qty > 0 and bool(rules.get("single_entry_only", True)):
+                return False, ["single_entry_only"]
+
+            max_pos = int(rules.get("max_position_qty", 1_000_000))
+            if (cur_qty + qty) > max_pos:
+                return False, ["max_position_qty"]
+
             return True, []
 
         # Guardrails bypass (ONLY if you explicitly set env var)
@@ -835,9 +854,16 @@ def run_live_loop(settings, symbols, broker_mode=None):
                 log.info("[LIVE] Skip %s: qty < 1", sym)
                 continue
 
-            ok, why = _pyramid_ok(sym, price, qty, {"max_position_qty": 999999})
+            # Use REAL settings (fallbacks are conservative, not infinite)
+            pyr_cfg = {
+                "max_position_qty": int(settings.get("max_position_qty", settings.get("max_per_trade", 25))),
+                "max_pyramids": int(settings.get("max_pyramids", 1)),
+                "single_entry_only": bool(settings.get("single_entry_only", True)),
+            }
+
+            ok, why = _pyramid_ok(sym, price, qty, pyr_cfg)
             if not ok:
-                log.info("[LIVE] Blocked %s by pyramiding: %s", sym, ",".join(why))
+                LOG.info("[PYRAMID BLOCK] %s qty=%s price=%s reason=%s cfg=%s", sym, qty, price, why, pyr_cfg)
                 continue
 
             # --- AI advisor gate (FULL GO) ---

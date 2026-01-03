@@ -33,33 +33,39 @@ def _dbg(sym: str) -> bool:
     return DEBUG_ALL or (DEBUG_SYMBOL and sym == DEBUG_SYMBOL)
 
 
+import numpy as np
+import pandas as pd
+
 def compute_adx(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
-    # Wilder's ADX
-    high = high.astype(float)
-    low = low.astype(float)
-    close = close.astype(float)
+    # Wilder-style ADX using EWM smoothing
+    high  = pd.to_numeric(high, errors="coerce").astype(float)
+    low   = pd.to_numeric(low, errors="coerce").astype(float)
+    close = pd.to_numeric(close, errors="coerce").astype(float)
 
     up_move = high.diff()
     down_move = -low.diff()
 
-    plus_dm = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
+    plus_dm  = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
     minus_dm = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
 
     tr1 = (high - low).abs()
     tr2 = (high - close.shift(1)).abs()
-    tr3 = (low - close.shift(1)).abs()
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    tr3 = (low  - close.shift(1)).abs()
+    tr  = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
 
-    atr = tr.ewm(alpha=1/period, adjust=False).mean().replace(0, pd.NA)
+    atr = tr.ewm(alpha=1/period, adjust=False).mean()
+    atr = atr.replace(0.0, np.nan)  # <- IMPORTANT (no pd.NA)
 
-    plus_di = 100 * (plus_dm.ewm(alpha=1/period, adjust=False).mean() / atr)
-    minus_di = 100 * (minus_dm.ewm(alpha=1/period, adjust=False).mean() / atr)
+    plus_di  = 100.0 * (plus_dm.ewm(alpha=1/period, adjust=False).mean() / atr)
+    minus_di = 100.0 * (minus_dm.ewm(alpha=1/period, adjust=False).mean() / atr)
 
-    denom = (plus_di + minus_di).replace(0, pd.NA)
-    dx = (100 * (plus_di - minus_di).abs() / denom)
+    denom = (plus_di + minus_di).replace(0.0, np.nan)  # <- IMPORTANT (no pd.NA)
+    dx = (100.0 * (plus_di - minus_di).abs() / denom)
+
     adx = dx.ewm(alpha=1/period, adjust=False).mean()
 
-    return adx.fillna(0.0)
+    # final cleanup
+    return pd.to_numeric(adx, errors="coerce").fillna(0.0)
 
 def get_symbols(path: str) -> List[str]:
     """
@@ -140,6 +146,14 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
 
     # normalize intraday columns
     df.columns = [c[0].lower() if isinstance(c, tuple) else str(c).lower() for c in df.columns]
+    # Build a "standard" OHLCV df for indicators that expect TitleCase columns
+    df_ind = df.rename(columns={
+        "open": "Open",
+        "high": "High",
+        "low": "Low",
+        "close": "Close",
+        "volume": "Volume",
+    })
 
     # 2) Daily bars (for SMA/ATR/range/gap, etc.)
     df_daily = fetch_data_with_timeout(sym, period="60d", interval="1d")
@@ -203,20 +217,25 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
         return (None, [], False)
 
     # ----------------------------
-    # Indicator toggles
+    # Indicator toggles + triggers
     # ----------------------------
+
     # SMA
     sma_on = bool(s.get("sma_on", False) or s.get("price_sma_on", False) or s.get("require_sma20", False))
     sma_len = int(s.get("price_sma_len", s.get("sma_length", 20)))
     if sma_on:
         try:
             sma_val = float(compute_sma(close_d, sma_len))
+            if _dbg(sym):
+                log.warning("[DEBUG] SMA(%d) sma=%.4f price=%.4f pass=%s",
+                            sma_len, sma_val, float(price_live), (float(price_live) > sma_val))
             if price_live > sma_val:
                 triggers.append(f"Price>SMA({sma_len})")
                 triggers.append(f"price>sma{sma_len}")
                 triggers.append(f"price>sma({sma_len})")
-        except Exception:
-            pass
+        except Exception as e:
+            if _dbg(sym):
+                log.warning("[DEBUG] %s SMA failed: %s", sym, e)
 
     # RSI (optional)
     if bool(s.get("rsi_on", False)):
@@ -224,11 +243,15 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
             rsi_len = int(s.get("rsi_len", s.get("rsi_length", 14)))
             rsi_over = float(s.get("rsi_overbought", 70))
             rsi_series = compute_rsi(close_d, rsi_len)
-            rsi_val = float(rsi_series.iloc[-1])
+            rsi_val = float(rsi_series.iloc[-1]) if hasattr(rsi_series, "iloc") else float(rsi_series)
+            if _dbg(sym):
+                log.warning("[DEBUG] RSI(%d) rsi=%.2f over=%.2f pass=%s",
+                            rsi_len, rsi_val, rsi_over, (rsi_val >= rsi_over))
             if rsi_val >= rsi_over:
                 triggers.append("RSI")
-        except Exception:
-            pass
+        except Exception as e:
+            if _dbg(sym):
+                log.warning("[DEBUG] %s RSI failed: %s", sym, e)
 
     # MACD
     if bool(s.get("macd_on", False)) or ("macd" in req_list):
@@ -236,23 +259,63 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
             fast = int(s.get("macd_fast", 12))
             slow = int(s.get("macd_slow", 26))
             sig = int(s.get("macd_signal", 9))
-            macd_line, signal = compute_macd(close_d, fast, slow, sig)
-            if float(macd_line.iloc[-1]) > float(signal.iloc[-1]):
+
+            # NOTE: you were using close_i here (intraday). That's fine if intended.
+            macd_line, signal = compute_macd(close_i.astype(float), fast, slow, sig)
+            macd_last = float(macd_line.iloc[-1]) if hasattr(macd_line, "iloc") else float(macd_line)
+            sig_last  = float(signal.iloc[-1])    if hasattr(signal, "iloc")    else float(signal)
+
+            if _dbg(sym):
+                log.warning("[DEBUG] MACD(%d,%d,%d) macd=%.6f signal=%.6f pass=%s",
+                            fast, slow, sig, macd_last, sig_last, (macd_last > sig_last))
+
+            if macd_last > sig_last:
                 triggers.append("MACD")
-        except Exception:
-            pass
+        except Exception as e:
+            if _dbg(sym):
+                log.warning("[DEBUG] %s MACD failed: %s", sym, e)
 
     # ADX (optional / supports required_filters containing "adx")
     if bool(s.get("adx_on", False)) or ("adx" in req_list):
         try:
             adx_len = int(s.get("adx_len", 14))
             adx_thr = float(s.get("adx_threshold", 25))
+
+            # --- sanitize inputs (fix: "No numeric types to aggregate") ---
+            high_d  = pd.to_numeric(high_d, errors="coerce")
+            low_d   = pd.to_numeric(low_d, errors="coerce")
+            close_d = pd.to_numeric(close_d, errors="coerce")
+            high_d  = high_d.ffill().bfill().fillna(0.0)
+            low_d   = low_d.ffill().bfill().fillna(0.0)
+            close_d = close_d.ffill().bfill().fillna(0.0)
+
             adx_series = compute_adx(high_d, low_d, close_d, adx_len)
-            adx_val = float(adx_series.iloc[-1])
+            adx_val = float(adx_series.iloc[-1]) if hasattr(adx_series, "iloc") else float(adx_series)
+
+            if _dbg(sym):
+                log.warning("[DEBUG] ADX(%d) adx=%.2f thr=%.2f pass=%s",
+                            adx_len, adx_val, adx_thr, (adx_val >= adx_thr))
+
             if adx_val >= adx_thr:
                 triggers.append(f"ADX>={adx_thr:g}")
-        except Exception:
-            pass
+        except Exception as e:
+            if _dbg(sym):
+                log.warning("[DEBUG] %s ADX failed: %s", sym, e)
+
+            adx_series = compute_adx(high_d, low_d, close_d, adx_len)
+
+            adx_series = compute_adx(high_d, low_d, close_d, adx_len)
+            adx_val = float(adx_series.iloc[-1]) if hasattr(adx_series, "iloc") else float(adx_series)
+
+            if _dbg(sym):
+                log.warning("[DEBUG] ADX(%d) adx=%.2f thr=%.2f pass=%s",
+                            adx_len, adx_val, adx_thr, (adx_val >= adx_thr))
+
+            if adx_val >= adx_thr:
+                triggers.append(f"ADX>={adx_thr:g}")
+        except Exception as e:
+            if _dbg(sym):
+                log.warning("[DEBUG] %s ADX failed: %s", sym, e)
 
     # Bollinger (optional)
     if bool(s.get("bb_on", False)):
@@ -260,63 +323,96 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
             bb_len = int(s.get("bb_length", 20))
             bb_std = float(s.get("bb_std", 2))
             up, mid, lowb = compute_bollinger_bands(close_d, bb_len, bb_std)
-            if price_live > float(up.iloc[-1]):
+            up_last = float(up.iloc[-1]) if hasattr(up, "iloc") else float(up)
+
+            if _dbg(sym):
+                log.warning("[DEBUG] BB(%d,%.2f) upper=%.4f price=%.4f pass=%s",
+                            bb_len, bb_std, up_last, float(price_live), (float(price_live) > up_last))
+
+            if price_live > up_last:
                 triggers.append("BB")
-        except Exception:
-            pass
+        except Exception as e:
+            if _dbg(sym):
+                log.warning("[DEBUG] %s BB failed: %s", sym, e)
 
     # Volume multiplier (optional)
     if bool(s.get("vol_on", False)) or ("vol" in req_list) or ("volume" in req_list):
         try:
-            thresh = float(s.get("vol_multiplier", 1.5))
-            vol_ratio = float(compute_volume_multiplier(df))
-            if vol_ratio >= thresh:
+            thresh = float(s.get("vol_multiplier", s.get("vol_mult", 1.5)))
+
+            vol_ratio = compute_volume_multiplier(df_ind, multiplier=thresh)
+
+            # Normalize to scalar/bool
+            if isinstance(vol_ratio, bool):
+                vol_ratio_f = 1.0 if vol_ratio else 0.0
+                vol_pass = bool(vol_ratio)
+            else:
+                if hasattr(vol_ratio, "iloc"):
+                    vol_ratio = vol_ratio.iloc[-1]
+                vol_ratio_f = float(vol_ratio)
+                vol_pass = (vol_ratio_f >= thresh)
+
+            if _dbg(sym):
+                log.warning("[DEBUG] VOL ratio=%.2f thr=%.2f pass=%s", vol_ratio_f, thresh, vol_pass)
+
+            if vol_pass:
                 triggers.append("VOL")
-        except Exception:
-            pass
+
+        except Exception as e:
+            if _dbg(sym):
+                log.warning("[DEBUG] %s VOL failed: %s", sym, e)
 
     # VWAP threshold (optional)
     if bool(s.get("vwap_on", False)) or ("vwap" in req_list):
         try:
             vwap_threshold = float(s.get("vwap_threshold", 0.0))
-            vwap_val = float(compute_vwap(df, vwap_threshold))
-            if (price_live - vwap_val) >= vwap_threshold:
+
+            # indicators.py currently expects compute_vwap(df) in most of your versions
+            try:
+                vwap_val = compute_vwap(df_ind)
+            except TypeError:
+                # in case compute_vwap signature changes later
+                vwap_val = compute_vwap(df_ind, vwap_threshold)
+
+            if hasattr(vwap_val, "iloc"):
+                vwap_val = vwap_val.iloc[-1]
+            vwap_val = float(vwap_val)
+
+            diff = float(price_live) - vwap_val
+            vwap_pass = (diff >= vwap_threshold)
+
+            if _dbg(sym):
+                log.warning("[DEBUG] VWAP vwap=%.4f price=%.4f diff=%.4f thr=%.4f pass=%s",
+                            vwap_val, float(price_live), diff, vwap_threshold, vwap_pass)
+
+            if vwap_pass:
                 triggers.append("VWAP")
-        except Exception:
-            pass
 
-    # ATR / range / gap optional
-    if bool(s.get("atr_on", False)):
-        try:
-            atr_len = int(s.get("atr_len", 14))
-            atr_val = float(compute_atr(df_daily, period=atr_len))
-            if atr_val > 0:
-                triggers.append(f"ATR{atr_len}")
-        except Exception:
-            pass
+        except Exception as e:
+            if _dbg(sym):
+                log.warning("[DEBUG] %s VWAP failed: %s", sym, e)
 
-    if bool(s.get("range_on", False)):
-        try:
-            rp = float(daily_range_pct(df_daily))
-            if rp > 0:
-                triggers.append("RANGE")
-        except Exception:
-            pass
+    passed = True
 
-    if bool(s.get("gap_on", False)):
-        try:
-            gp = float(gap_up_pct(df_daily))
-            if gp > 0:
-                triggers.append("GAP")
-        except Exception:
-            pass
-
-    passed = len(triggers) > 0
+    # Enforce required_filters (if any)
+    if req_list:
+        norm_triggers = {_norm_trigger(t) for t in triggers}
+        for r in req_list:
+            if r not in norm_triggers:
+                passed = False
+                break
 
     if _dbg(sym):
-        log.warning("[DEBUG] RESULT: price_live=%s triggers=%s passed=%s", price_live, triggers, passed)
+        log.warning(
+            "[DEBUG] FINAL: price=%.4f triggers=%s required=%s passed=%s",
+            float(price_live),
+            triggers,
+            req_list,
+            passed,
+        )
 
     return (price_live, triggers, passed)
+
 
 def _norm_trigger(t: str) -> str:
     """
