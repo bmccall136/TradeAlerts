@@ -272,17 +272,52 @@ def bb_bounds(df: pd.DataFrame, length: int, std: float):
     return ma + std * sd, ma, ma - std * sd
 
 
-def compute_rsi(df: pd.DataFrame, length: int):
+def compute_rsi(obj, length: int = 14):
     """
-    Returns a pandas Series of RSI values.
+    Flexible RSI:
+      - accepts a pd.Series of closes
+      - OR a DataFrame containing close/Close/price/last columns
+    Returns a pd.Series RSI aligned to the input series index.
     """
-    delta = df["close"].diff()
-    up = delta.clip(lower=0)
-    down = -delta.clip(upper=0)
-    ma_up = up.ewm(com=length - 1, adjust=False).mean()
-    ma_down = down.ewm(com=length - 1, adjust=False).mean()
-    rs = ma_up / ma_down
-    return 100 - (100 / (1 + rs))
+    import pandas as pd
+
+    if obj is None:
+        return pd.Series(dtype=float)
+
+    # --- Get close series ---
+    if hasattr(obj, "dtype") and hasattr(obj, "diff"):
+        # likely a Series
+        close = pd.to_numeric(obj, errors="coerce").astype(float)
+    else:
+        # assume DataFrame-like
+        df = obj
+        col = None
+        for c in ("close", "Close", "price", "last", "lastPrice"):
+            if hasattr(df, "columns") and c in df.columns:
+                col = c
+                break
+        if col is None:
+            raise ValueError("compute_rsi(): could not find a close/price column")
+        close = pd.to_numeric(df[col], errors="coerce").astype(float)
+
+    length = int(length) if length else 14
+    if length < 2:
+        length = 2
+
+    delta = close.diff()
+
+    gain = delta.clip(lower=0.0)
+    loss = (-delta).clip(lower=0.0)
+
+    # Wilder's smoothing (EMA alpha=1/length) is common for RSI
+    avg_gain = gain.ewm(alpha=1 / length, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1 / length, adjust=False).mean()
+
+    rs = avg_gain / avg_loss.replace(0.0, pd.NA)
+    rsi = 100.0 - (100.0 / (1.0 + rs))
+    rsi = pd.to_numeric(rsi, errors="coerce")
+    return rsi.fillna(0.0)
+
 
 
 # services/indicators.py
@@ -313,25 +348,79 @@ def compute_bollinger_bands(df_or_series, length: int, std: float):
     return upper, ma, lower
 
 
-def compute_volume_multiplier(df: pd.DataFrame, multiplier: float) -> pd.Series:
+def compute_volume_multiplier(df: pd.DataFrame, multiplier: float = 1.5, window: int = 20) -> pd.Series:
     """
-    Return a boolean mask Series: True where df['Volume'] ≥ multiplier × avg_vol (20‑bar rolling).
+    Returns a numeric ratio Series: volume / rolling_avg_volume.
+    Pass condition: ratio >= multiplier.
+    Robust to weird dtypes and missing columns.
     """
-    avg_vol = df["volume"].rolling(window=20).mean()
-    return df["volume"] >= multiplier * avg_vol
+    import pandas as pd
 
+    if df is None or len(df) == 0:
+        return pd.Series([], dtype=float)
 
-def compute_vwap(df: pd.DataFrame):
+    # Accept either 'volume' or 'Volume'
+    if "volume" in df.columns:
+        vol_raw = df["volume"]
+    elif "Volume" in df.columns:
+        vol_raw = df["Volume"]
+    else:
+        # no volume column -> return zeros so it never passes
+        return pd.Series([0.0] * len(df), index=df.index, dtype=float)
+
+    vol = pd.to_numeric(vol_raw, errors="coerce").astype(float)
+
+    # Rolling avg; avoid divide-by-zero
+    avg = vol.rolling(window=window, min_periods=1).mean()
+    avg = avg.where(avg > 0, pd.NA)
+
+    ratio = (vol / avg).fillna(0.0).astype(float)
+    return ratio
+def compute_vwap(df: pd.DataFrame, threshold: float = 0.0):
     """
-    Volume‐weighted average price over the whole df.
-    Returns a pd.Series of the same length.
+    Flexible VWAP:
+      - accepts DataFrame with typical OHLCV columns
+      - ignores 'threshold' (kept for compatibility with older call sites)
+    Returns a pd.Series VWAP.
     """
-    vp = (df["close"] * df["Volume"]).cumsum()
-    v = df["volume"].cumsum()
-    return vp / v
+    if df is None or len(df) == 0:
+        return pd.Series(dtype=float)
 
+    cols = set(df.columns) if hasattr(df, "columns") else set()
 
-# (You already have compute_atr, daily_range_pct, gap_up_pct, etc. defined above.)
+    # If VWAP already exists, just return it
+    for c in ("vwap", "VWAP"):
+        if c in cols:
+            return pd.to_numeric(df[c], errors="coerce").astype(float).fillna(0.0)
 
-# Make sure your __all__ (if any) includes these names, or simply rely on
-# Python’s default of exporting everything that doesn’t start with “_”.
+    # Compute VWAP from OHLCV (fallbacks included)
+    close_col = "close" if "close" in cols else ("Close" if "Close" in cols else None)
+    high_col  = "high"  if "high"  in cols else ("High"  if "High"  in cols else None)
+    low_col   = "low"   if "low"   in cols else ("Low"   if "Low"   in cols else None)
+    vol_col   = "volume" if "volume" in cols else ("Volume" if "Volume" in cols else None)
+
+    if vol_col is None:
+        raise ValueError("compute_vwap(): volume column not found")
+
+    vol = pd.to_numeric(df[vol_col], errors="coerce").astype(float).fillna(0.0)
+
+    if high_col and low_col and close_col:
+        high = pd.to_numeric(df[high_col], errors="coerce").astype(float)
+        low  = pd.to_numeric(df[low_col], errors="coerce").astype(float)
+        close = pd.to_numeric(df[close_col], errors="coerce").astype(float)
+        typical = (high + low + close) / 3.0
+    elif close_col:
+        typical = pd.to_numeric(df[close_col], errors="coerce").astype(float)
+    else:
+        # last resort: try price/last
+        for c in ("price", "last", "lastPrice"):
+            if c in cols:
+                typical = pd.to_numeric(df[c], errors="coerce").astype(float)
+                break
+        else:
+            raise ValueError("compute_vwap(): no usable price column found")
+
+    pv = (typical.fillna(0.0) * vol)
+    cum_vol = vol.cumsum().replace(0.0, pd.NA)
+    vwap = pv.cumsum() / cum_vol
+    return vwap.fillna(0.0)

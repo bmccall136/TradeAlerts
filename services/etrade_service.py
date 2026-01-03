@@ -2538,16 +2538,27 @@ def get_funds():
         log.error("BALANCES: %s", e)
         return 0.0, 0.0, None
 
+def _normalize_symbol_for_etrade(sym: str) -> str:
+    s = (sym or "").strip().upper()
+    # common “class shares” normalization
+    s = s.replace("-", ".")  # BF-B -> BF.B, BRK-B -> BRK.B
+    return s
+
 def fetch_etrade_quote(symbols: str | Iterable[str]) -> float | dict[str, float] | None:
     """
     If given a single symbol (str) -> returns the last price float (or None).
     If given an iterable -> returns {symbol: last_price} for those found.
     """
+
     if isinstance(symbols, str):
-        sym_list = [symbols.strip().upper()]
+        sym_list = [_normalize_symbol_for_etrade(symbols)]
         single = True
     else:
-        sym_list = [str(s).strip().upper() for s in symbols if str(s).strip()]
+        sym_list = [
+            _normalize_symbol_for_etrade(str(s))
+            for s in symbols
+            if str(s).strip()
+        ]
         single = False
 
     if not sym_list:
@@ -2568,7 +2579,6 @@ def fetch_etrade_quote(symbols: str | Iterable[str]) -> float | dict[str, float]
             out[sym] = px
 
     return out.get(sym_list[0]) if single else out
-
 
 # ---------------- Portfolio / Balances (backwards-compatible API) ----------------
 
