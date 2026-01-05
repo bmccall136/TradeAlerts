@@ -27,7 +27,7 @@ from services.scan_speedups import (
     log_candidate,
     preload_history_yahoo,
 )
-from services.trading_helpers import get_holdings, get_trades
+from services import etrade_service as et
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 # --- HARD BLOCK: yfinance is forbidden in LIVE ---
@@ -266,9 +266,10 @@ def _norm_mode(val: str | None) -> str:
     return "LIVE" if v == "LIVE" else "SIM"
 
 
-def sget(ns, key, default=None):
-    return getattr(ns, key, default)
-
+def sget(obj, key, default=None):
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
 
 def _dig_numbers(blob: dict, key_names) -> dict:
     """Walk nested dict and collect numeric hits for any of key_names
@@ -534,8 +535,6 @@ def ai_gate_for_buy(
         return False, rec
 
     return True, rec
-    # If we get here, AI explicitly said BUY / STRONG_BUY and confidence passed
-    return True, rec
 def run_live_loop(settings, symbols, broker_mode=None):
     settings = _normalize_settings(settings)
     mode = _norm_mode(broker_mode or settings.broker_mode)
@@ -748,11 +747,55 @@ def run_live_loop(settings, symbols, broker_mode=None):
             " …" if len(ranked) > 5 else "",
         )
 
-        trade_log = get_trades(10000)
-        holdingsL = {
-            s: {"qty": q, "avg_cost": ac, "last_price": lp}
-            for s, q, ac, lp in get_holdings()
-        }
+        trade_log = []  # LIVE: do not read SIM trades/DB
+        holdingsL = {}
+
+        try:
+            raw = et.get_positions() or {}
+            # tolerate multiple shapes
+            pos_list = []
+
+            if isinstance(raw, dict):
+                pr = raw.get("PortfolioResponse") or raw
+                ap = pr.get("AccountPortfolio") or pr.get("accountPortfolio") or {}
+                pos_list = ap.get("Position") or ap.get("position") or []
+            elif isinstance(raw, list):
+                pos_list = raw
+
+            for p in (pos_list or []):
+                sym = (p.get("symbol") or p.get("Symbol") or p.get("symbolDescription") or "").strip().upper()
+                if not sym:
+                    continue
+
+                qty = (
+                    p.get("quantity")
+                    or p.get("positionQty")
+                    or p.get("positionQuantity")
+                    or 0
+                )
+                try:
+                    qty = int(float(qty))
+                except Exception:
+                    qty = 0
+                if qty <= 0:
+                    continue
+
+                avg = (
+                    p.get("pricePaid")
+                    or p.get("costPerShare")
+                    or p.get("avgCost")
+                    or 0
+                )
+                try:
+                    avg = float(avg)
+                except Exception:
+                    avg = 0.0
+
+                holdingsL[sym] = {"qty": qty, "avg_cost": avg, "last_price": 0.0}
+
+        except Exception as e:
+            log.warning("[LIVE] positions pull failed: %s", e)
+            holdingsL = {}
 
         def _affordable_qty(px: float, max_per_trade: float) -> int:
             if not isinstance(px, (int, float)) or px <= 0:
@@ -850,26 +893,30 @@ def run_live_loop(settings, symbols, broker_mode=None):
                 qty,
             )
 
+            if qty >= 1:
+                log.warning("[AI] HIT AI GATE: %s qty=%s px=%s", sym, qty, price)
+
             if qty < 1:
                 log.info("[LIVE] Skip %s: qty < 1", sym)
                 continue
 
             # Use REAL settings (fallbacks are conservative, not infinite)
+            # settings is a SimpleNamespace here (NOT a dict)
             pyr_cfg = {
-                "max_position_qty": int(settings.get("max_position_qty", settings.get("max_per_trade", 25))),
-                "max_pyramids": int(settings.get("max_pyramids", 1)),
-                "single_entry_only": bool(settings.get("single_entry_only", True)),
+                "single_entry_only": bool(sget(settings, "single_entry_only", True)),
+                "max_pyramids": int(sget(settings, "max_pyramids", 0)),
             }
 
             ok, why = _pyramid_ok(sym, price, qty, pyr_cfg)
             if not ok:
-                LOG.info("[PYRAMID BLOCK] %s qty=%s price=%s reason=%s cfg=%s", sym, qty, price, why, pyr_cfg)
+                lOG.info("[PYRAMID BLOCK] %s qty=%s price=%s reason=%s cfg=%s", sym, qty, price, why, pyr_cfg)
                 continue
 
             # --- AI advisor gate (FULL GO) ---
             ai_allowed = True
             ai_rec = None
             try:
+                log.warning("[AI] about to call AI gate for %s qty=%s px=%.2f", sym, qty, float(price))
                 ai_allowed, ai_rec = ai_gate_for_buy(
                     sym, price, qty, triggered, live_bp, holdingsL
                 )
