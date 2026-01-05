@@ -26,13 +26,13 @@ except Exception:  # pragma: no cover
         ET = UTC
 
 # ─── DB paths ──────────────────────────────────────────────────────────────
-DB_PATH = Path(__file__).resolve().parent.parent / "simulation.db"
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-# Some modules expect a SIMULATION_DB from settings. We keep compatibility.
-try:
-    from settings import SIMULATION_DB as _SIM_DB_FROM_SETTINGS
-except Exception:
-    _SIM_DB_FROM_SETTINGS = None
+# LIVE db only (default: C:\TradeAlerts\live.db)
+LIVE_DB = os.environ.get("LIVE_DB", os.path.join(ROOT, "live.db"))
+
+# Backward compat: code may still reference DB_PATH
+DB_PATH = LIVE_DB
 
 # ─── Trailing stop persistence (canonical) ─────────────────────────────
 
@@ -190,61 +190,6 @@ ALL_START_DATE = date(2025, 8, 22)
 LIVE_APP_STARTING_EQUITY = 392.67
 IGNORED_TICKERS = {"GEVO"}
 
-# ─── Backtest DB initializer (restored) ────────────────────────────────────────
-def init_backtest_db():
-    """
-    Initialize the backtest database.
-
-    If config schema is available (config.BACKTEST_SCHEMA), use it.
-    Otherwise, create a minimal schema with `backtest_runs` and `backtest_trades`.
-    """
-    try:
-        # Preferred: take the path from your settings module
-        from settings import BACKTEST_DB as _BACKTEST_DB
-
-        BACKTEST_DB = _BACKTEST_DB
-    except Exception:
-        # Fallback to a file next to simulation.db in project root
-        BACKTEST_DB = str(Path(__file__).resolve().parent.parent / "backtest.db")
-
-    # Try to import a full schema if you have one
-    schema = None
-    try:
-        from config import BACKTEST_SCHEMA as _SCHEMA
-
-        schema = _SCHEMA
-    except Exception:
-        # Minimal schema fallback
-        schema = """
-        PRAGMA journal_mode=WAL;
-
-        CREATE TABLE IF NOT EXISTS backtest_runs (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            started_at  TEXT NOT NULL,
-            settings_json TEXT
-        );
-
-        CREATE TABLE IF NOT EXISTS backtest_trades (
-            id       INTEGER PRIMARY KEY AUTOINCREMENT,
-            run_id   INTEGER NOT NULL,
-            symbol   TEXT NOT NULL,
-            date     TEXT NOT NULL,
-            action   TEXT NOT NULL,
-            price    REAL NOT NULL,
-            qty      INTEGER NOT NULL,
-            pnl      REAL,
-            FOREIGN KEY (run_id) REFERENCES backtest_runs(id) ON DELETE CASCADE
-        );
-        """
-
-    conn = sqlite3.connect(BACKTEST_DB)
-    try:
-        conn.executescript(schema)
-        conn.commit()
-    finally:
-        conn.close()
-
-
 # --- Backtest logging shim (back-compat): enter_trade ----------------
 from pathlib import Path
 
@@ -375,94 +320,24 @@ def fetch_intraday_vwap(symbol: str, date=None, tz=None, retries: int = 2, timeo
 
 
 def _resolve_sim_db() -> Path:
-    if _SIM_DB_FROM_SETTINGS and Path(_SIM_DB_FROM_SETTINGS).exists():
-        return Path(_SIM_DB_FROM_SETTINGS)
-    return DB_PATH
+    sim_from_settings = globals().get("_SIM_DB_FROM_SETTINGS")
+    if sim_from_settings and Path(sim_from_settings).exists():
+        return sim_from_settings
 
 
 # ─── Market calendar ───────────────────────────────────────────────────────
 nyse = mcal.get_calendar("NYSE")
 
 
-# ─── SQLite helpers ────────────────────────────────────────────────────────
-def _connect() -> sqlite3.Connection:
-    return sqlite3.connect(_resolve_sim_db(), detect_types=sqlite3.PARSE_DECLTYPES)
+def _connect(db_path: str | None = None) -> sqlite3.Connection:
+    """
+    Connect to a specific SQLite DB if db_path is provided; otherwise use the sim DB resolver.
+    """
+    path = db_path or _resolve_sim_db()
+    if not path:
+        raise ValueError("SQLite DB path resolved to None/empty in _connect()")
+    return sqlite3.connect(str(path), detect_types=sqlite3.PARSE_DECLTYPES)
 
-
-# ─── Init schema ───────────────────────────────────────────────────────────
-def setup_simulation_db() -> None:
-    """Create core tables if missing and seed starting cash on first run."""
-    import json
-    from pathlib import Path
-
-    db_file = _resolve_sim_db()
-    first_run = not db_file.exists()
-
-    conn = _connect()
-    cur = conn.cursor()
-
-    cur.execute(
-        """CREATE TABLE IF NOT EXISTS state (
-                id           INTEGER PRIMARY KEY CHECK(id = 1),
-                cash         REAL    NOT NULL,
-                realized_pl  REAL    NOT NULL DEFAULT 0.0
-            );"""
-    )
-    cur.execute(
-        """CREATE TABLE IF NOT EXISTS holdings (
-                symbol     TEXT    PRIMARY KEY,
-                qty        INTEGER NOT NULL,
-                avg_cost   REAL    NOT NULL,
-                last_price REAL    NOT NULL
-            );"""
-    )
-    cur.execute(
-        """CREATE TABLE IF NOT EXISTS simulation_trades (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                symbol     TEXT    NOT NULL,
-                action     TEXT    NOT NULL CHECK(action IN ('BUY','SELL')),
-                price      REAL    NOT NULL,
-                qty        INTEGER NOT NULL,
-                trade_time TEXT    NOT NULL,
-                pnl        REAL
-            );"""
-    )
-
-    cur.execute(
-        """CREATE TABLE IF NOT EXISTS trail_state (
-                symbol TEXT PRIMARY KEY,
-                peak   REAL NOT NULL,
-                since  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
-            );"""
-    )
-
-    if first_run:
-        # Seed starting cash from simulation_config.json (if present)
-        cfg_path = Path(__file__).resolve().parent.parent / "simulation_config.json"
-        if cfg_path.exists():
-            try:
-                cfg = json.loads(cfg_path.read_text())
-                starting = float(cfg.get("starting_cash", 0.0) or 0.0)
-            except Exception:
-                starting = 0.0
-            cur.execute(
-                "INSERT OR IGNORE INTO state(id, cash, realized_pl) VALUES (1, ?, 0.0);",
-                (starting,),
-            )
-            print(f"▶︎ Seeded simulation.db with starting cash = ${starting:.2f}")
-        else:
-            cur.execute("INSERT OR IGNORE INTO state(id, cash, realized_pl) VALUES (1, 0.0, 0.0);")
-
-    conn.commit()
-    conn.close()
-
-
-# near your other helpers
-# near your quote helpers in dashboard.py
-SYMBOL_ALIASES = {
-    "PARA": "PSKY",  # Paramount Global -> Paramount Skydance (Class B)
-    "PARAA": "PSKY",
-}
 
 
 def _alias(sym: str) -> str:
@@ -578,19 +453,33 @@ def insert_trade(
     conn.close()
 
 
-def get_trades(limit: int = 100) -> list[dict[str, Any]]:
-    conn = _connect()
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT trade_time, symbol, action, qty, price, pnl "
-        "FROM simulation_trades ORDER BY trade_time DESC LIMIT ?;",
-        (limit,),
-    )
-    rows = cur.fetchall()
-    conn.close()
-    cols = ["trade_time", "symbol", "action", "qty", "price", "pnl"]
-    return [dict(zip(cols, r, strict=False)) for r in rows]
+def get_trades(limit: int = 1000, db_path: str | None = None):
+    """
+    Return recent trades if the DB has a 'trades' table; otherwise return [].
+    LIVE db may not have this table (it currently has realized_trades instead).
+    """
+    conn = _connect(db_path=db_path)
+    try:
+        cur = conn.cursor()
+        tables = {r[0] for r in cur.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()}
 
+        if "trades" not in tables:
+            return []
+
+        cur.execute(
+            """
+            SELECT trade_time, symbol, action, qty, price, pnl
+            FROM trades
+            ORDER BY trade_time DESC
+            LIMIT ?
+            """,
+            (int(limit),),
+        )
+        return cur.fetchall()
+    finally:
+        conn.close()
 
 # ─── Holdings I/O ─────────────────────────────────────────────────────────
 def insert_or_update_holding(symbol: str, qty: int, avg_cost: float, last_price: float) -> None:
@@ -620,11 +509,129 @@ def insert_or_update_holding(symbol: str, qty: int, avg_cost: float, last_price:
     conn.close()
 
 
+def _walk_find_positions_list(payload):
+    """
+    E*TRADE shapes vary. Walk the dict and return the first list that looks like positions.
+    """
+    if not isinstance(payload, dict):
+        return None
+
+    # common explicit paths
+    # PortfolioResponse -> AccountPortfolio -> Position
+    try_paths = [
+        ("PortfolioResponse", "AccountPortfolio", "Position"),
+        ("PortfolioResponse", "AccountPortfolio", "position"),
+        ("AccountPortfolio", "Position"),
+        ("AccountPortfolio", "position"),
+    ]
+    for path in try_paths:
+        cur = payload
+        ok = True
+        for k in path:
+            if isinstance(cur, dict) and k in cur:
+                cur = cur[k]
+            else:
+                ok = False
+                break
+        if ok and isinstance(cur, list):
+            return cur
+        if ok and isinstance(cur, dict):  # sometimes single position
+            return [cur]
+
+    # fallback: walk recursively
+    def walk(x):
+        if isinstance(x, dict):
+            for k, v in x.items():
+                if str(k).lower() in ("position", "positions") and isinstance(v, list):
+                    return v
+                found = walk(v)
+                if found is not None:
+                    return found
+        elif isinstance(x, list):
+            for it in x:
+                found = walk(it)
+                if found is not None:
+                    return found
+        return None
+
+    return walk(payload)
+
+
 def get_holdings() -> list[tuple]:
-    conn = _connect()
-    rows = conn.execute("SELECT symbol, qty, avg_cost, last_price FROM holdings;").fetchall()
-    conn.close()
-    return rows
+    """
+    Returns list of tuples: (symbol, qty, avg_cost, last_price)
+    Pulled from E*TRADE portfolio positions (LIVE truth), not from simulation.db.
+    """
+    try:
+        from services import etrade_service as et
+    except Exception:
+        # fallback: empty if service can't import
+        return []
+
+    payload = et.get_positions() or {}
+    pos_list = _walk_find_positions_list(payload) or []
+
+    out = []
+    for p in pos_list:
+        if not isinstance(p, dict):
+            continue
+
+        # Symbol can appear in a few places
+        sym = (
+            (p.get("symbol") or "")
+            or (p.get("Product", {}).get("symbol") if isinstance(p.get("Product"), dict) else "")
+            or (p.get("product", {}).get("symbol") if isinstance(p.get("product"), dict) else "")
+        )
+        sym = (sym or "").strip().upper()
+        if not sym:
+            continue
+
+        # Quantity
+        qty = (
+            p.get("quantity")
+            or p.get("positionQty")
+            or p.get("positionQuantity")
+            or p.get("qty")
+        )
+
+        # Average cost
+        avg = (
+            p.get("pricePaid")
+            or p.get("avgPrice")
+            or p.get("averagePrice")
+            or p.get("costPerShare")
+            or p.get("avg_cost")
+        )
+
+        # Last price
+        last = (
+            p.get("lastPrice")
+            or p.get("marketValuePrice")
+            or p.get("currentPrice")
+            or p.get("last_price")
+        )
+
+        try:
+            qty_f = float(qty) if qty is not None else 0.0
+        except Exception:
+            qty_f = 0.0
+
+        try:
+            avg_f = float(avg) if avg is not None else 0.0
+        except Exception:
+            avg_f = 0.0
+
+        try:
+            last_f = float(last) if last is not None else avg_f
+        except Exception:
+            last_f = avg_f
+
+        if qty_f != 0:
+            out.append((sym, qty_f, avg_f, last_f))
+
+    # stable ordering
+    out.sort(key=lambda t: t[0])
+    return out
 
 
 def get_position(symbol: str) -> dict[str, Any] | None:

@@ -13,7 +13,11 @@ from services.broker_live import market_sell
 
 log = logging.getLogger("live_guardrails")
 
-DB_PATH = os.path.join(os.getcwd(), "simulation.db")  # reuse your existing DB
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+# LIVE guardrails must use LIVE db (default: C:\TradeAlerts\live.db)
+DB_PATH = os.environ.get("LIVE_DB", os.path.join(ROOT, "live.db"))
 EASTERN = pytz.timezone("America/New_York")
 ENABLED = os.getenv("GUARDRAILS_ENABLED", "true").lower() in {"1", "true", "on", "yes"}
 

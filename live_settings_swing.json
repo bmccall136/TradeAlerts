@@ -6,7 +6,6 @@
   "vol_on": true,
   "vwap_on": true,
   "news_on": false,
-
   "sma_length": 8,
   "rsi_len": 7,
   "rsi_overbought": 60,
@@ -17,83 +16,65 @@
   "bb_length": 10,
   "bb_std": 2.0,
   "vol_multiplier": 3.0,
-  "vwap_threshold": 2.0,
-
+  "vwap_threshold": 3.0,
   "rsi_slope_on": true,
   "macd_hist_on": true,
   "bb_breakout_on": true,
-
   "price_sma_on": true,
   "price_sma_len": 50,
-
   "min_signals": 6,
-
   "atr_on": true,
   "atr_threshold": 2.2,
   "atr_pct_on": true,
   "atr_pct": 0.6,
-
   "super_on": true,
   "super_fast": 7,
   "super_slow": 21,
   "super_signal": 5,
-
   "range_on": true,
   "range_pct": 2.5,
-
   "gap_on": true,
   "gap_pct": 1.5,
-
   "single_entry_only": true,
   "max_pyramids": 0,
   "account_type": "cash",
-
   "sell_after_days": 3,
-
   "broker_mode": "etrade",
   "mode": "live",
   "scan_sleep_secs": 10,
   "pause_when_market_closed": true,
   "nuke_db": false,
-
   "poll_interval": 3.0,
-  "required_filters": ["adx", "macd", "vwap", "vol"],
-
+  "required_filters": [
+    "adx",
+    "macd",
+    "vwap"
+  ],
   "adx_on": true,
   "adx_len": 14,
   "adx_threshold": 25,
-
-  "strict_buy_signals": 6,
-  "require_sma20": true,
-
+  "strict_buy_signals": 5,
+  "require_sma20": false,
   "use_trailing_stop": false,
   "trailing_stop_pct": 0.0,
   "trail_arm_gain_pct": 0.0,
   "trail_floor_to_entry": true,
   "trail_tiers": [],
-
   "take_profit_pct": 0.0,
   "stop_loss_pct": 0.0,
-
-  "max_per_trade": 350.0,
+  "max_per_trade": 1000.0,
   "market_session": "REGULAR",
   "order_term": "GOOD_UNTIL_CANCEL",
-
   "prefer_quotes": false,
   "market_gate_on": true,
   "realized_since": "2025-08-22",
   "realized_tz": "America/New_York",
-  
   "sma_len": 8,
   "vwap_len": 20,
   "vwap_diff_threshold": 2.0,
   "bb_len": 10,
   "bb_stddev": 2.0,
   "vol_mult": 3.0,
-  "require_sma20": false,
-
-
-
   "ai": {
     "enabled": true,
     "use_entries": true,
