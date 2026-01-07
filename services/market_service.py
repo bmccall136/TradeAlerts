@@ -119,7 +119,6 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
     - bars: fetched via fetch_data_with_timeout() for indicator inputs
     """
     sym = (symbol or "").strip().upper()
-    log.warning("[SCAN] %s analyze_symbol() entered", sym)  # always visible
 
     # allow dict or object settings
     s = settings if isinstance(settings, dict) else getattr(settings, "__dict__", {})

@@ -95,6 +95,41 @@ def _scalar_float(x) -> float:
 
     return float(x)
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+ETZ = ZoneInfo("America/New_York")
+
+def _opened_et_from_position(pos: dict) -> datetime | None:
+    """
+    E*TRADE 'dateAcquired' is typically epoch *milliseconds*.
+    Return timezone-aware ET datetime.
+    """
+    raw = pos.get("dateAcquired")
+    if raw is None:
+        return None
+    try:
+        ts = float(raw)
+    except Exception:
+        return None
+
+    # Heuristic: ms vs seconds
+    if ts > 10_000_000_000:   # definitely ms
+        ts /= 1000.0
+
+    dt_utc = datetime.fromtimestamp(ts, tz=ZoneInfo("UTC"))
+    return dt_utc.astimezone(ETZ)
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+ETZ = ZoneInfo("America/New_York")
+
+def _hold_minutes(opened_et: datetime | None) -> float:
+    if not opened_et:
+        return 0.0
+    now_et = datetime.now(ETZ)
+    return max(0.0, (now_et - opened_et).total_seconds() / 60.0)
+
 def log_ai_decision(
     *,
     symbol: str,
@@ -893,10 +928,11 @@ def main() -> None:
                 # Determine hold time:
                 # - Prefer any explicit opened_at from the position.
                 # - Fall back to earliest open order time for that symbol.
-                # - BUT: if the only timestamp we have is a same-day dateAcquired
-                #   (E*TRADE often uses midnight local), treat it as "new today"
-                #   so we do NOT instantly timeout a fresh intraday entry.
                 opened = p.opened_at or open_map.get(s)
+
+                hold_min = 0.0
+                is_prior_day = False
+
                 if opened:
                     if ETZ is not None:
                         opened_local = opened.astimezone(ETZ)
@@ -905,17 +941,13 @@ def main() -> None:
                         opened_local = opened
                         now_local = loop_start
 
-                    if opened_local.date() < now_local.date():
-                        # Prior-day (or older) position → use real age in minutes
-                        hold_sec = (loop_start - opened).total_seconds()
-                        hold_min = max(0.0, hold_sec / 60.0)
-                    else:
-                        # Same-day position → treat as "fresh" for timeout purposes.
-                        # Timeouts are meant for multi-day bags; intraday exits
-                        # will rely on targets, trails, stoploss, and AI exits.
-                        hold_min = 0.0
-                else:
-                    hold_min = 0.0
+                    # Prior-day flag (used to control TIMEOUT behavior)
+                    is_prior_day = opened_local.date() < now_local.date()
+
+                    # Always compute real age in minutes (intraday included)
+                    hold_sec = (loop_start - opened).total_seconds()
+                    hold_min = max(0.0, hold_sec / 60.0)
+
 
                 LOG.info(
                     "[HOLD] %s gain=%.2f%% hold=%.1f mins (waiting for trail/target/timeout)",
@@ -1023,6 +1055,7 @@ def main() -> None:
                 #   - AND P/L is worse than timeout_exit_pct (e.g. <= -1.0%)
                 if (
                     cfg.max_hold_minutes > 0
+                    and is_prior_day
                     and hold_min > cfg.max_hold_minutes
                     and pl_pct <= cfg.timeout_exit_pct
                 ):

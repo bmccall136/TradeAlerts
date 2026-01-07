@@ -831,12 +831,12 @@ def run_live_loop(settings, symbols, broker_mode=None):
         bypass = os.getenv("LIVE_IGNORE_GUARDRAILS_TODAY", "").lower() in ("1", "true", "yes", "on")
         override_gate = True if bypass else False
 
-        if not override_gate and (lg.has_bought_today() or lg.open_position_exists()):
+        # --- BUY GATE DISABLED ---
+        # Old gate (disabled)
+        if False and (lg.has_bought_today() or lg.open_position_exists()):
             log.info("[GR] Buy gate closed (already bought today or an open position exists)")
             time.sleep(settings.poll_interval)
             continue
-        elif override_gate:
-            log.warning("[GR] BYPASS: LIVE_IGNORE_GUARDRAILS_TODAY=1 -> ignoring guardrail this run")
 
 
         purchased = False

@@ -793,3 +793,67 @@ h2 {
 /* Max badge sizing */
 .mm-gear{height:44px;width:auto;max-width:120px;object-fit:contain;vertical-align:middle}
 
+/* Holdings table: make headers line up with numbers */
+#holdings-body td,
+.table thead th {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* Align numeric columns right for BOTH th + td */
+.table thead th:nth-child(3),
+.table thead th:nth-child(4),
+.table thead th:nth-child(5),
+.table thead th:nth-child(6),
+.table thead th:nth-child(7),
+.table thead th:nth-child(8),
+.table thead th:nth-child(9),
+.table thead th:nth-child(10),
+.table thead th:nth-child(11) {
+  text-align: right;
+}
+
+#holdings-body td:nth-child(3),
+#holdings-body td:nth-child(4),
+#holdings-body td:nth-child(5),
+#holdings-body td:nth-child(6),
+#holdings-body td:nth-child(7),
+#holdings-body td:nth-child(8),
+#holdings-body td:nth-child(9),
+#holdings-body td:nth-child(10),
+#holdings-body td:nth-child(11) {
+  text-align: right;
+}
+
+/* Symbol + Opened left */
+.table thead th:nth-child(1),
+.table thead th:nth-child(2),
+#holdings-body td:nth-child(1),
+#holdings-body td:nth-child(2) {
+  text-align: left;
+}
+
+/* News centered */
+.table thead th:nth-child(12),
+#holdings-body td:nth-child(12) {
+  text-align: center;
+}
+
+/* Consistent column widths so headers visually align */
+.table {
+  table-layout: fixed;
+  width: 100%;
+}
+.table thead th:nth-child(1)  { width: 6rem; }   /* Symbol */
+.table thead th:nth-child(2)  { width: 12rem; }  /* Opened */
+.table thead th:nth-child(3)  { width: 7rem; }   /* Last */
+.table thead th:nth-child(4)  { width: 4rem; }   /* Qty */
+.table thead th:nth-child(5)  { width: 7rem; }   /* Paid */
+.table thead th:nth-child(6)  { width: 7rem; }   /* Diff */
+.table thead th:nth-child(7)  { width: 7rem; }   /* Day P&L */
+.table thead th:nth-child(8)  { width: 6rem; }   /* Day % */
+.table thead th:nth-child(9)  { width: 7rem; }   /* Total P&L */
+.table thead th:nth-child(10) { width: 6rem; }   /* Total % */
+.table thead th:nth-child(11) { width: 7rem; }   /* Value */
+.table thead th:nth-child(12) { width: 5rem; }   /* News */
+
