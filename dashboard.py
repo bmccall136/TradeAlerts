@@ -55,6 +55,12 @@ try:
 except ImportError:  # pragma: no cover
     gr = None
 
+try:
+    import faulthandler
+    faulthandler.cancel_dump_traceback_later()
+except Exception:
+    pass
+
 # -----------------------------------------------------------------------------#
 # Path / env + timezone
 # -----------------------------------------------------------------------------#
@@ -205,6 +211,102 @@ def fifo_debug_unmatched_sells(days: int = 120) -> dict:
             unmatched[sym] = unmatched.get(sym, 0.0) + sell_qty
 
     return dict(sorted(unmatched.items(), key=lambda kv: kv[1], reverse=True))
+
+def _calc_unrealized_all_time_from_holdings(holdings):
+    """
+    All-time unrealized P&L based on cost basis vs last price.
+    Returns (pnl_dollars, pnl_pct).
+    """
+    pnl = 0.0
+    basis = 0.0
+
+    for h in (holdings or []):
+        try:
+            qty = float(h.get("qty") or 0.0)
+            cost = h.get("price_paid")
+            last = h.get("last_price")
+            if qty <= 0 or cost is None or last is None:
+                continue
+
+            cost = float(cost)
+            last = float(last)
+
+            pnl += (last - cost) * qty
+            basis += cost * qty
+        except Exception:
+            # skip any malformed row
+            continue
+
+    pct = (pnl / basis * 100.0) if basis else 0.0
+
+    # keep UI-friendly rounding here (or remove rounding if you prefer raw floats)
+    return round(pnl, 2), round(pct, 2)
+
+def _calc_unrealized_all_time(holdings):
+    pnl = 0.0
+    basis = 0.0
+    for h in holdings or []:
+        qty = float(h.get("qty") or 0.0)
+        cost = h.get("price_paid", None)
+        last = h.get("last_price", None)
+        if qty <= 0 or cost is None or last is None:
+            continue
+        cost = float(cost)
+        last = float(last)
+        pnl += (last - cost) * qty
+        basis += cost * qty
+
+    pct = (pnl / basis * 100.0) if basis else 0.0
+    return pnl, pct
+
+def _unrealized_from_holdings(holdings: list[dict] | None) -> dict:
+    """
+    Compute unrealized P&L from holdings rows.
+
+    Returns:
+      {
+        "day": {"pnl": float, "pct": float},
+        "all": {"pnl": float, "pct": float},
+      }
+
+    Day % is based on current positions_value (sum of qty*last_price).
+    All % is based on total cost basis (sum of qty*price_paid).
+    """
+    holdings = holdings or []
+
+    day_pnl = 0.0
+    all_pnl = 0.0
+
+    positions_value = 0.0
+    cost_basis = 0.0
+
+    for h in holdings:
+        if not isinstance(h, dict):
+            continue
+
+        qty = float(h.get("qty") or 0.0)
+        last = float(h.get("last_price") or 0.0)
+        paid = float(h.get("price_paid") or 0.0)
+
+        if qty <= 0 or last <= 0:
+            continue
+
+        positions_value += qty * last
+        cost_basis += qty * paid
+
+        # Day P&L: prefer field if present, else fall back to last - prior_close if you ever add it.
+        day_pnl += float(h.get("day_pl") or 0.0)
+
+        # All-time unrealized: current value - cost
+        all_pnl += (qty * last) - (qty * paid)
+
+    day_pct = (day_pnl / positions_value * 100.0) if positions_value > 0 else 0.0
+    all_pct = (all_pnl / cost_basis * 100.0) if cost_basis > 0 else 0.0
+
+    return {
+        "day": {"pnl": round(day_pnl, 2), "pct": round(day_pct, 2)},
+        "all": {"pnl": round(all_pnl, 2), "pct": round(all_pct, 2)},
+    }
 
 def compute_true_about(nav: float, start_cash: float, net_contrib: float, start_date: str):
     """
@@ -877,42 +979,70 @@ def _enrich_trades_from_realized(trades: list[dict]) -> list[dict]:
 
     return enriched
 
+from typing import Any
+
 def _normalize_positions_payload(raw: dict) -> list[dict]:
     """
-    Normalize E*TRADE positions into a simple list:
+    Normalize E*TRADE positions into a simple list of dicts:
 
     [
       {
-        "symbol": "DOW",
-        "qty": 1,
-        "price_paid": 22.15,
-        "last_price": 22.31,
-        "day_pl": 0.21,
-        "day_pl_pct": 0.95,
-        "prior_close": 22.10,
+        "symbol": "GS",
+        "qty": 3.0,
+        "price_paid": 954.01,
+        "last_price": 948.44,
+        "day_pl": -16.71,
+        "day_pl_pct": -0.58,
+        "prior_close": 914.34,
       },
       ...
     ]
     """
+    def _safe_float(v, default: float = 0.0) -> float:
+        try:
+            if v is None:
+                return float(default)
+            if isinstance(v, bool):
+                return float(default)
+            return float(v)
+        except Exception:
+            return float(default)
+
     rows: list[dict] = []
-    if not raw:
+    if not isinstance(raw, dict) or not raw:
         return rows
 
     pr = (raw.get("PortfolioResponse") or {}).get("AccountPortfolio") or []
     if isinstance(pr, dict):
         pr = [pr]
+    if not isinstance(pr, list):
+        return rows
 
     for acct in pr:
+        if not isinstance(acct, dict):
+            continue
+
         poss = acct.get("Position") or []
         if isinstance(poss, dict):
             poss = [poss]
+        if not isinstance(poss, list):
+            continue
 
         for pos in poss:
+            if not isinstance(pos, dict):
+                continue
+
             prod = pos.get("Product") or {}
-            sym = (prod.get("symbol")
-                   or (prod.get("productId") or {}).get("symbol")
-                   or pos.get("symbol")
-                   or "").strip().upper()
+            if not isinstance(prod, dict):
+                prod = {}
+
+            sym = (
+                prod.get("symbol")
+                or (prod.get("productId") or {}).get("symbol")
+                or pos.get("symbol")
+                or ""
+            )
+            sym = (sym or "").strip().upper()
             if not sym:
                 continue
 
@@ -926,7 +1056,11 @@ def _normalize_positions_payload(raw: dict) -> list[dict]:
                 continue
 
             q = pos.get("Quick") or {}
+            if not isinstance(q, dict):
+                q = {}
             allf = pos.get("All") or {}
+            if not isinstance(allf, dict):
+                allf = {}
 
             price_paid = _safe_float(
                 pos.get("pricePaid")
@@ -935,32 +1069,34 @@ def _normalize_positions_payload(raw: dict) -> list[dict]:
                 or 0.0
             )
 
+            # Prefer Quick.lastTrade; otherwise derive from marketValue/qty if present
             last_price = _safe_float(
                 q.get("lastTrade")
                 or allf.get("lastTrade")
                 or pos.get("lastTrade")
-                or pos.get("marketValue") and (pos.get("marketValue") / max(qty, 1))
+                or pos.get("lastPrice")
                 or 0.0
             )
+            if last_price <= 0:
+                mv = _safe_float(pos.get("marketValue"), 0.0)
+                if mv > 0 and qty > 0:
+                    last_price = mv / max(qty, 1.0)
 
-            # ---- Day P&L from E*TRADE ----
-            # E*TRADE gives:
-            #   daysGain     -> dollar P&L for the position (already * qty)
-            #   daysGainPct  -> percent move for the position
             day_pl = _safe_float(
                 pos.get("daysGain")
                 or q.get("todayGainLoss")
                 or q.get("todayGainLossBase")
+                or pos.get("totalGain")  # last resort if daysGain missing
                 or 0.0
             )
 
             day_pl_pct = _safe_float(
                 pos.get("daysGainPct")
                 or q.get("todayGainLossPct")
+                or pos.get("totalGainPct")  # last resort if daysGainPct missing
                 or 0.0
             )
 
-            # Prior close / ref for fallback calc if needed later
             prior_close = _safe_float(
                 pos.get("adjPrevClose")
                 or q.get("priorClose")
@@ -1021,9 +1157,48 @@ def _sync_realized_from_trades(trades: list[dict], db_path: str) -> int:
             continue
 
     return n
+from typing import Any
+
+def _positions_rows_from_any(raw: Any) -> list[dict]:
+    """
+    Coerce whatever we got back (None / dict / list) into normalized position rows.
+
+    Accepts:
+      - None -> []
+      - dict (E*TRADE PortfolioResponse JSON) -> _normalize_positions_payload(dict)
+      - list of dict rows already normalized -> returned as-is
+      - list containing a single dict payload -> normalized
+    """
+    if raw is None:
+        return []
+
+    # If we already have normalized rows, just return them
+    if isinstance(raw, list):
+        if not raw:
+            return []
+
+        # list of normalized dict rows?
+        if all(isinstance(x, dict) and ("symbol" in x) for x in raw):
+            # Heuristic: if it looks like a PortfolioResponse wrapper, normalize instead
+            # (Some code paths may wrap payloads in a list)
+            if len(raw) == 1 and isinstance(raw[0], dict) and (
+                "PortfolioResponse" in raw[0] or "AccountPortfolio" in raw[0]
+            ):
+                return _normalize_positions_payload(raw[0])
+            return raw
+
+        # list but not dict rows -> treat as empty
+        if len(raw) == 1 and isinstance(raw[0], dict):
+            return _normalize_positions_payload(raw[0])
+        return []
+
+    if isinstance(raw, dict):
+        return _normalize_positions_payload(raw)
+
+    return []
 
 def _build_holdings_from_positions(
-    pos_rows: list[dict],
+    pos_rows: list[dict] | None,
 ) -> tuple[list[dict], float]:
     """
     From normalized positions rows, compute holdings rows with:
@@ -1034,12 +1209,28 @@ def _build_holdings_from_positions(
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
+    def _safe_float(v, default: float = 0.0) -> float:
+        try:
+            if v is None:
+                return float(default)
+            if isinstance(v, bool):
+                return float(default)
+            return float(v)
+        except Exception:
+            return float(default)
+
     ETZ = ZoneInfo("America/New_York")
+
+    # Ensure iterable
+    pos_rows = pos_rows or []
 
     # map of symbol -> opened_at from guardrails
     opened_map: dict[str, datetime] = {}
     try:
-        for e in gr.list_open_entries():
+        entries = gr.list_open_entries() or []
+        for e in entries:
+            if not isinstance(e, dict):
+                continue
             sym = (e.get("symbol") or "").upper()
             ts = e.get("opened_at")
             if not sym or not ts:
@@ -1060,18 +1251,25 @@ def _build_holdings_from_positions(
     positions_value = 0.0
 
     for r in pos_rows:
+        if not isinstance(r, dict):
+            continue
+
         sym = (r.get("symbol") or "").upper()
         if not sym:
             continue
 
-        qty = _safe_float(r.get("qty"), 0.0)
-        paid = _safe_float(r.get("price_paid"), 0.0)
-        last = _safe_float(r.get("last_price"), 0.0)
+        # Accept BOTH schemas:
+        # - normalized: qty / price_paid / last_price / day_pl / day_pl_pct
+        # - raw-ish:    quantity / pricePaid / lastPrice / daysGain / daysGainPct
+        qty = _safe_float(r.get("qty", r.get("quantity")), 0.0)
+        paid = _safe_float(r.get("price_paid", r.get("pricePaid")), 0.0)
+        last = _safe_float(r.get("last_price", r.get("lastPrice")), 0.0)
+
         if qty <= 0 or last <= 0:
             continue
 
         opened_dt = opened_map.get(sym)
-        opened_str = opened_dt.strftime("%Y-%m-%d %H:%M") if opened_dt else "â€”"
+        opened_str = opened_dt.strftime("%Y-%m-%d %H:%M") if opened_dt else "—"
 
         value = round(qty * last, 2)
         positions_value += value
@@ -1080,8 +1278,8 @@ def _build_holdings_from_positions(
         total_pl = round(value - cost, 2) if cost > 0 else 0.0
         total_pl_pct = round((total_pl / cost) * 100.0, 2) if cost > 0 else 0.0
 
-        day_pl = _safe_float(r.get("day_pl"), 0.0)
-        day_pl_pct = _safe_float(r.get("day_pl_pct"), 0.0)
+        day_pl = _safe_float(r.get("day_pl", r.get("daysGain")), 0.0)
+        day_pl_pct = _safe_float(r.get("day_pl_pct", r.get("daysGainPct")), 0.0)
 
         holdings.append(
             {
@@ -1322,11 +1520,17 @@ def live_view():
         )
 
         # ---- positions / holdings ----
+        import json
         raw_positions = et.get_positions() or {}
-        pos_rows = _normalize_positions_payload(raw_positions)
+        LOG.info("LIVE: positions raw type=%s keys=%s", type(raw_positions), list(raw_positions.keys()) if isinstance(raw_positions, dict) else "n/a")
 
-        # NOTE: _build_holdings_from_positions already returns (rows, total_mv)
+        pos_rows = _positions_rows_from_any(raw_positions)
+        LOG.info("LIVE: normalized pos_rows count=%s sample=%s", len(pos_rows or []), (pos_rows[0] if pos_rows else None))
+
         holdings, positions_value = _build_holdings_from_positions(pos_rows)
+        all_time_pnl, all_time_pct = _calc_unrealized_all_time_from_holdings(holdings)
+        
+        LOG.info("LIVE: holdings built count=%s positions_value=%s", len(holdings or []), positions_value)
 
         # ---- effective NAV = cash + positions ----
         effective_nav = round(cash_balance + float(positions_value or 0.0), 2)
@@ -1376,20 +1580,142 @@ def compute_since_start_summary(
     }
 
 @app.route("/live/status")
-@always_json
 def live_status():
     """
-    JSON feed for the Live UI.
-
-    Query params:
-      - start=YYYY-MM-DD  : earliest trade date (for table)
-      - days=N            : fallback lookback
-      - max=N             : max trades
-      - debug=1           : include raw payloads
+    Lightweight JSON status used by live.html polling.
+    Must include holdings + unrealized day/all-time so the tiles stay correct.
     """
+    from services import etrade_service as es
+
+    import time
+    now_ts = time.time()
+
+    try:
+        # E*TRADE connection flag (and reconnect banner)
+        try:
+            needs_reconnect = bool(getattr(es, "need_oauth", None) and getattr(es.need_oauth, "flag", False))
+        except Exception:
+            needs_reconnect = False
+
+        # Pull positions raw -> normalize -> holdings (same logic you tested in shell)
+        raw_positions = es.get_positions()
+        pos_rows = _normalize_positions_payload(raw_positions)
+        holdings, positions_value = _build_holdings_from_positions(pos_rows)
+        all_time_pnl, all_time_pct = _calc_unrealized_all_time_from_holdings(holdings)
+        
+
+        # Buying power / settled cash
+        settled_cash = 0.0
+        live_bp = 0.0
+        try:
+            funds = es.get_funds() or {}
+            settled_cash = float(
+                (funds.get("settled_cash") if isinstance(funds, dict) else 0.0) or 0.0
+            )
+            live_bp = float(
+                (funds.get("buying_power") if isinstance(funds, dict) else 0.0) or 0.0
+            )
+        except Exception:
+            pass
+
+        # Account NAV = cash + positions
+        cash_balance = live_bp if live_bp > 0 else settled_cash
+        nav = round(float(cash_balance) + float(positions_value), 2)
+
+        # --- Unrealized calculations ---
+        # Day unrealized (sum of E*TRADE-provided day P&L)
+        day_unreal_pl = 0.0
+        for r in pos_rows or []:
+            if isinstance(r, dict):
+                day_unreal_pl += float(r.get("day_pl") or 0.0)
+        day_unreal_pl = round(day_unreal_pl, 2)
+
+        # Day % (best-effort): use prior_close if present; otherwise 0
+        # We keep it simple + stable (no weird divide-by-zero or after-hours glitches).
+        day_base = 0.0
+        for r in pos_rows or []:
+            if not isinstance(r, dict):
+                continue
+            qty = float(r.get("qty") or 0.0)
+            prior = float(r.get("prior_close") or 0.0)
+            if qty > 0 and prior > 0:
+                day_base += qty * prior
+        day_unreal_pct = round((day_unreal_pl / day_base) * 100.0, 2) if day_base > 0 else 0.0
+
+        # All-time unrealized = current value - cost basis (sum across positions)
+        total_cost = 0.0
+        total_value = 0.0
+        for r in pos_rows or []:
+            if not isinstance(r, dict):
+                continue
+            qty = float(r.get("qty") or 0.0)
+            paid = float(r.get("price_paid") or 0.0)
+            last = float(r.get("last_price") or 0.0)
+            if qty > 0 and paid > 0:
+                total_cost += qty * paid
+            if qty > 0 and last > 0:
+                total_value += qty * last
+
+        total_unreal_pl = round(total_value - total_cost, 2) if (total_value > 0 and total_cost > 0) else 0.0
+        total_unreal_pct = round((total_unreal_pl / total_cost) * 100.0, 2) if total_cost > 0 else 0.0
+
+        return {
+            "ok": True,
+            "ts": now_ts,
+            "etrade_ok": True,
+            "needs_reconnect": needs_reconnect,
+            "ai_enabled": None,
+            "mode": None,
+
+            "nav": nav,
+            "buying_power": round(float(live_bp), 2),
+            "settled_cash": round(float(settled_cash), 2),
+            "positions_value": round(float(positions_value), 2),
+
+            "holdings": holdings,
+
+            # what your UI expects
+            "day_unrealized_pl": day_unreal_pl,
+            "day_unrealized_pl_pct": day_unreal_pct,
+            "unrealized_pl": total_unreal_pl,
+            "unrealized_pl_pct": total_unreal_pct,
+        }
+
+    except Exception as exc:
+        LOG.exception("live_status error: %s", exc)
+        # Keep the route alive for the UI, but admit partial failure
+        try:
+            needs_reconnect = bool(getattr(es, "need_oauth", None) and getattr(es.need_oauth, "flag", False))
+        except Exception:
+            needs_reconnect = False
+        return {
+            "ok": True,
+            "ts": now_ts,
+            "etrade_ok": True,
+            "needs_reconnect": needs_reconnect,
+            "ai_enabled": None,
+            "mode": None,
+        }
+
+
+
+@app.route("/live/data")
+@always_json
+def live_data():
+    """
+    Full JSON feed for the Live UI (holdings/trades/metrics/etc).
+    This is where the big payload lives.
+    """
+        # Always initialize these so later blocks can't crash on scope/order
+    payload: Dict[str, Any] = {"ok": True, "etrade_ok": False, "needs_reconnect": False}
+    metrics: Dict[str, Any] = {}
+    holdings: List[Dict[str, Any]] = []
+    positions_value: float = 0.0
+
     from flask import request, current_app
     from services import etrade_service as et
     from services.trade_source import load_trades_merged
+    import time
 
     about: Dict[str, Any] = {}
     debug = request.args.get("debug", "0") == "1"
@@ -1409,11 +1735,6 @@ def live_status():
     if debug:
         debug_raw["acct_summary_raw"] = acct_summary_raw
 
-    # Pull the same fields we saw in your snapshot
-    # Example:
-    #   cash_balance = 4098.29
-    #   cash_buying_power = 4098.29
-    #   positions_market_value = separate call
     cash_balance = _safe_float(
         comp.get("cashBalance")
         or acct_summary_raw.get("cash_balance")
@@ -1431,36 +1752,61 @@ def live_status():
     nav = None  # will compute after positions_value
 
     # ---------- 2) POSITIONS -> HOLDINGS + POSITIONS VALUE ----------
-    holdings: List[Dict[str, Any]] = []
+    holdings = []
     positions_value = 0.0
 
+    # These feed the tiles / metrics later (build metrics ONCE in step 10)
+    day_pnl = 0.0
+    day_pct = 0.0
+    all_time_pnl = 0.0
+    all_time_pct = 0.0
+
     try:
-        raw_positions = et.get_positions() or {}
+        # IMPORTANT: use the same wrapper you tested in PowerShell
+        from services import etrade_service as es
+
+        raw_positions = es.get_positions() or {}
+
+        LOG.info(
+            "DATA: positions raw type=%s keys=%s",
+            type(raw_positions),
+            list(raw_positions.keys()) if isinstance(raw_positions, dict) else "n/a",
+        )
+
+        pos_rows = _positions_rows_from_any(raw_positions)
+        LOG.info(
+            "DATA: normalized pos_rows count=%s sample=%s",
+            len(pos_rows or []),
+            (pos_rows[0] if pos_rows else None),
+        )
+
+        holdings, positions_value = _build_holdings_from_positions(pos_rows)
+
+        # All-time unrealized (cost basis -> last)
+        all_time_pnl, all_time_pct = _calc_unrealized_all_time_from_holdings(holdings)
+
+        # Day unrealized (sum of day_pl; percent weighted by current positions value)
+        day_pnl = float(sum(float(r.get("day_pl") or 0.0) for r in (pos_rows or [])))
+        day_pct = (day_pnl / float(positions_value) * 100.0) if positions_value else 0.0
+
         if debug:
             debug_raw["positions_raw"] = raw_positions
+            debug_raw["positions_norm_sample"] = (pos_rows[0] if pos_rows else None)
 
-        pos_rows = _normalize_positions_payload(raw_positions)
-        holdings, positions_value = _build_holdings_from_positions(pos_rows)
     except Exception as e:
         current_app.logger.exception("positions error: %s", e)
-
-    positions_value = _safe_float(positions_value, 0.0)
+        holdings, positions_value = [], 0.0
+        day_pnl = day_pct = 0.0
+        all_time_pnl = all_time_pct = 0.0
 
     # ---------- 3) NAV FROM CASH + POSITIONS ----------
-    # For your cash account, NAV ≈ cashBalance + positions_market_value
-    nav = round(cash_balance + positions_value, 2)
+    nav = round(cash_balance + _safe_float(positions_value, 0.0), 2)
 
     # ---------- 4) NORMALIZED ACCOUNT OBJECT + UI BUYING POWER ----------
-    # For your cash / PDT account, E*TRADE reports:
-    #   cash_balance = what you can really deploy
-    #   cashBuyingPower / cashAvailableForInvestment ~ same number
-    #
-    # For the left tile we want that real cash as "buying power" in CASH/PDT.
     acct_mode = (raw.get("accountType") or raw.get("accountMode") or "").upper()
     if acct_mode in {"PDT_ACCOUNT", "CASH", "CASH_ACCOUNT"}:
         ui_buying_power = cash_balance
     else:
-        # margin or weird cases – fall back sensibly to the broker BP if present
         ui_buying_power = cash_buying_power if cash_buying_power is not None else cash_balance
 
     ui_buying_power = round(_safe_float(ui_buying_power, 0.0), 2)
@@ -1484,11 +1830,17 @@ def live_status():
             or raw.get("accountMode")
         ),
         "nav": nav,
-        # "available_funds" should reflect what broker says you can deploy
         "available_funds": cash_buying_power,
         "cash_balance": cash_balance,
         "buying_power": ui_buying_power,
-        "positions_value": positions_value,
+        "positions_value": _safe_float(positions_value, 0.0),
+    }
+
+    # VALUE tile (left card)  (moved UP so it's available for denom calc below)
+    value_obj = {
+        "net_account_value": nav,
+        "positions_value": _safe_float(positions_value, 0.0),
+        "buying_power": ui_buying_power,
     }
 
     # ---------- 5) UNREALIZED & DAY P&L ----------
@@ -1496,7 +1848,6 @@ def live_status():
     total_value = 0.0
     day_unreal = 0.0
 
-    # use the same rows you use for the holdings table
     for h in holdings:
         qty = _safe_float(h.get("qty"), 0.0)
         paid = _safe_float(h.get("price_paid"), 0.0)
@@ -1506,18 +1857,14 @@ def live_status():
         total_value += qty * last
         day_unreal += _safe_float(h.get("day_pl"), 0.0)
 
-    # ALL-TIME unrealized in dollars
     total_unreal_pl = round(total_value - total_cost, 2) if total_cost > 0 else 0.0
 
-    # For the "All Time" % tile, measure against the original project stake
-    # (8/22/2025 baseline), not just current open-position cost.
     base_for_unreal = START_CASH_BASELINE
     if base_for_unreal > 0:
         total_unreal_pct = round((total_unreal_pl / base_for_unreal) * 100.0, 2)
     else:
         total_unreal_pct = 0.0
 
-    # keep day unreal in case we want it later
     day_unrealized_pnl = round(day_unreal, 2)
     day_unrealized_pnl_pct = (
         round((day_unrealized_pnl / nav) * 100.0, 2) if nav > 0 else 0.0
@@ -1534,32 +1881,34 @@ def live_status():
         max_count=max_count,
     ) or []
 
-    # Fix SELL trades that are missing proper cost basis / P&L
     trades = _enrich_trades_from_realized(trades)
 
     if debug:
         debug_raw["trades_raw"] = trades
 
-    # Method #1: persist realized SELL fills into live.db (canonical for realized buckets)
     try:
         _sync_realized_from_trades(trades, str(LIVE_DB))
     except Exception as exc:
         LOG.warning("realized sync failed: %s", exc)
 
-
     # ---------- 7) REALIZED P&L (live.db realized_trades) ----------
-    # pct is computed vs **account NAV** (not vs sum(total_cost))
     try:
-        _denom_value = float((account or {}).get("nav") or (value_obj or {}).get("value") or 0.0)
+        _denom_value = float((account or {}).get("nav") or (value_obj or {}).get("net_account_value") or 0.0)
     except Exception:
         _denom_value = 0.0
 
     try:
         realized_obj_full = realized_buckets_from_live_db_db(str(LIVE_DB), denom_value=_denom_value) or {}
+
+        # Ensure "all" always exists (canonical source is realized_trades in LIVE_DB)
+        if "all" not in realized_obj_full:
+            realized_obj_full["all"] = _realized_all_from_db(str(LIVE_DB), denom_value=_denom_value)
+
         realized_obj = {
             "day":   realized_obj_full.get("day",   {"pnl": 0.0, "pct": 0.0}),
             "week":  realized_obj_full.get("week",  {"pnl": 0.0, "pct": 0.0}),
             "month": realized_obj_full.get("month", {"pnl": 0.0, "pct": 0.0}),
+            "all":   realized_obj_full.get("all",   {"pnl": 0.0, "pct": 0.0}),
         }
     except Exception as exc:
         LOG.warning("realized pnl: realized_service failed (using zeros): %s", exc)
@@ -1567,18 +1916,14 @@ def live_status():
             "day":   {"pnl": 0.0, "pct": 0.0},
             "week":  {"pnl": 0.0, "pct": 0.0},
             "month": {"pnl": 0.0, "pct": 0.0},
+            "all":   {"pnl": 0.0, "pct": 0.0},
         }
 
-
-
     # ---------- 9) ACCOUNT GROWTH SINCE START (NAV-based) ----------
-
-    # Use the baseline (START_CASH_BASELINE on START_DATE) plus real contributions.
     start_cash = START_CASH_BASELINE
-    start_date = START_DATE  # or LIVE_APP_START_DATE if you prefer that baseline
+    start_date = START_DATE
 
     try:
-        # Total deposits/withdrawals since start_date, from contributions helper
         net_contrib = float(get_total_contributions(start_date))
     except Exception:
         net_contrib = 0.0
@@ -1586,45 +1931,41 @@ def live_status():
     total_in = _safe_float(start_cash, 0.0) + _safe_float(net_contrib, 0.0)
 
     if total_in > 0:
-        # NAV-based growth:
-        #   since_pnl = current NAV - (original seed + all contributions)
         since_pnl = nav - total_in
         since_pct = round((since_pnl / total_in) * 100.0, 2)
     else:
         since_pnl = 0.0
         since_pct = 0.0
 
-    # VALUE tile (left card)
-    value_obj = {
-        "net_account_value": nav,      # broker NAV from get_account_summary()
-        "positions_value": positions_value,
-        "buying_power": ui_buying_power,
-    }
-
     # ---------- 10) METRICS / VALUE FOR TILES ----------
-    # For now, use the NAV-based growth numbers here as well.
-    total_gain = since_pnl
-    total_gain_pct = since_pct
+
+    # Safe defaults for "since start" KPIs (prevents NameError)
+    total_gain = float(about.get("since_pnl") or 0.0) if isinstance(about, dict) else 0.0
+    total_gain_pct = float(about.get("since_pct") or 0.0) if isinstance(about, dict) else 0.0
 
     metrics = {
-        # Left tile
-        "net_account_value": nav,
-        "buying_power": ui_buying_power,
-        "positions_value": positions_value,
+        # Value card fields
+        "net_account_value": float(nav or 0.0),
+        "buying_power": float(ui_buying_power or 0.0),
+        "positions_value": _safe_float(positions_value, 0.0),
 
-        # Center tile: Day vs All-Time
-        "day_unrealized_pnl": day_unrealized_pnl,
-        "day_unrealized_pnl_pct": day_unrealized_pnl_pct,
-        "unrealized_pl": total_unreal_pl,
-        "unrealized_pl_pct": total_unreal_pct,
+        # Unrealized tiles
+        "day_unrealized_pnl": round(float(day_pnl or 0.0), 2),
+        "day_unrealized_pnl_pct": round(float(day_pct or 0.0), 2),
 
-        # NAV-based growth (kept for debugging / future UI)
-        "total_gain_nav": total_gain,
-        "total_gain_nav_pct": total_gain_pct,
+        # Preferred "all time" keys (keep these!)
+        "all_time_unrealized_pnl": round(float(all_time_pnl or 0.0), 2),
+        "all_time_unrealized_pnl_pct": round(float(all_time_pct or 0.0), 2),
+
+        # Legacy keys some JS/templates might still read
+        "unrealized_pl": round(float(all_time_pnl or 0.0), 2),
+        "unrealized_pl_pct": round(float(all_time_pct or 0.0), 2),
+
+        # Since-start NAV growth
+        "total_gain_nav": round(float(total_gain), 2),
+        "total_gain_nav_pct": round(float(total_gain_pct), 2),
     }
-
     # ---------- 11) P&L SINCE START (for hero blurb) ----------
-    # Drives the “Started with $X on Y…” sentence in the UI.
     about = {
         "start_cash": start_cash,
         "start_date": start_date,
@@ -1637,6 +1978,13 @@ def live_status():
     needs_reconnect = bool(
         getattr(et, "need_oauth", False)
         or os.path.exists(str(NEED_AUTH_FLAG))
+    )
+    LOG.info(
+        "DATA: FINAL holdings=%s positions_value=%s day_pnl=%s all_pnl=%s",
+        len(holdings or []),
+        positions_value,
+        metrics.get("day_unrealized_pnl"),
+        metrics.get("all_time_unrealized_pnl"),
     )
 
     payload: Dict[str, Any] = {
@@ -1656,6 +2004,7 @@ def live_status():
         payload["debug_raw"] = debug_raw
 
     return payload
+    
 def compute_realized_buckets_from_trades(
     trades: List[Dict[str, Any]],
     start_cash: float,

@@ -118,7 +118,8 @@
   <!-- UNREALIZED P&L -->
   <div class="col-md-4">
     <div class="kpi-tile">
-      <div class="kpi-label mb-2">P&amp;L (Unrealized)</div>
+      <div class="kpi-label mb-2">Current Holdings</div>
+	  <div class="kpi-label mb-2">P&amp;L (Unrealized)</div>
 
       <div class="kpi-sub mb-1">
         <strong>Day</strong>:
@@ -127,7 +128,7 @@
       </div>
 
       <div class="kpi-sub">
-        <strong>All Time</strong>:
+        <strong>Whole Time</strong>:
         <span id="kpi-pnl-all">$0.00</span>
         (<span id="kpi-pnl-all-pct">0.00%</span>)
       </div>
@@ -387,18 +388,35 @@
       const pl   = t.pl != null ? money(t.pl) : '$0.00';
       const plp  = t.pl_pct != null ? pct(t.pl_pct) : '0.00%';
 
-      tb.insertAdjacentHTML('beforeend', `
-        <tr>
-          <td>${time}</td>
-          <td>${sym}</td>
-          <td>${side}</td>
-          <td>${qty}</td>
-          <td>${px}</td>
-          <td class="tr-paid">${paid}</td>
-          <td class="tr-pl">${pl}</td>
-          <td class="tr-pl-p">${plp}</td>
-        </tr>
-      `);
+	const diff = last - paid;
+	const diffPct = paid ? (diff / paid) * 100 : 0;
+
+	tb.insertAdjacentHTML('beforeend', `
+	  <tr>
+		<td>${sym}</td>
+		<td>${open}</td>
+		<td>${money(last)}</td>
+		<td>${qty}</td>
+		<td>${money(paid)}</td>
+
+		<!-- Diff -->
+		<td class="${plClass(diff)}">${money(diff)}</td>
+
+		<!-- Day -->
+		<td class="${plClass(dayPL)}">${money(dayPL)}</td>
+		<td class="${plClass(dayPP)}">${pct(dayPP)}</td>
+
+		<!-- Total -->
+		<td class="${plClass(totPL)}">${money(totPL)}</td>
+		<td class="${plClass(totPP)}">${pct(totPP)}</td>
+
+		<!-- Value -->
+		<td>${money(value)}</td>
+
+		<!-- News -->
+		<td>${newsCell}</td>
+	  </tr>
+	`);
 
       const row = tb.lastElementChild;
       setColor(row.querySelector('.tr-pl'), t.pl ?? 0);
@@ -447,14 +465,23 @@
     set('#kpi-bp',     money(bp));
     set('#kpi-posval', money(pv));
 
-    const dAmt    = num(metrics.day_unrealized_pnl);
-    const dPct    = num(metrics.day_unrealized_pnl_pct);
-    const allAmt  = num(metrics.unrealized_pl);
+	const dAmt    = num(metrics.day_unrealized_pnl);
+	const dPct    = num(metrics.day_unrealized_pnl_pct);
 
-    set('#kpi-pnl-day',     money(dAmt));
-    set('#kpi-pnl-day-pct', pct(dPct));
-    setColor(document.querySelector('#kpi-pnl-day'), dAmt);
-    setColor(document.querySelector('#kpi-pnl-day-pct'), dPct);
+	// All-time unrealized (cost basis -> last)
+	const allAmt  = num(metrics.all_time_unrealized_pnl ?? metrics.unrealized_pl ?? 0);
+	const allPct  = num(metrics.all_time_unrealized_pnl_pct ?? metrics.unrealized_pl_pct ?? 0);
+
+	set('#kpi-pnl-day',     money(dAmt));
+	set('#kpi-pnl-day-pct', pct(dPct));
+	setColor(document.querySelector('#kpi-pnl-day'), dAmt);
+	setColor(document.querySelector('#kpi-pnl-day-pct'), dPct);
+
+	// ✅ paint All Time
+	set('#kpi-pnl-all',     money(allAmt));
+	set('#kpi-pnl-all-pct', pct(allPct));
+	setColor(document.querySelector('#kpi-pnl-all'), allAmt);
+	setColor(document.querySelector('#kpi-pnl-all-pct'), allPct);
 
 	// --- REALIZED P&L (supports both payload shapes) -----------------------------
 
@@ -562,7 +589,7 @@
   };
 
   const refreshLive = async () => {
-    const resp = await fetch('/live/status');
+    const resp = await fetch('/live/data');
     if (!resp.ok) {
       paintStatus(false);
       throw new Error('HTTP ' + resp.status);

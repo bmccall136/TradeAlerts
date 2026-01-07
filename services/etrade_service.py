@@ -441,7 +441,7 @@ def long_qty_map() -> dict[str, float]:
     Prefer 'available' qty if E*TRADE provides it; else fall back to long qty.
     """
     out = {}
-    raw = get_positions() or []
+    raw = get_positions() or {}
 
     def visit(n):
         if isinstance(n, dict):
@@ -1939,38 +1939,6 @@ def get_default_account_id_key() -> str:
     return key
 
 
-def get_positions():
-    """
-    Return raw positions payload from E*TRADE.
-    dashboard.py will normalize via _normalize_positions_payload.
-    """
-    acct_key = get_default_account_id_key()
-    sess = get_oauth_session()
-
-    url = f"{ETRADE_BASE_URL}/v1/accounts/{acct_key}/portfolio.json"
-    params = {
-        "view": "QUICK",
-        "sortBy": "MARKET_VALUE",
-        "sortOrder": "DESC",
-        "count": 500,
-    }
-
-    r = sess.get(url, params=params, timeout=15)
-
-    if r.status_code == 204 or not (r.text or "").strip():
-        return {}
-
-    r.raise_for_status()
-    return r.json()
-
-# Optional alias if other code uses it
-get_account_id_key = account_id_key
-
-# ---- Canonical helpers (no self-imports, no duplicates) --------------------
-_sess_cache = None
-
-
-# --- replace your list_trade_transactions_today() with this ---
 def list_trade_transactions_today() -> dict:
     acct = account_id_key()
     sess = get_oauth_session()
@@ -2472,9 +2440,24 @@ def keepalive_daemon(interval_min: int = 60):
                 _AUTH_DEAD = True
 
 
-# Start the keepalive thread unless explicitly disabled
+# Start the keepalive thread unless explicitly disabled.
+# Flask debug reloader runs a parent + child process; only start keepalive in the serving child.
+def _should_start_keepalive() -> bool:
+    if os.getenv("ETRADE_KEEPALIVE", "1").lower() in ("0", "false", "no", "off"):
+        return False
+
+    # If running under Flask/Werkzeug reloader, only start in the child process
+    # (WERKZEUG_RUN_MAIN is set to "true" in the child)
+    wrm = os.environ.get("WERKZEUG_RUN_MAIN")
+    if wrm is not None:
+        return wrm == "true"
+
+    # Otherwise (gunicorn, normal python run, etc.), start it
+    return True
+
+
 try:
-    if os.getenv("ETRADE_KEEPALIVE", "1").lower() not in ("0", "false", "no"):
+    if _should_start_keepalive():
         threading.Thread(target=keepalive_daemon, args=(60,), daemon=True).start()
 except Exception:
     pass
@@ -2976,7 +2959,19 @@ def get_positions():
         return {}
 
     r.raise_for_status()
-    return r.json()
+    payload = r.json()
+
+    # --- Normalize return type: always dict (never list / None) ---
+    if not payload:
+        return {}
+
+    if isinstance(payload, list):
+        return {"PortfolioResponse": {"AccountPortfolio": payload}}
+
+    if not isinstance(payload, dict):
+        return {}
+
+    return payload
 
 def preview_equity_order(
     account_id_key: str,
