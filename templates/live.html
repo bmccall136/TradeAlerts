@@ -85,6 +85,13 @@
     color: #000000;
     text-decoration: none;
   }
+  .hold-name{
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 </style>
 
 <!-- Top status row -->
@@ -164,22 +171,22 @@
 </div>
 <div class="table-responsive">
   <table class="table table-dark table-striped align-middle">
-    <thead class="table-light">
-      <tr>
-        <th>Symbol</th>
-        <th>Opened (ET)</th>
-        <th>Last Price</th>
-        <th>Qty</th>
-        <th>Price Paid</th>
-        <th>Diff (Last - Paid)</th>
-        <th>Day P&amp;L</th>
-        <th>Day P&amp;L %</th>
-        <th>Total P&amp;L</th>
-        <th>Total P&amp;L %</th>
-        <th>Value</th>
-        <th>News</th>
-      </tr>
-    </thead>
+<thead>
+  <tr>
+    <th>Symbol</th>
+    <th>Name</th>
+    <th>Opened (ET)</th>
+    <th class="text-end">Last Price</th>
+    <th class="text-end">Qty</th>
+    <th class="text-end">Price Paid</th>
+    <th class="text-end">Day P&amp;L</th>
+    <th class="text-end">Day P&amp;L %</th>
+    <th class="text-end">Total P&amp;L</th>
+    <th class="text-end">Total P&amp;L %</th>
+    <th class="text-end">Value</th>
+    <th class="text-center">News</th>
+  </tr>
+</thead>
     <tbody id="holdings-body">
       <tr><td colspan="12" class="text-muted">Loading…</td></tr>
     </tbody>
@@ -297,76 +304,89 @@
     dot.classList.add(ok ? 'dot-green' : 'dot-red');
   };
 
-  const renderHoldings = holdings => {
-    const tb = document.querySelector('#holdings-body');
-    if (!tb) return;
+const renderHoldings = holdings => {
+  const tb = document.querySelector('#holdings-body');
+  if (!tb) return;
 
-    tb.innerHTML = '';
+  tb.innerHTML = '';
 
-    if (!holdings || !holdings.length) {
-      tb.innerHTML = `<tr><td colspan="12" class="text-muted">No holdings.</td></tr>`;
-      return;
+  // 12 columns total:
+  // Symbol, Name, Opened, Last, Qty, Paid, DayPL, Day%, TotalPL, Total%, Value, News
+  if (!holdings || !holdings.length) {
+    tb.innerHTML = `<tr><td colspan="12" class="text-muted">No holdings.</td></tr>`;
+    return;
+  }
+
+  for (const h of holdings) {
+    const sym  = (h.symbol || '').toUpperCase();
+    const name = ((h.name || h.full_name || h.company_name || '') + '').trim(); // likely empty for now
+    const open = h.opened_et || '—';
+
+    const last  = num(h.last_price);
+    const paid  = num(h.price_paid);
+    const qty   = h.qty ?? 0;
+
+    const dayPL = num(h.day_pl);
+    const dayPP = num(h.day_pl_pct);
+
+    const totPL = num(h.total_pl);
+    const totPP = num(h.total_pl_pct);
+
+    const value = num(h.value);
+
+    const hasNews =
+      (typeof h.has_news === 'boolean' && h.has_news) ||
+      (typeof h.news_count === 'number' && h.news_count > 0) ||
+      (typeof h.newsCount === 'number' && h.newsCount > 0);
+
+    const newsCell = hasNews
+      ? `
+        <button class="btn btn-sm btn-outline-secondary btn-news"
+                type="button"
+                title="View news for ${sym}"
+                onclick="window.open('/news/${sym}', '_blank')">
+          📰
+        </button>
+      `
+      : `<span class="text-muted">—</span>`;
+
+    const row = document.createElement('tr');
+
+    // Use textContent for Name to avoid any HTML issues without needing escapeHtml
+    row.innerHTML = `
+      <td>${sym}</td>
+      <td class="hold-name"></td>
+      <td>${open}</td>
+
+      <td class="text-end">${Number.isFinite(last) ? money(last) : '—'}</td>
+      <td class="text-end">${qty}</td>
+      <td class="text-end">${Number.isFinite(paid) ? money(paid) : '—'}</td>
+
+      <td class="text-end hold-day-pl">${money(dayPL)}</td>
+      <td class="text-end hold-day-pl-pct">${pct(dayPP)}</td>
+
+      <td class="text-end hold-total-pl">${money(totPL)}</td>
+      <td class="text-end hold-total-pl-pct">${pct(totPP)}</td>
+
+      <td class="text-end">${money(value)}</td>
+      <td class="text-center">${newsCell}</td>
+    `;
+
+    // set name safely
+    const nameCell = row.querySelector('.hold-name');
+    if (nameCell) {
+      nameCell.textContent = name || '—';
+      nameCell.title = name || '—';
     }
 
-    for (const h of holdings) {
-      const sym   = (h.symbol || '').toUpperCase();
-      const open  = h.opened_et || '—';
-      const last  = num(h.last_price);
-      const paid  = num(h.price_paid);
-      const qty   = h.qty ?? 0;
-      const dayPL = num(h.day_pl);
-      const dayPP = num(h.day_pl_pct);
-      const totPL = num(h.total_pl);
-      const totPP = num(h.total_pl_pct);
-      const value = num(h.value);
+    tb.appendChild(row);
 
-      let diffAmt = NaN;
-      let diffPct = NaN;
-      if (Number.isFinite(last) && Number.isFinite(paid)) {
-        diffAmt = last - paid;
-        if (paid !== 0) diffPct = (diffAmt / paid) * 100.0;
-      }
-
-      const hasNews =
-        (typeof h.has_news === 'boolean' && h.has_news) ||
-        (typeof h.news_count === 'number' && h.news_count > 0) ||
-        (typeof h.newsCount === 'number' && h.newsCount > 0);
-
-      const newsCell = hasNews
-        ? `
-          <button class="btn btn-sm btn-outline-secondary btn-news"
-                  type="button"
-                  title="View news for ${sym}"
-                  onclick="window.open('/news/${sym}', '_blank')">
-            📰
-          </button>
-        `
-        : `<span class="text-muted">—</span>`;
-
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td>${sym}</td>
-        <td>${open}</td>
-        <td class="text-end">${Number.isFinite(last) ? money(last) : '—'}</td>
-        <td class="text-end">${qty}</td>
-        <td class="text-end">${Number.isFinite(paid) ? money(paid) : '—'}</td>
-        <td class="text-end hold-diff">${Number.isFinite(diffAmt) ? money(diffAmt) : '—'}</td>
-        <td class="text-end hold-day-pl">${money(dayPL)}</td>
-        <td class="text-end hold-day-pl-pct">${pct(dayPP)}</td>
-        <td class="text-end hold-total-pl">${money(totPL)}</td>
-        <td class="text-end hold-total-pl-pct">${pct(totPP)}</td>
-        <td class="text-end">${money(value)}</td>
-        <td class="text-center">${newsCell}</td>
-      `;
-      tb.appendChild(row);
-
-      setColor(row.querySelector('.hold-diff'), diffAmt);
-      setColor(row.querySelector('.hold-day-pl'), dayPL);
-      setColor(row.querySelector('.hold-day-pl-pct'), dayPP);
-      setColor(row.querySelector('.hold-total-pl'), totPL);
-      setColor(row.querySelector('.hold-total-pl-pct'), totPP);
-    }
-  };
+    setColor(row.querySelector('.hold-day-pl'), dayPL);
+    setColor(row.querySelector('.hold-day-pl-pct'), dayPP);
+    setColor(row.querySelector('.hold-total-pl'), totPL);
+    setColor(row.querySelector('.hold-total-pl-pct'), totPP);
+  }
+};
 
   const renderTrades = rows => {
     const tb = document.getElementById('trades-body');

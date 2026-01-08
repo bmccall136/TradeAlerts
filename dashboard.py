@@ -1204,6 +1204,11 @@ def _build_holdings_from_positions(
     From normalized positions rows, compute holdings rows with:
       symbol, opened_et, qty, price_paid, last_price, value,
       day_pl, day_pl_pct, total_pl, total_pl_pct.
+
+    IMPORTANT:
+      - Day P&L is computed from PRIOR CLOSE (not cost basis).
+      - Total P&L is computed from COST BASIS (price_paid).
+      - We do NOT trust E*TRADE "day_pl/daysGain" because it may equal (last - price_paid).
     """
     from services import live_guardrails as gr
     from datetime import datetime
@@ -1259,11 +1264,21 @@ def _build_holdings_from_positions(
             continue
 
         # Accept BOTH schemas:
-        # - normalized: qty / price_paid / last_price / day_pl / day_pl_pct
-        # - raw-ish:    quantity / pricePaid / lastPrice / daysGain / daysGainPct
+        # - normalized: qty / price_paid / last_price / prior_close
+        # - raw-ish:    quantity / pricePaid / lastPrice / previousClose
         qty = _safe_float(r.get("qty", r.get("quantity")), 0.0)
         paid = _safe_float(r.get("price_paid", r.get("pricePaid")), 0.0)
         last = _safe_float(r.get("last_price", r.get("lastPrice")), 0.0)
+
+        # Prior close (the correct baseline for "Today")
+        prior_close = r.get("prior_close", r.get("priorClose", r.get("previousClose")))
+        prior = None
+        try:
+            prior_f = float(prior_close) if prior_close is not None else None
+            if prior_f is not None and prior_f > 0:
+                prior = prior_f
+        except Exception:
+            prior = None
 
         if qty <= 0 or last <= 0:
             continue
@@ -1274,12 +1289,21 @@ def _build_holdings_from_positions(
         value = round(qty * last, 2)
         positions_value += value
 
+        # Total P&L (since bought)
         cost = qty * paid
         total_pl = round(value - cost, 2) if cost > 0 else 0.0
         total_pl_pct = round((total_pl / cost) * 100.0, 2) if cost > 0 else 0.0
 
-        day_pl = _safe_float(r.get("day_pl", r.get("daysGain")), 0.0)
-        day_pl_pct = _safe_float(r.get("day_pl_pct", r.get("daysGainPct")), 0.0)
+        # Day P&L (today vs prior close)
+        prior = r.get("prior_close", r.get("priorClose"))
+        prior_f = _safe_float(prior, 0.0)
+
+        if prior_f > 0 and last > 0 and qty > 0:
+            day_pl = (last - prior_f) * qty
+            day_pl_pct = ((last - prior_f) / prior_f) * 100.0
+        else:
+            day_pl = 0.0
+            day_pl_pct = 0.0
 
         holdings.append(
             {
@@ -1289,8 +1313,8 @@ def _build_holdings_from_positions(
                 "price_paid": round(paid, 4),
                 "last_price": round(last, 4),
                 "value": value,
-                "day_pl": round(day_pl, 2),
-                "day_pl_pct": round(day_pl_pct, 2),
+                "day_pl": round(float(day_pl), 2),
+                "day_pl_pct": round(float(day_pl_pct), 2),
                 "total_pl": total_pl,
                 "total_pl_pct": total_pl_pct,
                 "has_news": False,
