@@ -130,7 +130,6 @@ def _hold_minutes(opened_et: datetime | None) -> float:
     now_et = datetime.now(ETZ)
     return max(0.0, (now_et - opened_et).total_seconds() / 60.0)
 
-
 def log_ai_decision(
     *,
     symbol: str,
@@ -140,48 +139,34 @@ def log_ai_decision(
     hold_min: float,
     action: str,
     confidence: int,
-    reason_tags: list[str] | None = None,
-    reason: str | None = None,
-    has_bad_news: bool | None = None,
+    reason_tags: list[str] | None,
+    reason: str,
+    has_bad_news: bool = False,
     headlines: list[str] | None = None,
     market_regime: str | None = None,
-    **extra: Any,
 ) -> None:
-    """Write a single JSON record for each AI exit decision.
-
-    This function must NEVER raise — callers depend on AI logic continuing even
-    if logging fails.
-    """
+    """Write a single JSON record for each AI exit decision."""
     try:
-        record: Dict[str, Any] = {
+        record = {
             "ts": datetime.now(tz=UTC).isoformat(),
-            "symbol": str(symbol or "").upper(),
+            "symbol": symbol,
             "mode": mode,
-            "qty": float(qty or 0.0),
-            "pl_pct": float(pl_pct or 0.0),
-            "hold_min": float(hold_min or 0.0),
-            "action": str(action or "HOLD").upper(),
-            "confidence": int(confidence or 0),
+            "qty": float(qty),
+            "pl_pct": float(pl_pct),
+            "hold_min": float(hold_min),
+            "action": action,
+            "confidence": int(confidence),
             "reason_tags": reason_tags or [],
-            "reason": reason or "",
-            "has_bad_news": bool(has_bad_news) if has_bad_news is not None else False,
-            "headlines": headlines or [],
-            "market_regime": market_regime or "unknown",
+            "reason": reason,
+            "has_bad_news": bool(has_bad_news),
         }
-        # Optional extras (e.g. entry_price/last_price/vwap/etc). Only include JSON-safe scalars.
-        for k, v in (extra or {}).items():
-            if v is None:
-                continue
-            if isinstance(v, (str, int, float, bool)):
-                record[k] = v
-            else:
-                # best-effort serialization
-                record[k] = str(v)
-
+        if market_regime:
+            record["market_regime"] = market_regime
+        if headlines:
+            record["headlines"] = headlines[:3]  # keep it short for readability
         AI_LOG.info(json.dumps(record, ensure_ascii=False))
-    except Exception as exc:  # pragma: no cover
+    except Exception as exc:
         LOG.warning("Failed to log AI decision for %s: %s", symbol, exc)
-
 
 # === Market regime helper (SPY-based) =======================================
 _last_regime: str = "unknown"
@@ -777,29 +762,21 @@ def place_with_adaptive_variants(
 
             LOG.info("place_with_adaptive_variants success for %s", symbol)
             return
+
         except Exception as exc:  # noqa: BLE001
             last_err = exc
             msg = str(exc)
 
-            # Treat these as "order is already in flight" — do not keep hammering.
-            # 1028 = duplicate order, 1049 = prior request processing.
-            if ("code': 1028" in msg) or ('code": 1028' in msg) or ("code': 1049" in msg) or ('code": 1049' in msg):
-                LOG.warning(
-                    "place_with_adaptive_variants: %s appears pending/duplicate for %s; stopping retries this loop. (%s)",
-                    order_type,
-                    symbol,
-                    msg,
-                )
-                return
-
-            # Special-case E*TRADE code 1514 (symbol not found for closing order)
-            # so we don't crash the loop.
-            if ("code': 1514" in msg) or ('code": 1514' in msg):
+            # Special-case E*TRADE 1514:
+            # "We did not find this security in your account for the closing order..."
+            if "code': 1514" in msg or '"code": 1514' in msg:
                 LOG.error(
-                    "place_with_adaptive_variants: E*TRADE code 1514 for %s; symbol/account mismatch for closing order, skipping auto-sell. Error: %s",
+                    "place_with_adaptive_variants: E*TRADE code 1514 for %s; "
+                    "symbol/account mismatch for closing order, skipping auto-sell. Error: %s",
                     symbol,
                     msg,
                 )
+                # Do NOT keep retrying; just give up on this symbol for now.
                 return
 
             LOG.warning(
@@ -859,21 +836,6 @@ def main() -> None:
                 continue
 
             open_orders = fetch_open_orders()
-            # Build a quick set of symbols that already have an OPEN/PENDING SELL order
-            open_sell_symbols: set[str] = set()
-            for _o in (open_orders or []):
-                try:
-                    if not isinstance(_o, dict):
-                        continue
-                    _sym = (_o.get("symbol") or "").strip().upper()
-                    if not _sym:
-                        continue
-                    _act = str(_o.get("orderAction") or _o.get("action") or "").upper()
-                    _status = str(_o.get("status") or _o.get("orderStatus") or "").upper()
-                    if "SELL" in _act and _status not in {"EXECUTED", "FILLED", "CANCELLED", "REJECTED"}:
-                        open_sell_symbols.add(_sym)
-                except Exception:
-                    continue
             open_map: Dict[str, datetime] = {}
             for o in open_orders:
                 try:
@@ -934,7 +896,6 @@ def main() -> None:
 
             for p in positions:
                 s = p.symbol
-                has_open_sell = (s in open_sell_symbols)
                 qty = p.qty
                 mv = p.mv
                 entry_px = p.entry_price
@@ -1115,10 +1076,7 @@ def main() -> None:
                             pl_pct,
                         )
                         pt, lim = compute_order_params(s, cfg, kind="TIMEOUT")
-                        if has_open_sell:
-                            LOG.info("[OPEN_SELL] %s already has a pending SELL; skip TIMEOUT order this loop", s)
-                        else:
-                            place_with_adaptive_variants(
+                        place_with_adaptive_variants(
                             acct_key,
                             s,
                             qty,
@@ -1137,10 +1095,7 @@ def main() -> None:
                         cfg.timeout_exit_pct,
                     )
                     pt, lim = compute_order_params(s, cfg, kind="SELL_STOP")
-                    if has_open_sell:
-                        LOG.info("[OPEN_SELL] %s already has a pending SELL; skip STOPLOSS order this loop", s)
-                    else:
-                        place_with_adaptive_variants(
+                    place_with_adaptive_variants(
                         acct_key,
                         s,
                         qty,
@@ -1186,10 +1141,7 @@ def main() -> None:
                                 floor,
                             )
                             pt, lim = compute_order_params(s, cfg)
-                            if has_open_sell:
-                                LOG.info("[OPEN_SELL] %s already has a pending SELL; skip exit order this loop", s)
-                            else:
-                                place_with_adaptive_variants(
+                            place_with_adaptive_variants(
                                 acct_key,
                                 s,
                                 qty,
