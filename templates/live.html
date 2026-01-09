@@ -81,7 +81,7 @@
 <!-- Top status row -->
 <div class="d-flex justify-content-between align-items-center mb-2">
   <div></div>
-  <div class="text-end">
+  <div class="text-center">
     <div class="mb-2">
       <span class="me-2 text-muted">E*TRADE API</span>
       <span id="etrade-dot" class="dot dot-red"></span>
@@ -345,20 +345,20 @@
       const row = document.createElement('tr');
       row.innerHTML = `
         <td>${sym}</td>
-        <td class="hold-name"></td>
-        <td class="hold-opened">${open}</td>
+        <td class="text-center hold-name"></td>
+        <td class="text-center hold-opened">${open}</td>
 
-        <td class="text-end hold-last">${Number.isFinite(last) ? money(last) : '—'}</td>
-        <td class="text-end">${qty}</td>
-        <td class="text-end">${Number.isFinite(paid) ? money(paid) : '—'}</td>
+        <td class="text-center hold-last">${Number.isFinite(last) ? money(last) : '—'}</td>
+        <td class="text-center">${qty}</td>
+        <td class="text-center">${Number.isFinite(paid) ? money(paid) : '—'}</td>
 
-        <td class="text-end hold-day-pl">${money(dayPL)}</td>
-        <td class="text-end hold-day-pl-pct">${pct(dayPP)}</td>
+        <td class="text-center hold-day-pl">${money(dayPL)}</td>
+        <td class="text-center hold-day-pl-pct">${pct(dayPP)}</td>
 
-        <td class="text-end hold-total-pl">${money(totPL)}</td>
-        <td class="text-end hold-total-pl-pct">${pct(totPP)}</td>
+        <td class="text-center hold-total-pl">${money(totPL)}</td>
+        <td class="text-center hold-total-pl-pct">${pct(totPP)}</td>
 
-        <td class="text-end">${money(value)}</td>
+        <td class="text-center">${money(value)}</td>
         <td class="text-center">${newsCell}</td>
       `;
 
