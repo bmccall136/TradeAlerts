@@ -1841,6 +1841,53 @@ def live_data():
         )
 
         holdings, positions_value = _build_holdings_from_positions(pos_rows)
+        # --- Ensure Recent Trades include full 'name' (symbol -> company reminder) ---
+        try:
+            # Build symbol->name map from holdings first (best source)
+            name_map = {}
+            for h in (holdings or []):
+                s = (h.get("symbol") or "").strip().upper()
+                n = (h.get("name") or h.get("full_name") or h.get("company_name") or "").strip()
+                if s and n:
+                    name_map[s] = n
+
+            # Optional fallback: services/symbol_names.py
+            if not name_map:
+                try:
+                    from services.symbol_names import get_company_name  # type: ignore
+                except Exception:
+                    get_company_name = None  # type: ignore
+
+            for t in (trades or []):
+                if not isinstance(t, dict):
+                    continue
+                sym = (t.get("symbol") or "").strip().upper()
+                if not sym:
+                    continue
+
+                cur = (t.get("name") or t.get("full_name") or t.get("company_name") or "").strip()
+                if cur:
+                    # normalize key
+                    t["name"] = cur
+                    continue
+
+                # holdings map first
+                n = name_map.get(sym, "")
+
+                # fallback function (if available)
+                if not n:
+                    try:
+                        if get_company_name:
+                            n = (get_company_name(sym) or "").strip()
+                    except Exception:
+                        n = ""
+
+                if n:
+                    t["name"] = n
+        except Exception:
+            pass
+        # --- end trade name enrichment ---
+
         # --- Enrich holdings names via cached E*TRADE quote lookup ---
         try:
             from services.symbol_names import enrich_holdings_names
