@@ -173,18 +173,18 @@
 
     <thead>
       <tr>
-        <th>Symbol</th>
-        <th>Name</th>
-        <th>Opened (ET)</th>
-        <th class="text-end">Last Price</th>
-        <th class="text-end">Qty</th>
-        <th class="text-end">Price Paid</th>
-        <th class="text-end">Day P&amp;L</th>
-        <th class="text-end">Day P&amp;L %</th>
-        <th class="text-end">Total P&amp;L</th>
-        <th class="text-end">Total P&amp;L %</th>
-        <th class="text-end">Value</th>
-        <th class="text-center">News</th>
+		<th class="text-center">Symbol</th>
+		<th class="text-center">Name</th>
+		<th class="text-center">Opened (ET)</th>
+		<th class="text-center">Last Price</th>
+		<th class="text-center">Qty</th>
+		<th class="text-center">Price Paid</th>
+		<th class="text-center">Day P&amp;L</th>
+		<th class="text-center">Day P&amp;L %</th>
+		<th class="text-center">Total P&amp;L</th>
+		<th class="text-center">Total P&amp;L %</th>
+		<th class="text-center">Value</th>
+		<th class="text-center">News</th>
       </tr>
     </thead>
 
@@ -205,6 +205,7 @@
 	  <tr>
 		<th class="text-center">Time (ET)</th>
 		<th class="text-center">Symbol</th>
+		<th class="text-center">Name</th>
 		<th class="text-center">Side</th>
 		<th class="text-center">Qty</th>
 		<th class="text-center">Price</th>
@@ -214,7 +215,7 @@
 	  </tr>
 	</thead>
     <tbody id="trades-body">
-      <tr><td colspan="8" class="text-muted">Loading…</td></tr>
+      <tr><td colspan="9" class="text-muted">Loading…</td></tr>
     </tbody>
   </table>
 </div>
@@ -225,6 +226,10 @@
   const NEG  = '#ff6b6b';
   const ZERO = '#b8b8b8';
   const START_DATE = '2025-08-22';
+
+  // Symbol -> full name map (filled from Holdings; used to backfill Recent Trades names)
+  let HOLD_NAME_MAP = {};
+
 
   const num = x => {
     if (x == null) return NaN;
@@ -310,6 +315,7 @@
     for (const h of holdings) {
       const sym  = (h.symbol || '').toUpperCase();
       const name = ((h.name || h.full_name || h.company_name || '') + '').trim();
+      if (sym && name) { HOLD_NAME_MAP[sym] = name; }
       const open = h.opened_et || '—';
 
       const last  = num(h.last_price);
@@ -377,13 +383,14 @@
     tb.innerHTML = '';
 
     if (!rows || !rows.length) {
-      tb.innerHTML = `<tr><td colspan="8" class="text-muted">No trades yet.</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="9" class="text-muted">No trades yet.</td></tr>`;
       return;
     }
 
     for (const t of rows) {
       const time = t.time_ms != null ? fmtET(t.time_ms) : (t.time || '—');
       const sym  = (t.symbol || '').toUpperCase();
+      const name = ((t.name || t.full_name || t.company_name || HOLD_NAME_MAP[sym] || '') + '').trim() || '—';
       const side = (t.action || '').toUpperCase();
       const qty  = t.qty ?? 0;
       const px   = t.price != null ? money(t.price) : '—';
@@ -395,6 +402,7 @@
 		<tr>
 		  <td class="text-center">${time}</td>
 		  <td class="text-center">${sym}</td>
+		  <td class="text-center">${name}</td>
 		  <td class="text-center">${side}</td>
 		  <td class="text-center">${qty}</td>
 		  <td class="text-center">${px}</td>
