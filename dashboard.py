@@ -307,6 +307,37 @@ def _unrealized_from_holdings(holdings: list[dict] | None) -> dict:
         "day": {"pnl": round(day_pnl, 2), "pct": round(day_pct, 2)},
         "all": {"pnl": round(all_pnl, 2), "pct": round(all_pct, 2)},
     }
+def _pick_company_name_from_position(p: dict, symbol: str) -> str:
+    """
+    Best-effort extraction of a human-readable name/description from E*TRADE position objects.
+    Returns symbol if nothing useful found.
+    """
+    if not isinstance(p, dict):
+        return symbol
+
+    # direct fields seen in some E*TRADE shapes
+    for k in ("companyName", "securityDescription", "description", "productDesc", "productDescription"):
+        v = p.get(k)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+
+    # nested "instrument"
+    instr = p.get("instrument") or p.get("Instrument")
+    if isinstance(instr, dict):
+        for k in ("description", "companyName", "securityDescription", "productDesc", "symbolDescription"):
+            v = instr.get(k)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+
+    # nested "Product"
+    prod = p.get("Product") or p.get("product")
+    if isinstance(prod, dict):
+        for k in ("productDesc", "description", "companyName"):
+            v = prod.get(k)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+
+    return symbol
 
 def compute_true_about(nav: float, start_cash: float, net_contrib: float, start_date: str):
     """
@@ -984,25 +1015,23 @@ from typing import Any
 def _normalize_positions_payload(raw: dict) -> list[dict]:
     """
     Normalize E*TRADE positions into a simple list of dicts:
-
     [
       {
         "symbol": "GS",
+        "name": "Goldman Sachs Group Inc",
         "qty": 3.0,
-        "price_paid": 954.01,
-        "last_price": 948.44,
-        "day_pl": -16.71,
-        "day_pl_pct": -0.58,
-        "prior_close": 914.34,
+        "price_paid": 954.0099,
+        "last_price": 941.35,
+        "prior_close": 941.02,
+        "day_pl": 0.99,
+        "day_pl_pct": 0.04,
       },
       ...
     ]
     """
     def _safe_float(v, default: float = 0.0) -> float:
         try:
-            if v is None:
-                return float(default)
-            if isinstance(v, bool):
+            if v is None or isinstance(v, bool):
                 return float(default)
             return float(v)
         except Exception:
@@ -1012,110 +1041,129 @@ def _normalize_positions_payload(raw: dict) -> list[dict]:
     if not isinstance(raw, dict) or not raw:
         return rows
 
-    pr = (raw.get("PortfolioResponse") or {}).get("AccountPortfolio") or []
-    if isinstance(pr, dict):
-        pr = [pr]
-    if not isinstance(pr, list):
+    # Try common portfolio shapes
+    pr = raw.get("PortfolioResponse") or raw.get("portfolioResponse") or raw
+    acct = None
+
+    # PortfolioResponse -> AccountPortfolio can be dict or list
+    ap = pr.get("AccountPortfolio") if isinstance(pr, dict) else None
+    if isinstance(ap, list) and ap:
+        acct = ap[0]
+    elif isinstance(ap, dict):
+        acct = ap
+    else:
+        # Sometimes nested under something else; try best-effort
+        acct = pr
+
+    positions = []
+    if isinstance(acct, dict):
+        positions = acct.get("Position") or acct.get("position") or []
+        # Some payloads use Positions/position
+        if not positions and isinstance(acct.get("Positions"), dict):
+            positions = acct["Positions"].get("Position") or []
+
+    if isinstance(positions, dict):
+        positions = [positions]
+    if not isinstance(positions, list):
         return rows
 
-    for acct in pr:
-        if not isinstance(acct, dict):
+    for pos in positions:
+        if not isinstance(pos, dict):
             continue
 
-        poss = acct.get("Position") or []
-        if isinstance(poss, dict):
-            poss = [poss]
-        if not isinstance(poss, list):
+        prod = pos.get("Product") or pos.get("product") or {}
+        sym = (prod.get("symbol") or prod.get("Symbol") or pos.get("symbol") or "").strip().upper()
+        if not sym:
             continue
 
-        for pos in poss:
-            if not isinstance(pos, dict):
-                continue
+        # Best-effort company/description/name (prefer helper first)
+        name = _pick_company_name_from_position(pos, sym)
 
-            prod = pos.get("Product") or {}
-            if not isinstance(prod, dict):
-                prod = {}
-
-            sym = (
-                prod.get("symbol")
-                or (prod.get("productId") or {}).get("symbol")
-                or pos.get("symbol")
+        # If helper returned symbol (meaning "no better name found"), try a few legacy fields too
+        if not name or name.strip().upper() == sym:
+            fallback = (
+                pos.get("symbolDescription")
+                or pos.get("description")
+                or prod.get("description")
+                or prod.get("securityDescription")
+                or prod.get("companyName")
                 or ""
             )
-            sym = (sym or "").strip().upper()
-            if not sym:
-                continue
+            fallback = str(fallback).strip()
+            if fallback:
+                name = fallback
 
-            qty = _safe_float(
-                pos.get("quantity")
-                or pos.get("longQuantity")
-                or pos.get("positionQty")
-                or 0.0
-            )
-            if qty <= 0:
-                continue
+        # Absolute final fallback
+        name = str(name or sym).strip()
 
-            q = pos.get("Quick") or {}
-            if not isinstance(q, dict):
-                q = {}
-            allf = pos.get("All") or {}
-            if not isinstance(allf, dict):
-                allf = {}
+        qty = _safe_float(pos.get("quantity") or pos.get("qty"), 0.0)
+        if qty <= 0:
+            continue
 
-            price_paid = _safe_float(
-                pos.get("pricePaid")
-                or pos.get("averagePrice")
-                or pos.get("costPerShare")
-                or 0.0
-            )
+        price_paid = _safe_float(
+            pos.get("pricePaid")
+            or pos.get("costPerShare")
+            or pos.get("averagePrice")
+            or pos.get("avgPrice")
+            or pos.get("price_paid")
+            or 0.0
+        )
 
-            # Prefer Quick.lastTrade; otherwise derive from marketValue/qty if present
-            last_price = _safe_float(
-                q.get("lastTrade")
-                or allf.get("lastTrade")
-                or pos.get("lastTrade")
-                or pos.get("lastPrice")
-                or 0.0
-            )
-            if last_price <= 0:
-                mv = _safe_float(pos.get("marketValue"), 0.0)
-                if mv > 0 and qty > 0:
-                    last_price = mv / max(qty, 1.0)
+        last_price = _safe_float(
+            pos.get("lastTrade")
+            or pos.get("lastPrice")
+            or pos.get("marketPrice")
+            or pos.get("last_price")
+            or 0.0
+        )
 
-            day_pl = _safe_float(
-                pos.get("daysGain")
-                or q.get("todayGainLoss")
-                or q.get("todayGainLossBase")
-                or pos.get("totalGain")  # last resort if daysGain missing
-                or 0.0
-            )
+        # If last_price not present, derive from marketValue/qty if possible
+        if last_price <= 0:
+            mv = _safe_float(pos.get("marketValue"), 0.0)
+            if mv > 0 and qty > 0:
+                last_price = mv / max(qty, 1.0)
 
-            day_pl_pct = _safe_float(
-                pos.get("daysGainPct")
-                or q.get("todayGainLossPct")
-                or pos.get("totalGainPct")  # last resort if daysGainPct missing
-                or 0.0
-            )
+        prior_close = _safe_float(
+            pos.get("adjPrevClose")
+            or pos.get("previousClose")
+            or pos.get("priorClose")
+            or pos.get("closePrice")
+            or pos.get("prior_close")
+            or 0.0
+        )
 
-            prior_close = _safe_float(
-                pos.get("adjPrevClose")
-                or q.get("priorClose")
-                or q.get("closePrice")
-                or allf.get("closePrice")
-                or 0.0
-            )
+        # Day P&L: prefer E*TRADE daysGain; else compute from last vs prior close
+        days_gain = pos.get("daysGain")
+        days_gain_pct = pos.get("daysGainPct")
 
-            rows.append(
-                {
-                    "symbol": sym,
-                    "qty": qty,
-                    "price_paid": price_paid,
-                    "last_price": last_price,
-                    "day_pl": day_pl,
-                    "day_pl_pct": day_pl_pct,
-                    "prior_close": prior_close,
-                }
-            )
+        if days_gain is None:
+            if last_price > 0 and prior_close > 0:
+                day_pl = (last_price - prior_close) * qty
+            else:
+                day_pl = 0.0
+        else:
+            day_pl = _safe_float(days_gain, 0.0)
+
+        if days_gain_pct is None:
+            if last_price > 0 and prior_close > 0:
+                day_pl_pct = ((last_price - prior_close) / prior_close) * 100.0
+            else:
+                day_pl_pct = 0.0
+        else:
+            day_pl_pct = _safe_float(days_gain_pct, 0.0)
+
+        rows.append(
+            {
+                "symbol": sym,
+                "name": name,
+                "qty": qty,
+                "price_paid": price_paid,
+                "last_price": last_price,
+                "prior_close": prior_close,
+                "day_pl": day_pl,
+                "day_pl_pct": day_pl_pct,
+            }
+        )
 
     return rows
 def _sync_realized_from_trades(trades: list[dict], db_path: str) -> int:
@@ -1202,13 +1250,8 @@ def _build_holdings_from_positions(
 ) -> tuple[list[dict], float]:
     """
     From normalized positions rows, compute holdings rows with:
-      symbol, opened_et, qty, price_paid, last_price, value,
+      symbol, name, opened_et, qty, price_paid, last_price, value,
       day_pl, day_pl_pct, total_pl, total_pl_pct.
-
-    IMPORTANT:
-      - Day P&L is computed from PRIOR CLOSE (not cost basis).
-      - Total P&L is computed from COST BASIS (price_paid).
-      - We do NOT trust E*TRADE "day_pl/daysGain" because it may equal (last - price_paid).
     """
     from services import live_guardrails as gr
     from datetime import datetime
@@ -1225,8 +1268,6 @@ def _build_holdings_from_positions(
             return float(default)
 
     ETZ = ZoneInfo("America/New_York")
-
-    # Ensure iterable
     pos_rows = pos_rows or []
 
     # map of symbol -> opened_at from guardrails
@@ -1263,22 +1304,12 @@ def _build_holdings_from_positions(
         if not sym:
             continue
 
-        # Accept BOTH schemas:
-        # - normalized: qty / price_paid / last_price / prior_close
-        # - raw-ish:    quantity / pricePaid / lastPrice / previousClose
+        name = (r.get("name") or r.get("full_name") or r.get("company") or "").strip()
+
         qty = _safe_float(r.get("qty", r.get("quantity")), 0.0)
         paid = _safe_float(r.get("price_paid", r.get("pricePaid")), 0.0)
         last = _safe_float(r.get("last_price", r.get("lastPrice")), 0.0)
-
-        # Prior close (the correct baseline for "Today")
-        prior_close = r.get("prior_close", r.get("priorClose", r.get("previousClose")))
-        prior = None
-        try:
-            prior_f = float(prior_close) if prior_close is not None else None
-            if prior_f is not None and prior_f > 0:
-                prior = prior_f
-        except Exception:
-            prior = None
+        prior = r.get("prior_close", r.get("priorClose"))
 
         if qty <= 0 or last <= 0:
             continue
@@ -1294,27 +1325,32 @@ def _build_holdings_from_positions(
         total_pl = round(value - cost, 2) if cost > 0 else 0.0
         total_pl_pct = round((total_pl / cost) * 100.0, 2) if cost > 0 else 0.0
 
-        # Day P&L (today vs prior close)
-        prior = r.get("prior_close", r.get("priorClose"))
-        prior_f = _safe_float(prior, 0.0)
+        # Day P&L (today): prefer provided day_pl, else compute from last vs prior close
+        day_pl = r.get("day_pl", r.get("daysGain"))
+        day_pl_pct = r.get("day_pl_pct", r.get("daysGainPct"))
 
-        if prior_f > 0 and last > 0 and qty > 0:
-            day_pl = (last - prior_f) * qty
-            day_pl_pct = ((last - prior_f) / prior_f) * 100.0
-        else:
-            day_pl = 0.0
-            day_pl_pct = 0.0
+        if day_pl is None or day_pl_pct is None:
+            pc = _safe_float(prior, 0.0)
+            if pc > 0 and last > 0:
+                if day_pl is None:
+                    day_pl = (last - pc) * qty
+                if day_pl_pct is None:
+                    day_pl_pct = ((last - pc) / pc) * 100.0
+            else:
+                day_pl = 0.0 if day_pl is None else _safe_float(day_pl, 0.0)
+                day_pl_pct = 0.0 if day_pl_pct is None else _safe_float(day_pl_pct, 0.0)
 
         holdings.append(
             {
                 "symbol": sym,
+                "name": name,
                 "opened_et": opened_str,
                 "qty": qty,
                 "price_paid": round(paid, 4),
                 "last_price": round(last, 4),
                 "value": value,
-                "day_pl": round(float(day_pl), 2),
-                "day_pl_pct": round(float(day_pl_pct), 2),
+                "day_pl": round(float(_safe_float(day_pl, 0.0)), 2),
+                "day_pl_pct": round(float(_safe_float(day_pl_pct, 0.0)), 2),
                 "total_pl": total_pl,
                 "total_pl_pct": total_pl_pct,
                 "has_news": False,
@@ -1730,7 +1766,7 @@ def live_data():
     Full JSON feed for the Live UI (holdings/trades/metrics/etc).
     This is where the big payload lives.
     """
-        # Always initialize these so later blocks can't crash on scope/order
+    # Always initialize these so later blocks can't crash on scope/order
     payload: Dict[str, Any] = {"ok": True, "etrade_ok": False, "needs_reconnect": False}
     metrics: Dict[str, Any] = {}
     holdings: List[Dict[str, Any]] = []
@@ -1805,6 +1841,12 @@ def live_data():
         )
 
         holdings, positions_value = _build_holdings_from_positions(pos_rows)
+        # --- Enrich holdings names via cached E*TRADE quote lookup ---
+        try:
+            from services.symbol_names import enrich_holdings_names
+            holdings = enrich_holdings_names(holdings, str(LIVE_DB))
+        except Exception as _exc:
+            LOG.warning("name enrichment failed: %s", _exc)
 
         # All-time unrealized (cost basis -> last)
         all_time_pnl, all_time_pct = _calc_unrealized_all_time_from_holdings(holdings)
