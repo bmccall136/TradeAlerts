@@ -922,15 +922,21 @@ def main() -> None:
             LOG.info(
                 "positions raw glimpse: %s",
                 json.dumps(positions_raw, default=str)[:400] + "..."
-)
-            LOG.info(
-                "eligible final -> %s",
-                [
-                    (p.symbol, p.qty)
-                    for p in positions
-                    if p.symbol not in cfg.blocklist
-                ],
             )
+
+            # 1) What you actually hold (normalized)
+            LOG.info(
+                "positions normalized -> %s",
+                [(p.symbol, p.qty) for p in positions],
+            )
+
+            # 2) What is allowed to be *considered* (not blocklisted / no-sell list)
+            allowed = [p for p in positions if p.symbol not in cfg.blocklist]
+            LOG.info(
+                "positions allowed (not blocklisted) -> %s",
+                [(p.symbol, p.qty) for p in allowed],
+            )
+
 
             for p in positions:
                 s = p.symbol
@@ -980,12 +986,27 @@ def main() -> None:
                         opened_local = opened
                         now_local = loop_start
 
-                    # Prior-day flag (used to control TIMEOUT behavior)
+                    # Prior-day flag
                     is_prior_day = opened_local.date() < now_local.date()
 
-                    # Always compute real age in minutes (intraday included)
-                    hold_sec = (loop_start - opened).total_seconds()
-                    hold_min = max(0.0, hold_sec / 60.0)
+                    # ---- CRITICAL FIX ----
+                    # If opened_at came from E*TRADE dateAcquired, it is often midnight ET (00:00)
+                    # even for intraday entries. That is NOT a real fill time; treating it as such
+                    # inflates hold_min and triggers false TIMEOUT behavior.
+                    is_midnightish = (
+                        opened_local.hour == 0
+                        and opened_local.minute == 0
+                        and opened_local.second < 5
+                    )
+
+                    if (not is_prior_day) and is_midnightish:
+                        # Same-day midnight dateAcquired → treat as "fresh/unknown" (do NOT time out)
+                        hold_min = 0.0
+                        is_prior_day = False
+                    else:
+                        # Real timestamp (or prior-day) → compute real age
+                        hold_sec = (loop_start - opened).total_seconds()
+                        hold_min = max(0.0, hold_sec / 60.0)
 
 
                 LOG.info(

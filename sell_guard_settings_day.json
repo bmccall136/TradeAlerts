@@ -13,15 +13,15 @@
     "allow_intraday_stoploss": true,
     "pdt_allow_stop": false,
 
-    "target_bps": 200,
-    "stop_bps": 100,
+    "target_bps": 80,
+    "stop_bps": 60,
 
-    "sell_protect_after_mins": 60,
-    "max_hold_mins": 4320,
+    "sell_protect_after_mins": 15,
+    "max_hold_mins": 390,
 
-    "protect_min_gain_pct": 1.5,
-    "protect_trail_arm_pct": 3.0,
-    "protect_trail_pct": 3.0,
+    "protect_min_gain_pct": 0.6,
+    "protect_trail_arm_pct": 1.2,
+    "protect_trail_pct": 1.0,
 
     "limit_from": "bid",
     "limit_offset_bps": 0,
@@ -42,8 +42,8 @@
     "circuit_fail_threshold": 2
   },
   "ai": {
-    "enabled": true,
-    "use_entries": true,
-    "use_exits": true
+    "enabled": false,
+    "use_entries": false,
+    "use_exits": false
   }
 }
