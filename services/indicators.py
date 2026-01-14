@@ -423,4 +423,6 @@ def compute_vwap(df: pd.DataFrame, threshold: float = 0.0):
     pv = (typical.fillna(0.0) * vol)
     cum_vol = vol.cumsum().replace(0.0, pd.NA)
     vwap = pv.cumsum() / cum_vol
+    vwap = pd.to_numeric(vwap, errors="coerce")
     return vwap.fillna(0.0)
+

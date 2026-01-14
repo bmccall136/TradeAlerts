@@ -1,36 +1,91 @@
-﻿# services/data_fetch.py
-# LIVE-SAFE data fetch utilities
+﻿# C:\TradeAlerts\services\data_fetch.py
+# Historical candle fetch for indicators.
+# LIVE last price MUST come from E*TRADE (handled elsewhere).
 #
-# ❌ Yahoo / yfinance REMOVED
-# ✅ HTTP fetch preserved
-# ✅ E*TRADE quote VWAP preserved
-# ✅ Symbol-based bar fetch is DISABLED in LIVE (returns empty DataFrame)
+# This module supports:
+#   - fetch_data(symbol, period, interval) via yfinance (historical only)
+#   - fetch_json(url, ...) via requests for HTTP endpoints
+#   - fetch_data_with_timeout(...) compatibility shim used by market_service
+#
+# Guards:
+#   - If LIVE_SAFE_MODE=1 or MM_DISABLE_YF=1, symbol-based candles return empty DF
+#     (prevents any external market-data calls in emergencies)
 
 from __future__ import annotations
 
+import os
+import logging
 from typing import Any, Dict, Optional
-import requests
+
 import pandas as pd
+import requests
+
+log = logging.getLogger("data_fetch")
 
 
 def _looks_like_url(s: str) -> bool:
-    s = (s or "").strip().lower()
     return s.startswith("http://") or s.startswith("https://")
 
 
-# ── SYMBOL BAR FETCH (DISABLED) ───────────────────────────────────────────────
-def fetch_data(symbol: str, period: str = "1d", interval: str = "1m"):
-    """
-    Historical bar fetch for symbols is DISABLED.
-
-    Rationale:
-    - Yahoo/yfinance removed
-    - E*TRADE does not provide reliable historical candles for bulk scanning
-    - LIVE must fail-open instead of blocking or timing out
-
-    Callers must tolerate empty DataFrames.
-    """
+def _safe_empty_df() -> pd.DataFrame:
     return pd.DataFrame()
+
+
+def _yf_enabled() -> bool:
+    # Hard kill switch if you need to guarantee no market-data calls
+    if os.getenv("LIVE_SAFE_MODE", "").strip().lower() in ("1", "true", "yes"):
+        return False
+    if os.getenv("MM_DISABLE_YF", "").strip().lower() in ("1", "true", "yes"):
+        return False
+    return True
+
+
+# ── SYMBOL BAR FETCH (historical candles for indicators) ──────────────────────
+def fetch_data(symbol: str, period: str = "1d", interval: str = "1m") -> pd.DataFrame:
+    """
+    Fetch historical candles for a symbol (for indicators only).
+
+    Returns a pandas DataFrame (may be empty if unavailable or disabled).
+    Columns typically: Open, High, Low, Close, Adj Close, Volume
+    """
+    sym = (symbol or "").strip().upper()
+    if not sym:
+        return _safe_empty_df()
+
+    if not _yf_enabled():
+        return _safe_empty_df()
+
+    try:
+        import yfinance as yf  # type: ignore
+    except Exception as e:
+        log.warning("yfinance not available (%s) -> returning empty DF", e)
+        return _safe_empty_df()
+
+    try:
+        # Use yf.download (works for tickers + ETFs). progress False to keep logs clean.
+        df = yf.download(
+            tickers=sym,
+            period=period,
+            interval=interval,
+            progress=False,
+            auto_adjust=False,
+            threads=False,
+        )
+        if df is None or df.empty:
+            return _safe_empty_df()
+
+        # yfinance can return multi-index columns in some cases; normalize to simple columns.
+        if hasattr(df.columns, "nlevels") and getattr(df.columns, "nlevels", 1) > 1:
+            # Keep first level name like ('Close','SPY') -> 'Close'
+            df.columns = [c[0] if isinstance(c, tuple) else str(c) for c in df.columns]
+
+        # Ensure standard column names exist
+        # (market_service lowercases later; we leave them as-is here)
+        return df
+
+    except Exception as e:
+        log.warning("fetch_data(%s, period=%s, interval=%s) failed: %s", sym, period, interval, e)
+        return _safe_empty_df()
 
 
 # ── HTTP FETCH (JSON/TEXT) ────────────────────────────────────────────────────
@@ -76,11 +131,13 @@ def fetch_data_with_timeout(
     """
     Backward-compatible entry point.
 
-    Behavior (LIVE-SAFE):
-      - If input looks like http/https → HTTP fetch
-      - Otherwise (symbol) → return EMPTY DataFrame
+    Behavior:
+      - If input looks like http/https → HTTP fetch (fetch_json)
+      - Otherwise → treat as symbol and return OHLCV DataFrame via fetch_data()
 
-    This prevents any Yahoo/yfinance usage while preserving API fetches.
+    Notes:
+      - LIVE price is NOT fetched here.
+      - Bars are historical for indicators only.
     """
     chosen = (symbol or url or target or "").strip()
     if not chosen:
@@ -95,52 +152,5 @@ def fetch_data_with_timeout(
             method=method,
         )
 
-    # Symbol path intentionally returns empty DataFrame
-    return pd.DataFrame()
-
-
-# ── LIVE SAFE: VWAP from E*TRADE quote (NO Yahoo) ─────────────────────────────
-def fetch_intraday_vwap(symbol: str, broker=None):
-    """
-    Return (vwap, last_price) using E*TRADE quote fields only.
-
-    - No Yahoo/yfinance
-    - Safe for LIVE usage
-    """
-    try:
-        if broker is None:
-            from services.etrade_service import fetch_etrade_quote  # type: ignore
-            q = fetch_etrade_quote(symbol)
-        else:
-            q = broker.quote(symbol)
-
-        def _dig(d, *keys):
-            cur = d
-            for k in keys:
-                if cur is None:
-                    return None
-                if isinstance(cur, dict):
-                    cur = cur.get(k)
-                else:
-                    return None
-            return cur
-
-        last = (
-            _dig(q, "All", "lastTrade")
-            or _dig(q, "All", "lastTradePrice")
-            or _dig(q, "QuoteResponse", "QuoteData", "All", "lastTrade")
-            or _dig(q, "QuoteResponse", "QuoteData", "All", "lastTradePrice")
-        )
-        vwap = (
-            _dig(q, "All", "vwap")
-            or _dig(q, "All", "VWAP")
-            or _dig(q, "QuoteResponse", "QuoteData", "All", "vwap")
-            or _dig(q, "QuoteResponse", "QuoteData", "All", "VWAP")
-        )
-
-        last_f = float(last) if last is not None else None
-        vwap_f = float(vwap) if vwap is not None else None
-        return vwap_f, last_f
-
-    except Exception:
-        return None, None
+    # Symbol path
+    return fetch_data(chosen, period=period, interval=interval)

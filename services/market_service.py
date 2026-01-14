@@ -1,4 +1,4 @@
-﻿# C:\TradeAlerts\services\market_service.py
+# C:\TradeAlerts\services\market_service.py
 from __future__ import annotations
 
 import logging
@@ -136,11 +136,13 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
         log.warning("[DEBUG] settings keys=%s required=%s", sorted(list(s.keys())), req_list)
 
     # 1) Intraday bars (for VWAP / volume, etc.)
-    df = fetch_data_with_timeout(symbol=sym)
+    df = fetch_data_with_timeout(symbol=sym, period="1d", interval="1m")
     if df is None or df.empty:
         log.warning("[DATA] %s: no intraday bars -> skip", sym)
         if _dbg(sym):
             log.warning("[DEBUG] EXIT: intraday df missing/empty")
+        import time
+        time.sleep(0.25)  # prevent tight loop spam
         return (None, [], False)
 
     # normalize intraday columns
@@ -449,3 +451,4 @@ def _norm_trigger(t: str) -> str:
     if "rsi" in s:
         return "rsi"
     return s
+
