@@ -1,9 +1,15 @@
-# C:\TradeAlerts\services\triggers_csv.py
 from __future__ import annotations
-
 import csv
-from datetime import datetime, timedelta
+import os
+from datetime import datetime
 from pathlib import Path
+
+try:
+    from zoneinfo import ZoneInfo  # py3.9+
+except Exception:  # pragma: no cover
+    ZoneInfo = None  # type: ignore
+
+ET = ZoneInfo("America/New_York") if ZoneInfo else None
 
 # Fixed, “all columns” header (add more any time; file will include them)
 FIELDS = [
@@ -32,22 +38,19 @@ FIELDS = [
     "notes",  # ranking/meta
 ]
 
-LOG_DIR = Path(r"C:\TradeAlerts\logs")
+LOG_DIR = Path(os.getenv("TRIGGERS_LOG_DIR", r"C:\TradeAlerts\logs"))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _now_et() -> datetime:
+    if ET:
+        return datetime.now(tz=ET)
+    # fallback: local time if zoneinfo unavailable
+    return datetime.now().astimezone()
+
+
 def _now_et_str() -> str:
-    # ET without external deps
-    # Naive but fine: EST/EDT shift isn’t critical to a minute-level log
-    # If you prefer real ET: use zoneinfo("America/New_York")
-    off = -4 if _is_dst_approx() else -5
-    return (datetime.utcnow() + timedelta(hours=off)).strftime("%Y-%m-%d %H:%M:%S")
-
-
-def _is_dst_approx():
-    # Very loose: Mar–Oct as DST
-    m = datetime.utcnow().month
-    return 3 <= m <= 10
+    return _now_et().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _ensure_header(fp: Path):
@@ -59,7 +62,7 @@ def _ensure_header(fp: Path):
 def _write_row(fp: Path, row: dict):
     _ensure_header(fp)
     out = {k: "" for k in FIELDS}
-    out.update(row)  # unknown keys are ignored; known keys fill columns
+    out.update(row)  # unknown keys ignored
     with fp.open("a", newline="", encoding="utf-8") as f:
         csv.writer(f).writerow([out.get(k, "") for k in FIELDS])
 
@@ -75,7 +78,7 @@ def emit_trigger(
     scanner: str = "live",
     notes: str = "",
 ):
-    """Append a fully-populated trigger row to daily file and latest pointer."""
+    """Append a fully-populated trigger row to ET-dated daily file and latest pointer."""
     indicators = indicators or {}
     sig_str = (
         "; ".join(signals) if isinstance(signals, (list, tuple)) else str(signals or "")
@@ -84,9 +87,9 @@ def emit_trigger(
     row = {
         "ts_et": _now_et_str(),
         "symbol": str(symbol or "").upper(),
-        "price": price if price is not None else "",
+        "price": "" if price is None else price,
         "signals": sig_str,
-        # pull safely from indicators map (use .get)
+        # pull safely from indicators map
         "adx": indicators.get("adx"),
         "macd": indicators.get("macd"),
         "macd_signal": indicators.get("macd_signal"),
@@ -108,8 +111,8 @@ def emit_trigger(
         "notes": notes,
     }
 
-    day = datetime.utcnow().strftime("%Y-%m-%d")
-    daily = LOG_DIR / f"triggers_{day}.csv"
+    day_et = _now_et().strftime("%Y-%m-%d")
+    daily = LOG_DIR / f"triggers_{day_et}.csv"
     latest = LOG_DIR / "triggers.csv"
 
     _write_row(daily, row)

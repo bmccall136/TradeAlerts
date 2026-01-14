@@ -535,6 +535,126 @@ def ai_gate_for_buy(
         return False, rec
 
     return True, rec
+
+# --- BUY guardrails (dedupe / cooldown / avoid averaging-down) -----------------
+
+BUY_COOLDOWN_MINUTES_DEFAULT = int(os.environ.get("BUY_COOLDOWN_MINUTES", "60") or 60)
+NO_AVERAGE_DOWN_DEFAULT = (os.environ.get("NO_AVERAGE_DOWN", "1") or "1").strip().lower() not in ("0", "false", "no")
+
+def _load_buy_cooldowns(db_path: str) -> dict[str, datetime]:
+    """Load last-buy timestamps per symbol from live.db (UTC)."""
+    out: dict[str, datetime] = {}
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS buy_cooldowns (
+                symbol TEXT PRIMARY KEY,
+                last_buy_utc TEXT NOT NULL,
+                reason TEXT
+            )
+            """
+        )
+        cur.execute("SELECT symbol, last_buy_utc FROM buy_cooldowns")
+        for sym, ts in cur.fetchall():
+            try:
+                dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=UTC)
+                out[str(sym).upper()] = dt.astimezone(UTC)
+            except Exception:
+                continue
+    except Exception:
+        return out
+    finally:
+        try:
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+    return out
+
+def _upsert_buy_cooldown(db_path: str, symbol: str, when_utc: datetime, reason: str = "") -> None:
+    try:
+        if when_utc.tzinfo is None:
+            when_utc = when_utc.replace(tzinfo=UTC)
+        when_utc = when_utc.astimezone(UTC)
+        conn = sqlite3.connect(str(db_path))
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS buy_cooldowns (
+                symbol TEXT PRIMARY KEY,
+                last_buy_utc TEXT NOT NULL,
+                reason TEXT
+            )
+            """
+        )
+        cur.execute(
+            """
+            INSERT INTO buy_cooldowns(symbol, last_buy_utc, reason)
+            VALUES(?, ?, ?)
+            ON CONFLICT(symbol) DO UPDATE SET last_buy_utc=excluded.last_buy_utc, reason=excluded.reason
+            """,
+            (str(symbol).upper(), when_utc.isoformat().replace("+00:00", "Z"), (reason or "")[:200]),
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        return
+
+def _cooldown_blocked(symbol: str, cooldowns: dict[str, datetime], now_utc: datetime, minutes: int) -> tuple[bool, float]:
+    if minutes <= 0:
+        return (False, 0.0)
+    sym = str(symbol).upper()
+    last = cooldowns.get(sym)
+    if not last:
+        return (False, 0.0)
+    if now_utc.tzinfo is None:
+        now_utc = now_utc.replace(tzinfo=UTC)
+    age_min = (now_utc.astimezone(UTC) - last).total_seconds() / 60.0
+    if age_min < minutes:
+        return (True, max(0.0, minutes - age_min))
+    return (False, 0.0)
+
+def _get_open_buy_symbols(et_module) -> set[str]:
+    """Best-effort: return symbols that currently have an OPEN/PENDING BUY order."""
+    syms: set[str] = set()
+    # Try a few common function names; tolerate absence.
+    for fn_name in ("get_open_orders", "get_orders_open", "list_open_orders", "orders_open", "get_orders"):
+        fn = getattr(et_module, fn_name, None)
+        if not callable(fn):
+            continue
+        try:
+            raw = fn()
+        except Exception:
+            continue
+
+        def _walk(obj):
+            if obj is None:
+                return
+            if isinstance(obj, list):
+                for x in obj:
+                    _walk(x)
+                return
+            if isinstance(obj, dict):
+                # common keys
+                sym = obj.get("symbol") or obj.get("Symbol") or obj.get("sym")
+                action = (obj.get("action") or obj.get("orderAction") or obj.get("side") or "").upper()
+                status = (obj.get("status") or obj.get("orderStatus") or "").upper()
+                if sym and (action in ("BUY", "BUY_TO_OPEN", "BUYTOOPEN", "BTO") or action.startswith("BUY")):
+                    if not status or any(k in status for k in ("OPEN", "PEND", "WORK", "NEW", "PART")):
+                        syms.add(str(sym).upper())
+                for v in obj.values():
+                    _walk(v)
+
+        _walk(raw)
+        if syms:
+            break
+    return syms
+
+
 def run_live_loop(settings, symbols, broker_mode=None):
     settings = _normalize_settings(settings)
     mode = _norm_mode(broker_mode or settings.broker_mode)
@@ -719,6 +839,14 @@ def run_live_loop(settings, symbols, broker_mode=None):
                 continue
 
             _dbg_gate(sym, f"PROMOTE candidate triggers={len(triggered or [])}", force=False)
+
+            # Trigger CSV logging (same as old behavior pre-12/17)
+            try:
+                from services.scan_speedups import log_candidate
+                log_candidate(sym, float(price), list(triggered or []), scanned, total_syms)
+            except Exception as e:
+                log.debug("[LIVE] triggers CSV log_candidate failed for %s: %s", sym, e)
+
             candidates.append((sym, float(price), list(triggered or [])))
 
 
@@ -797,6 +925,14 @@ def run_live_loop(settings, symbols, broker_mode=None):
             log.warning("[LIVE] positions pull failed: %s", e)
             holdingsL = {}
 
+        # --- BUY guardrail inputs (one-time per scan iteration) ---
+        live_db_path = os.path.join(ROOT, "live.db")
+        cooldown_minutes = int(getattr(settings, "buy_cooldown_min", BUY_COOLDOWN_MINUTES_DEFAULT) or BUY_COOLDOWN_MINUTES_DEFAULT)
+        no_average_down = bool(getattr(settings, "no_average_down", NO_AVERAGE_DOWN_DEFAULT))
+        cooldowns = _load_buy_cooldowns(live_db_path)
+        open_buy_syms = _get_open_buy_symbols(et)
+        now_utc = datetime.now(UTC)
+
         def _affordable_qty(px: float, max_per_trade: float) -> int:
             if not isinstance(px, (int, float)) or px <= 0:
                 return 0
@@ -841,6 +977,24 @@ def run_live_loop(settings, symbols, broker_mode=None):
 
         purchased = False
         for sym, price, triggered in ranked:
+            # --- guardrails: skip symbols with open/pending BUY orders or recent buys ---
+            if sym in open_buy_syms:
+                _dbg_gate(sym, "BLOCK open/pending BUY order", force=False)
+                continue
+
+            blocked_cd, remain_min = _cooldown_blocked(sym, cooldowns, now_utc, cooldown_minutes)
+            if blocked_cd:
+                _dbg_gate(sym, f"BLOCK cooldown {remain_min:.0f}m remaining", force=False)
+                continue
+
+            # Avoid averaging down: if we already hold it and price is below our average cost, do not add.
+            if no_average_down:
+                pos = holdingsL.get(sym) or {}
+                if int(pos.get("qty", 0) or 0) > 0:
+                    avg_cost = float(pos.get("avg_cost", 0.0) or 0.0)
+                    if avg_cost > 0 and float(price) < avg_cost:
+                        _dbg_gate(sym, f"BLOCK avg-down price<{avg_cost:.2f}", force=False)
+                        continue
             strict_n = getattr(settings, "strict_buy_signals", 4)
             if len(triggered) < strict_n:
                 _dbg_gate(sym, f"STRICT miss triggers={len(triggered)} need>={strict_n} triggered={triggered}")
@@ -909,7 +1063,7 @@ def run_live_loop(settings, symbols, broker_mode=None):
 
             ok, why = _pyramid_ok(sym, price, qty, pyr_cfg)
             if not ok:
-                lOG.info("[PYRAMID BLOCK] %s qty=%s price=%s reason=%s cfg=%s", sym, qty, price, why, pyr_cfg)
+                log.info("[PYRAMID BLOCK] %s qty=%s price=%s reason=%s cfg=%s", sym, qty, price, why, pyr_cfg)
                 continue
 
             # --- AI advisor gate (FULL GO) ---
@@ -949,6 +1103,15 @@ def run_live_loop(settings, symbols, broker_mode=None):
                     getattr(broker, "name", "BROKER"),
                     resp,
                 )
+
+                # persist cooldown + in-memory dedupe for the rest of this iteration
+                try:
+                    when_utc = datetime.now(UTC)
+                    _upsert_buy_cooldown(live_db_path, sym, when_utc, reason="BUY placed")
+                    cooldowns[str(sym).upper()] = when_utc
+                    open_buy_syms.add(str(sym).upper())
+                except Exception:
+                    pass
                 if mode == "LIVE":
                     lg.record_entry(sym, qty)
                 purchased = True
