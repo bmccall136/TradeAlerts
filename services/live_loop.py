@@ -885,10 +885,25 @@ def run_live_loop(settings, symbols, broker_mode=None):
 
             if isinstance(raw, dict):
                 pr = raw.get("PortfolioResponse") or raw
+
                 ap = pr.get("AccountPortfolio") or pr.get("accountPortfolio") or {}
+                # E*TRADE typically returns AccountPortfolio as a LIST with one element.
+                if isinstance(ap, list):
+                    ap = ap[0] if ap else {}
+                if not isinstance(ap, dict):
+                    ap = {}
+
                 pos_list = ap.get("Position") or ap.get("position") or []
+                # Some responses nest Position as a dict (single) or as a list.
+                if isinstance(pos_list, dict):
+                    pos_list = [pos_list]
+                elif pos_list is None:
+                    pos_list = []
             elif isinstance(raw, list):
+                # Already a list of positions
                 pos_list = raw
+            else:
+                pos_list = []
 
             for p in (pos_list or []):
                 sym = (p.get("symbol") or p.get("Symbol") or p.get("symbolDescription") or "").strip().upper()

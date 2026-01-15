@@ -352,7 +352,10 @@ def compute_volume_multiplier(df: pd.DataFrame, multiplier: float = 1.5, window:
     """
     Returns a numeric ratio Series: volume / rolling_avg_volume.
     Pass condition: ratio >= multiplier.
-    Robust to weird dtypes and missing columns.
+
+    Fix: intraday feeds often show 0 volume for the current/last minute.
+    If the last bar volume is 0, substitute the last non-zero volume from a short lookback
+    so scans don't falsely fail the VOL filter.
     """
     import pandas as pd
 
@@ -368,7 +371,18 @@ def compute_volume_multiplier(df: pd.DataFrame, multiplier: float = 1.5, window:
         # no volume column -> return zeros so it never passes
         return pd.Series([0.0] * len(df), index=df.index, dtype=float)
 
-    vol = pd.to_numeric(vol_raw, errors="coerce").astype(float)
+    vol = pd.to_numeric(vol_raw, errors="coerce").astype(float).fillna(0.0)
+
+    # If last minute volume is 0, use last non-zero from recent lookback (common on live 1m)
+    try:
+        if len(vol) > 2 and float(vol.iloc[-1]) == 0.0:
+            tail = vol.tail(10)
+            nz = tail[tail > 0]
+            if len(nz) > 0:
+                vol = vol.copy()
+                vol.iloc[-1] = float(nz.iloc[-1])
+    except Exception:
+        pass
 
     # Rolling avg; avoid divide-by-zero
     avg = vol.rolling(window=window, min_periods=1).mean()
@@ -376,6 +390,7 @@ def compute_volume_multiplier(df: pd.DataFrame, multiplier: float = 1.5, window:
 
     ratio = (vol / avg).fillna(0.0).astype(float)
     return ratio
+
 def compute_vwap(df: pd.DataFrame, threshold: float = 0.0):
     """
     Flexible VWAP:
@@ -425,4 +440,7 @@ def compute_vwap(df: pd.DataFrame, threshold: float = 0.0):
     vwap = pv.cumsum() / cum_vol
     vwap = pd.to_numeric(vwap, errors="coerce")
     return vwap.fillna(0.0)
+
+
+
 

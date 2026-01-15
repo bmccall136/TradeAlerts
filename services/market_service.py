@@ -153,7 +153,7 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
         "high": "High",
         "low": "Low",
         "close": "Close",
-        "volume": "Volume",
+        "volume": "volume",
     })
 
     # 2) Daily bars (for SMA/ATR/range/gap, etc.)
@@ -451,4 +451,5 @@ def _norm_trigger(t: str) -> str:
     if "rsi" in s:
         return "rsi"
     return s
+
 

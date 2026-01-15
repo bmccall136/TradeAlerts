@@ -1196,7 +1196,7 @@ def _positions_rows_from_any(raw: Any) -> list[dict]:
 
     Accepts:
       - None -> []
-      - dict (E*TRADE PortfolioResponse JSON) -> normalize_positions_payload(dict)
+      - dict (E*TRADE PortfolioResponse JSON) -> _normalize_positions_payload(dict)
       - list of dict rows already normalized -> returned as-is
       - list containing a single dict payload -> normalized
     """
@@ -1215,16 +1215,16 @@ def _positions_rows_from_any(raw: Any) -> list[dict]:
             if len(raw) == 1 and isinstance(raw[0], dict) and (
                 "PortfolioResponse" in raw[0] or "AccountPortfolio" in raw[0]
             ):
-                return normalize_positions_payload(raw[0])
+                return _normalize_positions_payload(raw[0])
             return raw
 
         # list but not dict rows -> treat as empty
         if len(raw) == 1 and isinstance(raw[0], dict):
-            return normalize_positions_payload(raw[0])
+            return _normalize_positions_payload(raw[0])
         return []
 
     if isinstance(raw, dict):
-        return normalize_positions_payload(raw)
+        return _normalize_positions_payload(raw)
 
     return []
 
@@ -1642,7 +1642,7 @@ def live_status():
 
         # Pull positions raw -> normalize -> holdings (same logic you tested in shell)
         raw_positions = es.get_positions()
-        pos_rows = normalize_positions_payload(raw_positions)
+        pos_rows = _normalize_positions_payload(raw_positions)
         holdings, positions_value = _build_holdings_from_positions(pos_rows)
         all_time_pnl, all_time_pct = _calc_unrealized_all_time_from_holdings(holdings)
         payload["holdings"] = holdings or []
