@@ -430,7 +430,7 @@
 
     let bp = num(account.buying_power ?? account.available_funds ?? 0);
 
-    const nav = num(account.nav ?? metrics.net_account_value ?? 0);
+    const nav = num(value.net_account_value ?? account.nav ?? metrics.net_account_value ?? 0);
     if (!Number.isFinite(bp)) {
       if (Number.isFinite(nav) && Number.isFinite(pv)) {
         const derived = nav - pv;
@@ -442,8 +442,8 @@
 
     const valTotal = (Number.isFinite(bp) ? bp : 0) + (Number.isFinite(pv) ? pv : 0);
 
-    set('#kpi-cash',   money(valTotal));
-    set('#kpi-bp',     money(bp));
+    set('#kpi-cash', money(nav));
+set('#kpi-bp',     money(bp));
     set('#kpi-posval', money(pv));
 
     const dAmt = num(metrics.day_unrealized_pnl);

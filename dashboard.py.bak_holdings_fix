@@ -1150,188 +1150,46 @@ def normalize_positions_payload(raw):
 
     return out
 
-def _sync_realized_from_trades(trades: list, db_path: str) -> None:
+def _sync_realized_from_trades(trades: list[dict], db_path: str) -> int:
     """
-    Canonical realized P&L source:
-      - We log SELL executions into trades with a numeric pnl.
-      - This function mirrors those SELL rows into realized_trades so the UI
-        can bucket realized P&L from the local DB.
+    Method #1:
+    Whenever we observe an executed SELL trade in our trades feed,
+    write it into live.db.realized_trades (INSERT OR IGNORE style).
 
-    It is SAFE to call repeatedly: it de-dupes by (symbol, close_date, qty, gain, price_sold).
+    This makes realized buckets independent of E*TRADE transactions
+    (which often omit gainLoss).
     """
     if not trades:
-        return
+        return 0
 
-    import sqlite3
-
-    def _f(x, default=0.0):
-        try:
-            if x is None or x == "":
-                return float(default)
-            return float(x)
-        except Exception:
-            return float(default)
-
-    def _s(x):
-        return (str(x).strip() if x is not None else "")
-
-    # Collect SELL rows with pnl
-    rows = []
+    n = 0
     for t in trades:
-        if not isinstance(t, dict):
-            continue
-
-        act = _s(t.get("action") or t.get("side") or "").upper()
-        if act != "SELL":
-            continue
-
-        gain = _f(t.get("pnl") or t.get("gain") or t.get("pl") or 0.0, 0.0)
-        # only mirror rows that actually have a realized pnl value
-        if gain == 0.0:
-            continue
-
-        sym = _s(t.get("symbol")).upper()
-        if not sym:
-            continue
-
-        # timestamp key varies; use whatever you store
-        close_date = _s(
-            t.get("trade_time")
-            or t.get("time")
-            or t.get("timestamp")
-            or t.get("time_et")
-            or t.get("time_utc")
-        )
-        if not close_date:
-            continue
-
-        qty = _f(t.get("qty") or t.get("quantity") or 0.0, 0.0)
-        if qty <= 0:
-            continue
-
-        price_sold = _f(t.get("price") or t.get("price_sold") or 0.0, 0.0)
-
-        # If sell price wasn't captured (0.0), still log realized dollars.
-        # We'll leave cost/proceeds fields NULL so we don't invent math.
-        if price_sold > 0:
-            proceeds = qty * price_sold
-            total_cost = proceeds - gain
-            cost_share = (total_cost / qty) if qty else 0.0
-            gain_pct = (gain / total_cost * 100.0) if total_cost else 0.0
-            price_share = price_sold
-            price_sold_db = price_sold
-        else:
-            proceeds = None
-            total_cost = None
-            cost_share = None
-            gain_pct = None
-            price_share = None
-            price_sold_db = None
-
-        # Optional fields if present
-        price_paid = t.get("price_paid")
-        price_paid = _f(price_paid, 0.0) if (price_paid not in (None, "")) else None
-
-        rows.append(
-            (
-                sym,
-                "SELL",
-                qty,
-                close_date,
-                price_share,
-                proceeds,
-                cost_share,
-                total_cost,
-                gain,
-                price_paid,
-                price_sold_db,
-                gain_pct,
-            )
-        )
-
-    if not rows:
-        return
-
-    con = sqlite3.connect(db_path)
-    try:
-        cur = con.cursor()
-
-        # Ensure table exists (matches your schema)
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS realized_trades (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                symbol TEXT,
-                action TEXT,
-                qty REAL,
-                open_date TEXT,
-                close_date TEXT,
-                price_share REAL,
-                proceeds REAL,
-                cost_share REAL,
-                total_cost REAL,
-                gain REAL,
-                term TEXT,
-                price_paid REAL,
-                price_sold REAL,
-                gain_pct REAL
-            )
-            """
-        )
-
-        # De-dupe: create a soft unique index if missing
-        cur.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_realized_dedupe
-            ON realized_trades(symbol, close_date, qty, gain)
-            """
-        )
-
-        # Insert if not already present
-        for r in rows:
-            (sym, action, qty, close_date, price_share, proceeds, cost_share, total_cost, gain, price_paid, price_sold, gain_pct) = r
-
-            cur.execute(
-                """
-                SELECT 1 FROM realized_trades
-                WHERE symbol=? AND close_date=? AND qty=? AND gain=?
-                LIMIT 1
-                """,
-                (sym, close_date, qty, gain, price_sold),
-            )
-            if cur.fetchone():
+        try:
+            action = (t.get("action") or t.get("side") or "").upper()
+            if action != "SELL":
                 continue
 
-            cur.execute(
-                """
-                INSERT INTO realized_trades
-                  (symbol, action, qty, open_date, close_date, price_share,
-                   proceeds, cost_share, total_cost, gain, term,
-                   price_paid, price_sold, gain_pct)
-                VALUES
-                  (?,      ?,      ?,   NULL,     ?,         ?,
-                   ?,       ?,         ?,         ?,    NULL,
-                   ?,         ?,         ?)
-                """,
-                (
-                    sym,
-                    action,
-                    qty,
-                    close_date,
-                    price_share,
-                    proceeds,
-                    cost_share,
-                    total_cost,
-                    gain,
-                    price_paid,
-                    price_sold,
-                    gain_pct,
-                ),
-            )
+            sym = (t.get("symbol") or "").strip().upper()
+            qty = float(t.get("qty") or t.get("quantity") or 0)
+            sold = float(t.get("price") or t.get("price_sold") or t.get("fill_price") or 0)
+            paid = float(t.get("price_paid") or t.get("cost_share") or 0)
 
-        con.commit()
-    finally:
-        con.close()
+            # normalize close_date to YYYY-MM-DD (matches your existing rows)
+            ts = t.get("time_utc") or t.get("time") or t.get("date") or t.get("close_date") or ""
+            ts = str(ts).replace("T", " ")
+            close_date = ts[:10] if len(ts) >= 10 else ts
+
+            if not sym or qty <= 0 or sold <= 0 or paid <= 0 or not close_date:
+                continue
+
+            # insert_realized_trade is already INSERT/IGNORE-protected by your unique index
+            insert_realized_trade(db_path, sym, int(qty), paid, sold, None, close_date)
+            n += 1
+        except Exception:
+            continue
+
+    return n
+from typing import Any
 
 def _positions_rows_from_any(raw: Any) -> list[dict]:
     """
@@ -1339,7 +1197,7 @@ def _positions_rows_from_any(raw: Any) -> list[dict]:
 
     Accepts:
       - None -> []
-      - dict (E*TRADE PortfolioResponse JSON) -> normalize_positions_payload(dict)
+      - dict (E*TRADE PortfolioResponse JSON) -> _normalize_positions_payload(dict)
       - list of dict rows already normalized -> returned as-is
       - list containing a single dict payload -> normalized
     """
@@ -1358,94 +1216,132 @@ def _positions_rows_from_any(raw: Any) -> list[dict]:
             if len(raw) == 1 and isinstance(raw[0], dict) and (
                 "PortfolioResponse" in raw[0] or "AccountPortfolio" in raw[0]
             ):
-                return normalize_positions_payload(raw[0])
+                return _normalize_positions_payload(raw[0])
             return raw
 
         # list but not dict rows -> treat as empty
         if len(raw) == 1 and isinstance(raw[0], dict):
-            return normalize_positions_payload(raw[0])
+            return _normalize_positions_payload(raw[0])
         return []
 
     if isinstance(raw, dict):
-        return normalize_positions_payload(raw)
+        return _normalize_positions_payload(raw)
 
     return []
 
-def _build_holdings_from_positions(rows: list[dict]) -> tuple[list[dict], float]:
+def _build_holdings_from_positions(
+    pos_rows: list[dict] | None,
+) -> tuple[list[dict], float]:
     """
-    Build holdings list + positions_value.
+    From normalized positions rows, compute holdings rows with:
+      symbol, name, opened_et, qty, price_paid, last_price, value,
+      day_pl, day_pl_pct, total_pl, total_pl_pct.
+    """
+    from services import live_guardrails as gr
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
 
-    IMPORTANT:
-      - positions_value must match broker NAV math as closely as possible.
-      - Some PortfolioResponse rows can have market value but no usable symbol
-        (cash sweep / MMF / odd instruments). We count them in positions_value
-        even if we don't display them as a holding row.
-      - Prefer broker-provided market value when present; fall back to qty*last.
-    """
+    def _safe_float(v, default: float = 0.0) -> float:
+        try:
+            if v is None:
+                return float(default)
+            if isinstance(v, bool):
+                return float(default)
+            return float(v)
+        except Exception:
+            return float(default)
+
+    ETZ = ZoneInfo("America/New_York")
+    pos_rows = pos_rows or []
+
+    # map of symbol -> opened_at from guardrails
+    opened_map: dict[str, datetime] = {}
+    try:
+        entries = gr.list_open_entries() or []
+        for e in entries:
+            if not isinstance(e, dict):
+                continue
+            sym = (e.get("symbol") or "").upper()
+            ts = e.get("opened_at")
+            if not sym or not ts:
+                continue
+            try:
+                dt = datetime.fromisoformat(ts)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=ETZ)
+                else:
+                    dt = dt.astimezone(ETZ)
+                opened_map[sym] = dt
+            except Exception:
+                continue
+    except Exception:
+        pass
+
     holdings: list[dict] = []
     positions_value = 0.0
 
-    def _mv(r: dict) -> float:
-        # try many common shapes/keys
-        for k in (
-            "market_value", "marketValue",
-            "position_value", "positionValue",
-            "current_value", "currentValue",
-            "value", "Value",
-        ):
-            v = r.get(k)
-            if v is not None:
-                try:
-                    return float(v)
-                except Exception:
-                    pass
-        return 0.0
-
-    for r in (rows or []):
-        sym = str(r.get("symbol") or "").upper().strip()
-        qty = _safe_float(r.get("qty"), 0.0)
-        last = _safe_float(r.get("last_price"), 0.0)
-        price_paid = _safe_float(r.get("price_paid"), 0.0)
-
-        mv = _mv(r)
-
-        # If there is no symbol, don't display it in holdings, but DO count value if present.
-        if not sym:
-            if mv > 0:
-                positions_value += float(round(mv, 2))
+    for r in pos_rows:
+        if not isinstance(r, dict):
             continue
 
-        # Guard: if qty/last are missing but mv exists, still count it.
-        if mv > 0:
-            value = float(round(mv, 2))
-        else:
-            if qty <= 0 or last <= 0:
-                continue
-            value = float(round(qty * last, 2))
+        sym = (r.get("symbol") or "").upper()
+        if not sym:
+            continue
 
+        name = (r.get("name") or r.get("full_name") or r.get("company") or "").strip()
+
+        qty = _safe_float(r.get("qty", r.get("quantity")), 0.0)
+        paid = _safe_float(r.get("price_paid", r.get("pricePaid")), 0.0)
+        last = _safe_float(r.get("last_price", r.get("lastPrice")), 0.0)
+        prior = r.get("prior_close", r.get("priorClose"))
+
+        if qty <= 0 or last <= 0:
+            continue
+
+        opened_dt = opened_map.get(sym)
+        opened_str = opened_dt.strftime("%Y-%m-%d %H:%M") if opened_dt else "—"
+
+        value = round(qty * last, 2)
         positions_value += value
 
-        total_pl = float(round((last - price_paid) * qty, 2)) if (qty > 0 and last > 0 and price_paid > 0) else 0.0
-        total_pl_pct = float(round(((last / price_paid) - 1.0) * 100.0, 2)) if (price_paid > 0 and last > 0) else 0.0
+        # Total P&L (since bought)
+        cost = qty * paid
+        total_pl = round(value - cost, 2) if cost > 0 else 0.0
+        total_pl_pct = round((total_pl / cost) * 100.0, 2) if cost > 0 else 0.0
+
+        # Day P&L (today): prefer provided day_pl, else compute from last vs prior close
+        day_pl = r.get("day_pl", r.get("daysGain"))
+        day_pl_pct = r.get("day_pl_pct", r.get("daysGainPct"))
+
+        if day_pl is None or day_pl_pct is None:
+            pc = _safe_float(prior, 0.0)
+            if pc > 0 and last > 0:
+                if day_pl is None:
+                    day_pl = (last - pc) * qty
+                if day_pl_pct is None:
+                    day_pl_pct = ((last - pc) / pc) * 100.0
+            else:
+                day_pl = 0.0 if day_pl is None else _safe_float(day_pl, 0.0)
+                day_pl_pct = 0.0 if day_pl_pct is None else _safe_float(day_pl_pct, 0.0)
 
         holdings.append(
             {
                 "symbol": sym,
-                "name": r.get("name") or "",
-                "opened_et": r.get("opened_et") or "",
-                "last_price": float(round(last, 4)) if last else 0.0,
+                "name": name,
+                "opened_et": opened_str,
                 "qty": qty,
-                "price_paid": float(round(price_paid, 4)) if price_paid else 0.0,
-                "day_pl": _safe_float(r.get("day_pl"), 0.0),
-                "day_pl_pct": _safe_float(r.get("day_pl_pct"), 0.0),
+                "price_paid": round(paid, 4),
+                "last_price": round(last, 4),
+                "value": value,
+                "day_pl": round(float(_safe_float(day_pl, 0.0)), 2),
+                "day_pl_pct": round(float(_safe_float(day_pl_pct, 0.0)), 2),
                 "total_pl": total_pl,
                 "total_pl_pct": total_pl_pct,
-                "value": value,
-                "has_news": bool(r.get("has_news", False)),
+                "has_news": False,
             }
         )
 
-    return holdings, float(round(positions_value, 2))
+    return holdings, round(positions_value, 2)
 
 # -----------------------------------------------------------------------------#
 
@@ -1659,23 +1555,11 @@ def live_view():
             acct_summary = {}
         account = _normalize_account(acct_summary) or {}
 
-        # Raw fields from summary (already normalized by services /live/data)
-        cash_balance = float(acct_summary.get("cash_balance") or 0.0)
-
+        # Raw fields from summary
+        cash_balance = float(acct_summary.get("cash_balance") or acct_summary.get("nav") or 0.0)
         buying_power = float(
-            acct_summary.get("buying_power")
-            or acct_summary.get("available_funds")
+            acct_summary.get("available_funds")
             or account.get("buying_power")
-            or 0.0
-        )
-
-        # In the /live HTML view, don't touch raw E*TRADE BalanceResponse structures.
-        # If you need NAV here, use the normalized value.
-        nav_from_api = float(acct_summary.get("nav") or account.get("nav") or 0.0)
-
-        positions_value_from_api = _safe_float(
-            acct_summary.get("positions_value")
-            or account.get("positions_value")
             or 0.0
         )
 
@@ -1759,7 +1643,7 @@ def live_status():
 
         # Pull positions raw -> normalize -> holdings (same logic you tested in shell)
         raw_positions = es.get_positions()
-        pos_rows = normalize_positions_payload(raw_positions)
+        pos_rows = _normalize_positions_payload(raw_positions)
         holdings, positions_value = _build_holdings_from_positions(pos_rows)
         all_time_pnl, all_time_pct = _calc_unrealized_all_time_from_holdings(holdings)
         payload["holdings"] = holdings or []
@@ -1868,18 +1752,23 @@ def live_data():
     Full JSON feed for the Live UI (holdings/trades/metrics/etc).
     This is where the big payload lives.
     """
+    # Always initialize these so later blocks can't crash on scope/order
     payload: Dict[str, Any] = {"ok": True, "etrade_ok": False, "needs_reconnect": False}
+    metrics: Dict[str, Any] = {}
+    holdings: List[Dict[str, Any]] = []
+    positions_value: float = 0.0
 
     from flask import request, current_app
     from services import etrade_service as et
     from services.trade_source import load_trades_merged
     import time
 
+    about: Dict[str, Any] = {}
     debug = request.args.get("debug", "0") == "1"
     debug_raw: Dict[str, Any] = {}
     etrade_ok = False
 
-    # ---------- 1) ACCOUNT SUMMARY (RAW E*TRADE BALANCE RESPONSE) ----------
+    # ---------- 1) ACCOUNT SUMMARY (REAL E*TRADE NUMBERS) ----------
     acct_summary_raw: Dict[str, Any] = {}
     try:
         acct_summary_raw = et.get_account_summary() or {}
@@ -1888,10 +1777,7 @@ def live_data():
         current_app.logger.exception("account summary error: %s", e)
 
     raw = acct_summary_raw.get("raw") or {}
-    bal = raw.get("BalanceResponse") or {}
-    comp = bal.get("Computed") or {}
-    rtv = comp.get("RealTimeValues") or {}
-
+    comp = raw.get("Computed") or {}
     if debug:
         debug_raw["acct_summary_raw"] = acct_summary_raw
 
@@ -1905,36 +1791,26 @@ def live_data():
         comp.get("cashBuyingPower")
         or comp.get("cashAvailableForInvestment")
         or acct_summary_raw.get("available_funds")
-        or 0.0
+        or cash_balance
     )
 
-    # Broker NAV / MV (authoritative when present)
-    nav_from_api = _safe_float(
-        rtv.get("totalAccountValue")
-        or comp.get("netAccountValue")
-        or comp.get("totalAccountValue")
-        or 0.0
-    )
-
-    positions_value_from_api = _safe_float(
-        rtv.get("netMv")
-        or comp.get("marketValue")
-        or comp.get("totalMarketValue")
-        or 0.0
-    )
+    # NAV = cash + positions (positions added later)
+    nav = None  # will compute after positions_value
 
     # ---------- 2) POSITIONS -> HOLDINGS + POSITIONS VALUE ----------
-    holdings: List[Dict[str, Any]] = []
-    positions_value: float = 0.0
+    holdings = []
+    positions_value = 0.0
 
-    # Unrealized metrics
+    # These feed the tiles / metrics later (build metrics ONCE in step 10)
     day_pnl = 0.0
     day_pct = 0.0
     all_time_pnl = 0.0
     all_time_pct = 0.0
 
     try:
+        # IMPORTANT: use the same wrapper you tested in PowerShell
         from services import etrade_service as es
+
         raw_positions = es.get_positions() or {}
 
         LOG.info(
@@ -1944,7 +1820,6 @@ def live_data():
         )
 
         pos_rows = _positions_rows_from_any(raw_positions)
-
         LOG.info(
             "DATA: normalized pos_rows count=%s sample=%s",
             len(pos_rows or []),
@@ -1952,12 +1827,54 @@ def live_data():
         )
 
         holdings, positions_value = _build_holdings_from_positions(pos_rows)
+        # --- Ensure Recent Trades include full 'name' (symbol -> company reminder) ---
+        try:
+            # Build symbol->name map from holdings first (best source)
+            name_map = {}
+            for h in (holdings or []):
+                s = (h.get("symbol") or "").strip().upper()
+                n = (h.get("name") or h.get("full_name") or h.get("company_name") or "").strip()
+                if s and n:
+                    name_map[s] = n
 
-        # If holdings math couldn’t produce a value, fall back to broker netMv
-        if (not positions_value) and positions_value_from_api > 0:
-            positions_value = float(positions_value_from_api)
+            # Optional fallback: services/symbol_names.py
+            if not name_map:
+                try:
+                    from services.symbol_names import get_company_name  # type: ignore
+                except Exception:
+                    get_company_name = None  # type: ignore
 
-        # Optional name enrichment for holdings
+            for t in (trades or []):
+                if not isinstance(t, dict):
+                    continue
+                sym = (t.get("symbol") or "").strip().upper()
+                if not sym:
+                    continue
+
+                cur = (t.get("name") or t.get("full_name") or t.get("company_name") or "").strip()
+                if cur:
+                    # normalize key
+                    t["name"] = cur
+                    continue
+
+                # holdings map first
+                n = name_map.get(sym, "")
+
+                # fallback function (if available)
+                if not n:
+                    try:
+                        if get_company_name:
+                            n = (get_company_name(sym) or "").strip()
+                    except Exception:
+                        n = ""
+
+                if n:
+                    t["name"] = n
+        except Exception:
+            pass
+        # --- end trade name enrichment ---
+
+        # --- Enrich holdings names via cached E*TRADE quote lookup ---
         try:
             from services.symbol_names import enrich_holdings_names
             holdings = enrich_holdings_names(holdings, str(LIVE_DB))
@@ -1981,46 +1898,78 @@ def live_data():
         day_pnl = day_pct = 0.0
         all_time_pnl = all_time_pct = 0.0
 
-    # ---------- 3) NAV (PREFER BROKER NAV; FALL BACK TO CASH + POSITIONS) ----------
-    if nav_from_api > 0:
-        nav = float(round(nav_from_api, 2))
+    # ---------- 3) NAV FROM CASH + POSITIONS ----------
+    nav = round(cash_balance + _safe_float(positions_value, 0.0), 2)
+
+    # ---------- 4) NORMALIZED ACCOUNT OBJECT + UI BUYING POWER ----------
+    acct_mode = (raw.get("accountType") or raw.get("accountMode") or "").upper()
+    if acct_mode in {"PDT_ACCOUNT", "CASH", "CASH_ACCOUNT"}:
+        ui_buying_power = cash_balance
     else:
-        nav = float(round(cash_balance + _safe_float(positions_value, 0.0), 2))
+        ui_buying_power = cash_buying_power if cash_buying_power is not None else cash_balance
 
-    # ---------- 4) ACCOUNT OBJECT + UI BUYING POWER ----------
-    # Account metadata lives under BalanceResponse (not the outer wrapper)
-    acct_type = (bal.get("accountType") or acct_summary_raw.get("account_type") or "").strip()
-    acct_mode = (bal.get("accountMode") or acct_summary_raw.get("account_type_display") or "").strip()
-
-    # For your UI: buying_power should reflect cash buying power (not cash balance)
-    ui_buying_power = round(_safe_float(cash_buying_power, 0.0), 2)
+    ui_buying_power = round(_safe_float(ui_buying_power, 0.0), 2)
 
     account = {
         "account_id": (
             acct_summary_raw.get("account_id")
-            or bal.get("accountId")
+            or raw.get("accountId")
         ),
         "account_key": (
             acct_summary_raw.get("account_key")
-            or bal.get("accountIdKey")
-            or bal.get("accountKey")
+            or raw.get("accountIdKey")
+            or raw.get("accountKey")
         ),
-        "account_type": acct_type or (acct_summary_raw.get("account_type") or ""),
-        "account_type_display": acct_mode or (acct_summary_raw.get("account_type_display") or ""),
+        "account_type": (
+            acct_summary_raw.get("account_type")
+            or raw.get("accountType")
+        ),
+        "account_type_display": (
+            acct_summary_raw.get("account_type_display")
+            or raw.get("accountMode")
+        ),
         "nav": nav,
-        "available_funds": round(_safe_float(cash_buying_power, 0.0), 2),
-        "cash_balance": round(_safe_float(cash_balance, 0.0), 2),
+        "available_funds": cash_buying_power,
+        "cash_balance": cash_balance,
         "buying_power": ui_buying_power,
-        "positions_value": round(_safe_float(positions_value, 0.0), 2),
+        "positions_value": _safe_float(positions_value, 0.0),
     }
 
+    # VALUE tile (left card)  (moved UP so it's available for denom calc below)
     value_obj = {
         "net_account_value": nav,
-        "positions_value": round(_safe_float(positions_value, 0.0), 2),
+        "positions_value": _safe_float(positions_value, 0.0),
         "buying_power": ui_buying_power,
     }
 
-    # ---------- 5) TRADES TABLE ----------
+    # ---------- 5) UNREALIZED & DAY P&L ----------
+    total_cost = 0.0
+    total_value = 0.0
+    day_unreal = 0.0
+
+    for h in holdings:
+        qty = _safe_float(h.get("qty"), 0.0)
+        paid = _safe_float(h.get("price_paid"), 0.0)
+        last = _safe_float(h.get("last_price"), 0.0)
+
+        total_cost += qty * paid
+        total_value += qty * last
+        day_unreal += _safe_float(h.get("day_pl"), 0.0)
+
+    total_unreal_pl = round(total_value - total_cost, 2) if total_cost > 0 else 0.0
+
+    base_for_unreal = START_CASH_BASELINE
+    if base_for_unreal > 0:
+        total_unreal_pct = round((total_unreal_pl / base_for_unreal) * 100.0, 2)
+    else:
+        total_unreal_pct = 0.0
+
+    day_unrealized_pnl = round(day_unreal, 2)
+    day_unrealized_pnl_pct = (
+        round((day_unrealized_pnl / nav) * 100.0, 2) if nav > 0 else 0.0
+    )
+
+    # ---------- 6) TRADES TABLE (for history) ----------
     start = (request.args.get("start") or "").strip()
     days = request.args.get("days", type=int)
     max_count = request.args.get("max", default=5000, type=int)
@@ -2033,54 +1982,15 @@ def live_data():
 
     trades = _enrich_trades_from_realized(trades)
 
-    # Enrich trade names AFTER trades exist
-    try:
-        name_map = {}
-        for h in (holdings or []):
-            s = (h.get("symbol") or "").strip().upper()
-            n = (h.get("name") or "").strip()
-            if s and n:
-                name_map[s] = n
-
-        try:
-            from services.symbol_names import get_company_name  # type: ignore
-        except Exception:
-            get_company_name = None  # type: ignore
-
-        for t in (trades or []):
-            if not isinstance(t, dict):
-                continue
-            sym = (t.get("symbol") or "").strip().upper()
-            if not sym:
-                continue
-
-            cur = (t.get("name") or t.get("full_name") or t.get("company_name") or "").strip()
-            if cur:
-                t["name"] = cur
-                continue
-
-            n = name_map.get(sym, "")
-            if not n and get_company_name:
-                try:
-                    n = (get_company_name(sym) or "").strip()
-                except Exception:
-                    n = ""
-
-            if n:
-                t["name"] = n
-    except Exception:
-        pass
-
     if debug:
         debug_raw["trades_raw"] = trades
 
-    # Keep realized_trades DB synced from trades (your chosen canonical approach)
     try:
         _sync_realized_from_trades(trades, str(LIVE_DB))
     except Exception as exc:
         LOG.warning("realized sync failed: %s", exc)
 
-    # ---------- 6) REALIZED P&L ----------
+    # ---------- 7) REALIZED P&L (live.db realized_trades) ----------
     try:
         _denom_value = float((account or {}).get("nav") or (value_obj or {}).get("net_account_value") or 0.0)
     except Exception:
@@ -2088,6 +1998,8 @@ def live_data():
 
     try:
         realized_obj_full = realized_buckets_from_live_db_db(str(LIVE_DB), denom_value=_denom_value) or {}
+
+        # Ensure "all" always exists (canonical source is realized_trades in LIVE_DB)
         if "all" not in realized_obj_full:
             realized_obj_full["all"] = _realized_all_from_db(str(LIVE_DB), denom_value=_denom_value)
 
@@ -2106,7 +2018,7 @@ def live_data():
             "all":   {"pnl": 0.0, "pct": 0.0},
         }
 
-    # ---------- 7) ACCOUNT GROWTH SINCE START ----------
+    # ---------- 9) ACCOUNT GROWTH SINCE START (NAV-based) ----------
     start_cash = START_CASH_BASELINE
     start_date = START_DATE
 
@@ -2124,6 +2036,35 @@ def live_data():
         since_pnl = 0.0
         since_pct = 0.0
 
+    # ---------- 10) METRICS / VALUE FOR TILES ----------
+
+    # Safe defaults for "since start" KPIs (prevents NameError)
+    total_gain = float(about.get("since_pnl") or 0.0) if isinstance(about, dict) else 0.0
+    total_gain_pct = float(about.get("since_pct") or 0.0) if isinstance(about, dict) else 0.0
+
+    metrics = {
+        # Value card fields
+        "net_account_value": float(nav or 0.0),
+        "buying_power": float(ui_buying_power or 0.0),
+        "positions_value": _safe_float(positions_value, 0.0),
+
+        # Unrealized tiles
+        "day_unrealized_pnl": round(float(day_pnl or 0.0), 2),
+        "day_unrealized_pnl_pct": round(float(day_pct or 0.0), 2),
+
+        # Preferred "all time" keys (keep these!)
+        "all_time_unrealized_pnl": round(float(all_time_pnl or 0.0), 2),
+        "all_time_unrealized_pnl_pct": round(float(all_time_pct or 0.0), 2),
+
+        # Legacy keys some JS/templates might still read
+        "unrealized_pl": round(float(all_time_pnl or 0.0), 2),
+        "unrealized_pl_pct": round(float(all_time_pct or 0.0), 2),
+
+        # Since-start NAV growth
+        "total_gain_nav": round(float(total_gain), 2),
+        "total_gain_nav_pct": round(float(total_gain_pct), 2),
+    }
+    # ---------- 11) P&L SINCE START (for hero blurb) ----------
     about = {
         "start_cash": start_cash,
         "start_date": start_date,
@@ -2132,35 +2073,20 @@ def live_data():
         "since_pct": since_pct,
     }
 
-    # ---------- 8) METRICS ----------
-    metrics = {
-        "net_account_value": float(nav or 0.0),
-        "buying_power": float(ui_buying_power or 0.0),
-        "positions_value": round(_safe_float(positions_value, 0.0), 2),
-
-        "day_unrealized_pnl": round(float(day_pnl or 0.0), 2),
-        "day_unrealized_pnl_pct": round(float(day_pct or 0.0), 2),
-
-        "all_time_unrealized_pnl": round(float(all_time_pnl or 0.0), 2),
-        "all_time_unrealized_pnl_pct": round(float(all_time_pct or 0.0), 2),
-
-        "unrealized_pl": round(float(all_time_pnl or 0.0), 2),
-        "unrealized_pl_pct": round(float(all_time_pct or 0.0), 2),
-
-        "total_gain_nav": round(float(since_pnl or 0.0), 2),
-        "total_gain_nav_pct": round(float(since_pct or 0.0), 2),
-    }
-
-    # ---------- 9) AUTH / STATUS ----------
+    # ---------- 12) AUTH / STATUS ----------
     needs_reconnect = bool(
         getattr(et, "need_oauth", False)
         or os.path.exists(str(NEED_AUTH_FLAG))
     )
+    LOG.info(
+        "DATA: FINAL holdings=%s positions_value=%s day_pnl=%s all_pnl=%s",
+        len(holdings or []),
+        positions_value,
+        metrics.get("day_unrealized_pnl"),
+        metrics.get("all_time_unrealized_pnl"),
+    )
 
-    if debug:
-        payload["debug_raw"] = debug_raw
-
-    return {
+    payload: Dict[str, Any] = {
         "ok": True,
         "etrade_ok": etrade_ok,
         "needs_reconnect": needs_reconnect,
@@ -2171,8 +2097,14 @@ def live_data():
         "realized": realized_obj,
         "trades": trades,
         "about": about,
-        **({"debug_raw": debug_raw} if debug else {}),
     }
+
+    if debug:
+        payload["debug_raw"] = debug_raw
+
+    return payload
+    payload.setdefault("holdings", holdings or [])
+    payload.setdefault("positions_value", float(positions_value or 0.0))
 
 def compute_realized_buckets_from_trades(
     trades: List[Dict[str, Any]],
@@ -2328,6 +2260,6 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
 
 # --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
-def normalize_positions_payload(raw):
+def _normalize_positions_payload(raw):
     return normalize_positions_payload(raw)
 
