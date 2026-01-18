@@ -806,41 +806,54 @@ def compute_value_card(
 
 def realized_buckets_from_live_db(db_path: str) -> Dict[str, Dict[str, float]]:
     """
-    Legacy name kept for compatibility, but this now prefers REAL data
-    from the E*TRADE API. If the API fails for any reason, it falls back
-    to the local live.db realized_trades table.
+    Compatibility wrapper.
 
-    Returns:
-        {
-          "pnl": {
-            "today": float,
-            "week": float,
-            "month": float,
-            "all": float,
-          }
-        }
+    Supports BOTH:
+      A) legacy float buckets: {"today": 1.23, "week": 4.56, "month": 7.89, "all": 9.99}
+      B) rich buckets: {"day":{"pnl":..,"pct":..}, "week":{...}, "month":{...}, "all":{...}}
+    Returns legacy-shaped:
+      {"pnl": {"today": <float>, "week": <float>, "month": <float>, "all": <float>}}
     """
-    # --- 1) Try E*TRADE-based buckets first -------------------------------
+    # 1) Prefer the service helper (your canonical DB path)
     try:
-        # If you already have account_key in scope, you can skip this call
-        # and just reuse the existing variable.
-        buckets = realized_buckets_from_live_db_db(LIVE_DB)
-        # Shape it the same way the old DB helper returned it:
-        return {
-            "pnl": {
-                "today": float(buckets.get("today", 0.0)),
-                "week": float(buckets.get("week", 0.0)),
-                "month": float(buckets.get("month", 0.0)),
-                "all": float(buckets.get("all", 0.0)),
-            }
-        }
-    except Exception as exc:
-        # Log and fall back to the SQLite version so the widget never breaks.
-        LOG.warning("realized_buckets_from_live_db: E*TRADE API failed, "
-                    "falling back to DB: %s", exc)
+        buckets = realized_buckets_from_live_db_db(str(db_path))
 
-    # --- 2) Fallback: use existing SQLite realized_trades logic ----------
-    conn = sqlite3.connect(db_path)
+        def _as_float(v) -> float:
+            if v is None:
+                return 0.0
+            if isinstance(v, dict):
+                return float(v.get("pnl", 0.0) or 0.0)
+            return float(v)
+
+        # Shape B (day/week/month/all as dicts)
+        if isinstance(buckets, dict) and any(isinstance(x, dict) for x in buckets.values()):
+            return {
+                "pnl": {
+                    "today": _as_float(buckets.get("day", buckets.get("today"))),
+                    "week":  _as_float(buckets.get("week")),
+                    "month": _as_float(buckets.get("month")),
+                    "all":   _as_float(buckets.get("all")),
+                }
+            }
+
+        # Shape A (legacy floats)
+        if isinstance(buckets, dict):
+            return {
+                "pnl": {
+                    "today": _as_float(buckets.get("today", buckets.get("day"))),
+                    "week":  _as_float(buckets.get("week")),
+                    "month": _as_float(buckets.get("month")),
+                    "all":   _as_float(buckets.get("all")),
+                }
+            }
+    except Exception as exc:
+        log.warning(
+            "realized_buckets_from_live_db: realized_service failed, falling back to DB: %s",
+            exc,
+        )
+
+    # 2) Fallback: direct SQLite read (robust action handling)
+    conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     try:
         cur = conn.cursor()
@@ -848,8 +861,12 @@ def realized_buckets_from_live_db(db_path: str) -> Dict[str, Dict[str, float]]:
             """
             SELECT close_date, gain
             FROM realized_trades
-            WHERE UPPER(action) = 'SELL'
-              AND symbol <> 'TEST'
+            WHERE symbol <> 'TEST'
+              AND (
+                    action IS NULL
+                    OR TRIM(action) = ''
+                    OR UPPER(action) IN ('SELL','SOLD')
+                  )
             ORDER BY close_date DESC
             """
         )
@@ -857,54 +874,28 @@ def realized_buckets_from_live_db(db_path: str) -> Dict[str, Dict[str, float]]:
     finally:
         conn.close()
 
-    # If you were already doing this logic before, you can keep your
-    # existing bucketing code here; I’m showing one standard version:
-    if ETZ is not None:
-        now_local = datetime.now(tz=ETZ)
-    else:  # pragma: no cover
-        now_local = datetime.now()
+    # Bucket calc (same logic you validated)
+    now = datetime.now()
+    today0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week0 = today0 - timedelta(days=today0.weekday())
+    month0 = today0.replace(day=1)
 
-    today = now_local.date()
-    week_start = today - timedelta(days=6)
-    month_start = today.replace(day=1)
-
-    buckets = {
-        "today": 0.0,
-        "week": 0.0,
-        "month": 0.0,
-        "all": 0.0,
-    }
-
+    day = week = month = all_ = 0.0
     for r in rows:
-        try:
-            ts = r["close_date"]
-            if isinstance(ts, (int, float)):
-                dt = datetime.fromtimestamp(ts, tz=UTC)
-            else:
-                dt = datetime.fromisoformat(str(ts)).replace(tzinfo=UTC)
-
-            dt_local = dt.astimezone(now_local.tzinfo)
-            d = dt_local.date()
-
-            gain = float(r["gain"] or 0.0)
-            buckets["all"] += gain
-            if d == today:
-                buckets["today"] += gain
-            if d >= week_start:
-                buckets["week"] += gain
-            if d >= month_start:
-                buckets["month"] += gain
-        except Exception:
+        if not r["close_date"]:
             continue
+        d = datetime.fromisoformat(str(r["close_date"]).replace("T", " "))
+        g = float(r["gain"] or 0.0)
+        all_ += g
+        if d >= month0:
+            month += g
+        if d >= week0:
+            week += g
+        if d >= today0:
+            day += g
 
-    return {
-        "pnl": {
-            "today": buckets["today"],
-            "week": buckets["week"],
-            "month": buckets["month"],
-            "all": buckets["all"],
-        }
-    }
+    return {"pnl": {"today": day, "week": week, "month": month, "all": all_}}
+
 def _enrich_trades_from_realized(trades: list[dict]) -> list[dict]:
     """
     For SELL trades that have price_paid == 0 (or missing), patch them using

@@ -1,33 +1,38 @@
-# services/realized_service.py
+# C:\TradeAlerts\services\realized_service.py
+from __future__ import annotations
+
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
+from typing import Any, Dict, Optional
+
+try:
+    from zoneinfo import ZoneInfo
+
+    ETZ = ZoneInfo("America/New_York")
+except Exception:  # pragma: no cover
+    ETZ = None  # type: ignore
+
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
-    """
-    Ensure realized_trades exists with the schema this project uses.
-    Do NOT add UNIQUE constraints (historical table may contain duplicates).
-    """
     cur = conn.cursor()
-
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS realized_trades (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol      TEXT NOT NULL,
-            action      TEXT NOT NULL,
-            qty         REAL NOT NULL,
-            open_date   TEXT,
-            close_date  TEXT NOT NULL,
-            price_paid  REAL NOT NULL,
-            price_sold  REAL NOT NULL,
-            gain        REAL NOT NULL
+            symbol TEXT NOT NULL,
+            action TEXT NOT NULL,
+            qty REAL NOT NULL,
+            open_date TEXT,
+            close_date TEXT NOT NULL,
+            price_paid REAL NOT NULL,
+            price_sold REAL NOT NULL,
+            gain REAL NOT NULL
         )
         """
     )
-
-    # Helpful non-unique indexes only
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_realized_symbol_close ON realized_trades(symbol, close_date)")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_realized_close_date ON realized_trades(close_date)")
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_realized_symbol_close ON realized_trades(symbol, close_date)"
+    )
     conn.commit()
 
 
@@ -37,53 +42,22 @@ def insert_realized_trade(
     qty: float,
     price_paid: float,
     price_sold: float,
-    open_ts=None,
-    close_ts=None,
+    close_date: str,
+    open_date: str | None = None,
     action: str = "SELL",
 ) -> float:
-    """
-    Insert a single realized SELL row and return dollar gain.
-
-    Uses application-level de-dupe to avoid double inserts on retry loops.
-    """
     symbol = (symbol or "").strip().upper()
     action = (action or "SELL").strip().upper()
 
-    try:
-        qty = float(qty or 0)
-        price_paid = float(price_paid or 0)
-        price_sold = float(price_sold or 0)
-    except Exception:
-        return 0.0
-
-    if not symbol or qty <= 0 or price_paid <= 0 or price_sold <= 0:
-        return 0.0
-
-    if close_ts is None:
-        close_ts = datetime.now(timezone.utc)
-
-    # Keep close_date as YYYY-MM-DD to match existing rows/buckets
-    if hasattr(close_ts, "strftime"):
-        close_date = close_ts.strftime("%Y-%m-%d")
-    else:
-        close_date = str(close_ts)[:10]
-
-    open_date = None
-    if open_ts is not None:
-        if hasattr(open_ts, "strftime"):
-            open_date = open_ts.strftime("%Y-%m-%d")
-        else:
-            open_date = str(open_ts)[:10]
-
-    gain = (price_sold - price_paid) * qty
+    qty_f = float(qty or 0.0)
+    pp = float(price_paid or 0.0)
+    ps = float(price_sold or 0.0)
+    gain = (ps - pp) * qty_f
 
     conn = sqlite3.connect(db_path)
     try:
         _ensure_schema(conn)
         cur = conn.cursor()
-
-        # ---- de-dupe guard (prevents doubles on polling/retries) ----
-        # We consider a row the same if these match exactly.
         exists = cur.execute(
             """
             SELECT 1
@@ -91,92 +65,105 @@ def insert_realized_trade(
             WHERE symbol=? AND action=? AND qty=? AND close_date=? AND price_paid=? AND price_sold=?
             LIMIT 1
             """,
-            (symbol, action, float(qty), close_date, float(price_paid), float(price_sold)),
+            (symbol, action, float(qty_f), close_date, float(pp), float(ps)),
         ).fetchone()
-
         if exists:
             return float(gain)
 
         cur.execute(
             """
             INSERT INTO realized_trades
-                (symbol, action, qty, open_date, close_date, price_paid, price_sold, gain)
+              (symbol, action, qty, open_date, close_date, price_paid, price_sold, gain)
             VALUES (?,?,?,?,?,?,?,?)
             """,
-            (symbol, action, float(qty), open_date, close_date, float(price_paid), float(price_sold), float(gain)),
+            (symbol, action, float(qty_f), open_date, close_date, float(pp), float(ps), float(gain)),
         )
         conn.commit()
     finally:
         conn.close()
 
     return float(gain)
-# In services/realized_service.py
 
-def realized_buckets_from_live_db(db_path: str, denom_value: float = 0.0):
-    """
-    ...
-    denom_value: if provided (>0), pct is computed vs this value (ex: account NAV).
-                 otherwise, falls back to total_cost (if available).
-    """
-    import sqlite3
-    from datetime import datetime, date, timedelta
+
+def _parse_close_dt(x: Any) -> Optional[datetime]:
+    if x is None:
+        return None
+    s = str(x).strip()
+    if not s:
+        return None
+    s = s.replace("T", " ")
     try:
-        from zoneinfo import ZoneInfo
-        ETZ = ZoneInfo("America/New_York")
+        return datetime.fromisoformat(s)
     except Exception:
-        ETZ = None
+        return None
 
-    def _today_et() -> date:
-        if ETZ:
-            return datetime.now(tz=ETZ).date()
-        return datetime.now().date()
 
-    def _monday(d: date) -> date:
-        return d - timedelta(days=d.weekday())
+def _safe_float(x: Any) -> Optional[float]:
+    if x is None:
+        return None
+    try:
+        return float(x)
+    except Exception:
+        return None
 
-    def _pct(pnl: float, cost: float) -> float:
-        # ✅ NEW: percent vs account value if provided
-        try:
-            dv = float(denom_value or 0.0)
-            if dv > 0:
-                return round((float(pnl) / dv) * 100.0, 2)
-        except Exception:
-            pass
 
-        # fallback: percent vs total_cost if present
-        try:
-            if not cost or float(cost) == 0.0:
-                return 0.0
-            return round((float(pnl) / float(cost)) * 100.0, 2)
-        except Exception:
-            return 0.0
+def _table_cols(cur: sqlite3.Cursor, table: str) -> set[str]:
+    cols = set()
+    for r in cur.execute(f"PRAGMA table_info({table})").fetchall():
+        cols.add(str(r[1]))
+    return cols
 
-    today = _today_et()
-    mon = _monday(today)
-    last_mon = mon - timedelta(days=7)
-    last_fri = mon - timedelta(days=3)
 
-    month_start = today.replace(day=1)
+def realized_buckets_from_live_db(db_path: str, denom_value: float = 0.0) -> Dict[str, Dict[str, float]]:
+    """
+    Realized P&L buckets from local live.db realized_trades.
 
+    CRITICAL:
+    - We IGNORE rows that have no usable cost basis (total_cost == 0 AND price_paid/cost_share missing/0),
+      because those rows create fake huge gains (gain == proceeds).
+    """
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
+    try:
+        cur = conn.cursor()
+        cols = _table_cols(cur, "realized_trades")
 
-    # detect if total_cost exists
-    cols = [r[1] for r in cur.execute("pragma table_info(realized_trades)").fetchall()]
-    has_cost = "total_cost" in cols
+        if "close_date" not in cols:
+            return {
+                "day": {"pnl": 0.0, "pct": 0.0},
+                "week": {"pnl": 0.0, "pct": 0.0},
+                "last_week": {"pnl": 0.0, "pct": 0.0},
+                "month": {"pnl": 0.0, "pct": 0.0},
+                "all": {"pnl": 0.0, "pct": 0.0},
+            }
 
-    # Pull rows
-    if has_cost:
+        where = """
+            close_date IS NOT NULL
+            AND symbol <> 'TEST'
+            AND (
+                  action IS NULL
+                  OR TRIM(action) = ''
+                  OR UPPER(action) IN ('SELL','SOLD')
+                )
+        """
+
+        sel = ["close_date", "symbol"]
+        for c in ("action", "qty", "gain", "total_cost", "proceeds", "price_paid", "price_sold", "cost_share"):
+            if c in cols:
+                sel.append(c)
+
         rows = cur.execute(
-            "SELECT close_date, gain, total_cost FROM realized_trades WHERE close_date IS NOT NULL"
+            f"SELECT {', '.join(sel)} FROM realized_trades WHERE {where} ORDER BY close_date DESC"
         ).fetchall()
-    else:
-        rows = cur.execute(
-            "SELECT close_date, gain FROM realized_trades WHERE close_date IS NOT NULL"
-        ).fetchall()
+    finally:
+        conn.close()
 
-    conn.close()
+    now = datetime.now(ETZ) if ETZ is not None else datetime.now()
+    today0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week0 = today0 - timedelta(days=today0.weekday())  # Monday
+    month0 = today0.replace(day=1)
+    last_week_end = week0
+    last_week_start = last_week_end - timedelta(days=7)
 
     buckets = {
         "day": {"pnl": 0.0, "cost": 0.0},
@@ -186,43 +173,87 @@ def realized_buckets_from_live_db(db_path: str, denom_value: float = 0.0):
         "all": {"pnl": 0.0, "cost": 0.0},
     }
 
+    has_total_cost = "total_cost" in cols
+
     for r in rows:
-        try:
-            d = datetime.strptime(r["close_date"], "%Y-%m-%d").date()
-        except Exception:
+        dt_close = _parse_close_dt(r["close_date"])
+        if dt_close is None:
+            continue
+        if dt_close.tzinfo is None and ETZ is not None:
+            dt_close = dt_close.replace(tzinfo=ETZ)
+
+        qty = _safe_float(r["qty"]) if "qty" in cols else 0.0
+        qty = float(qty or 0.0)
+
+        proceeds = _safe_float(r["proceeds"]) if "proceeds" in cols else None
+        total_cost = _safe_float(r["total_cost"]) if "total_cost" in cols else None
+        gain = _safe_float(r["gain"]) if "gain" in cols else 0.0
+        gain = float(gain or 0.0)
+
+        price_paid = _safe_float(r["price_paid"]) if "price_paid" in cols else None
+        cost_share = _safe_float(r["cost_share"]) if "cost_share" in cols else None
+        price_sold = _safe_float(r["price_sold"]) if "price_sold" in cols else None
+
+        # ---- compute cost if missing/zero
+        tc = float(total_cost or 0.0)
+        if tc == 0.0:
+            if price_paid is not None and float(price_paid) > 0.0 and qty > 0:
+                tc = qty * float(price_paid)
+            elif cost_share is not None and float(cost_share) > 0.0 and qty > 0:
+                tc = qty * float(cost_share)
+
+        # ---- compute proceeds if missing/zero
+        pr = float(proceeds or 0.0)
+        if pr == 0.0 and price_sold is not None and float(price_sold) > 0.0 and qty > 0:
+            pr = qty * float(price_sold)
+
+        # ---- reject corrupt rows with no real cost basis
+        # If we still have tc==0 but proceeds exists, the row is unusable (this is your inflated case)
+        if tc == 0.0 and pr != 0.0:
             continue
 
-        pnl = float(r["gain"] or 0.0)
-        cost = float(r["total_cost"] or 0.0) if has_cost else 0.0
+        # ---- compute pnl
+        if pr != 0.0 and tc != 0.0:
+            pnl = pr - tc
+        else:
+            # fallback only if it doesn't look like "gain == proceeds"
+            pnl = gain
 
         # all
         buckets["all"]["pnl"] += pnl
-        buckets["all"]["cost"] += cost
+        buckets["all"]["cost"] += tc if has_total_cost else 0.0
 
-        # month-to-date (true MTD)
-        if month_start <= d <= today:
+        # month/week/day windows
+        if dt_close >= month0:
             buckets["month"]["pnl"] += pnl
-            buckets["month"]["cost"] += cost
+            buckets["month"]["cost"] += tc if has_total_cost else 0.0
 
-        # week-to-date (Mon..today)
-        if mon <= d <= today:
+        if dt_close >= week0:
             buckets["week"]["pnl"] += pnl
-            buckets["week"]["cost"] += cost
+            buckets["week"]["cost"] += tc if has_total_cost else 0.0
 
-        # last week (Mon..Fri)
-        if last_mon <= d <= last_fri:
+        if last_week_start <= dt_close < last_week_end:
             buckets["last_week"]["pnl"] += pnl
-            buckets["last_week"]["cost"] += cost
+            buckets["last_week"]["cost"] += tc if has_total_cost else 0.0
 
-        # day
-        if d == today:
+        if dt_close >= today0:
             buckets["day"]["pnl"] += pnl
-            buckets["day"]["cost"] += cost
+            buckets["day"]["cost"] += tc if has_total_cost else 0.0
 
-    out = {}
+    def pct(pnl: float, cost_sum: float) -> float:
+        try:
+            if denom_value and float(denom_value) > 0:
+                return round((float(pnl) / float(denom_value)) * 100.0, 2)
+            if cost_sum and float(cost_sum) != 0.0:
+                return round((float(pnl) / float(cost_sum)) * 100.0, 2)
+        except Exception:
+            pass
+        return 0.0
+
+    out: Dict[str, Dict[str, float]] = {}
     for k in ("day", "week", "last_week", "month", "all"):
-        pnl = round(buckets[k]["pnl"], 2)
-        out[k] = {"pnl": pnl, "pct": 0.0}  # pct is computed in dashboard.py using VALUE (period % increase)
+        pnl_v = float(buckets[k]["pnl"])
+        cost_v = float(buckets[k]["cost"])
+        out[k] = {"pnl": round(pnl_v, 2), "pct": pct(pnl_v, cost_v)}
 
     return out
-
