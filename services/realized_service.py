@@ -1,259 +1,150 @@
-# C:\TradeAlerts\services\realized_service.py
+# services/realized_service.py
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timedelta
+import datetime as dt
+from dataclasses import dataclass
 from typing import Any, Dict, Optional
-
-try:
-    from zoneinfo import ZoneInfo
-
-    ETZ = ZoneInfo("America/New_York")
-except Exception:  # pragma: no cover
-    ETZ = None  # type: ignore
+from zoneinfo import ZoneInfo
 
 
-def _ensure_schema(conn: sqlite3.Connection) -> None:
-    cur = conn.cursor()
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS realized_trades (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol TEXT NOT NULL,
-            action TEXT NOT NULL,
-            qty REAL NOT NULL,
-            open_date TEXT,
-            close_date TEXT NOT NULL,
-            price_paid REAL NOT NULL,
-            price_sold REAL NOT NULL,
-            gain REAL NOT NULL
-        )
-        """
-    )
-    cur.execute(
-        "CREATE INDEX IF NOT EXISTS idx_realized_symbol_close ON realized_trades(symbol, close_date)"
-    )
-    conn.commit()
+ETZ = ZoneInfo("America/New_York")
 
 
-def insert_realized_trade(
-    db_path: str,
-    symbol: str,
-    qty: float,
-    price_paid: float,
-    price_sold: float,
-    close_date: str,
-    open_date: str | None = None,
-    action: str = "SELL",
-) -> float:
-    symbol = (symbol or "").strip().upper()
-    action = (action or "SELL").strip().upper()
-
-    qty_f = float(qty or 0.0)
-    pp = float(price_paid or 0.0)
-    ps = float(price_sold or 0.0)
-    gain = (ps - pp) * qty_f
-
-    conn = sqlite3.connect(db_path)
-    try:
-        _ensure_schema(conn)
-        cur = conn.cursor()
-        exists = cur.execute(
-            """
-            SELECT 1
-            FROM realized_trades
-            WHERE symbol=? AND action=? AND qty=? AND close_date=? AND price_paid=? AND price_sold=?
-            LIMIT 1
-            """,
-            (symbol, action, float(qty_f), close_date, float(pp), float(ps)),
-        ).fetchone()
-        if exists:
-            return float(gain)
-
-        cur.execute(
-            """
-            INSERT INTO realized_trades
-              (symbol, action, qty, open_date, close_date, price_paid, price_sold, gain)
-            VALUES (?,?,?,?,?,?,?,?)
-            """,
-            (symbol, action, float(qty_f), open_date, close_date, float(pp), float(ps), float(gain)),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-    return float(gain)
-
-
-def _parse_close_dt(x: Any) -> Optional[datetime]:
-    if x is None:
-        return None
-    s = str(x).strip()
+def _parse_dt(s: str | None) -> Optional[dt.datetime]:
+    """
+    Accepts:
+      - 'YYYY-MM-DD HH:MM:SS'
+      - 'YYYY-MM-DDTHH:MM:SS'
+      - 'YYYY-MM-DD' (treated as midnight)
+    Returns timezone-aware ET datetime, or None.
+    """
     if not s:
         return None
+    s = str(s).strip()
+    if not s:
+        return None
+
     s = s.replace("T", " ")
     try:
-        return datetime.fromisoformat(s)
+        if len(s) == 10:
+            d = dt.datetime.strptime(s, "%Y-%m-%d")
+            return d.replace(tzinfo=ETZ)
+        d = dt.datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S")
+        return d.replace(tzinfo=ETZ)
     except Exception:
         return None
 
 
-def _safe_float(x: Any) -> Optional[float]:
-    if x is None:
-        return None
+def _start_of_day(now_et: dt.datetime) -> dt.datetime:
+    return now_et.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _start_of_week(now_et: dt.datetime) -> dt.datetime:
+    # Monday 00:00 ET
+    d0 = _start_of_day(now_et)
+    return d0 - dt.timedelta(days=d0.weekday())
+
+
+def _start_of_last_week(now_et: dt.datetime) -> dt.datetime:
+    # Previous Monday 00:00 ET
+    return _start_of_week(now_et) - dt.timedelta(days=7)
+
+
+def _start_of_month(now_et: dt.datetime) -> dt.datetime:
+    # 1st of month 00:00 ET
+    d0 = _start_of_day(now_et)
+    return d0.replace(day=1)
+
+
+def _sum_gain(conn: sqlite3.Connection, start: Optional[dt.datetime], end: Optional[dt.datetime]) -> float:
+    """
+    Sum realized gains from realized_trades.
+    Uses gain when present; else proceeds - total_cost.
+    Filters:
+      - symbol <> 'TEST'
+      - action NULL/blank or SELL/SOLD
+      - close_date not null
+    Date filtering:
+      - Uses close_date string compare after normalizing 'T' -> ' '.
+      - We compare by 'YYYY-MM-DD HH:MM:SS' string ranges.
+    """
+    cur = conn.cursor()
+
+    where = [
+        "symbol <> 'TEST'",
+        "close_date IS NOT NULL",
+        "("
+        " action IS NULL OR TRIM(action) = '' OR UPPER(action) IN ('SELL','SOLD')"
+        ")",
+    ]
+
+    params: list[Any] = []
+
+    if start is not None:
+        where.append("REPLACE(substr(close_date,1,19),'T',' ') >= ?")
+        params.append(start.strftime("%Y-%m-%d %H:%M:%S"))
+    if end is not None:
+        where.append("REPLACE(substr(close_date,1,19),'T',' ') <= ?")
+        params.append(end.strftime("%Y-%m-%d %H:%M:%S"))
+
+    sql = f"""
+    SELECT
+      COALESCE(
+        SUM(
+          CASE
+            WHEN gain IS NOT NULL THEN CAST(gain AS REAL)
+            ELSE (CAST(COALESCE(proceeds,0) AS REAL) - CAST(COALESCE(total_cost,0) AS REAL))
+          END
+        ),
+        0
+      ) AS s
+    FROM realized_trades
+    WHERE {" AND ".join(where)}
+    """
+    row = cur.execute(sql, params).fetchone()
     try:
-        return float(x)
+        return float(row[0] or 0.0)
     except Exception:
-        return None
-
-
-def _table_cols(cur: sqlite3.Cursor, table: str) -> set[str]:
-    cols = set()
-    for r in cur.execute(f"PRAGMA table_info({table})").fetchall():
-        cols.add(str(r[1]))
-    return cols
-
-
-def realized_buckets_from_live_db(db_path: str, denom_value: float = 0.0) -> Dict[str, Dict[str, float]]:
-    """
-    Realized P&L buckets from local live.db realized_trades.
-
-    CRITICAL:
-    - We IGNORE rows that have no usable cost basis (total_cost == 0 AND price_paid/cost_share missing/0),
-      because those rows create fake huge gains (gain == proceeds).
-    """
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    try:
-        cur = conn.cursor()
-        cols = _table_cols(cur, "realized_trades")
-
-        if "close_date" not in cols:
-            return {
-                "day": {"pnl": 0.0, "pct": 0.0},
-                "week": {"pnl": 0.0, "pct": 0.0},
-                "last_week": {"pnl": 0.0, "pct": 0.0},
-                "month": {"pnl": 0.0, "pct": 0.0},
-                "all": {"pnl": 0.0, "pct": 0.0},
-            }
-
-        where = """
-            close_date IS NOT NULL
-            AND symbol <> 'TEST'
-            AND (
-                  action IS NULL
-                  OR TRIM(action) = ''
-                  OR UPPER(action) IN ('SELL','SOLD')
-                )
-        """
-
-        sel = ["close_date", "symbol"]
-        for c in ("action", "qty", "gain", "total_cost", "proceeds", "price_paid", "price_sold", "cost_share"):
-            if c in cols:
-                sel.append(c)
-
-        rows = cur.execute(
-            f"SELECT {', '.join(sel)} FROM realized_trades WHERE {where} ORDER BY close_date DESC"
-        ).fetchall()
-    finally:
-        conn.close()
-
-    now = datetime.now(ETZ) if ETZ is not None else datetime.now()
-    today0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    week0 = today0 - timedelta(days=today0.weekday())  # Monday
-    month0 = today0.replace(day=1)
-    last_week_end = week0
-    last_week_start = last_week_end - timedelta(days=7)
-
-    buckets = {
-        "day": {"pnl": 0.0, "cost": 0.0},
-        "week": {"pnl": 0.0, "cost": 0.0},
-        "last_week": {"pnl": 0.0, "cost": 0.0},
-        "month": {"pnl": 0.0, "cost": 0.0},
-        "all": {"pnl": 0.0, "cost": 0.0},
-    }
-
-    has_total_cost = "total_cost" in cols
-
-    for r in rows:
-        dt_close = _parse_close_dt(r["close_date"])
-        if dt_close is None:
-            continue
-        if dt_close.tzinfo is None and ETZ is not None:
-            dt_close = dt_close.replace(tzinfo=ETZ)
-
-        qty = _safe_float(r["qty"]) if "qty" in cols else 0.0
-        qty = float(qty or 0.0)
-
-        proceeds = _safe_float(r["proceeds"]) if "proceeds" in cols else None
-        total_cost = _safe_float(r["total_cost"]) if "total_cost" in cols else None
-        gain = _safe_float(r["gain"]) if "gain" in cols else 0.0
-        gain = float(gain or 0.0)
-
-        price_paid = _safe_float(r["price_paid"]) if "price_paid" in cols else None
-        cost_share = _safe_float(r["cost_share"]) if "cost_share" in cols else None
-        price_sold = _safe_float(r["price_sold"]) if "price_sold" in cols else None
-
-        # ---- compute cost if missing/zero
-        tc = float(total_cost or 0.0)
-        if tc == 0.0:
-            if price_paid is not None and float(price_paid) > 0.0 and qty > 0:
-                tc = qty * float(price_paid)
-            elif cost_share is not None and float(cost_share) > 0.0 and qty > 0:
-                tc = qty * float(cost_share)
-
-        # ---- compute proceeds if missing/zero
-        pr = float(proceeds or 0.0)
-        if pr == 0.0 and price_sold is not None and float(price_sold) > 0.0 and qty > 0:
-            pr = qty * float(price_sold)
-
-        # ---- reject corrupt rows with no real cost basis
-        # If we still have tc==0 but proceeds exists, the row is unusable (this is your inflated case)
-        if tc == 0.0 and pr != 0.0:
-            continue
-
-        # ---- compute pnl
-        if pr != 0.0 and tc != 0.0:
-            pnl = pr - tc
-        else:
-            # fallback only if it doesn't look like "gain == proceeds"
-            pnl = gain
-
-        # all
-        buckets["all"]["pnl"] += pnl
-        buckets["all"]["cost"] += tc if has_total_cost else 0.0
-
-        # month/week/day windows
-        if dt_close >= month0:
-            buckets["month"]["pnl"] += pnl
-            buckets["month"]["cost"] += tc if has_total_cost else 0.0
-
-        if dt_close >= week0:
-            buckets["week"]["pnl"] += pnl
-            buckets["week"]["cost"] += tc if has_total_cost else 0.0
-
-        if last_week_start <= dt_close < last_week_end:
-            buckets["last_week"]["pnl"] += pnl
-            buckets["last_week"]["cost"] += tc if has_total_cost else 0.0
-
-        if dt_close >= today0:
-            buckets["day"]["pnl"] += pnl
-            buckets["day"]["cost"] += tc if has_total_cost else 0.0
-
-    def pct(pnl: float, cost_sum: float) -> float:
-        try:
-            if denom_value and float(denom_value) > 0:
-                return round((float(pnl) / float(denom_value)) * 100.0, 2)
-            if cost_sum and float(cost_sum) != 0.0:
-                return round((float(pnl) / float(cost_sum)) * 100.0, 2)
-        except Exception:
-            pass
         return 0.0
 
-    out: Dict[str, Dict[str, float]] = {}
-    for k in ("day", "week", "last_week", "month", "all"):
-        pnl_v = float(buckets[k]["pnl"])
-        cost_v = float(buckets[k]["cost"])
-        out[k] = {"pnl": round(pnl_v, 2), "pct": pct(pnl_v, cost_v)}
 
-    return out
+def realized_buckets_from_live_db(db_path: str, denom_value: float | None = None) -> Dict[str, Dict[str, float]]:
+    """
+    Returns:
+      {
+        'day': {'pnl': x, 'pct': y},
+        'week': {'pnl': x, 'pct': y},
+        'last_week': {'pnl': x, 'pct': y},
+        'month': {'pnl': x, 'pct': y},
+        'all': {'pnl': x, 'pct': y},
+      }
+
+    denom_value is optional (for pct); if not provided or <=0, pct is 0.0.
+    """
+    now_et = dt.datetime.now(ETZ)
+    day0 = _start_of_day(now_et)
+    week0 = _start_of_week(now_et)
+    last_week0 = _start_of_last_week(now_et)
+    month0 = _start_of_month(now_et)
+
+    with sqlite3.connect(db_path) as conn:
+        day_pnl = _sum_gain(conn, day0, None)
+        week_pnl = _sum_gain(conn, week0, None)
+        last_week_pnl = _sum_gain(conn, last_week0, week0 - dt.timedelta(seconds=1))
+        month_pnl = _sum_gain(conn, month0, None)
+        all_pnl = _sum_gain(conn, None, None)
+
+    denom = float(denom_value or 0.0)
+    def pct(x: float) -> float:
+        if denom <= 0:
+            return 0.0
+        return (float(x) / denom) * 100.0
+
+    return {
+        "day": {"pnl": float(day_pnl), "pct": float(pct(day_pnl))},
+        "week": {"pnl": float(week_pnl), "pct": float(pct(week_pnl))},
+        "last_week": {"pnl": float(last_week_pnl), "pct": float(pct(last_week_pnl))},
+        "month": {"pnl": float(month_pnl), "pct": float(pct(month_pnl))},
+        "all": {"pnl": float(all_pnl), "pct": float(pct(all_pnl))},
+    }
