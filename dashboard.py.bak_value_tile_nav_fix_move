@@ -1894,79 +1894,6 @@ def live_data():
     if debug:
         debug_raw["acct_summary_raw"] = acct_summary_raw
 
-    # --- VALUE TILE NAV SOURCE (E*TRADE acct summary Computed.netAccountValue) ---
-    # Single-source-of-truth: use acct summary Computed.netAccountValue (or totalAccountValue).
-    # Never stomp NAV with 0.0; if missing, keep what was already computed.
-    try:
-        def _ff(x, default=None):
-            try:
-                if x is None or x == "":
-                    return default
-                return float(x)
-            except Exception:
-                return default
-
-        nav_api = None
-        src = None
-
-        ar = debug_raw.get("acct_summary_raw") if isinstance(debug_raw, dict) else None
-        raw = None
-        if isinstance(ar, dict):
-            raw = ar.get("raw") if "raw" in ar else ar
-            if isinstance(raw, dict) and "raw" in raw and isinstance(raw["raw"], dict):
-                raw = raw["raw"]
-
-        comp = (raw.get("Computed") if isinstance(raw, dict) else None)
-        if not isinstance(comp, dict) and isinstance(raw, dict):
-            comp = raw.get("computed")
-
-        if isinstance(comp, dict):
-            for key in ("netAccountValue", "totalAccountValue", "NetAccountValue", "TotalAccountValue"):
-                if key in comp:
-                    nav_api = _ff(comp.get(key), None)
-                    if nav_api is not None and nav_api > 0:
-                        src = f"acct_summary Computed.{key}"
-                        break
-
-        if nav_api is not None and nav_api > 0:
-            # Prefer updating the objects that get returned (value/account),
-            # but keep it safe regardless of construction style.
-            try:
-                if isinstance(payload, dict):
-                    vobj = payload.get("value") or {}
-                    if isinstance(vobj, dict):
-                        vobj["net_account_value"] = round(nav_api, 2)
-                        payload["value"] = vobj
-                    aobj = payload.get("account") or {}
-                    if isinstance(aobj, dict):
-                        aobj["nav"] = round(nav_api, 2)
-                        payload["account"] = aobj
-            except Exception:
-                pass
-
-            # If locals exist, patch them too (common patterns)
-            try:
-                L = locals()
-                for nm in ("value", "value_obj", "value_block"):
-                    if nm in L and isinstance(L[nm], dict):
-                        L[nm]["net_account_value"] = round(nav_api, 2)
-                for nm in ("account", "account_obj", "account_block"):
-                    if nm in L and isinstance(L[nm], dict):
-                        L[nm]["nav"] = round(nav_api, 2)
-            except Exception:
-                pass
-
-        if debug:
-            debug_raw.setdefault("value_debug", {})
-            debug_raw["value_debug"]["nav_source"] = src or "acct_summary missing (no change)"
-            debug_raw["value_debug"]["nav_api"] = (round(nav_api, 2) if (nav_api is not None) else None)
-    except Exception:
-        pass
-
-
-    if not isinstance(comp, dict):
-        comp = {}
-
     cash_balance = _safe_float(
         comp.get("cashBalance")
         or acct_summary_raw.get("cash_balance")
@@ -2565,8 +2492,110 @@ def live_data():
     except Exception:
         pass
 
+    # --- VALUE TILE NAV FIX (positions_value + cash_balance) ---
+    # E*TRADE account summary fields can map NAV incorrectly (often looks like cash-only).
+    # Force NAV to reflect portfolio value using what we already calculated.
+    try:
+        def _ff(x, default=0.0):
+            try:
+                if x is None or x == "":
+                    return float(default)
+                return float(x)
+            except Exception:
+                return float(default)
+
+        vobj = (payload.get("value") or {}) if isinstance(payload, dict) else {}
+        aobj = (payload.get("account") or {}) if isinstance(payload, dict) else {}
+
+        posv = _ff(vobj.get("positions_value"), 0.0)
+        cash = _ff(aobj.get("cash_balance"), 0.0)
+
+        nav_fixed = round(posv + cash, 2)
+
+        vobj["net_account_value"] = nav_fixed
+        payload["value"] = vobj
+
+        aobj["nav"] = nav_fixed
+        payload["account"] = aobj
+
+        if debug:
+            debug_raw.setdefault("value_debug", {})
+            debug_raw["value_debug"]["nav_fixed"] = nav_fixed
+            debug_raw["value_debug"]["nav_from_positions_value"] = posv
+            debug_raw["value_debug"]["nav_from_cash_balance"] = cash
+    except Exception:
+        pass
 
 
+    # --- VALUE TILE NAV FIX (prefer acct_summary netAccountValue) ---
+    # Runs at the end of live_data() so nothing later can overwrite it.
+    try:
+        def _ff(x, default=None):
+            try:
+                if x is None or x == "":
+                    return default
+                return float(x)
+            except Exception:
+                return default
+
+        # Current payload objects
+        vobj = (payload.get("value") or {}) if isinstance(payload, dict) else {}
+        aobj = (payload.get("account") or {}) if isinstance(payload, dict) else {}
+
+        nav_before = _ff(vobj.get("net_account_value"), None)
+
+        # Try to pull authoritative NAV from E*TRADE acct summary debug (Computed.netAccountValue / totalAccountValue)
+        nav_auth = None
+        src = None
+        try:
+            ar = (debug_raw.get("acct_summary_raw") or {}) if isinstance(debug_raw, dict) else {}
+            raw = (ar.get("raw") or {}) if isinstance(ar, dict) else {}
+            comp = (raw.get("Computed") or {}) if isinstance(raw, dict) else {}
+            # Try common keys (some payloads use different casing)
+            for key in ("netAccountValue", "NetAccountValue", "net_account_value", "totalAccountValue", "TotalAccountValue"):
+                if key in comp:
+                    nav_auth = _ff(comp.get(key), None)
+                    if nav_auth is not None:
+                        src = f"acct_summary Computed.{key}"
+                        break
+        except Exception:
+            pass
+
+        # Fallbacks
+        if nav_auth is None:
+            nav_auth = _ff(aobj.get("nav"), None)
+            if nav_auth is not None:
+                src = "payload account.nav"
+
+        if nav_auth is None:
+            nav_auth = _ff(vobj.get("net_account_value"), None)
+            if nav_auth is not None:
+                src = "payload value.net_account_value"
+
+        if nav_auth is None:
+            posv = _ff(vobj.get("positions_value"), 0.0) or 0.0
+            cash = _ff(aobj.get("cash_balance"), 0.0) or 0.0
+            nav_auth = posv + cash
+            src = "positions_value + cash_balance"
+
+        nav_fixed = round(float(nav_auth or 0.0), 2)
+
+        # Apply consistently
+        vobj["net_account_value"] = nav_fixed
+        payload["value"] = vobj
+
+        aobj["nav"] = nav_fixed
+        payload["account"] = aobj
+
+        if debug:
+            debug_raw.setdefault("value_debug", {})
+            debug_raw["value_debug"]["nav_before"] = nav_before
+            debug_raw["value_debug"]["nav_fixed"] = nav_fixed
+            debug_raw["value_debug"]["nav_source"] = src
+            debug_raw["value_debug"]["positions_value"] = _ff(vobj.get("positions_value"), 0.0) or 0.0
+            debug_raw["value_debug"]["cash_balance"] = _ff(aobj.get("cash_balance"), 0.0) or 0.0
+    except Exception:
+        pass
 
     return {
         "ok": True,

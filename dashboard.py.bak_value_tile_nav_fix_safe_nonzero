@@ -1894,79 +1894,6 @@ def live_data():
     if debug:
         debug_raw["acct_summary_raw"] = acct_summary_raw
 
-    # --- VALUE TILE NAV SOURCE (E*TRADE acct summary Computed.netAccountValue) ---
-    # Single-source-of-truth: use acct summary Computed.netAccountValue (or totalAccountValue).
-    # Never stomp NAV with 0.0; if missing, keep what was already computed.
-    try:
-        def _ff(x, default=None):
-            try:
-                if x is None or x == "":
-                    return default
-                return float(x)
-            except Exception:
-                return default
-
-        nav_api = None
-        src = None
-
-        ar = debug_raw.get("acct_summary_raw") if isinstance(debug_raw, dict) else None
-        raw = None
-        if isinstance(ar, dict):
-            raw = ar.get("raw") if "raw" in ar else ar
-            if isinstance(raw, dict) and "raw" in raw and isinstance(raw["raw"], dict):
-                raw = raw["raw"]
-
-        comp = (raw.get("Computed") if isinstance(raw, dict) else None)
-        if not isinstance(comp, dict) and isinstance(raw, dict):
-            comp = raw.get("computed")
-
-        if isinstance(comp, dict):
-            for key in ("netAccountValue", "totalAccountValue", "NetAccountValue", "TotalAccountValue"):
-                if key in comp:
-                    nav_api = _ff(comp.get(key), None)
-                    if nav_api is not None and nav_api > 0:
-                        src = f"acct_summary Computed.{key}"
-                        break
-
-        if nav_api is not None and nav_api > 0:
-            # Prefer updating the objects that get returned (value/account),
-            # but keep it safe regardless of construction style.
-            try:
-                if isinstance(payload, dict):
-                    vobj = payload.get("value") or {}
-                    if isinstance(vobj, dict):
-                        vobj["net_account_value"] = round(nav_api, 2)
-                        payload["value"] = vobj
-                    aobj = payload.get("account") or {}
-                    if isinstance(aobj, dict):
-                        aobj["nav"] = round(nav_api, 2)
-                        payload["account"] = aobj
-            except Exception:
-                pass
-
-            # If locals exist, patch them too (common patterns)
-            try:
-                L = locals()
-                for nm in ("value", "value_obj", "value_block"):
-                    if nm in L and isinstance(L[nm], dict):
-                        L[nm]["net_account_value"] = round(nav_api, 2)
-                for nm in ("account", "account_obj", "account_block"):
-                    if nm in L and isinstance(L[nm], dict):
-                        L[nm]["nav"] = round(nav_api, 2)
-            except Exception:
-                pass
-
-        if debug:
-            debug_raw.setdefault("value_debug", {})
-            debug_raw["value_debug"]["nav_source"] = src or "acct_summary missing (no change)"
-            debug_raw["value_debug"]["nav_api"] = (round(nav_api, 2) if (nav_api is not None) else None)
-    except Exception:
-        pass
-
-
-    if not isinstance(comp, dict):
-        comp = {}
-
     cash_balance = _safe_float(
         comp.get("cashBalance")
         or acct_summary_raw.get("cash_balance")
@@ -2567,7 +2494,129 @@ def live_data():
 
 
 
+    # --- VALUE TILE NAV FIX (prefer acct_summary netAccountValue) ---
+    # Robust: finds NAV anywhere in acct-summary via recursive search, falls back to holdings sum,
+    # and writes to payload + common locals so it survives different return construction styles.
+    try:
+        def _ff(x, default=None):
+            try:
+                if x is None or x == "":
+                    return default
+                return float(x)
+            except Exception:
+                return default
 
+        def _walk_find_number(obj, wanted_keys):
+            """
+            Recursively walk dict/list and return the first float found for any key in wanted_keys.
+            """
+            try:
+                if isinstance(obj, dict):
+                    for k, v in obj.items():
+                        if k in wanted_keys:
+                            n = _ff(v, None)
+                            if n is not None:
+                                return n
+                        # recurse
+                        n2 = _walk_find_number(v, wanted_keys)
+                        if n2 is not None:
+                            return n2
+                elif isinstance(obj, list):
+                    for it in obj:
+                        n2 = _walk_find_number(it, wanted_keys)
+                        if n2 is not None:
+                            return n2
+            except Exception:
+                return None
+            return None
+
+        # Pull current objects (may or may not be the final ones used in the return)
+        vobj = (payload.get("value") or {}) if isinstance(payload, dict) else {}
+        aobj = (payload.get("account") or {}) if isinstance(payload, dict) else {}
+
+        # positions_value: prefer returned vobj, else compute from holdings
+        posv = _ff(vobj.get("positions_value"), None)
+        if posv is None or posv == 0.0:
+            try:
+                hs = payload.get("holdings") if isinstance(payload, dict) else None
+                if isinstance(hs, list) and hs:
+                    posv = sum(_ff(h.get("value"), 0.0) or 0.0 for h in hs)
+            except Exception:
+                pass
+        posv = float(posv or 0.0)
+
+        cash = _ff(aobj.get("cash_balance"), 0.0) or 0.0
+
+        # Find authoritative NAV from acct summary (any nesting)
+        nav_auth = None
+        src = None
+        try:
+            ar = debug_raw.get("acct_summary_raw") if isinstance(debug_raw, dict) else None
+            if ar is not None:
+                nav_auth = _walk_find_number(ar, {
+                    "netAccountValue", "NetAccountValue",
+                    "totalAccountValue", "TotalAccountValue",
+                    "net_account_value", "total_account_value",
+                })
+                if nav_auth is not None:
+                    src = "acct_summary recursive"
+        except Exception:
+            pass
+
+        # Fallbacks
+        if nav_auth is None:
+            nav_auth = _ff(aobj.get("nav"), None)
+            if nav_auth is not None:
+                src = "payload account.nav"
+
+        if nav_auth is None:
+            nav_auth = _ff(vobj.get("net_account_value"), None)
+            if nav_auth is not None:
+                src = "payload value.net_account_value"
+
+        if nav_auth is None:
+            nav_auth = posv + cash
+            src = "positions_value + cash_balance"
+
+        nav_fixed = round(float(nav_auth or 0.0), 2)
+
+        # Apply to payload objects
+        try:
+            vobj["positions_value"] = round(posv, 2)
+        except Exception:
+            pass
+        vobj["net_account_value"] = nav_fixed
+        payload["value"] = vobj
+
+        aobj["cash_balance"] = round(float(cash or 0.0), 2)
+        aobj["positions_value"] = round(posv, 2)
+        aobj["nav"] = nav_fixed
+        payload["account"] = aobj
+
+        # ALSO apply to common locals used in return dict construction (if present)
+        L = locals()
+        for name in ("value", "value_obj", "value_block", "vobj"):
+            try:
+                if name in L and isinstance(L[name], dict):
+                    L[name]["positions_value"] = round(posv, 2)
+                    L[name]["net_account_value"] = nav_fixed
+            except Exception:
+                pass
+        for name in ("account", "account_obj", "account_block", "aobj", "acct"):
+            try:
+                if name in L and isinstance(L[name], dict):
+                    L[name]["nav"] = nav_fixed
+            except Exception:
+                pass
+
+        if debug:
+            debug_raw.setdefault("value_debug", {})
+            debug_raw["value_debug"]["nav_fixed"] = nav_fixed
+            debug_raw["value_debug"]["nav_source"] = src
+            debug_raw["value_debug"]["positions_value"] = round(posv, 2)
+            debug_raw["value_debug"]["cash_balance"] = round(float(cash or 0.0), 2)
+    except Exception:
+        pass
     return {
         "ok": True,
         "etrade_ok": etrade_ok,

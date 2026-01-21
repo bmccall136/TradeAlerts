@@ -1894,79 +1894,6 @@ def live_data():
     if debug:
         debug_raw["acct_summary_raw"] = acct_summary_raw
 
-    # --- VALUE TILE NAV SOURCE (E*TRADE acct summary Computed.netAccountValue) ---
-    # Single-source-of-truth: use acct summary Computed.netAccountValue (or totalAccountValue).
-    # Never stomp NAV with 0.0; if missing, keep what was already computed.
-    try:
-        def _ff(x, default=None):
-            try:
-                if x is None or x == "":
-                    return default
-                return float(x)
-            except Exception:
-                return default
-
-        nav_api = None
-        src = None
-
-        ar = debug_raw.get("acct_summary_raw") if isinstance(debug_raw, dict) else None
-        raw = None
-        if isinstance(ar, dict):
-            raw = ar.get("raw") if "raw" in ar else ar
-            if isinstance(raw, dict) and "raw" in raw and isinstance(raw["raw"], dict):
-                raw = raw["raw"]
-
-        comp = (raw.get("Computed") if isinstance(raw, dict) else None)
-        if not isinstance(comp, dict) and isinstance(raw, dict):
-            comp = raw.get("computed")
-
-        if isinstance(comp, dict):
-            for key in ("netAccountValue", "totalAccountValue", "NetAccountValue", "TotalAccountValue"):
-                if key in comp:
-                    nav_api = _ff(comp.get(key), None)
-                    if nav_api is not None and nav_api > 0:
-                        src = f"acct_summary Computed.{key}"
-                        break
-
-        if nav_api is not None and nav_api > 0:
-            # Prefer updating the objects that get returned (value/account),
-            # but keep it safe regardless of construction style.
-            try:
-                if isinstance(payload, dict):
-                    vobj = payload.get("value") or {}
-                    if isinstance(vobj, dict):
-                        vobj["net_account_value"] = round(nav_api, 2)
-                        payload["value"] = vobj
-                    aobj = payload.get("account") or {}
-                    if isinstance(aobj, dict):
-                        aobj["nav"] = round(nav_api, 2)
-                        payload["account"] = aobj
-            except Exception:
-                pass
-
-            # If locals exist, patch them too (common patterns)
-            try:
-                L = locals()
-                for nm in ("value", "value_obj", "value_block"):
-                    if nm in L and isinstance(L[nm], dict):
-                        L[nm]["net_account_value"] = round(nav_api, 2)
-                for nm in ("account", "account_obj", "account_block"):
-                    if nm in L and isinstance(L[nm], dict):
-                        L[nm]["nav"] = round(nav_api, 2)
-            except Exception:
-                pass
-
-        if debug:
-            debug_raw.setdefault("value_debug", {})
-            debug_raw["value_debug"]["nav_source"] = src or "acct_summary missing (no change)"
-            debug_raw["value_debug"]["nav_api"] = (round(nav_api, 2) if (nav_api is not None) else None)
-    except Exception:
-        pass
-
-
-    if not isinstance(comp, dict):
-        comp = {}
-
     cash_balance = _safe_float(
         comp.get("cashBalance")
         or acct_summary_raw.get("cash_balance")
@@ -2564,10 +2491,6 @@ def live_data():
 
     except Exception:
         pass
-
-
-
-
     return {
         "ok": True,
         "etrade_ok": etrade_ok,

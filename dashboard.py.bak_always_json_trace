@@ -1964,9 +1964,6 @@ def live_data():
         pass
 
 
-    if not isinstance(comp, dict):
-        comp = {}
-
     cash_balance = _safe_float(
         comp.get("cashBalance")
         or acct_summary_raw.get("cash_balance")

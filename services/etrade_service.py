@@ -2784,8 +2784,10 @@ def get_account_summary(account_id_key: str | None = None) -> dict:
     if not raw and acct_for_call:
         try:
             url = f"{ETRADE_BASE_URL}/v1/accounts/{acct_for_call}/balance.json"
+            params = {"instType": "BROKERAGE", "realTimeNAV": "true"}
             r = sess.get(
                 url,
+                params=params,
                 headers={"Accept": "application/json"},
                 timeout=15,
             )
