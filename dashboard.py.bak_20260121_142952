@@ -2373,32 +2373,6 @@ def live_data():
                         pass
             return float(total)
 
-            def _as_et(dt):
-                if dt is None:
-                    return None
-                try:
-                    if getattr(dt, "tzinfo", None) is None:
-                        return dt.replace(tzinfo=_ET)
-                    return dt.astimezone(_ET)
-                except Exception:
-                    return None
-
-            start_dt = _as_et(start_dt)
-            if not start_dt:
-                return 0.0
-
-            # Use whichever list exists in this scope
-            seq = locals().get("realized_events") or locals().get("sells") or []
-            total = 0.0
-            for ts, pnl in seq:
-                ts2 = _as_et(ts)
-                if ts2 and ts2 >= start_dt:
-                    try:
-                        total += float(pnl or 0.0)
-                    except Exception:
-                        pass
-            return float(total)
-
         day_pnl   = _sum_since(day_start)
         week_pnl  = _sum_since(week_start)
         month_pnl = _sum_since(month_start)
@@ -2470,32 +2444,6 @@ def live_data():
             except Exception:
                 import datetime as _dt
                 _ET = _dt.timezone(_dt.timedelta(hours=-5))
-
-            def _as_et(dt):
-                if dt is None:
-                    return None
-                try:
-                    if getattr(dt, "tzinfo", None) is None:
-                        return dt.replace(tzinfo=_ET)
-                    return dt.astimezone(_ET)
-                except Exception:
-                    return None
-
-            start_dt = _as_et(start_dt)
-            if not start_dt:
-                return 0.0
-
-            # Use whichever list exists in this scope
-            seq = locals().get("realized_events") or locals().get("sells") or []
-            total = 0.0
-            for ts, pnl in seq:
-                ts2 = _as_et(ts)
-                if ts2 and ts2 >= start_dt:
-                    try:
-                        total += float(pnl or 0.0)
-                    except Exception:
-                        pass
-            return float(total)
 
             def _as_et(dt):
                 if dt is None:
@@ -2648,32 +2596,6 @@ def live_data():
             except Exception:
                 import datetime as _dt
                 _ET = _dt.timezone(_dt.timedelta(hours=-5))
-
-            def _as_et(dt):
-                if dt is None:
-                    return None
-                try:
-                    if getattr(dt, "tzinfo", None) is None:
-                        return dt.replace(tzinfo=_ET)
-                    return dt.astimezone(_ET)
-                except Exception:
-                    return None
-
-            start_dt = _as_et(start_dt)
-            if not start_dt:
-                return 0.0
-
-            # Use whichever list exists in this scope
-            seq = locals().get("realized_events") or locals().get("sells") or []
-            total = 0.0
-            for ts, pnl in seq:
-                ts2 = _as_et(ts)
-                if ts2 and ts2 >= start_dt:
-                    try:
-                        total += float(pnl or 0.0)
-                    except Exception:
-                        pass
-            return float(total)
 
             def _as_et(dt):
                 if dt is None:
