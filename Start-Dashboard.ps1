@@ -1,23 +1,16 @@
-# Start-Dashboard.ps1 — simple, debug-friendly launcher
+# Start-Dashboard.ps1 — simple, debug-friendly launcher (FORCES .\.venv)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
-# Work from this folder
 Set-Location -Path $PSScriptRoot
 
-# Find a Python executable: venv first, then py, then python
-$exe = $null
-$venvPy = Join-Path $PSScriptRoot 'venv\Scripts\python.exe'
-if (Test-Path $venvPy) {
-  $exe = $venvPy
-} elseif (Get-Command py -ErrorAction SilentlyContinue) {
-  $exe = 'py'
-} elseif (Get-Command python -ErrorAction SilentlyContinue) {
-  $exe = 'python'
-}
+# FORCE venv python (project standard: .\.venv)
+$exe = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
 
-if (-not $exe) {
-  Write-Host "❌ Python not found. Install Python or create .\venv" -ForegroundColor Red
+if (-not (Test-Path $exe)) {
+  Write-Host "❌ .\.venv\Scripts\python.exe not found. Create venv first:" -ForegroundColor Red
+  Write-Host "   py -3 -m venv .venv" -ForegroundColor Yellow
+  Write-Host "   .\.venv\Scripts\python.exe -m pip install -r requirements.txt" -ForegroundColor Yellow
   Read-Host "Press Enter to close"
   exit 1
 }
@@ -30,17 +23,12 @@ if (-not (Test-Path $dashboard)) {
   exit 1
 }
 
-# Build args
-$args = @()
-if ($exe -ieq 'py') { $args += '-3' }   # prefer Python 3 via 'py'
-$args += '-u', $dashboard                # -u = unbuffered so logs show immediately
-
 Write-Host ""
-Write-Host "➡️  Launching: $exe $($args -join ' ')" -ForegroundColor Cyan
+Write-Host "➡️  Launching: $exe -u $dashboard" -ForegroundColor Cyan
 Write-Host ""
 
 try {
-  & $exe @args
+  & $exe -u $dashboard
 } catch {
   Write-Host "❌ Launch failed: $($_.Exception.Message)" -ForegroundColor Red
 }

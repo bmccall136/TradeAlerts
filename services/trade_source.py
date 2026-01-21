@@ -423,7 +423,17 @@ def _enrich_fifo_realized_pl(rows: list[dict[str, Any]]) -> list[dict[str, Any]]
                 else:
                     lots[sym][0] = (lot_qty, lot_px)
             if sell_qty > 0:
-                basis_qty += sell_qty  # zero-basis for remainder
+                # Not enough BUY lots in our local FIFO window.
+                # DO NOT invent $0 basis (that turns proceeds into fake "P/L").
+                rr = dict(r)
+                rr["price_paid"] = None
+                rr["amount"] = round(px * basis_qty, 4) if basis_qty else None
+                rr["pl"] = None
+                rr["pl_pct"] = None
+                rr["_poison"] = True
+                out.append(rr)
+                continue
+
             if basis_qty > 0:
                 avg_basis = basis_amt / basis_qty if basis_qty else 0.0
                 realized = (px - avg_basis) * basis_qty
@@ -456,9 +466,10 @@ def load_trades_merged(
     start_dt, end_dt = _date_range(days, start_iso)
     execs = _fetch_executions(start_dt, end_dt, max_count=max_count)
     txns = _fetch_transactions(start_dt, end_dt, max_count=max_count)
-    merged = _merge_dedup(execs + txns)
-    enriched = _enrich_fifo_realized_pl(merged)
-
+    merged_desc = _merge_dedup(execs + txns)  # newest-first (for UI)
+    merged_asc = list(reversed(merged_desc))  # oldest-first (for FIFO)
+    enriched_asc = _enrich_fifo_realized_pl(merged_asc)
+    enriched = list(reversed(enriched_asc))  # back to newest-first (for UI)
     final_rows: list[dict[str, Any]] = []
     for r in enriched[:max_count]:
         dt = _parse_any_dt(r.get("time"))

@@ -1,0 +1,2 @@
+SELL trades (last 3 days): 1
+2026-01-17T23:15:05 TEST 1.0 100.0 1.23

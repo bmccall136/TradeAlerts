@@ -1,0 +1,5 @@
+﻿LATEST_LOG=C:\TradeAlerts\logs\live.log
+LATEST_LOG_TIME=01/20/2026 11:03:53
+TOTAL_HITS=0
+HIT_SAMPLES=
+(no matches in .\logs)

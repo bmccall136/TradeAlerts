@@ -1,156 +1,265 @@
 ﻿# C:\TradeAlerts\services\data_fetch.py
-# Historical candle fetch for indicators.
-# LIVE last price MUST come from E*TRADE (handled elsewhere).
-#
-# This module supports:
-#   - fetch_data(symbol, period, interval) via yfinance (historical only)
-#   - fetch_json(url, ...) via requests for HTTP endpoints
-#   - fetch_data_with_timeout(...) compatibility shim used by market_service
-#
-# Guards:
-#   - If LIVE_SAFE_MODE=1 or MM_DISABLE_YF=1, symbol-based candles return empty DF
-#     (prevents any external market-data calls in emergencies)
+"""
+DATA FETCH POLICY (HARD RULE):
+  - Yahoo/yfinance is allowed ONLY for INTRADAY bars (indicator helpers like VWAP).
+  - EVERYTHING else must go through E*TRADE. No Yahoo fallback for live price, account,
+    positions, orders, etc.
+
+This module therefore:
+  - Provides fetch_intraday_vwap() using yfinance with:
+      * global 429 circuit breaker
+      * per-call throttle
+      * per-symbol caching
+  - Disables historical yfinance fetches by default (enforcing the rule).
+    If you absolutely need historical from Yahoo for non-live tools, set:
+      $env:YAHOO_HISTORICAL_OK="1"
+"""
 
 from __future__ import annotations
 
 import os
+import time
+import threading
+from dataclasses import dataclass
+from typing import Any, Optional
+
 import logging
-from typing import Any, Dict, Optional
 
-import pandas as pd
-import requests
+log = logging.getLogger(__name__)
 
-log = logging.getLogger("data_fetch")
+# --- Config / Hard Rules ------------------------------------------------------
+
+# Intraday Yahoo is allowed (but protected).
+YAHOO_INTRADAY_OK = True
+
+# Historical Yahoo is DISABLED by default (hard rule enforcement).
+# If you need it for non-LIVE tooling, override via env var.
+YAHOO_HISTORICAL_OK = os.environ.get("YAHOO_HISTORICAL_OK", "").strip() == "1"
+
+# Throttle between Yahoo calls (seconds). Tune if needed.
+YAHOO_MIN_GAP_S = float(os.environ.get("YAHOO_MIN_GAP_S", "0.50"))
+
+# Circuit breaker duration after a suspected 429 (seconds).
+YAHOO_BREAKER_S = int(os.environ.get("YAHOO_BREAKER_S", "600"))
+
+# Per-symbol cache TTL (seconds) for intraday VWAP.
+INTRADAY_CACHE_TTL_S = int(os.environ.get("INTRADAY_CACHE_TTL_S", "60"))
+
+# -----------------------------------------------------------------------------
 
 
-def _looks_like_url(s: str) -> bool:
-    return s.startswith("http://") or s.startswith("https://")
+@dataclass
+class _BreakerState:
+    blocked_until: float = 0.0
+    last_log_at: float = 0.0
 
 
-def _safe_empty_df() -> pd.DataFrame:
-    return pd.DataFrame()
+_breaker = _BreakerState()
+_last_call_at = 0.0
+_call_lock = threading.Lock()
+
+# Cache: symbol -> (timestamp, vwap_value)
+_intraday_vwap_cache: dict[str, tuple[float, float]] = {}
+_cache_lock = threading.Lock()
 
 
-def _yf_enabled() -> bool:
-    # Hard kill switch if you need to guarantee no market-data calls
-    if os.getenv("LIVE_SAFE_MODE", "").strip().lower() in ("1", "true", "yes"):
-        return False
-    if os.getenv("MM_DISABLE_YF", "").strip().lower() in ("1", "true", "yes"):
-        return False
-    return True
+def _now() -> float:
+    return time.time()
 
 
-# ── SYMBOL BAR FETCH (historical candles for indicators) ──────────────────────
-def fetch_data(symbol: str, period: str = "1d", interval: str = "1m") -> pd.DataFrame:
+def _is_blocked() -> bool:
+    return _now() < _breaker.blocked_until
+
+
+def _trip_breaker(reason: str) -> None:
+    _breaker.blocked_until = _now() + float(YAHOO_BREAKER_S)
+
+    # Log at most once every 30s while blocked to avoid spam
+    if (_now() - _breaker.last_log_at) > 30:
+        until = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(_breaker.blocked_until))
+        log.warning("YAHOO BLOCKED (%s) -> backing off until %s", reason, until)
+        _breaker.last_log_at = _now()
+
+
+def _throttle() -> None:
+    global _last_call_at
+    with _call_lock:
+        gap = (_last_call_at + float(YAHOO_MIN_GAP_S)) - _now()
+        if gap > 0:
+            time.sleep(gap)
+        _last_call_at = _now()
+
+
+def _looks_like_429(err: Exception | str) -> bool:
+    s = str(err).lower()
+    # Common strings seen in yfinance / upstream responses
+    return (
+        "429" in s
+        or "too many requests" in s
+        or "edge: too many requests" in s
+        or "rate limit" in s
+    )
+
+
+# -----------------------------------------------------------------------------
+# HISTORICAL FETCH (DISABLED BY DEFAULT)
+# -----------------------------------------------------------------------------
+
+def fetch_data_with_timeout(
+    symbol: str,
+    period: str = "6mo",
+    interval: str = "1d",
+    timeout_s: float = 12.0,
+) -> Any:
     """
-    Fetch historical candles for a symbol (for indicators only).
-
-    Returns a pandas DataFrame (may be empty if unavailable or disabled).
-    Columns typically: Open, High, Low, Close, Adj Close, Volume
+    Historical bars for indicators.
+    HARD RULE: Yahoo is NOT allowed for historical in LIVE.
+    This function is DISABLED by default and returns None unless YAHOO_HISTORICAL_OK=1.
     """
-    sym = (symbol or "").strip().upper()
-    if not sym:
-        return _safe_empty_df()
+    if not YAHOO_HISTORICAL_OK:
+        # Enforce rule: historical must come from E*TRADE (elsewhere in the codebase).
+        return None
 
-    if not _yf_enabled():
-        return _safe_empty_df()
+    # If you enabled historical Yahoo, still protect it from 429.
+    if _is_blocked():
+        return None
 
     try:
-        import yfinance as yf  # type: ignore
+        import yfinance as yf  # local import (only if explicitly enabled)
     except Exception as e:
-        log.warning("yfinance not available (%s) -> returning empty DF", e)
-        return _safe_empty_df()
+        log.error("yfinance import failed (historical): %s", e)
+        return None
 
     try:
-        # Use yf.download (works for tickers + ETFs). progress False to keep logs clean.
+        _throttle()
+        t0 = _now()
+
+        # yfinance doesn't honor a direct timeout everywhere; we keep it simple here.
         df = yf.download(
-            tickers=sym,
+            symbol,
             period=period,
             interval=interval,
             progress=False,
-            auto_adjust=False,
             threads=False,
         )
-        if df is None or df.empty:
-            return _safe_empty_df()
 
-        # yfinance can return multi-index columns in some cases; normalize to simple columns.
-        if hasattr(df.columns, "nlevels") and getattr(df.columns, "nlevels", 1) > 1:
-            # Keep first level name like ('Close','SPY') -> 'Close'
-            df.columns = [c[0] if isinstance(c, tuple) else str(c) for c in df.columns]
+        if df is None or len(df) == 0:
+            # Empty often indicates upstream issues; don't assume delisted.
+            # If Yahoo is throttling, yfinance may not always surface 429 explicitly.
+            # We conservatively trip breaker on repeated empties only if we see 429 hints.
+            return None
 
-        # Ensure standard column names exist
-        # (market_service lowercases later; we leave them as-is here)
+        # Soft timeout: if it took too long, just return what we got.
+        _ = (t0, timeout_s)  # keep signature stable / placeholder for future hard timeout
         return df
 
     except Exception as e:
-        log.warning("fetch_data(%s, period=%s, interval=%s) failed: %s", sym, period, interval, e)
-        return _safe_empty_df()
+        if _looks_like_429(e):
+            _trip_breaker(f"429/historical: {e}")
+            return None
+        log.exception("fetch_data_with_timeout failed (%s): %s", symbol, e)
+        return None
 
 
-# ── HTTP FETCH (JSON/TEXT) ────────────────────────────────────────────────────
-def fetch_json(
-    url: str,
-    *,
-    timeout: float = 10.0,
-    headers: Optional[Dict[str, str]] = None,
-    params: Optional[Dict[str, Any]] = None,
-    method: str = "GET",
-) -> Any:
+# -----------------------------------------------------------------------------
+# INTRADAY VWAP (YAHOO ALLOWED, PROTECTED)
+# -----------------------------------------------------------------------------
+
+def fetch_intraday_vwap(
+    symbol: str,
+    lookback_minutes: int = 30,
+    cache_ttl_s: int = INTRADAY_CACHE_TTL_S,
+) -> Optional[float]:
     """
-    Simple HTTP fetch with timeout + safe JSON handling.
-    Returns parsed JSON when possible, otherwise raw text.
+    Yahoo/yfinance is allowed ONLY here (intraday).
+    Returns VWAP over the last `lookback_minutes` of 1m bars.
+    Protected by:
+      - circuit breaker on 429
+      - throttle
+      - per-symbol cache
     """
-    m = (method or "GET").upper()
-    if m == "POST":
-        r = requests.post(url, headers=headers, params=params, timeout=timeout)
-    else:
-        r = requests.get(url, headers=headers, params=params, timeout=timeout)
+    if not YAHOO_INTRADAY_OK:
+        return None
 
-    r.raise_for_status()
+    sym = (symbol or "").strip().upper()
+    if not sym:
+        return None
+
+    # Cache hit
+    if cache_ttl_s and cache_ttl_s > 0:
+        with _cache_lock:
+            hit = _intraday_vwap_cache.get(sym)
+            if hit:
+                ts, v = hit
+                if (_now() - ts) <= float(cache_ttl_s):
+                    return float(v)
+
+    # Circuit breaker
+    if _is_blocked():
+        return None
 
     try:
-        return r.json()
-    except Exception:
-        return r.text
+        import yfinance as yf
+    except Exception as e:
+        log.error("yfinance import failed (intraday): %s", e)
+        return None
 
+    try:
+        _throttle()
 
-# ── COMPAT SHIM (market_service dependency) ───────────────────────────────────
-def fetch_data_with_timeout(
-    target: Optional[str] = None,
-    *,
-    symbol: Optional[str] = None,
-    url: Optional[str] = None,
-    timeout: float = 10.0,
-    headers: Optional[Dict[str, str]] = None,
-    params: Optional[Dict[str, Any]] = None,
-    method: str = "GET",
-    period: str = "6mo",
-    interval: str = "1d",
-) -> Any:
-    """
-    Backward-compatible entry point.
-
-    Behavior:
-      - If input looks like http/https → HTTP fetch (fetch_json)
-      - Otherwise → treat as symbol and return OHLCV DataFrame via fetch_data()
-
-    Notes:
-      - LIVE price is NOT fetched here.
-      - Bars are historical for indicators only.
-    """
-    chosen = (symbol or url or target or "").strip()
-    if not chosen:
-        raise TypeError("fetch_data_with_timeout() requires a symbol or url/target")
-
-    if _looks_like_url(chosen):
-        return fetch_json(
-            chosen,
-            timeout=timeout,
-            headers=headers,
-            params=params,
-            method=method,
+        # Use 1d/1m; yfinance is less reliable with range=1d chart params directly.
+        df = yf.download(
+            sym,
+            period="1d",
+            interval="1m",
+            progress=False,
+            threads=False,
         )
 
-    # Symbol path
-    return fetch_data(chosen, period=period, interval=interval)
+        if df is None or len(df) == 0:
+            # Empty could be throttle. Trip breaker only if we can infer 429 from exception text
+            # (no exception here), so we just return None silently.
+            return None
+
+        # Normalize columns
+        cols = {c.lower(): c for c in df.columns}
+        # yfinance usually gives: Open High Low Close Adj Close Volume
+        close_c = cols.get("close")
+        high_c = cols.get("high")
+        low_c = cols.get("low")
+        vol_c = cols.get("volume")
+
+        if not (close_c and high_c and low_c and vol_c):
+            return None
+
+        # Keep only last N minutes
+        n = max(2, int(lookback_minutes))
+        tail = df.tail(n)
+
+        vol = tail[vol_c].astype(float)
+        total_vol = float(vol.sum())
+        if total_vol <= 0:
+            return None
+
+        typical = (tail[high_c].astype(float) + tail[low_c].astype(float) + tail[close_c].astype(float)) / 3.0
+        vwap = float((typical * vol).sum() / total_vol)
+
+        # Cache store
+        if cache_ttl_s and cache_ttl_s > 0:
+            with _cache_lock:
+                _intraday_vwap_cache[sym] = (_now(), vwap)
+
+        return vwap
+
+    except Exception as e:
+        if _looks_like_429(e):
+            _trip_breaker(f"429/intraday: {e}")
+            return None
+        # yfinance sometimes wraps upstream html in errors; treat "possibly delisted" as non-fatal.
+        msg = str(e).lower()
+        if "possibly delisted" in msg or "no price data found" in msg:
+            # Do NOT spam logs; this is often just Yahoo throttling/HTML.
+            return None
+
+        log.exception("fetch_intraday_vwap failed (%s): %s", sym, e)
+        return None

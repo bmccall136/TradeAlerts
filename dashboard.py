@@ -1143,30 +1143,34 @@ def normalize_positions_payload(raw):
 
 def _sync_realized_from_trades(trades: list, db_path: str) -> None:
     """
-    Canonical realized P&L source:
-      - We log SELL executions into trades with a numeric pnl.
-      - This function mirrors those SELL rows into realized_trades so the UI
-        can bucket realized P&L from the local DB.
+    Mirror realized SELL rows into live.db.realized_trades.
 
-    It is SAFE to call repeatedly: it de-dupes by (symbol, close_date, qty, gain, price_sold).
+    Fixes:
+      - Never reference 'gain' before assignment.
+      - Use correct realized dollars from trade dict (pnl/pl/gain), NOT price.
+      - Do not skip sells just because price_paid is missing (that created gaps/poison).
+      - If realized_trades has proceeds/total_cost/cost_share/etc, populate when possible.
     """
     if not trades:
         return
 
     import sqlite3
+    import re
+    import logging
 
-    def _f(x, default=0.0):
+    LOG = logging.getLogger("dashboard.realized_sync")
+
+    def _f(x, default=None):
         try:
             if x is None or x == "":
-                return float(default)
+                return default
             return float(x)
         except Exception:
-            return float(default)
+            return default
 
     def _s(x):
         return (str(x).strip() if x is not None else "")
 
-    # Collect SELL rows with pnl
     rows = []
     for t in trades:
         if not isinstance(t, dict):
@@ -1176,16 +1180,10 @@ def _sync_realized_from_trades(trades: list, db_path: str) -> None:
         if act != "SELL":
             continue
 
-        gain = _f(t.get("pnl") or t.get("gain") or t.get("pl") or 0.0, 0.0)
-        # only mirror rows that actually have a realized pnl value
-        if gain == 0.0:
-            continue
-
         sym = _s(t.get("symbol")).upper()
         if not sym:
             continue
 
-        # timestamp key varies; use whatever you store
         close_date = _s(
             t.get("trade_time")
             or t.get("time")
@@ -1196,134 +1194,144 @@ def _sync_realized_from_trades(trades: list, db_path: str) -> None:
         if not close_date:
             continue
 
-        qty = _f(t.get("qty") or t.get("quantity") or 0.0, 0.0)
-        if qty <= 0:
+        # Normalize timestamps for SQLite bucketing:
+        cd = close_date.replace("T", " ").strip()
+        cd = re.sub(r"(Z|[+-]\d{2}:\d{2})$", "", cd).strip()
+        cd = re.sub(r"\.\d+$", "", cd).strip()
+        close_date = cd
+
+        qty = _f(t.get("qty") or t.get("quantity"), None)
+        if qty is None or qty <= 0:
             continue
 
-        price_sold = _f(t.get("price") or t.get("price_sold") or 0.0, 0.0)
+        price_sold = _f(t.get("price") or t.get("price_sold"), None)
+        price_sold_db = (price_sold if (price_sold is not None and price_sold > 0) else None)
 
-        # If sell price wasn't captured (0.0), still log realized dollars.
-        # We'll leave cost/proceeds fields NULL so we don't invent math.
-        if price_sold > 0:
-            proceeds = qty * price_sold
-            total_cost = proceeds - gain
-            cost_share = (total_cost / qty) if qty else 0.0
-            gain_pct = (gain / total_cost * 100.0) if total_cost else 0.0
-            price_share = price_sold
-            price_sold_db = price_sold
-        else:
-            proceeds = None
-            total_cost = None
-            cost_share = None
-            gain_pct = None
-            price_share = None
-            price_sold_db = None
+        # cost basis per share if available
+        cost_share = _f(t.get("price_paid") or t.get("cost_share") or t.get("costPerShare"), None)
 
-        # Optional fields if present
-        price_paid = t.get("price_paid")
-        price_paid = _f(price_paid, 0.0) if (price_paid not in (None, "")) else None
+        # Prefer authoritative realized dollars from the trade record
+        gain = _f(t.get("pnl"), None)
+        if gain is None:
+            gain = _f(t.get("pl"), None)
+        if gain is None:
+            gain = _f(t.get("gain"), None)
 
-        rows.append(
-            (
-                sym,
-                "SELL",
-                qty,
-                close_date,
-                price_share,
-                proceeds,
-                cost_share,
-                total_cost,
-                gain,
-                price_paid,
-                price_sold_db,
-                gain_pct,
-            )
-        )
+        # If no explicit realized dollars, compute from price_sold - cost_share when possible
+        proceeds = None
+        total_cost = None
+        if price_sold_db is not None:
+            proceeds = price_sold_db * qty
+        if cost_share is not None:
+            total_cost = cost_share * qty
+        if gain is None and (proceeds is not None and total_cost is not None):
+            gain = proceeds - total_cost
+
+        # If STILL no gain, skip (we won't invent)
+        if gain is None:
+            continue
+
+        # open_date is not reliably available here; for bucketing, using close_date is fine.
+        open_date = _s(t.get("open_date") or t.get("opened") or "") or close_date
+
+        # Pack a dict so we can insert only columns that exist.
+        rows.append({
+            "symbol": sym,
+            "action": "SELL",
+            "qty": float(qty),
+            "open_date": open_date,
+            "close_date": close_date,
+            "gain": float(gain),
+            "price_sold": (float(price_sold_db) if price_sold_db is not None else None),
+            "cost_share": (float(cost_share) if cost_share is not None else None),
+            "proceeds": (float(proceeds) if proceeds is not None else None),
+            "total_cost": (float(total_cost) if total_cost is not None else None),
+        })
 
     if not rows:
         return
 
-    con = sqlite3.connect(db_path)
     try:
+        con = sqlite3.connect(db_path)
         cur = con.cursor()
 
-        # Ensure table exists (matches your schema)
-        cur.execute(
-            """
+        # If table doesn't exist, create a minimal compatible one.
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS realized_trades (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 symbol TEXT,
-                action TEXT,
+                action TEXT NOT NULL,
                 qty REAL,
                 open_date TEXT,
                 close_date TEXT,
-                price_share REAL,
-                proceeds REAL,
-                cost_share REAL,
-                total_cost REAL,
                 gain REAL,
-                term TEXT,
-                price_paid REAL,
-                price_sold REAL,
-                gain_pct REAL
+                price_sold REAL
             )
-            """
-        )
+        """)
 
-        # De-dupe: create a soft unique index if missing
-        cur.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_realized_dedupe
-            ON realized_trades(symbol, close_date, qty, gain)
-            """
-        )
+        cols = [r[1] for r in cur.execute("PRAGMA table_info(realized_trades)").fetchall()]
+        colset = set(cols)
 
-        # Insert if not already present
+        # Insert only columns that exist in THIS DB.
+        wanted = [
+            "symbol","action","qty","open_date","close_date",
+            "gain","price_sold",
+            # optional extended columns (if present)
+            "cost_share","proceeds","total_cost",
+            "price_paid","price_share","price_sold"
+        ]
+        insert_cols = [c for c in wanted if c in colset]
+        if not insert_cols:
+            LOG.warning("realized_sync: realized_trades exists but has no usable columns? cols=%s", cols)
+            con.close()
+            return
+
+        # De-dupe using whatever columns exist (prefer close_date+qty+gain+price_sold)
+        dedupe_cols = [c for c in ["symbol","action","close_date","qty","gain","price_sold"] if c in colset]
+        if not dedupe_cols:
+            dedupe_cols = [c for c in ["symbol","action","close_date"] if c in colset]
+
+        def exists_row(vals: dict) -> bool:
+            where = []
+            args = []
+            for c in dedupe_cols:
+                if c == "price_sold" and vals.get(c) is None:
+                    where.append("price_sold IS NULL")
+                else:
+                    where.append(f"{c}=?")
+                    args.append(vals.get(c))
+            q = "SELECT 1 FROM realized_trades WHERE " + " AND ".join(where) + " LIMIT 1"
+            return cur.execute(q, args).fetchone() is not None
+
+        ins = 0
         for r in rows:
-            (sym, action, qty, close_date, price_share, proceeds, cost_share, total_cost, gain, price_paid, price_sold, gain_pct) = r
+            # Map some synonym columns if present
+            if "price_paid" in colset and r.get("cost_share") is not None:
+                r["price_paid"] = r["cost_share"]
+            if "price_share" in colset and r.get("cost_share") is not None:
+                r["price_share"] = r["cost_share"]
 
-            cur.execute(
-                """
-                SELECT 1 FROM realized_trades
-                WHERE symbol=? AND close_date=? AND qty=? AND gain=?
-                LIMIT 1
-                """,
-                (sym, close_date, qty, gain, price_sold),
-            )
-            if cur.fetchone():
+            if exists_row(r):
                 continue
 
-            cur.execute(
-                """
-                INSERT INTO realized_trades
-                  (symbol, action, qty, open_date, close_date, price_share,
-                   proceeds, cost_share, total_cost, gain, term,
-                   price_paid, price_sold, gain_pct)
-                VALUES
-                  (?,      ?,      ?,   NULL,     ?,         ?,
-                   ?,       ?,         ?,         ?,    NULL,
-                   ?,         ?,         ?)
-                """,
-                (
-                    sym,
-                    action,
-                    qty,
-                    close_date,
-                    price_share,
-                    proceeds,
-                    cost_share,
-                    total_cost,
-                    gain,
-                    price_paid,
-                    price_sold,
-                    gain_pct,
-                ),
-            )
+            qcols = ", ".join(insert_cols)
+            ph = ", ".join(["?"] * len(insert_cols))
+            q = f"INSERT INTO realized_trades ({qcols}) VALUES ({ph})"
+            cur.execute(q, [r.get(c) for c in insert_cols])
+            ins += 1
 
         con.commit()
-    finally:
         con.close()
 
+        if ins:
+            LOG.info("realized_sync: inserted %d realized rows into %s", ins, db_path)
+
+    except Exception as exc:
+        try:
+            LOG.exception("realized_sync failed: %s", exc)
+        except Exception:
+            pass
+        return
 def _positions_rows_from_any(raw: Any) -> list[dict]:
     """
     Coerce whatever we got back (None / dict / list) into normalized position rows.
@@ -2073,7 +2081,26 @@ def live_data():
 
     # ---------- 6) REALIZED P&L ----------
     try:
-        _denom_value = float((account or {}).get("nav") or (value_obj or {}).get("net_account_value") or 0.0)
+        # Denominator for realized P&L % should be account value (NOT positions value).
+        _denom_value = 0.0
+        try:
+            vobj = (payload.get("value") or {}) if isinstance(payload, dict) else {}
+            for k in ("net_account_value","total_account_value","totalAccountValue","netAccountValue","account_value","nav"):
+                x = vobj.get(k)
+                if x not in (None, ""):
+                    _denom_value = float(x)
+                    break
+            if _denom_value <= 0:
+                # fallback: account summary block if present
+                aobj = (payload.get("account") or {}) if isinstance(payload, dict) else {}
+                for k in ("net_account_value","total_account_value","totalAccountValue","netAccountValue"):
+                    x = aobj.get(k)
+                    if x not in (None, ""):
+                        _denom_value = float(x)
+                        break
+        except Exception:
+            _denom_value = 0.0
+
     except Exception:
         _denom_value = 0.0
 
@@ -2151,6 +2178,319 @@ def live_data():
     if debug:
         payload["debug_raw"] = debug_raw
 
+        # --- Realized P&L (UI) computed from live.db trades using FIFO (authoritative; ignores poisoned pnl) ---
+    try:
+        import sqlite3
+        from datetime import datetime, timedelta
+        from collections import defaultdict, deque
+
+        def _parse_dt(x):
+            if not x:
+                return None
+            t = str(x).replace("T", " ").split(".")[0].strip()
+            try:
+                return datetime.fromisoformat(t)
+            except Exception:
+                return None
+
+        now = datetime.now()
+        day_start   = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start  = day_start - timedelta(days=day_start.weekday())  # Monday 00:00
+        month_start = day_start.replace(day=1)
+        all_start   = datetime(2025, 8, 22, 0, 0, 0)
+
+        db_path = None
+        for name in ("LIVE_DB", "DB_PATH"):
+            if name in globals():
+                try:
+                    db_path = str(globals()[name])
+                    break
+                except Exception:
+                    pass
+        if not db_path:
+            db_path = r"C:\TradeAlerts\live.db"
+
+        con = sqlite3.connect(db_path)
+        cur = con.cursor()
+        rows = cur.execute("""
+          SELECT id, trade_time, symbol, action, qty, price
+          FROM trades
+          ORDER BY trade_time ASC, id ASC
+        """).fetchall()
+        con.close()
+
+        lots = defaultdict(deque)   # symbol -> deque([qty_remaining, cost_per_share])
+        realized_events = []        # (ts, pnl)
+        missing_basis_sells = 0
+
+        for _id, trade_time, sym, act, qty, price in rows:
+            ts = _parse_dt(trade_time)
+            if ts is None:
+                continue
+            sym = (sym or "").strip().upper()
+            act = (act or "").strip().upper()
+            try:
+                q = float(qty or 0.0)
+                px = float(price or 0.0)
+            except Exception:
+                continue
+            if q <= 0 or px <= 0:
+                continue
+
+            if act == "BUY":
+                lots[sym].append([q, px])
+                continue
+
+            if act != "SELL":
+                continue
+
+            sell_qty = q
+            pnl = 0.0
+
+            while sell_qty > 1e-9 and lots[sym]:
+                lot_qty, lot_px = lots[sym][0]
+                take = lot_qty if lot_qty < sell_qty else sell_qty
+                pnl += (px - lot_px) * take
+                lot_qty -= take
+                sell_qty -= take
+                if lot_qty <= 1e-9:
+                    lots[sym].popleft()
+                else:
+                    lots[sym][0][0] = lot_qty
+
+            if sell_qty > 1e-9:
+                # No basis available in DB history; do NOT invent pnl
+                missing_basis_sells += 1
+                continue
+
+            realized_events.append((ts, pnl))
+
+        def _sum_since(start_dt):
+            return float(sum(p for ts, p in realized_events if ts >= start_dt))
+
+        day_pnl   = _sum_since(day_start)
+        week_pnl  = _sum_since(week_start)
+        month_pnl = _sum_since(month_start)
+        all_pnl   = _sum_since(all_start)
+
+        denom = 0.0
+        try:
+            vobj = (payload.get("value") or {}) if isinstance(payload, dict) else {}
+            for k in ("net_account_value","total_account_value","totalAccountValue","netAccountValue","nav","account_value"):
+                x = vobj.get(k)
+                if x not in (None, ""):
+                    denom = float(x)
+                    break
+        except Exception:
+            denom = 0.0
+
+        def _pct(pnl):
+            return (float(pnl) / denom * 100.0) if denom and denom > 0 else 0.0
+
+        payload["realized"] = {
+            "day":   {"pnl": round(day_pnl, 2),   "pct": _pct(day_pnl)},
+            "week":  {"pnl": round(week_pnl, 2),  "pct": _pct(week_pnl)},
+            "month": {"pnl": round(month_pnl, 2), "pct": _pct(month_pnl)},
+            "all":   {"pnl": round(all_pnl, 2),   "pct": _pct(all_pnl)},
+        }
+
+        if debug:
+            debug_raw.setdefault("realized_debug", {})
+            debug_raw["realized_debug"]["db_path"] = db_path
+            debug_raw["realized_debug"]["fifo_sell_events_used"] = len(realized_events)
+            debug_raw["realized_debug"]["fifo_sells_missing_basis"] = missing_basis_sells
+
+    except Exception:
+        pass
+        if not db_path:
+            db_path = r"C:\TradeAlerts\live.db"
+
+        con = sqlite3.connect(db_path)
+        cur = con.cursor()
+        rows = cur.execute("""
+          SELECT trade_time, action, pnl
+          FROM trades
+          ORDER BY trade_time DESC
+          LIMIT 8000
+        """).fetchall()
+        con.close()
+
+        sells = []
+        missing = 0
+        for trade_time, action, pnl in rows:
+            if str(action).upper() != "SELL":
+                continue
+            ts = _parse_dt(trade_time)
+            if ts is None:
+                continue
+            if pnl is None:
+                missing += 1
+                continue
+            try:
+                sells.append((ts, float(pnl)))
+            except Exception:
+                missing += 1
+
+        def _sum_since(start_dt):
+            return float(sum(p for ts, p in sells if ts >= start_dt))
+
+        day_pnl   = _sum_since(day_start)
+        week_pnl  = _sum_since(week_start)
+        month_pnl = _sum_since(month_start)
+        all_pnl   = _sum_since(all_start)
+
+        # Percent denom: prefer account value block
+        denom = 0.0
+        try:
+            vobj = (payload.get("value") or {}) if isinstance(payload, dict) else {}
+            for k in ("net_account_value","total_account_value","totalAccountValue","netAccountValue","nav","account_value"):
+                x = vobj.get(k)
+                if x not in (None, ""):
+                    denom = float(x)
+                    break
+        except Exception:
+            denom = 0.0
+
+        def _pct(pnl):
+            return (float(pnl) / denom * 100.0) if denom and denom > 0 else 0.0
+
+        payload["realized"] = {
+            "day":   {"pnl": round(day_pnl, 2),   "pct": _pct(day_pnl)},
+            "week":  {"pnl": round(week_pnl, 2),  "pct": _pct(week_pnl)},
+            "month": {"pnl": round(month_pnl, 2), "pct": _pct(month_pnl)},
+            "all":   {"pnl": round(all_pnl, 2),   "pct": _pct(all_pnl)},
+        }
+
+        if debug:
+            debug_raw.setdefault("realized_debug", {})
+            debug_raw["realized_debug"]["db_path"] = db_path
+            debug_raw["realized_debug"]["sell_rows_used"] = len(sells)
+            debug_raw["realized_debug"]["sell_rows_missing_pnl"] = missing
+
+    except Exception:
+        pass
+    # --- FINAL Realized P&L override (realized_trades hybrid: (proceeds-total_cost) else gain) ---
+    # Runs late in live_data() and wins. Avoids poisoned gain=0 rows by preferring proceeds-total_cost when present.
+    try:
+        import sqlite3
+        from datetime import datetime, timedelta, timezone
+
+        def _parse_dt(x):
+            if not x:
+                return None
+            t = str(x).replace("T", " ").split(".")[0].strip()
+            try:
+                ts = datetime.fromisoformat(t)
+            except Exception:
+                return None
+            if getattr(ts, "tzinfo", None) is not None:
+                ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
+            return ts
+
+        def _f(x):
+            try:
+                if x is None or x == "":
+                    return None
+                return float(x)
+            except Exception:
+                return None
+
+        now = datetime.now()
+        day_start   = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start  = day_start - timedelta(days=day_start.weekday())
+        month_start = day_start.replace(day=1)
+        all_start   = datetime(2025, 8, 22, 0, 0, 0)
+
+        db_path = None
+        for name in ("LIVE_DB", "DB_PATH"):
+            if name in globals():
+                try:
+                    db_path = str(globals()[name])
+                    break
+                except Exception:
+                    pass
+        if not db_path:
+            db_path = r"C:\TradeAlerts\live.db"
+
+        con = sqlite3.connect(db_path)
+        cur = con.cursor()
+
+        # Pull what we need (columns exist in your DB)
+        rows = cur.execute("""
+          SELECT close_date, proceeds, total_cost, gain
+          FROM realized_trades
+          ORDER BY close_date DESC
+          LIMIT 20000
+        """).fetchall()
+        con.close()
+
+        events = []
+        used_pc = 0
+        used_gain = 0
+        bad = 0
+
+        for close_date, proceeds, total_cost, gain in rows:
+            ts = _parse_dt(close_date)
+            if ts is None:
+                bad += 1
+                continue
+
+            p = _f(proceeds)
+            c = _f(total_cost)
+            g = _f(gain)
+
+            if p is not None and c is not None:
+                events.append((ts, p - c))
+                used_pc += 1
+                continue
+
+            if g is not None:
+                events.append((ts, g))
+                used_gain += 1
+                continue
+
+            bad += 1
+
+        def _sum_since(start_dt):
+            return float(sum(val for ts, val in events if ts >= start_dt))
+
+        day_pnl   = _sum_since(day_start)
+        week_pnl  = _sum_since(week_start)
+        month_pnl = _sum_since(month_start)
+        all_pnl   = _sum_since(all_start)
+
+        denom = 0.0
+        try:
+            aobj = (payload.get("account") or {}) if isinstance(payload, dict) else {}
+            vobj = (payload.get("value") or {}) if isinstance(payload, dict) else {}
+            for x in (aobj.get("nav"), vobj.get("net_account_value")):
+                if x not in (None, ""):
+                    denom = float(x)
+                    break
+        except Exception:
+            denom = 0.0
+
+        def _pct(pnl):
+            return (float(pnl) / denom * 100.0) if denom and denom > 0 else 0.0
+
+        payload["realized"] = {
+            "day":   {"pnl": round(day_pnl, 2),   "pct": _pct(day_pnl)},
+            "week":  {"pnl": round(week_pnl, 2),  "pct": _pct(week_pnl)},
+            "month": {"pnl": round(month_pnl, 2), "pct": _pct(month_pnl)},
+            "all":   {"pnl": round(all_pnl, 2),   "pct": _pct(all_pnl)},
+        }
+
+        if debug:
+            debug_raw.setdefault("realized_debug", {})
+            debug_raw["realized_debug"]["source"] = "realized_trades hybrid pc_else_gain"
+            debug_raw["realized_debug"]["db_path"] = db_path
+            debug_raw["realized_debug"]["rows_used"] = len(events)
+            debug_raw["realized_debug"]["used_proceeds_cost"] = used_pc
+            debug_raw["realized_debug"]["used_gain_fallback"] = used_gain
+            debug_raw["realized_debug"]["bad_rows"] = bad
+
+    except Exception:
+        pass
     return {
         "ok": True,
         "etrade_ok": etrade_ok,
@@ -2321,4 +2661,110 @@ if __name__ == "__main__":
 # --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
 def normalize_positions_payload(raw):
     return normalize_positions_payload(raw)
+
+
+# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+
+try:
+
+    for t in trades or []:
+
+        if not isinstance(t, dict):
+
+            continue
+
+        if str(t.get("action","")).upper() != "SELL":
+
+            continue
+
+        qty = t.get("qty")
+
+        price = t.get("price")
+
+        paid = t.get("price_paid")
+
+        if qty in (None,"") or price in (None,"") or paid in (None,""):
+
+            continue
+
+        qty = float(qty)
+
+        price = float(price)
+
+        paid = float(paid)
+
+        if qty <= 0:
+
+            continue
+
+        pl = (price - paid) * qty
+
+        t["pl"] = pl
+
+        denom = (paid * qty)
+
+        t["pl_pct"] = (pl / denom * 100.0) if denom else None
+
+except Exception:
+
+    pass
+
+
+# --- Realized P/L hygiene: recompute SELL pl from (price - price_paid)*qty; poison SELLs get pl=None ---
+
+try:
+
+    for t in trades or []:
+
+        if not isinstance(t, dict):
+
+            continue
+
+        if str(t.get("action","")).upper() != "SELL":
+
+            continue
+
+        qty = t.get("qty")
+
+        price = t.get("price")
+
+        paid = t.get("price_paid")
+
+        # If we don't have a valid cost basis, do NOT allow this SELL to contribute to realized math.
+
+        if paid in (None,"") or float(paid) <= 0.0001:
+
+            t["_poison"] = True
+
+            t["pl"] = None
+
+            t["pl_pct"] = None
+
+            continue
+
+        if qty in (None,"") or price in (None,""):
+
+            continue
+
+        qty = float(qty)
+
+        price = float(price)
+
+        paid = float(paid)
+
+        if qty <= 0:
+
+            continue
+
+        pl = (price - paid) * qty
+
+        t["pl"] = pl
+
+        denom = (paid * qty)
+
+        t["pl_pct"] = (pl / denom * 100.0) if denom else None
+
+except Exception:
+
+    pass
 

@@ -4,7 +4,7 @@
   "macd_on": true,
   "bb_on": true,
   "vol_on": true,
-  "vwap_on": true,
+  "vwap_on": false,
   "news_on": false,
   "sma_length": 8,
   "rsi_len": 7,
@@ -51,7 +51,7 @@
     "adx",
     "vol"
   ],
-  "adx_on": true,
+  "adx_on": false,
   "adx_len": 14,
   "adx_threshold": 30,
   "strict_buy_signals": 2,
