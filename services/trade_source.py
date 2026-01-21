@@ -466,12 +466,22 @@ def load_trades_merged(
     start_dt, end_dt = _date_range(days, start_iso)
     execs = _fetch_executions(start_dt, end_dt, max_count=max_count)
     txns = _fetch_transactions(start_dt, end_dt, max_count=max_count)
-    merged_desc = _merge_dedup(execs + txns)  # newest-first (for UI)
-    merged_asc = list(reversed(merged_desc))  # oldest-first (for FIFO)
-    enriched_asc = _enrich_fifo_realized_pl(merged_asc)
-    enriched = list(reversed(enriched_asc))  # back to newest-first (for UI)
+
+    # Merge + dedup, then explicitly order by time_ms for FIFO enrichment
+    merged = _merge_dedup(execs + txns)
+
+    # Oldest-first for FIFO
+    merged_asc = sorted(merged, key=lambda t: int(t.get("time_ms") or 0))
+
+    # FIFO realized P&L enrichment (function itself returns newest-first,
+    # but we’ll control ordering explicitly anyway)
+    enriched = _enrich_fifo_realized_pl(merged_asc)
+
+    # Hard-enforce newest-first for UI (dashboard assumes index 0 is newest)
+    enriched.sort(key=lambda t: int(t.get("time_ms") or 0), reverse=True)
+
     final_rows: list[dict[str, Any]] = []
-    for r in enriched[:max_count]:
+    for r in enriched[: int(max_count or 0) if max_count else len(enriched)]:
         dt = _parse_any_dt(r.get("time"))
         final_rows.append(
             {

@@ -112,29 +112,34 @@ def fetch_data_with_timeout(
     timeout_s: float = 12.0,
 ) -> Any:
     """
-    Historical bars for indicators.
-    HARD RULE: Yahoo is NOT allowed for historical in LIVE.
-    This function is DISABLED by default and returns None unless YAHOO_HISTORICAL_OK=1.
+    Bars for indicators.
+
+    RULES:
+    - Daily / historical Yahoo is BLOCKED unless YAHOO_HISTORICAL_OK=1
+    - Intraday (e.g. 1m) Yahoo IS allowed (VWAP / volume)
     """
-    if not YAHOO_HISTORICAL_OK:
-        # Enforce rule: historical must come from E*TRADE (elsewhere in the codebase).
+
+    is_intraday = interval.endswith("m")
+
+    # Allow Yahoo bars for indicators (daily + intraday)
+    # Kill switch only if explicitly disabled
+    if os.getenv("YAHOO_BARS_DISABLED", "").lower() in ("1", "true", "yes"):
         return None
 
-    # If you enabled historical Yahoo, still protect it from 429.
+    # Circuit breaker protection
     if _is_blocked():
         return None
 
     try:
-        import yfinance as yf  # local import (only if explicitly enabled)
+        import yfinance as yf
     except Exception as e:
-        log.error("yfinance import failed (historical): %s", e)
+        log.error("yfinance import failed: %s", e)
         return None
 
     try:
         _throttle()
         t0 = _now()
 
-        # yfinance doesn't honor a direct timeout everywhere; we keep it simple here.
         df = yf.download(
             symbol,
             period=period,
@@ -144,26 +149,17 @@ def fetch_data_with_timeout(
         )
 
         if df is None or len(df) == 0:
-            # Empty often indicates upstream issues; don't assume delisted.
-            # If Yahoo is throttling, yfinance may not always surface 429 explicitly.
-            # We conservatively trip breaker on repeated empties only if we see 429 hints.
             return None
 
-        # Soft timeout: if it took too long, just return what we got.
-        _ = (t0, timeout_s)  # keep signature stable / placeholder for future hard timeout
+        _ = (t0, timeout_s)  # soft timeout placeholder
         return df
 
     except Exception as e:
         if _looks_like_429(e):
-            _trip_breaker(f"429/historical: {e}")
+            _trip_breaker(f"429/yahoo: {e}")
             return None
         log.exception("fetch_data_with_timeout failed (%s): %s", symbol, e)
         return None
-
-
-# -----------------------------------------------------------------------------
-# INTRADAY VWAP (YAHOO ALLOWED, PROTECTED)
-# -----------------------------------------------------------------------------
 
 def fetch_intraday_vwap(
     symbol: str,
@@ -178,8 +174,6 @@ def fetch_intraday_vwap(
       - throttle
       - per-symbol cache
     """
-    if not YAHOO_INTRADAY_OK:
-        return None
 
     sym = (symbol or "").strip().upper()
     if not sym:

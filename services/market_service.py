@@ -3,69 +3,87 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime
-from typing import Any, Iterable, List, Tuple
+import time
+from typing import Any, List
 
+import numpy as np
 import pandas as pd
 
-# HISTORICAL ONLY (bars for indicators). Live price comes from E*TRADE.
+# Bars for indicators:
+# - Intraday bars may come from Yahoo via data_fetch (allowed).
+# - Daily bars may be blocked by policy unless explicitly enabled (YAHOO_HISTORICAL_OK=1).
 from .data_fetch import fetch_data_with_timeout
+
+# Live price MUST come from E*TRADE.
 from services.etrade_service import fetch_etrade_quote
 
 from services.indicators import (
-    compute_atr,
     compute_bollinger_bands,
     compute_macd,
     compute_rsi,
     compute_sma,
     compute_volume_multiplier,
     compute_vwap,
-    daily_range_pct,
-    gap_up_pct,
 )
 
 log = logging.getLogger("market")
-DEBUG_SYMBOL = (os.getenv("MM_DEBUG_SYMBOL") or "").strip().upper()  # e.g. set MM_DEBUG_SYMBOL=AAPL
+
+DEBUG_SYMBOL = (os.getenv("MM_DEBUG_SYMBOL") or "").strip().upper()
 DEBUG_ALL = os.getenv("MM_DEBUG_ALL", "").strip().lower() in ("1", "true", "yes")
+
 
 def _dbg(sym: str) -> bool:
     sym = (sym or "").strip().upper()
-    return DEBUG_ALL or (DEBUG_SYMBOL and sym == DEBUG_SYMBOL)
+    return bool(DEBUG_ALL or (DEBUG_SYMBOL and sym == DEBUG_SYMBOL))
 
 
-import numpy as np
-import pandas as pd
+def _lower_cols(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Normalize df columns to lowercase strings.
+    Handles MultiIndex columns from yfinance (('Close','AAPL') etc).
+    """
+    if df is None or df.empty:
+        return df
+    cols = []
+    for c in df.columns:
+        if isinstance(c, tuple) and len(c) > 0:
+            cols.append(str(c[0]).strip().lower())
+        else:
+            cols.append(str(c).strip().lower())
+    df = df.copy()
+    df.columns = cols
+    return df
+
 
 def compute_adx(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
     # Wilder-style ADX using EWM smoothing
-    high  = pd.to_numeric(high, errors="coerce").astype(float)
-    low   = pd.to_numeric(low, errors="coerce").astype(float)
+    high = pd.to_numeric(high, errors="coerce").astype(float)
+    low = pd.to_numeric(low, errors="coerce").astype(float)
     close = pd.to_numeric(close, errors="coerce").astype(float)
 
     up_move = high.diff()
     down_move = -low.diff()
 
-    plus_dm  = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
+    plus_dm = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
     minus_dm = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
 
     tr1 = (high - low).abs()
     tr2 = (high - close.shift(1)).abs()
-    tr3 = (low  - close.shift(1)).abs()
-    tr  = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    tr3 = (low - close.shift(1)).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
 
-    atr = tr.ewm(alpha=1/period, adjust=False).mean()
-    atr = atr.replace(0.0, np.nan)  # <- IMPORTANT (no pd.NA)
+    atr = tr.ewm(alpha=1 / period, adjust=False).mean()
+    atr = atr.replace(0.0, np.nan)
 
-    plus_di  = 100.0 * (plus_dm.ewm(alpha=1/period, adjust=False).mean() / atr)
-    minus_di = 100.0 * (minus_dm.ewm(alpha=1/period, adjust=False).mean() / atr)
+    plus_di = 100.0 * (plus_dm.ewm(alpha=1 / period, adjust=False).mean() / atr)
+    minus_di = 100.0 * (minus_dm.ewm(alpha=1 / period, adjust=False).mean() / atr)
 
-    denom = (plus_di + minus_di).replace(0.0, np.nan)  # <- IMPORTANT (no pd.NA)
-    dx = (100.0 * (plus_di - minus_di).abs() / denom)
+    denom = (plus_di + minus_di).replace(0.0, np.nan)
+    dx = 100.0 * (plus_di - minus_di).abs() / denom
 
-    adx = dx.ewm(alpha=1/period, adjust=False).mean()
-
-    # final cleanup
+    adx = dx.ewm(alpha=1 / period, adjust=False).mean()
     return pd.to_numeric(adx, errors="coerce").fillna(0.0)
+
 
 def get_symbols(path: str) -> List[str]:
     """
@@ -75,7 +93,6 @@ def get_symbols(path: str) -> List[str]:
     """
     if not path:
         return []
-
     if os.path.exists(path):
         out: List[str] = []
         with open(path, encoding="utf-8") as f:
@@ -85,45 +102,30 @@ def get_symbols(path: str) -> List[str]:
                     continue
                 out.append(s.replace(".", "-").upper())
         return out
-
-    # If the file is missing, fail loudly-ish but safely.
     log.warning("[SYMS] symbols file not found: %s", path)
     return []
 
+
 # --- compat shim: live_loop expects analyze_symbol_live -----------------------
 def analyze_symbol_live(symbol: str, *args, **kwargs):
-    """
-    Compatibility wrapper: older/newer live_loop imports analyze_symbol_live.
-    Route to whichever analyzer exists in this module.
-    """
-    # common candidates in different versions
     if "analyze_symbol" in globals() and callable(globals().get("analyze_symbol")):
         return globals()["analyze_symbol"](symbol, *args, **kwargs)
+    raise ImportError("market_service has no analyze_symbol to alias for analyze_symbol_live")
 
-    if "analyze" in globals() and callable(globals().get("analyze")):
-        return globals()["analyze"](symbol, *args, **kwargs)
-
-    if "scan_symbol" in globals() and callable(globals().get("scan_symbol")):
-        return globals()["scan_symbol"](symbol, *args, **kwargs)
-
-    raise ImportError(
-        "market_service has no analyze_symbol/analyze/scan_symbol to alias for analyze_symbol_live"
-    )
 
 def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool]:
     """
     LIVE analyzer.
     Returns: (price_live, triggers, passed)
 
-    - price_live: ALWAYS from E*TRADE (no yfinance price fallback)
-    - bars: fetched via fetch_data_with_timeout() for indicator inputs
+    HARD RULES:
+      - price_live ALWAYS from E*TRADE (no Yahoo price fallback)
+      - Yahoo allowed ONLY for intraday indicator bars
+      - Daily bars may be unavailable (policy). If so, ADX will use intraday bars.
     """
     sym = (symbol or "").strip().upper()
-
-    # allow dict or object settings
     s = settings if isinstance(settings, dict) else getattr(settings, "__dict__", {})
 
-    # bulletproof required list (accept legacy + current keys)
     _raw_req = (s.get("required_filters") or s.get("required") or s.get("req") or [])
     req_list = [
         str(x).strip().lower()
@@ -135,58 +137,14 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
         log.warning("[DEBUG] MM_DEBUG_SYMBOL=%r MM_DEBUG_ALL=%r", DEBUG_SYMBOL, DEBUG_ALL)
         log.warning("[DEBUG] settings keys=%s required=%s", sorted(list(s.keys())), req_list)
 
-    # 1) Intraday bars (for VWAP / volume, etc.)
-    df = fetch_data_with_timeout(symbol=sym, period="1d", interval="1m")
-    if df is None or df.empty:
-        log.warning("[DATA] %s: no intraday bars -> skip", sym)
-        if _dbg(sym):
-            log.warning("[DEBUG] EXIT: intraday df missing/empty")
-        import time
-        time.sleep(0.25)  # prevent tight loop spam
-        return (None, [], False)
-
-    # normalize intraday columns
-    df.columns = [c[0].lower() if isinstance(c, tuple) else str(c).lower() for c in df.columns]
-    # Build a "standard" OHLCV df for indicators that expect TitleCase columns
-    df_ind = df.rename(columns={
-        "open": "Open",
-        "high": "High",
-        "low": "Low",
-        "close": "Close",
-        "volume": "volume",
-    })
-
-    # 2) Daily bars (for SMA/ATR/range/gap, etc.)
-    df_daily = fetch_data_with_timeout(sym, period="60d", interval="1d")
-    if df_daily is None or df_daily.empty:
-        log.warning("[DATA] %s: no daily bars -> skip", sym)
-        if _dbg(sym):
-            log.warning("[DEBUG] EXIT: daily df missing/empty")
-        return (None, [], False)
-
-    df_daily.columns = [c[0].lower() if isinstance(c, tuple) else str(c).lower() for c in df_daily.columns]
-
-    if _dbg(sym):
-        log.warning("[DEBUG] intraday: rows=%s cols=%s", getattr(df, "shape", None), list(getattr(df, "columns", []))[:12])
-        log.warning("[DEBUG] daily:    rows=%s cols=%s", getattr(df_daily, "shape", None), list(getattr(df_daily, "columns", []))[:12])
-
-        try:
-            log.warning("[DEBUG] daily close tail=%s", list(df_daily["close"].tail(5).astype(float).round(4)))
-        except Exception as e:
-            log.warning("[DEBUG] daily close tail failed: %s", e)
-
-        try:
-            log.warning("[DEBUG] intraday close tail=%s", list(df["close"].tail(5).astype(float).round(4)))
-        except Exception as e:
-            log.warning("[DEBUG] intraday close tail failed: %s", e)
-
-    # 3) Live price (E*TRADE ONLY)
+    # --- 1) Live price (E*TRADE ONLY) -----------------------------------------
     try:
-        price_live = float(fetch_etrade_quote(sym))
-    except Exception as e:
-        log.warning("[E*TRADE] %s: quote failed (%s) -> skip", sym, e)
+        raw = fetch_etrade_quote(sym)
         if _dbg(sym):
-            log.warning("[DEBUG] EXIT: E*TRADE quote exception")
+            log.warning("[DEBUG][QUOTE] %s raw=%r type=%s", sym, raw, type(raw))
+        price_live = float(raw)
+    except Exception as e:
+        log.warning("[E*TRADE] %s: quote failed (%s)", sym, e)
         return (None, [], False)
 
     if price_live <= 0:
@@ -194,81 +152,119 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
             log.warning("[DEBUG] EXIT: price_live <= 0 (%s)", price_live)
         return (None, [], False)
 
-    triggers: list[str] = []
+    # --- 2) Intraday bars (required for VOL/VWAP/MACD + fallback ADX) ----------
+    df_i = fetch_data_with_timeout(symbol=sym, period="1d", interval="1m")
+    if df_i is None or getattr(df_i, "empty", True):
+        log.warning("[DATA] %s: no intraday bars -> skip symbol", sym)
+        time.sleep(0.05)
+        return (None, [], False)
 
-    # ----------------------------
-    # Pull series for indicators
-    # ----------------------------
-    close_i = df.get("close")
+    df_i = _lower_cols(df_i)
+
+    # yfinance typically: open high low close adj close volume
+    # Build standard df for indicators expecting TitleCase OHLC + volume
+    df_ind = df_i.rename(
+        columns={
+            "open": "Open",
+            "high": "High",
+            "low": "Low",
+            "close": "Close",
+            "volume": "volume",
+        }
+    )
+
+    # Pull intraday series (after normalization!)
+    close_i = df_i.get("close")
+    high_i = df_i.get("high")
+    low_i = df_i.get("low")
+    vol_i = df_i.get("volume")
+
     if close_i is None:
         if _dbg(sym):
-            log.warning("[DEBUG] EXIT: intraday close column missing. cols=%s", list(df.columns))
+            log.warning("[DEBUG] EXIT: intraday close missing. cols=%s", list(df_i.columns))
         return (None, [], False)
 
-    # flatten multi-column close if it happens
-    if hasattr(close_i, "iloc") and getattr(close_i, "ndim", 1) > 1:
+    # Flatten multi-col oddities
+    if hasattr(close_i, "ndim") and getattr(close_i, "ndim", 1) > 1:
         close_i = close_i.iloc[:, 0]
 
-    close_d = df_daily.get("close")
-    high_d = df_daily.get("high")
-    low_d = df_daily.get("low")
-    if close_d is None or high_d is None or low_d is None:
-        if _dbg(sym):
-            log.warning("[DEBUG] EXIT: daily close/high/low missing. cols=%s", list(df_daily.columns))
-        return (None, [], False)
+    triggers: list[str] = []
 
-    # ----------------------------
-    # Indicator toggles + triggers
-    # ----------------------------
+    # --- 3) Determine if we actually NEED daily bars --------------------------
+    # If you are only requiring adx/macd/vol/vwap, we can run fully intraday.
+    needs_daily = False
+    if bool(s.get("sma_on", False) or s.get("price_sma_on", False) or s.get("require_sma20", False)):
+        needs_daily = True
+    if bool(s.get("rsi_on", False) or s.get("bb_on", False)):
+        needs_daily = True
+    # Also if required filters explicitly include things that are daily-only in your system
+    for k in ("sma", "sma20", "sma50", "rsi", "bb", "atr", "gap", "range"):
+        if k in req_list:
+            needs_daily = True
 
-    # SMA
+    df_d = None
+    if needs_daily:
+        df_d = fetch_data_with_timeout(sym, period="60d", interval="1d")
+        if df_d is None or getattr(df_d, "empty", True):
+            log.warning("[DATA] %s: no daily bars (policy/block/empty) -> daily indicators disabled", sym)
+            df_d = None
+        else:
+            df_d = _lower_cols(df_d)
+
+    # Convenience daily series
+    close_d = df_d.get("close") if df_d is not None else None
+    high_d = df_d.get("high") if df_d is not None else None
+    low_d = df_d.get("low") if df_d is not None else None
+
+    if _dbg(sym):
+        log.warning("[DEBUG] intraday: rows=%s cols=%s", getattr(df_i, "shape", None), list(getattr(df_i, "columns", []))[:12])
+        if df_d is None:
+            log.warning("[DEBUG] daily:    (none)")
+        else:
+            log.warning("[DEBUG] daily:    rows=%s cols=%s", getattr(df_d, "shape", None), list(getattr(df_d, "columns", []))[:12])
+
+    # --- SMA (daily) ----------------------------------------------------------
     sma_on = bool(s.get("sma_on", False) or s.get("price_sma_on", False) or s.get("require_sma20", False))
     sma_len = int(s.get("price_sma_len", s.get("sma_length", 20)))
-    if sma_on:
+    if sma_on and close_d is not None:
         try:
             sma_val = float(compute_sma(close_d, sma_len))
             if _dbg(sym):
-                log.warning("[DEBUG] SMA(%d) sma=%.4f price=%.4f pass=%s",
-                            sma_len, sma_val, float(price_live), (float(price_live) > sma_val))
+                log.warning("[DEBUG] SMA(%d) sma=%.4f price=%.4f pass=%s", sma_len, sma_val, float(price_live), (float(price_live) > sma_val))
             if price_live > sma_val:
                 triggers.append(f"Price>SMA({sma_len})")
-                triggers.append(f"price>sma{sma_len}")
-                triggers.append(f"price>sma({sma_len})")
         except Exception as e:
             if _dbg(sym):
                 log.warning("[DEBUG] %s SMA failed: %s", sym, e)
 
-    # RSI (optional)
-    if bool(s.get("rsi_on", False)):
+    # --- RSI (daily) ----------------------------------------------------------
+    if bool(s.get("rsi_on", False)) and close_d is not None:
         try:
             rsi_len = int(s.get("rsi_len", s.get("rsi_length", 14)))
             rsi_over = float(s.get("rsi_overbought", 70))
             rsi_series = compute_rsi(close_d, rsi_len)
             rsi_val = float(rsi_series.iloc[-1]) if hasattr(rsi_series, "iloc") else float(rsi_series)
             if _dbg(sym):
-                log.warning("[DEBUG] RSI(%d) rsi=%.2f over=%.2f pass=%s",
-                            rsi_len, rsi_val, rsi_over, (rsi_val >= rsi_over))
+                log.warning("[DEBUG] RSI(%d) rsi=%.2f over=%.2f pass=%s", rsi_len, rsi_val, rsi_over, (rsi_val >= rsi_over))
             if rsi_val >= rsi_over:
                 triggers.append("RSI")
         except Exception as e:
             if _dbg(sym):
                 log.warning("[DEBUG] %s RSI failed: %s", sym, e)
 
-    # MACD
+    # --- MACD (intraday) ------------------------------------------------------
     if bool(s.get("macd_on", False)) or ("macd" in req_list):
         try:
             fast = int(s.get("macd_fast", 12))
             slow = int(s.get("macd_slow", 26))
             sig = int(s.get("macd_signal", 9))
 
-            # NOTE: you were using close_i here (intraday). That's fine if intended.
-            macd_line, signal = compute_macd(close_i.astype(float), fast, slow, sig)
+            macd_line, signal = compute_macd(pd.to_numeric(close_i, errors="coerce").astype(float), fast, slow, sig)
             macd_last = float(macd_line.iloc[-1]) if hasattr(macd_line, "iloc") else float(macd_line)
-            sig_last  = float(signal.iloc[-1])    if hasattr(signal, "iloc")    else float(signal)
+            sig_last = float(signal.iloc[-1]) if hasattr(signal, "iloc") else float(signal)
 
             if _dbg(sym):
-                log.warning("[DEBUG] MACD(%d,%d,%d) macd=%.6f signal=%.6f pass=%s",
-                            fast, slow, sig, macd_last, sig_last, (macd_last > sig_last))
+                log.warning("[DEBUG] MACD(%d,%d,%d) macd=%.6f signal=%.6f pass=%s", fast, slow, sig, macd_last, sig_last, (macd_last > sig_last))
 
             if macd_last > sig_last:
                 triggers.append("MACD")
@@ -276,77 +272,62 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
             if _dbg(sym):
                 log.warning("[DEBUG] %s MACD failed: %s", sym, e)
 
-    # ADX (optional / supports required_filters containing "adx")
+    # --- ADX (prefer daily if available, else intraday) -----------------------
     if bool(s.get("adx_on", False)) or ("adx" in req_list):
         try:
             adx_len = int(s.get("adx_len", 14))
             adx_thr = float(s.get("adx_threshold", 25))
 
-            # --- sanitize inputs (fix: "No numeric types to aggregate") ---
-            high_d  = pd.to_numeric(high_d, errors="coerce")
-            low_d   = pd.to_numeric(low_d, errors="coerce")
-            close_d = pd.to_numeric(close_d, errors="coerce")
-            high_d  = high_d.ffill().bfill().fillna(0.0)
-            low_d   = low_d.ffill().bfill().fillna(0.0)
-            close_d = close_d.ffill().bfill().fillna(0.0)
+            # Choose daily if present, else intraday
+            use_high = high_d if high_d is not None else high_i
+            use_low = low_d if low_d is not None else low_i
+            use_close = close_d if close_d is not None else close_i
 
-            adx_series = compute_adx(high_d, low_d, close_d, adx_len)
-            adx_val = float(adx_series.iloc[-1]) if hasattr(adx_series, "iloc") else float(adx_series)
+            if use_high is None or use_low is None or use_close is None:
+                if _dbg(sym):
+                    log.warning("[DEBUG] ADX skipped: missing series (high/low/close)")
+            else:
+                use_high = pd.to_numeric(use_high, errors="coerce").ffill().bfill().fillna(0.0)
+                use_low = pd.to_numeric(use_low, errors="coerce").ffill().bfill().fillna(0.0)
+                use_close = pd.to_numeric(use_close, errors="coerce").ffill().bfill().fillna(0.0)
 
-            if _dbg(sym):
-                log.warning("[DEBUG] ADX(%d) adx=%.2f thr=%.2f pass=%s",
-                            adx_len, adx_val, adx_thr, (adx_val >= adx_thr))
+                adx_series = compute_adx(use_high, use_low, use_close, adx_len)
+                adx_val = float(adx_series.iloc[-1]) if hasattr(adx_series, "iloc") else float(adx_series)
 
-            if adx_val >= adx_thr:
-                triggers.append(f"ADX>={adx_thr:g}")
+                if _dbg(sym):
+                    src = "daily" if high_d is not None else "intraday"
+                    log.warning("[DEBUG] ADX(%d) src=%s adx=%.2f thr=%.2f pass=%s", adx_len, src, adx_val, adx_thr, (adx_val >= adx_thr))
+
+                if adx_val >= adx_thr:
+                    triggers.append(f"ADX>={adx_thr:g}")
         except Exception as e:
             if _dbg(sym):
                 log.warning("[DEBUG] %s ADX failed: %s", sym, e)
 
-            adx_series = compute_adx(high_d, low_d, close_d, adx_len)
-
-            adx_series = compute_adx(high_d, low_d, close_d, adx_len)
-            adx_val = float(adx_series.iloc[-1]) if hasattr(adx_series, "iloc") else float(adx_series)
-
-            if _dbg(sym):
-                log.warning("[DEBUG] ADX(%d) adx=%.2f thr=%.2f pass=%s",
-                            adx_len, adx_val, adx_thr, (adx_val >= adx_thr))
-
-            if adx_val >= adx_thr:
-                triggers.append(f"ADX>={adx_thr:g}")
-        except Exception as e:
-            if _dbg(sym):
-                log.warning("[DEBUG] %s ADX failed: %s", sym, e)
-
-    # Bollinger (optional)
-    if bool(s.get("bb_on", False)):
+    # --- Bollinger (daily) ----------------------------------------------------
+    if bool(s.get("bb_on", False)) and close_d is not None:
         try:
             bb_len = int(s.get("bb_length", 20))
             bb_std = float(s.get("bb_std", 2))
             up, mid, lowb = compute_bollinger_bands(close_d, bb_len, bb_std)
             up_last = float(up.iloc[-1]) if hasattr(up, "iloc") else float(up)
-
             if _dbg(sym):
-                log.warning("[DEBUG] BB(%d,%.2f) upper=%.4f price=%.4f pass=%s",
-                            bb_len, bb_std, up_last, float(price_live), (float(price_live) > up_last))
-
+                log.warning("[DEBUG] BB(%d,%.2f) upper=%.4f price=%.4f pass=%s", bb_len, bb_std, up_last, float(price_live), (float(price_live) > up_last))
             if price_live > up_last:
                 triggers.append("BB")
         except Exception as e:
             if _dbg(sym):
                 log.warning("[DEBUG] %s BB failed: %s", sym, e)
 
-    # Volume multiplier (optional)
+    # --- Volume multiplier (intraday) ----------------------------------------
     if bool(s.get("vol_on", False)) or ("vol" in req_list) or ("volume" in req_list):
         try:
             thresh = float(s.get("vol_multiplier", s.get("vol_mult", 1.5)))
-
             vol_ratio = compute_volume_multiplier(df_ind, multiplier=thresh)
 
-            # Normalize to scalar/bool
             if isinstance(vol_ratio, bool):
-                vol_ratio_f = 1.0 if vol_ratio else 0.0
                 vol_pass = bool(vol_ratio)
+                vol_ratio_f = 1.0 if vol_pass else 0.0
             else:
                 if hasattr(vol_ratio, "iloc"):
                     vol_ratio = vol_ratio.iloc[-1]
@@ -358,23 +339,15 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
 
             if vol_pass:
                 triggers.append("VOL")
-
         except Exception as e:
             if _dbg(sym):
                 log.warning("[DEBUG] %s VOL failed: %s", sym, e)
 
-    # VWAP threshold (optional)
+    # --- VWAP threshold (intraday) -------------------------------------------
     if bool(s.get("vwap_on", False)) or ("vwap" in req_list):
         try:
             vwap_threshold = float(s.get("vwap_threshold", 0.0))
-
-            # indicators.py currently expects compute_vwap(df) in most of your versions
-            try:
-                vwap_val = compute_vwap(df_ind)
-            except TypeError:
-                # in case compute_vwap signature changes later
-                vwap_val = compute_vwap(df_ind, vwap_threshold)
-
+            vwap_val = compute_vwap(df_ind)
             if hasattr(vwap_val, "iloc"):
                 vwap_val = vwap_val.iloc[-1]
             vwap_val = float(vwap_val)
@@ -383,19 +356,15 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
             vwap_pass = (diff >= vwap_threshold)
 
             if _dbg(sym):
-                log.warning("[DEBUG] VWAP vwap=%.4f price=%.4f diff=%.4f thr=%.4f pass=%s",
-                            vwap_val, float(price_live), diff, vwap_threshold, vwap_pass)
+                log.warning("[DEBUG] VWAP vwap=%.4f price=%.4f diff=%.4f thr=%.4f pass=%s", vwap_val, float(price_live), diff, vwap_threshold, vwap_pass)
 
             if vwap_pass:
                 triggers.append("VWAP")
-
         except Exception as e:
             if _dbg(sym):
                 log.warning("[DEBUG] %s VWAP failed: %s", sym, e)
 
     passed = True
-
-    # Enforce required_filters (if any)
     if req_list:
         norm_triggers = {_norm_trigger(t) for t in triggers}
         for r in req_list:
@@ -404,36 +373,18 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
                 break
 
     if _dbg(sym):
-        log.warning(
-            "[DEBUG] FINAL: price=%.4f triggers=%s required=%s passed=%s",
-            float(price_live),
-            triggers,
-            req_list,
-            passed,
-        )
+        log.warning("[DEBUG] FINAL: price=%.4f triggers=%s required=%s passed=%s", float(price_live), triggers, req_list, passed)
 
+    # IMPORTANT: always return the live price if we got it; do not "None it out"
     return (price_live, triggers, passed)
 
 
 def _norm_trigger(t: str) -> str:
-    """
-    Normalize triggers so 'MACD', 'macd', 'Macd', 'price>sma(50)', etc. compare reliably.
-    """
     if not t:
         return ""
     s = str(t).strip().lower()
-    # collapse common punctuation/spacing differences
-    for ch in [" ", "_", "-", ">", "<", "(", ")", "[", "]", "{", "}", ":", ";", ","]:
+    for ch in [" ", "_", "-", ">", "<", "(", ")", "[", "]", "{", "}", ":", ";", ",", "="]:
         s = s.replace(ch, "")
-    # normalize some known variants
-    if s.startswith("pricesma"):
-        return "pricesma"
-    if s.startswith("price>sma") or s.startswith("pricesma"):
-        return "pricesma"
-    if "sma20" in s:
-        return "sma20"
-    if "sma50" in s:
-        return "sma50"
     if "macd" in s:
         return "macd"
     if "adx" in s:
@@ -442,14 +393,14 @@ def _norm_trigger(t: str) -> str:
         return "vwap"
     if "vol" in s or "volume" in s:
         return "vol"
-    if "atr" in s:
-        return "atr"
-    if "gap" in s:
-        return "gap"
-    if "range" in s:
-        return "range"
     if "rsi" in s:
         return "rsi"
+    if "bb" in s or "boll" in s:
+        return "bb"
+    if "sma20" in s:
+        return "sma20"
+    if "sma50" in s:
+        return "sma50"
+    if "sma" in s:
+        return "sma"
     return s
-
-

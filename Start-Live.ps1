@@ -9,6 +9,8 @@ $logDir = Join-Path $root 'logs'
 $pidDir = Join-Path $root 'pids'
 New-Item -ItemType Directory -Path $logDir,$pidDir -Force | Out-Null
 Set-Location -Path $root
+$env:YF_USE_CURL = "1"
+Write-Host "YF_USE_CURL=$env:YF_USE_CURL"
 
 # Find Python (PowerShell 5.1 safe)
 $py = $null
@@ -31,6 +33,7 @@ $env:PYTHONUNBUFFERED          = '1'
 $env:PYTHONIOENCODING          = 'utf-8'
 $env:LIVE_SETTINGS             = $cfg                  # legacy var some code reads
 $env:TRADEALERTS_LIVE_SETTINGS = $cfg                  # newer name (harmless if unused)
+$env:YF_USE_CURL               = '1'
 
 # --- Explicit overrides for Monday ---
 $env:GUARDRAILS_ENABLED = 'false'
