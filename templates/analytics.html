@@ -1,0 +1,277 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<!-- Chart.js (CDN, no install) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+.analytics-wrap { max-width: 1400px; margin: 0 auto; padding: 20px; }
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 16px;
+}
+.cardx {
+  background: #111;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 14px;
+  padding: 14px;
+}
+.cardx h5 {
+  color: #ffe900;
+  font-weight: 800;
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  letter-spacing: .2px;
+}
+.kpi {
+  font-size: 30px;
+  font-weight: 900;
+}
+table { width: 100%; border-collapse: collapse; }
+th, td {
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+th { color: rgba(255,255,255,0.70); font-weight: 800; }
+td { color: rgba(255,255,255,0.92); }
+.right { text-align: right; }
+.col-3 { grid-column: span 3; }
+.col-4 { grid-column: span 4; }
+.col-6 { grid-column: span 6; }
+.col-12 { grid-column: span 12; }
+
+@media (max-width: 1100px) {
+  .col-3, .col-4, .col-6, .col-12 { grid-column: span 12; }
+}
+
+/* Canvas sizing */
+.chart-box { height: 220px; }
+.chart-box canvas { width: 100% !important; height: 220px !important; }
+</style>
+
+<div class="analytics-wrap">
+  <h2 class="mb-3">📊 Daily Analytics — {{ a.et_date }}</h2>
+
+  <!-- Charts row -->
+  <div class="analytics-grid mb-4">
+
+    <div class="cardx col-6">
+	  <h5>SELL Exits (per 5-min bucket)</h5>
+      <div class="chart-box"><canvas id="sellTimeChart"></canvas></div>
+    </div>
+
+    <div class="cardx col-3">
+      <h5>SELL Exit Reasons (exits only)</h5>
+      <div class="chart-box"><canvas id="sellExitChart"></canvas></div>
+    </div>
+
+    <div class="cardx col-3">
+      <h5>BUY Trigger Mix</h5>
+      <div class="chart-box"><canvas id="buyMixChart"></canvas></div>
+    </div>
+
+  </div>
+
+  <!-- KPI row -->
+  <div class="analytics-grid">
+    <div class="cardx col-3">
+      <h5>BUY Rows</h5>
+      <div class="kpi">{{ a.buy_rows }}</div>
+    </div>
+
+    <div class="cardx col-3">
+      <h5>SELL Rows</h5>
+      <div class="kpi">{{ a.sell_rows }}</div>
+    </div>
+
+    <div class="cardx col-3">
+      <h5>Top SELL Action</h5>
+      {% for k,v in a.sell_actions[:1] %}
+        <div class="kpi">{{ k }} ({{ v }})</div>
+      {% else %}
+        <div class="kpi">—</div>
+      {% endfor %}
+    </div>
+
+    <div class="cardx col-3">
+      <h5>Top SELL Reason</h5>
+      {% for k,v in a.sell_reasons[:1] %}
+        <div class="kpi">{{ k }}</div>
+      {% else %}
+        <div class="kpi">—</div>
+      {% endfor %}
+    </div>
+
+    <div class="cardx col-6">
+      <h5>BUY Trigger Families</h5>
+      <table>
+        <tbody>
+          {% for k,v in a.buy_trigger_families %}
+          <tr><td>{{ k }}</td><td class="right">{{ v }}</td></tr>
+          {% else %}
+          <tr><td colspan="2">(none)</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="cardx col-6">
+      <h5>BUY Trigger Combos</h5>
+      <table>
+        <tbody>
+          {% for k,v in a.buy_trigger_combos %}
+          <tr><td style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">{{ k }}</td><td class="right">{{ v }}</td></tr>
+          {% else %}
+          <tr><td colspan="2">(none)</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="cardx col-6">
+      <h5>Top BUY Symbols</h5>
+      <table>
+        <tbody>
+          {% for k,v in a.top_buy_symbols %}
+          <tr><td>{{ k }}</td><td class="right">{{ v }}</td></tr>
+          {% else %}
+          <tr><td colspan="2">(none)</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="cardx col-6">
+      <h5>Top SELL Symbols</h5>
+      <table>
+        <tbody>
+          {% for k,v in a.top_sell_symbols %}
+          <tr><td>{{ k }}</td><td class="right">{{ v }}</td></tr>
+          {% else %}
+          <tr><td colspan="2">(none)</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="cardx col-6">
+      <h5>SELL Hold Time Buckets</h5>
+      <table>
+        <tbody>
+          {% for k,v in a.sell_hold_buckets %}
+          <tr><td>{{ k }}</td><td class="right">{{ v }}</td></tr>
+          {% else %}
+          <tr><td colspan="2">(none)</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="cardx col-6">
+      <h5>SELL P/L Buckets</h5>
+      <table>
+        <tbody>
+          {% for k,v in a.sell_pl_buckets %}
+          <tr><td>{{ k }}</td><td class="right">{{ v }}</td></tr>
+          {% else %}
+          <tr><td colspan="2">(none)</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  function toLabelsAndValues(obj) {
+    const labels = Object.keys(obj || {});
+    const values = labels.map(k => obj[k]);
+    return { labels, values };
+  }
+
+  fetch("/analytics/data", { cache: "no-store" })
+    .then(r => r.json())
+    .then(d => {
+      // SELL over time
+      const st = toLabelsAndValues(d.sell_over_time);
+      new Chart(document.getElementById("sellTimeChart"), {
+        type: "line",
+        data: {
+          labels: st.labels,
+          datasets: [{
+            label: "SELL evals",
+            data: st.values,
+            borderColor: "#ffe900",
+            backgroundColor: "rgba(255,233,0,0.15)",
+            tension: 0.25,
+            pointRadius: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: "rgba(255,255,255,0.6)", maxRotation: 0, autoSkip: true } },
+            y: { ticks: { color: "rgba(255,255,255,0.6)" } }
+          }
+        }
+      });
+
+      // SELL exit reasons (exits only)
+      const se = toLabelsAndValues(d.sell_exit_reasons);
+      new Chart(document.getElementById("sellExitChart"), {
+        type: "doughnut",
+        data: {
+          labels: se.labels,
+          datasets: [{
+            data: se.values,
+            backgroundColor: [
+              "#ffe900", "#00ff99", "#ff5555", "#ffaa00", "#8888ff",
+              "#bbbbbb", "#66ccff", "#ff99cc", "#99ff66", "#ffcc66"
+            ]
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: "rgba(255,255,255,0.75)" } }
+          }
+        }
+      });
+
+      // BUY trigger mix
+      const bm = toLabelsAndValues(d.buy_trigger_mix);
+      new Chart(document.getElementById("buyMixChart"), {
+        type: "bar",
+        data: {
+          labels: bm.labels,
+          datasets: [{
+            data: bm.values,
+            backgroundColor: "rgba(255,233,0,0.85)",
+            borderColor: "#ffe900",
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: "rgba(255,255,255,0.6)" } },
+            y: { ticks: { color: "rgba(255,255,255,0.6)" } }
+          }
+        }
+      });
+    })
+    .catch(err => {
+      console.error("analytics charts failed", err);
+    });
+})();
+</script>
+
+{% endblock %}

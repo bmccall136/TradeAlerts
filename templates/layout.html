@@ -3,7 +3,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-	<title>{% block title %}$$Machine{% endblock %}</title>
+	<title>$$Machine</title>
+	<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%92%B0%3C/text%3E%3C/svg%3E">
 
   <!-- 1) Bootstrap CSS -->
   <link
@@ -50,12 +51,21 @@
 	</div>
 
       <!-- Right: actions -->
-      <div class="d-flex align-items-center gap-2 ms-auto">
+		<div class="d-flex align-items-center gap-2 ms-auto">
+		<a class="btn btn-sm btn-outline-warning btn-fixed ms-2"
+		   href="/live" title="Dashboard">
+		  📟 Dashboard
+		</a>
+		<!-- Dashboard -->
+		<a class="btn btn-sm btn-outline-warning btn-fixed ms-2"
+		   href="/analytics" title="Daily Analytics">
+		  📊 Analytics
+		</a>
         <!-- Checkpoint -->
         <form action="{{ url_for('run_checkpoint') }}" method="get" class="m-0">
-          <button class="btn btn-small btn-checkpoint">✅ Checkpoint</button>
+          <button class="btn btn-small btn-checkpoint">
+		  ✅ Checkpoint</button>
         </form>
-
         <!-- Reconnect API -->
         <a class="btn btn-sm btn-outline-warning btn-fixed"
            href="{{ url_for('etrade_reconnect') }}">

@@ -1,0 +1,777 @@
+from __future__ import annotations
+
+import json
+import logging
+import os
+import sys
+import time
+import sqlite3
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any, Dict, List, Tuple, Optional
+
+from ai_advisor import get_ai_recommendation
+from services.news_service import news_headlines_for_symbol, has_fresh_bad_news
+from services.sell_triggers_log import emit_sell_event
+
+try:
+    from zoneinfo import ZoneInfo
+    ETZ = ZoneInfo("America/New_York")
+except Exception:  # pragma: no cover
+    ETZ = None
+
+LIVE_DB = "live.db"  # adjust if your path is different
+
+LOG = logging.getLogger("sell-guard")
+LOG.setLevel(logging.INFO)
+for h in list(LOG.handlers):
+    LOG.removeHandler(h)
+
+_sh = logging.StreamHandler(sys.stdout)
+_sh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s sell-guard: %(message)s"))
+LOG.addHandler(_sh)
+
+from logging.handlers import RotatingFileHandler
+
+try:
+    log_dir = os.path.join(os.path.dirname(__file__), "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    sg_log_path = os.path.join(log_dir, "sell_guard.log")
+except Exception:
+    sg_log_path = "sell_guard.log"
+
+_sg_fh = RotatingFileHandler(sg_log_path, maxBytes=5_000_000, backupCount=5, encoding="utf-8")
+_sg_fh.setFormatter(_sh.formatter)
+LOG.addHandler(_sg_fh)
+
+# Backwards-compat alias used deeper in the file
+_lg = LOG
+
+try:
+    import services.etrade_service as et
+except Exception as exc:  # pragma: no cover
+    LOG.error("FATAL: cannot import services.etrade_service: %s", exc)
+    raise SystemExit(1)
+
+# === AI Advisor JSON log ==========================================
+AI_LOG = logging.getLogger("ai-advisor")
+
+if not AI_LOG.handlers:
+    AI_LOG.setLevel(logging.INFO)
+    try:
+        log_dir = os.path.join(os.path.dirname(__file__), "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, "ai_advisor.log")
+    except Exception:
+        log_path = "ai_advisor.log"
+
+    ai_fh = RotatingFileHandler(
+        log_path,
+        maxBytes=5_000_000,
+        backupCount=5,
+        encoding="utf-8",
+    )
+    ai_fh.setFormatter(logging.Formatter("%(message)s"))
+    AI_LOG.addHandler(ai_fh)
+    AI_LOG.propagate = False
+
+def _ts_now_et_iso() -> str:
+    """
+    Return ET timestamp ISO (seconds), e.g. 2026-01-21T09:50:07-05:00
+    """
+    if ETZ is not None:
+        return datetime.now(tz=ETZ).replace(microsecond=0).isoformat()
+    return datetime.now(tz=UTC).replace(microsecond=0).isoformat()
+
+def _find_recent_exec(symbol: str, action: str, qty: float, lookback_rows: int = 60):
+    """
+    Best-effort: pull recent executed trades from E*TRADE and find a matching fill.
+    Returns dict: {"time": <iso>, "price": <float>, "qty": <float>} or None.
+    """
+    symbol = (symbol or "").upper().strip()
+    action = (action or "").upper().strip()
+
+    try:
+        fn = getattr(et, "recent_executions_as_trades", None)
+        if not callable(fn):
+            return None
+        rows = fn(int(lookback_rows) or 60) or []
+    except Exception:
+        return None
+
+    def _to_f(x):
+        try:
+            return float(x)
+        except Exception:
+            return None
+
+    for r in rows:
+        try:
+            sym = str(r.get("symbol") or r.get("Symbol") or "").upper().strip()
+            act = str(r.get("action") or r.get("side") or r.get("orderAction") or "").upper().strip()
+            q = _to_f(r.get("qty") or r.get("quantity") or r.get("filledQuantity"))
+            px = _to_f(r.get("price") or r.get("executionPrice") or r.get("avgExecutionPrice") or r.get("averageExecutionPrice"))
+            t = r.get("time") or r.get("time_utc") or r.get("executedTime") or r.get("filledTime") or r.get("placedTime")
+
+            if sym != symbol:
+                continue
+            if act and act != action:
+                continue
+            if q is None or px is None:
+                continue
+            try:
+                if qty is not None and abs(float(q) - float(qty)) > 1e-6:
+                    continue
+            except Exception:
+                pass
+
+            return {"time": str(t), "price": float(px), "qty": float(q)}
+        except Exception:
+            continue
+
+    return None
+
+def _log_trade_to_live_db(symbol: str, action: str, qty: float, price: float, trade_time_iso: str, pnl=None) -> bool:
+    """
+    Writes into C:\\TradeAlerts\\live.db table 'trades' with schema:
+      (trade_time TEXT, symbol TEXT, action TEXT, qty REAL, price REAL, pnl REAL)
+    De-dupes on exact tuple match.
+    """
+    try:
+        db = Path(r"C:\TradeAlerts\live.db")
+        con = sqlite3.connect(str(db), timeout=5)
+        cur = con.cursor()
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS trades (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          trade_time TEXT NOT NULL,
+          symbol TEXT NOT NULL,
+          action TEXT NOT NULL,
+          qty REAL NOT NULL,
+          price REAL NOT NULL,
+          pnl REAL
+        )
+        """)
+
+        cur.execute(
+            "SELECT 1 FROM trades WHERE trade_time=? AND symbol=? AND action=? AND qty=? AND price=? LIMIT 1",
+            (str(trade_time_iso), str(symbol), str(action), float(qty), float(price)),
+        )
+        if cur.fetchone():
+            con.close()
+            return False
+
+        cur.execute(
+            "INSERT INTO trades (trade_time, symbol, action, qty, price, pnl) VALUES (?,?,?,?,?,?)",
+            (str(trade_time_iso), str(symbol), str(action), float(qty), float(price), pnl),
+        )
+        con.commit()
+        con.close()
+        return True
+    except Exception:
+        return False
+
+def log_ai_decision(
+    *,
+    symbol: str,
+    mode: str,
+    qty: float,
+    pl_pct: float,
+    hold_min: float,
+    action: str,
+    confidence: int,
+    reason_tags: list[str] | None = None,
+    reason: str | None = None,
+    has_bad_news: bool | None = None,
+    headlines: list[str] | None = None,
+    market_regime: str | None = None,
+    **extra: Any,
+) -> None:
+    """Write a single JSON record for each AI exit decision.
+    Must never raise.
+    """
+    try:
+        record: Dict[str, Any] = {
+            "ts": datetime.now(tz=UTC).isoformat(),
+            "symbol": str(symbol or "").upper(),
+            "mode": mode,
+            "qty": float(qty or 0.0),
+            "pl_pct": float(pl_pct or 0.0),
+            "hold_min": float(hold_min or 0.0),
+            "action": str(action or "HOLD").upper(),
+            "confidence": int(confidence or 0),
+            "reason_tags": reason_tags or [],
+            "reason": reason or "",
+            "has_bad_news": bool(has_bad_news) if has_bad_news is not None else False,
+            "headlines": headlines or [],
+            "market_regime": market_regime or "unknown",
+        }
+        for k, v in (extra or {}).items():
+            if v is None:
+                continue
+            if isinstance(v, (str, int, float, bool)):
+                record[k] = v
+            else:
+                record[k] = str(v)
+
+        AI_LOG.info(json.dumps(record, ensure_ascii=False))
+    except Exception as exc:  # pragma: no cover
+        LOG.warning("Failed to log AI decision for %s: %s", symbol, exc)
+
+# === Market regime helper (SPY-based) =======================================
+_last_regime: str = "unknown"
+_last_regime_ts: float = 0.0
+
+def _safe_float(x):
+    try:
+        return float(x)
+    except Exception:
+        return None
+
+def _extract_spy_pct_from_quote(payload: dict) -> float | None:
+    if not isinstance(payload, dict):
+        return None
+
+    qd = payload.get("QuoteResponse", {}).get("QuoteData", [])
+    if isinstance(qd, list) and qd:
+        allblk = qd[0].get("All", {}) if isinstance(qd[0], dict) else {}
+        for k in ("changeClosePercentage", "changePercent", "percentChange", "chgPct"):
+            v = _safe_float(allblk.get(k))
+            if v is not None:
+                return v / 100.0
+
+        last = _safe_float(allblk.get("lastTrade") or allblk.get("lastTradePrice") or allblk.get("last"))
+        prev = _safe_float(allblk.get("previousClose") or allblk.get("prevClose") or allblk.get("close"))
+        if last is not None and prev not in (None, 0.0):
+            return (last / prev) - 1.0
+
+    return None
+
+def _fetch_spy_quote_pct() -> float | None:
+    for fn_name in ("fetch_etrade_quote", "get_quote", "get_quotes", "quotes"):
+        fn = getattr(et, fn_name, None)
+        if callable(fn):
+            try:
+                resp = fn("SPY")
+                return _extract_spy_pct_from_quote(resp if isinstance(resp, dict) else {})
+            except Exception:
+                continue
+    return None
+
+def get_market_regime() -> str:
+    global _last_regime, _last_regime_ts
+    now = time.time()
+
+    if _last_regime != "unknown" and (now - _last_regime_ts) < 60:
+        return _last_regime
+
+    try:
+        pct = _fetch_spy_quote_pct()
+        if pct is None:
+            regime = _last_regime or "unknown"
+        else:
+            if pct > 0.004:
+                regime = "uptrend"
+            elif pct < -0.004:
+                regime = "downtrend"
+            else:
+                regime = "chop"
+    except Exception:
+        regime = _last_regime or "unknown"
+
+    _last_regime = regime
+    _last_regime_ts = now
+    return regime
+
+def get_positions_any() -> Dict[str, Any]:
+    if et is None:
+        raise RuntimeError("etrade_service import failed; et is None")
+    return et.get_positions()
+
+SETTINGS_FILE = os.environ.get("SELL_GUARD_SETTINGS", "C:/TradeAlerts/sell_guard_settings.json")
+
+@dataclass
+class SellGuardConfig:
+    mode: str
+    interval_sec: int
+    market_open: str
+    market_close: str
+    timezone: str
+    blocklist: List[str]
+    only_allow_symbol: str | None
+    min_hold_minutes: float
+    max_hold_minutes: float
+    min_gain_pct: float
+    target_gain_pct: float
+    trail_arm_gain_pct: float
+    trail_backoff_pct: float
+    timeout_exit_pct: float
+    avoid_daytrades: bool
+    max_place_attempts: int
+    normalize_tick: float
+    allow_intraday_stoploss: bool
+    market_fallback_for: List[str]
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "SellGuardConfig":
+        return cls(
+            mode=str(d.get("mode", "DAY")).upper(),
+            interval_sec=int(d.get("interval_sec", 30)),
+            market_open=str(d.get("market_open", "09:30")),
+            market_close=str(d.get("market_close", "16:00")),
+            timezone=str(d.get("timezone", "America/New_York")),
+            blocklist=list(d.get("blocklist", [])),
+            only_allow_symbol=d.get("only_allow_symbol"),
+            min_hold_minutes=float(d.get("min_hold_minutes", 0)),
+            max_hold_minutes=float(d.get("max_hold_minutes", 480)),
+            min_gain_pct=float(d.get("min_gain_pct", -5.0)),
+            target_gain_pct=float(d.get("target_gain_pct", 1.0)),
+            trail_arm_gain_pct=float(d.get("trail_arm_gain_pct", 1.5)),
+            trail_backoff_pct=float(d.get("trail_backoff_pct", 1.0)),
+            timeout_exit_pct=float(d.get("timeout_exit_pct", -1.0)),
+            avoid_daytrades=bool(d.get("avoid_daytrades", False)),
+            max_place_attempts=int(d.get("max_place_attempts", 4)),
+            normalize_tick=float(d.get("normalize_tick", 0.01)),
+            allow_intraday_stoploss=bool(d.get("allow_intraday_stoploss", True)),
+            market_fallback_for=list(d.get("market_fallback_for", [])),
+        )
+
+DEFAULTS: Dict[str, Any] = {
+    "sell_guard": {
+        "mode": "DAY",
+        "interval_sec": 30,
+        "market_open": "09:30",
+        "market_close": "16:00",
+        "timezone": "America/New_York",
+        "blocklist": [],
+        "only_allow_symbol": None,
+        "min_hold_minutes": 0,
+        "max_hold_minutes": 480,
+        "min_gain_pct": -5.0,
+        "target_gain_pct": 1.0,
+        "trail_arm_gain_pct": 1.5,
+        "trail_backoff_pct": 1.0,
+        "timeout_exit_pct": -1.0,
+        "avoid_daytrades": False,
+        "max_place_attempts": 4,
+        "normalize_tick": 0.01,
+        "allow_intraday_stoploss": True,
+        "market_fallback_for": ["SELL_STOP", "TIMEOUT"],
+    }
+}
+
+def _load_user_settings(path: str | os.PathLike[str]) -> Dict[str, Any]:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except FileNotFoundError:
+        LOG.warning("Settings file %s not found; using defaults only", path)
+        return {}
+    except json.JSONDecodeError as exc:
+        LOG.error("Settings file %s is invalid JSON: %s", path, exc)
+        raise SystemExit(1)
+
+def merge_dict(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(base)
+    for k, v in override.items():
+        if isinstance(v, dict) and isinstance(base.get(k), dict):
+            merged[k] = merge_dict(base[k], v)
+        else:
+            merged[k] = v
+    return merged
+
+def load_settings() -> Dict[str, Any]:
+    user = _load_user_settings(SETTINGS_FILE)
+    if not isinstance(user, dict):
+        raise SystemExit(f"Settings root must be an object, got {type(user)!r}")
+
+    merged = dict(DEFAULTS)
+    merged.update(user)
+    merged.setdefault("sell_guard", {})
+    merged["sell_guard"] = merge_dict(DEFAULTS["sell_guard"], merged["sell_guard"])
+    return merged
+
+def get_ai_flags(settings: Dict[str, Any]) -> tuple[bool, bool]:
+    ai = settings.get("ai") or {}
+    enabled = bool(ai.get("enabled", False))
+    use_exits = bool(ai.get("use_exits", True))
+    return enabled, use_exits
+
+def account_id_key() -> str:
+    aid = et.account_id_key()
+    if not aid:
+        raise RuntimeError("account_id_key() returned empty")
+    return aid
+
+def fetch_positions() -> dict:
+    return get_positions_any()
+
+def fetch_open_orders() -> List[Dict[str, Any]]:
+    try:
+        return et.list_open_orders()
+    except Exception as exc:  # pragma: no cover
+        LOG.warning("open_orders() failed: %s", exc)
+        return []
+
+@dataclass
+class PositionRow:
+    symbol: str
+    qty: float
+    mv: float
+    entry_price: float
+    last_trade: float
+    opened_at: datetime | None
+
+def parse_positions(rows) -> List[PositionRow]:
+    if isinstance(rows, dict):
+        # --- unwrap E*TRADE wrapper payloads ---
+        # Many builds return {'PortfolioResponse': {'AccountPortfolio': [...]}}
+        if 'PortfolioResponse' in rows and isinstance(rows.get('PortfolioResponse'), dict):
+            rows = rows.get('PortfolioResponse') or rows
+        # --------------------------------------
+        pr = rows.get("PortfolioResponse") or rows.get("portfolioResponse") or rows
+        accounts = pr.get("AccountPortfolio") or pr.get("AccountPositions") or []
+        if isinstance(accounts, dict):
+            accounts = [accounts]
+
+        items: List[Dict[str, Any]] = []
+        for acct in accounts:
+            pos_list = acct.get("Position") or acct.get("positions") or []
+            if isinstance(pos_list, dict):
+                pos_list = [pos_list]
+            items.extend(pos_list)
+
+    elif isinstance(rows, str):
+        try:
+            parsed = json.loads(rows)
+            return parse_positions(parsed)
+        except Exception:
+            LOG.error("parse_positions: got string rows; JSON decode failed")
+            return []
+    else:
+        try:
+            items = list(rows or [])
+        except TypeError:
+            LOG.error("parse_positions: unsupported rows type %r", type(rows))
+            return []
+
+    holdings: List[PositionRow] = []
+
+    for r in items:
+        if not isinstance(r, dict):
+            continue
+
+        sym = str(r.get("symbol") or r.get("symbolDescription") or "").strip().upper()
+        if not sym:
+            continue
+
+        qty = float(r.get("quantity") or 0)
+        price_paid = float(r.get("pricePaid") or r.get("costPerShare") or 0)
+        market_value = float(r.get("marketValue") or 0)
+
+        try:
+            last_trade = float(r.get("lastTrade") or r.get("price") or 0.0)
+        except Exception:
+            last_trade = 0.0
+
+        opened_at = None
+        ts = r.get("dateAcquired")
+        if ts:
+            try:
+                opened_at = datetime.fromtimestamp(float(ts) / 1000.0, tz=UTC)
+            except Exception:
+                opened_at = None
+
+        # DBG/logic: compute age_min from dateAcquired (epoch ms)
+        age_min = 0.0
+        try:
+            _ts = r.get('dateAcquired')
+            if _ts:
+                _now_ms = int(time.time() * 1000)
+                _ts_ms = int(_ts)
+                if _ts_ms < 10_000_000_000:
+                    _ts_ms *= 1000
+                age_min = max(0.0, (_now_ms - _ts_ms) / 60000.0)
+        except Exception:
+
+
+                    _pos = PositionRow(
+                symbol=sym,
+                qty=qty,
+                mv=market_value,
+                entry_price=price_paid,
+                last_trade=last_trade,
+                opened_at=opened_at,
+            )
+            # DBG/logic: attach computed age_min (minutes) to PositionRow instance
+            try:
+                _pos.age_min = age_min
+            except Exception:
+                pass
+            holdings.append(_pos)
+
+    return holdings
+
+def within_session(now: datetime, cfg: SellGuardConfig) -> bool:
+    if ETZ is not None:
+        now_local = now.astimezone(ETZ)
+    else:  # pragma: no cover
+        now_local = now
+
+    h, m = map(int, cfg.market_open.split(":", 1))
+    open_dt = now_local.replace(hour=h, minute=m, second=0, microsecond=0)
+    h, m = map(int, cfg.market_close.split(":", 1))
+    close_dt = now_local.replace(hour=h, minute=m, second=0, microsecond=0)
+    return open_dt <= now_local <= close_dt
+
+def compute_order_params(symbol: str, cfg: SellGuardConfig, *, kind: str = "SELL") -> Tuple[str, float | None]:
+    return "MARKET", None
+
+def place_with_adaptive_variants(acct_key: str, symbol: str, qty: float, order_type: str, limit_price: float | None, max_attempts: int) -> None:
+    order_type = (order_type or "MARKET").upper()
+    price_type = "MARKET" if order_type == "MARKET" else "LIMIT"
+
+    attempts = 0
+    last_err: Exception | None = None
+
+    while attempts < max_attempts:
+        attempts += 1
+        try:
+            LOG.info("place_with_adaptive_variants attempt %s: %s qty=%s type=%s limit=%s", attempts, symbol, qty, order_type, limit_price)
+
+            limit = None
+            if price_type == "LIMIT" and limit_price is not None:
+                limit = float(limit_price)
+
+            preview = et.preview_equity_order(acct_key, symbol, int(qty), limit, action="SELL", price_type=price_type)
+            et.place_equity_order(preview, qty=int(qty))
+
+            try:
+                _sym = (symbol or "").upper().strip()
+                _act = "SELL"
+                _q = float(qty)
+                ex = _find_recent_exec(_sym, _act, _q, lookback_rows=80)
+                if ex and ex.get("price") is not None:
+                    t_iso = str(ex.get("time") or _ts_now_et_iso())
+                    px = float(ex.get("price"))
+                else:
+                    t_iso = _ts_now_et_iso()
+                    px = 0.0
+                _log_trade_to_live_db(_sym, _act, _q, px, t_iso, pnl=None)
+            except Exception:
+                pass
+
+            LOG.info("place_with_adaptive_variants success for %s", symbol)
+            return
+        except Exception as exc:  # noqa: BLE001
+            last_err = exc
+            msg = str(exc)
+
+            if ("code': 1028" in msg) or ('code": 1028' in msg) or ("code': 1049" in msg) or ('code": 1049' in msg):
+                LOG.warning("place_with_adaptive_variants: pending/duplicate for %s; stopping retries this loop. (%s)", symbol, msg)
+                return
+
+            if ("code': 1514" in msg) or ('code": 1514' in msg):
+                LOG.error("place_with_adaptive_variants: E*TRADE code 1514 for %s; skipping. Error: %s", symbol, msg)
+                return
+
+            LOG.warning("place_with_adaptive_variants attempt %s failed for %s: %s", attempts, symbol, msg)
+            time.sleep(1.0)
+
+    raise RuntimeError(f"Failed to place order for {symbol}: {last_err}")
+
+def main() -> None:
+    LOG.info("sell_guard starting…")
+    LOG.info("Using SELL_GUARD_SETTINGS=%s", SETTINGS_FILE)
+
+    settings = load_settings()
+    sg = settings.get("sell_guard", {}) or {}
+    ai_enabled, ai_use_exits = get_ai_flags(settings)
+    LOG.info("AI exits config: enabled=%s use_exits=%s", ai_enabled, ai_use_exits)
+
+    cfg = SellGuardConfig.from_dict(sg)
+    LOG.info("SellGuardConfig: %s", cfg)
+
+    acct_key = account_id_key()
+    LOG.info("account_id_key=%s", acct_key)
+
+    armed_trail: Dict[str, float] = {}
+
+    while True:
+        loop_start = datetime.now(tz=UTC)
+
+        try:
+            if not within_session(loop_start, cfg):
+                LOG.info("Outside market session %s-%s; sleeping %ss", cfg.market_open, cfg.market_close, cfg.interval_sec)
+                time.sleep(cfg.interval_sec)
+                continue
+
+            positions_raw = fetch_positions()
+            positions = parse_positions(positions_raw)
+
+            # DBG positions parsed / hold timing (non-invasive)
+            try:
+                npos = len(positions) if positions else 0
+                LOG.info("DBG positions parsed=%s max_hold=%sm", npos, getattr(cfg, 'max_hold_minutes', None))
+                # Show timing for first few positions to verify date math
+                for _i, _p in enumerate(positions[:5] if positions else []):
+                    try:
+                        age_min = float(getattr(_p, 'age_min', 0.0) or 0.0)
+                    except Exception:
+                        age_min = 0.0
+                    try:
+                        mh = float(getattr(cfg, 'max_hold_minutes', 0.0) or 0.0)
+                    except Exception:
+                        mh = 0.0
+                    left_min = max(0.0, mh - age_min) if mh > 0 else 0.0
+                    LOG.info("DBG %s qty=%s age_min=%.1f left_min=%.1f", getattr(_p, 'symbol', '?'), getattr(_p, 'qty', '?'), age_min, left_min)
+            except Exception as _dbg_exc:
+                LOG.debug("DBG positions heartbeat failed: %r", _dbg_exc)
+            if not positions:
+                LOG.info("No positions; sleeping %ss", cfg.interval_sec)
+                time.sleep(cfg.interval_sec)
+                continue
+
+            open_orders = fetch_open_orders()
+
+            open_sell_symbols: set[str] = set()
+            for _o in (open_orders or []):
+                try:
+                    if not isinstance(_o, dict):
+                        continue
+                    _sym = (_o.get("symbol") or "").strip().upper()
+                    if not _sym:
+                        continue
+                    _act = str(_o.get("orderAction") or _o.get("action") or "").upper()
+                    _status = str(_o.get("status") or _o.get("orderStatus") or "").upper()
+                    if "SELL" in _act and _status not in {"EXECUTED", "FILLED", "CANCELLED", "REJECTED"}:
+                        open_sell_symbols.add(_sym)
+                except Exception:
+                    continue
+
+            open_map: Dict[str, datetime] = {}
+            for o in open_orders or []:
+                try:
+                    sym = (o.get("symbol") or "").strip().upper()
+                    if not sym:
+                        continue
+                    ot = o.get("orderTime")
+                    if not ot:
+                        continue
+
+                    dt: Optional[datetime] = None
+                    if isinstance(ot, (int, float)):
+                        dt = datetime.fromtimestamp(float(ot) / 1000.0, tz=UTC)
+                    elif isinstance(ot, str):
+                        s = ot.strip().replace("Z", "+00:00")
+                        try:
+                            dt = datetime.fromisoformat(s)
+                        except Exception:
+                            if s.isdigit():
+                                val = int(s)
+                                dt = datetime.fromtimestamp(val / 1000.0, tz=UTC) if val > 10**11 else datetime.fromtimestamp(val, tz=UTC)
+
+                    if dt is None:
+                        continue
+                    opened_at = dt.astimezone(UTC)
+                    if sym not in open_map or opened_at < open_map[sym]:
+                        open_map[sym] = opened_at
+                except Exception:
+                    continue
+
+            for p in positions:
+                s = p.symbol
+                qty = p.qty
+                mv = p.mv
+                entry_px = p.entry_price
+                last_trade = p.last_trade
+
+                has_open_sell = (s in open_sell_symbols)
+
+                if s in cfg.blocklist:
+                    continue
+                if cfg.only_allow_symbol and s != cfg.only_allow_symbol:
+                    continue
+                if qty <= 0:
+                    continue
+                if not entry_px:
+                    continue
+
+                if mv and qty:
+                    cur_px = mv / qty
+                elif last_trade:
+                    cur_px = last_trade
+                else:
+                    cur_px = entry_px or 0.0
+
+                pl_pct = ((cur_px - entry_px) / entry_px) * 100.0
+
+                opened = p.opened_at or open_map.get(s)
+
+                hold_min = 0.0
+                is_prior_day = False
+                opened_src = "none"
+
+                if opened:
+                    opened_src = "position" if p.opened_at else "open_map"
+                    if ETZ is not None:
+                        opened_local = opened.astimezone(ETZ)
+                        now_local = loop_start.astimezone(ETZ)
+                    else:
+                        opened_local = opened
+                        now_local = loop_start
+
+                    is_prior_day = opened_local.date() < now_local.date()
+
+                    is_midnightish = (
+                        opened_local.hour == 0
+                        and opened_local.minute == 0
+                        and opened_local.second < 5
+                    )
+
+                    if (not is_prior_day) and is_midnightish:
+                        hold_min = 0.0
+                        is_prior_day = False
+                    else:
+                        hold_sec = (loop_start - opened).total_seconds()
+                        hold_min = max(0.0, hold_sec / 60.0)
+
+                # ? ALWAYS emit an EVAL row so the sell_triggers CSV is created and stays live
+                try:
+                    emit_sell_event(
+                        symbol=s,
+                        event="EVAL",
+                        action="HOLD",
+                        reason="loop",
+                        hold_min=hold_min,
+                        qty=qty,
+                        last_price=cur_px,
+                        entry_price=entry_px,
+                        pl_pct=pl_pct,
+                        mode=cfg.mode,
+                        details={
+                            "is_prior_day": bool(is_prior_day),
+                            "has_open_sell": bool(has_open_sell),
+                            "opened_src": opened_src,
+                        },
+                    )
+                except Exception:
+                    pass
+
+            loop_end = datetime.now(tz=UTC)
+            elapsed = (loop_end - loop_start).total_seconds()
+            sleep_for = max(1.0, cfg.interval_sec - elapsed)
+            LOG.info("sleeping %.1fs", sleep_for)
+            time.sleep(sleep_for)
+
+        except KeyboardInterrupt:
+            LOG.info("KeyboardInterrupt — exiting")
+            break
+        except Exception as e:
+            LOG.error("Unexpected error in main loop: %s", e)
+            time.sleep(cfg.interval_sec)
+
+if __name__ == "__main__":
+    main()

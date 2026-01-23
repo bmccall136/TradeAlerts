@@ -3212,9 +3212,3 @@ except Exception:
 
     pass
 
-@app.route("/analytics/data")
-def analytics_data():
-    from services.analytics_service import compute_analytics_charts
-    logs_dir = r"C:\TradeAlerts\logs"
-    return compute_analytics_charts(log_dir=logs_dir)
-
