@@ -857,3 +857,31 @@ h2 {
 .table thead th:nth-child(11) { width: 7rem; }   /* Value */
 .table thead th:nth-child(12) { width: 5rem; }   /* News */
 
+
+
+/* === TRADE_REVIEW_CHART_FIT_OVERRIDE === */
+/* Make the trade review chart fully visible (no clipping) */
+.trade-chart-wrap,
+.trade-chart-panel,
+.trade-review-chart,
+#trade-review-chart,
+#tradeChartWrap,
+#tradeChartPanel {
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+}
+
+.trade-chart-wrap img,
+.trade-chart-panel img,
+.trade-review-chart img,
+#trade-review-chart img,
+#tradeChartWrap img,
+#tradeChartPanel img {
+  display: block !important;
+  width: 100% !important;
+  height: auto !important;
+  max-height: none !important;
+  object-fit: contain !important;
+}
+

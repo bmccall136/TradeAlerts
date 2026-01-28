@@ -1,0 +1,259 @@
+--- view_symbol_news score=0 ---
+def view_symbol_news(symbol: str):
+    """
+    HTML view for a single symbol's news.
+    This is what the 📰 buttons on the Live holdings table link to.
+    """
+    sym = (symbol or "").upper().strip()
+    news_rows = get_recent_news_for_symbol(sym, limit=10)
+
+    return render_template(
+        "news_view.html",
+        symbol=sym,
+        news_rows=news_rows,
+    )
+
+
+
+--- trade_review_page score=0 ---
+def trade_review_page():
+    """
+    Trade Review page: server-side render from today's log files.
+    No required query params -> never 400 just because args are missing.
+    """
+    from flask import render_template
+    import os, csv, datetime
+
+    today = datetime.date.today().strftime("%Y-%m-%d")
+    log_dir = os.path.join(os.getcwd(), "logs")
+
+    buy_file  = os.path.join(log_dir, f"triggers_{today}.csv")
+    sell_file = os.path.join(log_dir, f"sell_triggers_{today}.csv")
+
+    def _read_rows(path, limit=5):
+        rows = []
+        if not os.path.exists(path):
+            return rows
+        with open(path, "r", encoding="utf-8", errors="ignore", newline="") as f:
+            rdr = csv.DictReader(f)
+            for r in rdr:
+                rows.append(r)
+        # newest first (logs are normally append; if yours are newest-last, reverse)
+        # We'll assume append order => newest at end:
+        rows = list(reversed(rows))
+        return rows[:limit]
+
+    buy_rows = _read_rows(buy_file, limit=5)
+    sell_rows = _read_rows(sell_file, limit=5)
+
+    return render_template(
+        "trade_review.html",
+        buy_rows=buy_rows,
+        sell_rows=sell_rows,
+        buy_file=buy_file if os.path.exists(buy_file) else None,
+        sell_file=sell_file if os.path.exists(sell_file) else None,
+    )
+
+
+
+
+--- trade_review_chart score=0 ---
+def trade_review_chart():
+    """
+    Trade Review card chart endpoint.
+    Always return a valid Flask response (NOT a DataFrame).
+    We reuse the existing /chart/<symbol> renderer and pass ts for the marker.
+    """
+    from flask import request, redirect, abort
+    from urllib.parse import quote_plus
+
+    symbol = (request.args.get("symbol") or "").strip().upper()
+    ts = (request.args.get("buy_ts") or request.args.get("ts") or "").strip()
+
+    if not symbol:
+        abort(400, "Missing symbol")
+
+    if ts:
+        return redirect(f"/chart/{symbol}?ts={quote_plus(ts)}")
+
+    return redirect(f"/chart/{symbol}")
+
+
+
+--- run_checkpoint score=0 ---
+def run_checkpoint():
+    try:
+        if not os.path.exists(CHECKPOINT_BAT):
+            return {"ok": False, "error": f"Missing {CHECKPOINT_BAT}"}
+
+        subprocess.Popen(
+            ["cmd.exe", "/c", "start", "", CHECKPOINT_BAT],
+            cwd=str(Path(CHECKPOINT_BAT).parent),
+            creationflags=0x00000008,  # CREATE_NEW_CONSOLE
+        )
+
+        return {"ok": True, "launched": CHECKPOINT_BAT}
+    except Exception as e:
+        current_app.logger.exception("checkpoint error: %s", e)
+        return {"ok": False, "error": str(e)}
+
+
+
+--- read_flag_file score=0 ---
+def read_flag_file() -> bool:
+    """
+    Returns True if the reconnect flag file exists, False otherwise.
+    Safe fallback if anything weird happens.
+    """
+    try:
+        return os.path.exists(FLAG_FILE)
+    except Exception:
+        return False
+
+def setup_logging(app: Flask) -> None:
+    app.logger.setLevel(logging.INFO)
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.INFO)
+    ch.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)-8s %(name)s: %(message)s")
+    )
+    if not any(isinstance(h, logging.StreamHandler) for h in app.logger.handlers):
+        app.logger.addHandler(ch)
+
+
+
+
+--- normalize_positions_payload score=0 ---
+def normalize_positions_payload(raw):
+    return normalize_positions_payload(raw)
+
+
+
+
+--- normalize_positions_payload score=0 ---
+def normalize_positions_payload(raw):
+
+    """
+    Normalize E*TRADE PortfolioResponse payload into a list of dicts your dashboard can use.
+
+    Output rows contain (at least):
+      symbol, name, qty, price_paid, last_price, day_pl, day_pl_pct,
+      total_pl, total_pl_pct, prior_close, opened_utc, value
+
+    This function is defensive:
+      - accepts dict payloads OR list payloads
+      - accepts already-normalized rows and passes them through
+    """
+    if not raw:
+        return []
+
+    # If someone already passed a list of normalized rows, pass through.
+    if isinstance(raw, list):
+        # If these already look normalized, return as-is.
+        if raw and isinstance(raw[0], dict) and ("symbol" in raw[0] or "qty" in raw[0]):
+            return raw
+        # Otherwise, treat list items as Position dicts.
+        positions = [p for p in raw if isinstance(p, dict)]
+    elif isinstance(raw, dict):
+        pr = raw.get("PortfolioResponse") or raw.get("portfolioResponse") or raw
+        acct_list = pr.get("AccountPortfolio") or pr.get("accountPortfolio") or []
+        positions = []
+        for acct in acct_list if isinstance(acct_list, list) else []:
+            pos_list = acct.get("Position") or acct.get("position") or []
+            if isinstance(pos_list, list):
+                positions.extend([p for p in pos_list if isinstance(p, dict)])
+    else:
+        return []
+
+    out = []
+    for p in positions:
+        # Already-normalized?
+        if "symbol" in p and ("qty" in p or "quantity" in p):
+            out.append(p)
+            continue
+
+        prod = p.get("Product") or {}
+        quick = p.get("Quick") or {}
+
+        symbol = (
+            prod.get("symbol")
+            or (prod.get("productId") or {}).get("symbol")
+            or p.get("symbol")
+            or p.get("symbolDescription")
+        )
+        if not symbol:
+            continue
+
+        qty = p.get("quantity")
+        try:
+            qty = float(qty) if qty is not None else 0.0
+        ex
+
+--- news_latest score=0 ---
+def news_latest():
+    rows = fetch_latest_news()
+    return {"ok": True, "items": rows}
+
+
+
+--- news_for_symbol score=0 ---
+def news_for_symbol(symbol):
+    rows = fetch_news_for_symbol(symbol)
+    return {"ok": True, "items": rows}
+
+
+
+
+--- live_view score=0 ---
+def live_view():
+    """
+    Initial HTML shell. JS immediately calls /live/status.
+    Tolerant of upstream errors.
+    """
+    try:
+        _etrade_log_wrap()
+
+        # ---- balances ----
+        acct_summary = et.get_account_summary() or {}
+
+        # Prefer the newest/expected name, but gracefully fall back to older names.
+        try:
+            if hasattr(et, "fetch_account_summary"):
+                acct_summary = et.get_account_summary() or {}
+            elif hasattr(et, "get_account_summary"):
+                acct_summary = et.get_account_summary() or {}
+            elif hasattr(et, "account_summary"):
+                acct_summary = et.account_summary() or {}
+            elif hasattr(et, "fetch_balance"):
+                # Some builds expose balance/snapshot under other names
+                acct_summary = et.fetch_balance() or {}
+        except Exception:
+            acct_summary = {}
+        account = _normalize_account(acct_summary) or {}
+
+        # Raw fields from summary (already normalized by services /live/data)
+        cash_balance = float(acct_summary.get("cash_balance") or 0.0)
+
+        buying_power = float(
+            acct_summary.get("buying_power")
+            or acct_summary.get("available_funds")
+            or account.get("buying_power")
+            or 0.0
+        )
+
+        # In the /live HTML view, don't touch raw E*TRADE BalanceResponse structures.
+        # If you need NAV here, use the normalized value.
+        nav_from_api = float(acct_summary.get("nav") or account.get("nav") or 0.0)
+
+        positions_value_from_api = _safe_float(
+            acct_summary.get("positions_value")
+            or account.get("positions_value")
+            or 0.0
+        )
+
+        # ---- positions / holdings ----
+        import json
+        raw_positions = et.get_positions() or {}
+        LOG.info("LIVE: positions raw type=%s keys=%s", type(raw_positions), list(raw_positions.keys()) if isinstance(raw_positions, dict) else "n/a")
+
+        pos_rows = _p

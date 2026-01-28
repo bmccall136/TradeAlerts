@@ -1,0 +1,195 @@
+0001: def trade_review():
+0002:     # always define these early (analytics links may call /trade_review?symbol=...)
+0003:     sym = (request.args.get("symbol") or "").strip().upper()
+0004:     ts  = (request.args.get("ts") or "").strip()
+0005: 
+0006:     """
+0007:     Single-trade review page.
+0008:     Source of truth = local DB (realized_trades).
+0009:     Logs are used ONLY for trigger explanations.
+0010:     """
+0011:     from flask import request, abort
+0012:     import sqlite3
+0013:     from datetime import datetime, timedelta
+0014:     from pathlib import Path
+0015:     import csv
+0016: 
+0017:     trade_id = request.args.get("trade_id")
+0018: 
+0019:     # analytics links may call /trade_review?symbol=XXX&ts=... (no trade_id)
+0020:     sym = (request.args.get("symbol") or "").strip().upper()
+0021:     ts  = (request.args.get("ts") or "").strip()
+0022: 
+0023:     # If no trade_id but we have symbol+ts, send to chart view (open trades / pseudo-buys)
+0024:     if (not trade_id) and sym and ts:
+0025:         return redirect(f"/chart/{(request.args.get('symbol') or '').strip().upper()}?ts={(request.args.get('ts') or '').strip()}")
+0026: 
+0027:     # --- fallback: allow /trade_review?symbol=XYZ&ts_et=... (resolve to a realized trade_id) ---
+0028:     if not trade_id:
+0029:         symbol = (request.args.get("symbol") or "").strip().upper()
+0030:         ts_et = (request.args.get("ts_et") or request.args.get("sell_ts_et") or "").strip()
+0031:         if symbol:
+0032:             try:
+0033:                 import sqlite3
+0034:                 db = LIVE_DB if "LIVE_DB" in globals() else "live.db"
+0035:                 conn = sqlite3.connect(db)
+0036:                 conn.row_factory = sqlite3.Row
+0037:     
+0038:                 target = ts_et.replace("Z","") if ts_et else None
+0039:     
+0040:                 if target:
+0041:                     row = conn.execute(
+0042:                         "SELECT id, close_date FROM realized_trades "
+0043:                         "WHERE symbol=? AND close_date IS NOT NULL "
+0044:                         "ORDER BY ABS(strftime('%s', close_date) - strftime('%s', ?)) ASC "
+0045:                         "LIMIT 1",
+0046:                         (symbol, target)
+0047:                     ).fetchone()
+0048:                 else:
+0049:                     row = conn.execute(
+0050:                         "SELECT id, close_date FROM realized_trades "
+0051:                         "WHERE symbol=? AND close_date IS NOT NULL "
+0052:                         "ORDER BY close_date DESC "
+0053:                         "LIMIT 1",
+0054:                         (symbol,)
+0055:                     ).fetchone()
+0056:     
+0057:                 conn.close()
+0058:     
+0059:                 if row:
+0060:                     return redirect(url_for("trade_review", trade_id=row["id"]))
+0061:                 return redirect(f"/chart/{(request.args.get('symbol') or '').strip().upper()}?ts={(request.args.get('ts') or '').strip()}")
+0062:             except Exception as e:
+0063:                 return (f"Bad Request\ntrade_id missing and resolve failed: {e}\n", 400)
+0064: 
+0065:     chart_name = (request.args.get("name") or "").strip() or None
+0066:     # --- fallback: allow /trade_review?symbol=XXX&ts=... (analytics links) ---
+0067:     if not trade_id:
+0068:         sym = (request.args.get("symbol") or "").strip().upper()
+0069:         ts  = (request.args.get("ts") or "").strip()
+0070:         if sym and ts:
+0071:             # Best-effort lookup:
+0072:             # 1) realized_trades: close_date startswith(ts) (handles your ISO timestamps)
+0073:             # 2) if not found, try exact match after normalizing ":" encoding
+0074:             try:
+0075:                 con = sqlite3.connect(LIVE_DB)
+0076:                 con.row_factory = sqlite3.Row
+0077:                 cur = con.cursor()
+0078: 
+0079:                 # try startswith match
+0080:                 cur.execute(
+0081:                     "SELECT trade_id FROM realized_trades WHERE symbol=? AND close_date LIKE ? ORDER BY close_date DESC LIMIT 1",
+0082:                     (sym, ts + "%")
+0083:                 )
+0084:                 r = cur.fetchone()
+0085:                 if not r:
+0086:                     # some callers might pass url-decoded vs stored string formats
+0087:                     cur.execute(
+0088:                         "SELECT trade_id FROM realized_trades WHERE symbol=? ORDER BY close_date DESC LIMIT 1",
+0089:                         (sym,)
+0090:                     )
+0091:                     r = cur.fetchone()
+0092: 
+0093:                 con.close()
+0094: 
+0095:                 if r and r["trade_id"]:
+0096:                     return redirect(url_for("trade_review", trade_id=r["trade_id"]))
+0097:             except Exception:
+0098:                 pass
+0099:         abort(400, "missing trade_id")
+0100: 
+0101:     conn = sqlite3.connect(LIVE_DB)
+0102:     conn.row_factory = sqlite3.Row
+0103:     trade = conn.execute(
+0104:         "SELECT * FROM realized_trades WHERE id = ?",
+0105:         (trade_id,)
+0106:     ).fetchone()
+0107:     conn.close()
+0108: 
+0109:     if not trade:
+0110:         abort(404, "trade not found")
+0111: 
+0112:     symbol = (trade["symbol"] or "").strip().upper()
+0113: 
+0114:     # --- company name (best-effort, no placeholders) ---
+0115:     name = None  # company name
+0116:     try:
+0117:         import yfinance as yf
+0118:         info = yf.Ticker(symbol).info or {}
+0119:         name = (info.get("shortName") or info.get("longName") or "").strip() or None
+0120:     except Exception:
+0121:         name = None
+0122: 
+0123:     buy_time_s = (trade["open_date"] or "").strip()
+0124:     sell_time_s = (trade["close_date"] or "").strip()
+0125: 
+0126:     def _parse_dt(s):
+0127:         # expected: 'YYYY-MM-DD HH:MM:SS'
+0128:         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+0129:             try:
+0130:                 return datetime.strptime(s[:19], fmt)
+0131:             except Exception:
+0132:                 pass
+0133:         return None
+0134: 
+0135:     buy_dt = _parse_dt(buy_time_s)
+0136:     sell_dt = _parse_dt(sell_time_s)
+0137: 
+0138:     # Determine win/loss from gain
+0139:     gain = trade["gain"]
+0140:     try:
+0141:         gain_f = float(gain)
+0142:     except Exception:
+0143:         gain_f = 0.0
+0144:     is_win = gain_f >= 0.0
+0145: 
+0146:     log_dir = Path(__file__).resolve().parent / "logs"
+0147: 
+0148:     def _file_for_day(prefix, dt):
+0149:         if not dt:
+0150:             return None
+0151:         fname = f"{prefix}{dt.strftime('%Y-%m-%d')}.csv"
+0152:         f = log_dir / fname
+0153:         return f if f.exists() else None
+0154: 
+0155:     buy_file = _file_for_day("triggers_", buy_dt) or (max(log_dir.glob("triggers_*.csv"), default=None) if log_dir.exists() else None)
+0156:     sell_file = _file_for_day("sell_triggers_", sell_dt) or (max(log_dir.glob("sell_triggers_*.csv"), default=None) if log_dir.exists() else None)
+0157: 
+0158:     def _row_time_dt(row):
+0159:         t = (row.get("time_et") or row.get("timestamp") or row.get("time") or "").strip()
+0160:         if not t:
+0161:             return None
+0162:         return _parse_dt(t)
+0163: 
+0164:     def _load_matches(path, target_dt, window_sec=120):
+0165:         if not path or not path.exists() or not target_dt:
+0166:             return []
+0167:         rows = []
+0168:         with path.open("r", encoding="utf-8", newline="") as f:
+0169:             r = csv.DictReader(f)
+0170:             for row in r:
+0171:                 if (row.get("symbol") or "").strip().upper() != symbol:
+0172:                     continue
+0173:                 rt = _row_time_dt(row)
+0174:                 if not rt:
+0175:                     continue
+0176:                 if abs((rt - target_dt).total_seconds()) <= window_sec:
+0177:                     rows.append(row)
+0178:         return rows
+0179: 
+0180:     buy_triggers = _load_matches(buy_file, buy_dt, 180)
+0181:     sell_triggers = _load_matches(sell_file, sell_dt, 180)
+0182: 
+0183:     return render_template(
+0184:         "trade_review_single.html",
+0185:         trade=trade,
+0186:         buy_triggers=buy_triggers,
+0187:         sell_triggers=sell_triggers,
+0188:         buy_file=str(buy_file) if buy_file else None,
+0189:         sell_file=str(sell_file) if sell_file else None,
+0190:         is_win=is_win,
+0191:         name=name,
+0192:     )
+0193: 
+0194: 
+0195: 

@@ -1,0 +1,177 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="tr-wrap">
+  <div class="tr-topbar">
+    <div>
+      <div class="tr-title">$$Machine ? Trade Review</div>
+      <div class="tr-sub">
+        Last 5 buys (left) and last 5 sells (right). Each card prints the exact trigger rows under the chart (no hover).
+      </div>
+      <div class="tr-src">
+        Data sources: logs\triggers_YYYY-MM-DD.csv (buys) + logs\sell_triggers_YYYY-MM-DD.csv (sells) + Yahoo intraday (1d/5m).
+      </div>
+    </div>
+
+    <div class="tr-actions">
+      <a class="tr-btn" href="/analytics">Analytics</a>
+      <a class="tr-btn" href="/trade_review">Refresh</a>
+    </div>
+  </div>
+
+  <div class="tr-grid">
+    <!-- LEFT: BUYS -->
+    <section class="tr-col">
+      <div class="tr-col-title">Recent Buys</div>
+
+      {% if not buy_rows or buy_rows|length == 0 %}
+        <div class="tr-empty">No recent buys found.</div>
+      {% else %}
+        <div class="tr-meta">
+          <span class="tr-meta-label">Source:</span>
+          <span class="tr-meta-path">{{ buy_file }}</span>
+        </div>
+
+        {% for row in buy_rows %}
+          <div class="tr-card">
+            <div class="tr-card-head">
+              <div class="tr-card-left">
+                <span class="tr-badge tr-badge-buy">BUY</span>
+                <span class="tr-symbol">{{ row.get('symbol','') }}</span>
+                <span class="tr-name">{{ row.get('name','') }}</span>
+              </div>
+              <div class="tr-card-right">
+                <span class="tr-time">{{ row.get('time_et') or row.get('timestamp') or row.get('time') or '' }}</span>
+              </div>
+            </div>
+
+            <div class="tr-chart-placeholder">
+              Chart will render here (buy marker + shaded hold window + sell marker when known).
+            </div>
+
+            <div class="tr-rows">
+              <div class="tr-rows-title">Trigger Row</div>
+              <table class="tr-table">
+                <tbody>
+                  {% for k,v in row.items() %}
+                    <tr>
+                      <td class="tr-k">{{ k }}</td>
+                      <td class="tr-v">{{ v }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        {% endfor %}
+      {% endif %}
+    </section>
+
+    <!-- RIGHT: SELLS -->
+    <section class="tr-col">
+      <div class="tr-col-title">Recent Sells</div>
+
+      {% if not sell_rows or sell_rows|length == 0 %}
+        <div class="tr-empty">No recent sells found.</div>
+      {% else %}
+        <div class="tr-meta">
+          <span class="tr-meta-label">Source:</span>
+          <span class="tr-meta-path">{{ sell_file }}</span>
+        </div>
+
+        {% for row in sell_rows %}
+          <div class="tr-card">
+            <div class="tr-card-head">
+              <div class="tr-card-left">
+                <span class="tr-badge tr-badge-sell">SELL</span>
+                <span class="tr-symbol">{{ row.get('symbol','') }}</span>
+                <span class="tr-name">{{ row.get('name','') }}</span>
+              </div>
+              <div class="tr-card-right">
+                <span class="tr-time">{{ row.get('time_et') or row.get('timestamp') or row.get('time') or '' }}</span>
+              </div>
+            </div>
+
+            <div class="tr-chart-placeholder">
+              Chart will render here (buy marker + shaded hold window + sell marker).
+            </div>
+
+            <div class="tr-rows">
+              <div class="tr-rows-title">Trigger Row</div>
+              <table class="tr-table">
+                <tbody>
+                  {% for k,v in row.items() %}
+                    <tr>
+                      <td class="tr-k">{{ k }}</td>
+                      <td class="tr-v">{{ v }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        {% endfor %}
+      {% endif %}
+    </section>
+  </div>
+</div>
+
+<style>
+  .tr-wrap { max-width: 1400px; margin: 0 auto; padding: 18px 0; }
+  .tr-topbar { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:18px; }
+  .tr-title { color:#ffe900; font-size: 22px; font-weight: 700; }
+  .tr-sub { color:#cfcfcf; margin-top:6px; font-size: 13px; }
+  .tr-src { color:#8f8f8f; margin-top:10px; font-size: 12px; }
+  .tr-actions { display:flex; gap:10px; }
+  .tr-btn {
+    display:inline-block; padding:7px 14px; border-radius: 12px;
+    background:#1a1a1a; border:1px solid #3a3a3a; color:#ffe900;
+    text-decoration:none; font-size: 13px;
+  }
+  .tr-btn:hover { border-color:#ffe900; }
+
+  .tr-grid { display:grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+  .tr-col-title { color:#ffe900; font-weight:700; margin: 8px 0 10px; }
+  .tr-empty { color:#cfcfcf; opacity:0.85; margin-top: 6px; }
+
+  .tr-meta { color:#8f8f8f; font-size: 12px; margin-bottom: 10px; }
+  .tr-meta-label { color:#b0b0b0; margin-right: 6px; }
+  .tr-meta-path { color:#8f8f8f; }
+
+  .tr-card {
+    background:#0f0f0f; border:1px solid #2a2a2a; border-radius: 14px;
+    padding: 12px; margin-bottom: 14px;
+  }
+  .tr-card-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom: 10px; }
+  .tr-card-left { display:flex; align-items:center; gap:10px; min-width:0; }
+  .tr-symbol { color:#fff; font-weight: 700; }
+  .tr-name { color:#bdbdbd; font-size: 12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width: 420px; }
+  .tr-time { color:#8f8f8f; font-size: 12px; }
+
+  .tr-badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight:700; }
+  .tr-badge-buy { background:#102510; border:1px solid #2e7d32; color:#a9f5a9; }
+  .tr-badge-sell { background:#2a1010; border:1px solid #b71c1c; color:#ffb3b3; }
+
+  .tr-chart-placeholder {
+    height: 180px;
+    border-radius: 12px;
+    border: 1px dashed #2f2f2f;
+    background: #0b0b0b;
+    display:flex; align-items:center; justify-content:center;
+    color:#6f6f6f; font-size: 12px;
+    margin-bottom: 10px;
+  }
+
+  .tr-rows-title { color:#cfcfcf; font-size: 12px; margin: 8px 0; font-weight: 700; }
+  .tr-table { width:100%; border-collapse: collapse; font-size: 12px; }
+  .tr-table td { padding: 6px 8px; border-bottom: 1px solid #1f1f1f; vertical-align: top; }
+  .tr-k { color:#9d9d9d; width: 32%; }
+  .tr-v { color:#e0e0e0; word-break: break-word; }
+
+  @media (max-width: 1100px) {
+    .tr-grid { grid-template-columns: 1fr; }
+    .tr-name { max-width: 260px; }
+  }
+</style>
+
+{% endblock %}

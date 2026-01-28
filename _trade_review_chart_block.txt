@@ -1,0 +1,20 @@
+0001: def trade_review_chart():
+0002:     """
+0003:     Trade Review card chart endpoint.
+0004:     Always return a valid Flask response (NOT a DataFrame).
+0005:     We reuse the existing /chart/<symbol> renderer and pass ts for the marker.
+0006:     """
+0007:     from flask import request, redirect, abort
+0008:     from urllib.parse import quote_plus
+0009: 
+0010:     symbol = (request.args.get("symbol") or "").strip().upper()
+0011:     ts = (request.args.get("buy_ts") or request.args.get("ts") or "").strip()
+0012: 
+0013:     if not symbol:
+0014:         abort(400, "Missing symbol")
+0015: 
+0016:     if ts:
+0017:         return redirect(f"/chart/{symbol}?ts={quote_plus(ts)}")
+0018: 
+0019:     return redirect(f"/chart/{symbol}")
+0020: 

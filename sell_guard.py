@@ -309,12 +309,41 @@ except Exception:  # pragma: no cover
 # --------------------------------------------------------------------------- #
 # Defaults / settings
 # --------------------------------------------------------------------------- #
+# --- Live mode (DAY/SWING) settings resolution ------------------------------
+LIVE_MODE_FILE = os.path.join(os.path.dirname(__file__), "live_mode.txt")
+VALID_LIVE_MODES = {"DAY", "SWING"}
+LIVE_MODE_DEFAULT = "DAY"
 
+def _read_live_mode() -> str:
+    """Return current live mode: 'DAY' or 'SWING'."""
+    try:
+        with open(LIVE_MODE_FILE, "r", encoding="utf-8") as f:
+            v = (f.read() or "").strip().upper()
+            if v in VALID_LIVE_MODES:
+                return v
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+    return LIVE_MODE_DEFAULT
 
-SETTINGS_FILE = os.environ.get(
-    "SELL_GUARD_SETTINGS", "C:/TradeAlerts/sell_guard_settings.json"
-)
+def _resolve_settings_file() -> str:
+    """
+    If SELL_GUARD_SETTINGS env var is set, it wins.
+    Otherwise, honor live_mode.txt and select the matching JSON file.
+    """
+    env = os.environ.get("SELL_GUARD_SETTINGS")
+    if env:
+        return env
 
+    mode = _read_live_mode()
+    base = os.path.dirname(__file__)
+    if mode == "SWING":
+        return os.path.join(base, "sell_guard_settings_swing.json")
+    return os.path.join(base, "sell_guard_settings_day.json")
+
+SETTINGS_FILE = _resolve_settings_file()
+# ---------------------------------------------------------------------------
 
 @dataclass
 class SellGuardConfig:
@@ -775,6 +804,29 @@ def place_with_adaptive_variants(
             )
             et.place_equity_order(preview, qty=int(qty))
 
+            # --- sell_triggers logging: order placed (best-effort) ---
+            try:
+                emit_sell_event(
+                    symbol=(symbol or "").upper().strip(),
+                    event="ORDER_PLACED",
+                    action=str(order_type or "SELL"),
+                    reason="place_equity_order_success",
+                    hold_min=None,
+                    qty=float(qty or 0.0),
+                    last_price=None,
+                    entry_price=None,
+                    pnl_pct=None,
+                    mode="LIVE",
+                    details={
+                        "order_type": str(order_type),
+                        "limit_price": (float(limit_price) if limit_price is not None else None),
+                        "attempt": attempts,
+                    },
+                )
+            except Exception:
+                pass
+            # ---------------------------------------------------------
+
             LOG.info("place_with_adaptive_variants success for %s", symbol)
             return
         except Exception as exc:  # noqa: BLE001
@@ -825,6 +877,7 @@ def main() -> None:
 # NOTE: previous line had mojibake from copy/paste; fixed to a normal ellipsis.
     LOG.info("Using SELL_GUARD_SETTINGS=%s", SETTINGS_FILE)
 
+    LOG.info('DBG SETTINGS RESOLVED live_mode=%s settings=%s', _read_live_mode(), SETTINGS_FILE)
     settings = load_settings()
     sg = settings.get("sell_guard", {}) or {}
     ai_enabled, ai_use_exits = get_ai_flags(settings)
@@ -838,6 +891,10 @@ def main() -> None:
 
     armed_trail: Dict[str, float] = {}
 
+
+    # Track previous loop positions so we can log when a position disappears (sell went through)
+
+    prev_positions: Dict[str, float] = {}
     while True:
         loop_start = datetime.now(tz=UTC)
 
@@ -854,6 +911,66 @@ def main() -> None:
 
             positions_raw = fetch_positions()
             positions = parse_positions(positions_raw)
+
+            # ---- sell_triggers logging: detect positions that disappeared (sell went through) ----
+            try:
+                cur_positions = {(pp.symbol or "").upper().strip(): float(pp.qty or 0.0) for pp in (positions or [])}
+
+                # FULL close: symbol disappeared
+                for _sym, _qty in (prev_positions or {}).items():
+                    _sym_u = (_sym or "").upper().strip()
+                    if not _sym_u:
+                        continue
+                    if _sym_u not in cur_positions and float(_qty or 0.0) > 0:
+                        try:
+                            emit_sell_event(
+                                symbol=_sym_u,
+                                event="POSITION_CLOSED",
+                                action="SELL",
+                                reason="position_disappeared",
+                                hold_min=None,
+                                qty=float(_qty or 0.0),
+                                last_price=None,
+                                entry_price=None,
+                                pnl_pct=None,
+                                mode=cfg.mode,
+                                details={"note": "position no longer returned by positions; likely sell filled"},
+                            )
+                        except Exception:
+                            pass
+
+                # OPTIONAL: partial reduction
+                for _sym, _prev_qty in (prev_positions or {}).items():
+                    _sym_u = (_sym or "").upper().strip()
+                    if not _sym_u:
+                        continue
+                    _prev = float(_prev_qty or 0.0)
+                    _cur  = float(cur_positions.get(_sym_u, 0.0) or 0.0)
+                    if _cur > 0 and _prev > 0 and _cur < _prev:
+                        try:
+                            emit_sell_event(
+                                symbol=_sym_u,
+                                event="POSITION_REDUCED",
+                                action="SELL",
+                                reason="qty_reduced",
+                                hold_min=None,
+                                qty=(_prev - _cur),
+                                last_price=None,
+                                entry_price=None,
+                                pnl_pct=None,
+                                mode=cfg.mode,
+                                details={"prev_qty": _prev, "cur_qty": _cur},
+                            )
+                        except Exception:
+                            pass
+
+                prev_positions = dict(cur_positions)
+
+            except Exception:
+                # never let logging break the guard loop
+                pass
+            # ------------------------------------------------------------------------------
+
             if not positions:
                 LOG.info("No positions; sleeping %ss", cfg.interval_sec)
                 time.sleep(cfg.interval_sec)

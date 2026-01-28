@@ -1,0 +1,207 @@
+(function () {
+  function el(id){ return document.getElementById(id); }
+  function ctx(id){ const c = el(id); return c ? c.getContext("2d") : null; }
+
+  function isPairList(x){
+    return Array.isArray(x) && (x.length === 0 || (Array.isArray(x[0]) && x[0].length >= 2));
+  }
+
+  function pairsToLabelsValues(pairs){
+    if (!isPairList(pairs)) return { labels: [], values: [] };
+    return {
+      labels: pairs.map(p => String(p[0])),
+      values: pairs.map(p => Number(p[1]) || 0),
+    };
+  }
+
+  function topPair(pairs){
+    if (!isPairList(pairs) || pairs.length === 0) return null;
+    // assume already in descending order from backend; if not, sort
+    let best = pairs[0];
+    for (const p of pairs) if ((Number(p[1])||0) > (Number(best[1])||0)) best = p;
+    return { label: String(best[0]), count: Number(best[1])||0 };
+  }
+
+  function clearTable(tbody){ while(tbody.firstChild) tbody.removeChild(tbody.firstChild); }
+
+  function fillTable(tableId, pairs, limit){
+    const t = el(tableId);
+    if (!t) return;
+    const tb = t.querySelector("tbody");
+    if (!tb) return;
+    clearTable(tb);
+    if (!isPairList(pairs) || pairs.length === 0) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td style="opacity:.7;">(none)</td><td>0</td>`;
+      tb.appendChild(tr);
+      return;
+    }
+    const rows = pairs.slice(0, limit || 12);
+    for (const [k,v] of rows) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${String(k)}</td><td>${Number(v)||0}</td>`;
+      tb.appendChild(tr);
+    }
+  }
+
+  // ---- Charts (use defaults, just sane axes) ----
+  function mkBar(chartCtx, labels, values){
+    if (!chartCtx) return null;
+    return new Chart(chartCtx, {
+      type: "bar",
+      data: { labels, datasets: [{ data: values, borderWidth: 1 }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: "#d7d7d7" }, grid: { color: "rgba(255,255,255,0.06)" } },
+          y: {
+            beginAtZero: true,
+            ticks: { color: "#d7d7d7", precision: 0 },
+            grid: { color: "rgba(255,255,255,0.06)" }
+          }
+        }
+      }
+    });
+  }
+
+  function mkDoughnut(chartCtx, labels, values){
+    if (!chartCtx) return null;
+    return new Chart(chartCtx, {
+      type: "doughnut",
+      data: { labels, datasets: [{ data: values, borderWidth: 1 }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, position: "bottom", labels: { color: "#d7d7d7", boxWidth: 10 } }
+        }
+      }
+    });
+  }
+
+  async function fetchJSON(url){
+    const r = await fetch(url, { cache: "no-store" });
+    if (!r.ok) throw new Error(url + " -> HTTP " + r.status);
+    return await r.json();
+  }
+
+  async function load(){
+    // your confirmed endpoint
+    const data = await fetchJSON("/api/analytics/today");
+    return data;
+  }
+
+  function setText(id, txt){
+    const e = el(id);
+    if (e) e.textContent = txt;
+  }
+
+  function render(data){
+    if (!data || data.ok !== true) return;
+
+    const buy = data.buy || {};
+    const sell = data.sell || {};
+
+    // Title/date + file paths
+    setText("ax-date", data.date_et || "?");
+
+    const files = [];
+    files.push(`BUY log: ${data.buy_file || "(missing)"}`);
+    files.push(`SELL log: ${data.sell_file || "(missing)"}`);
+    setText("ax-files", files.join("\n"));
+
+    // Errors
+    const errs = Array.isArray(data.errors) ? data.errors : [];
+    const errBox = el("ax-errors");
+    if (errBox) {
+      if (errs.length) {
+        errBox.style.display = "block";
+        errBox.innerHTML = "<div style='color:#ffe900;font-weight:800;margin-bottom:6px;'>Errors</div>" +
+          errs.map(e => `<div style="opacity:.85;">${e}</div>`).join("");
+      } else {
+        errBox.style.display = "none";
+      }
+    }
+
+    // KPIs
+    setText("kpi-buy-rows", String(buy.rows ?? 0));
+    setText("kpi-sell-rows", String(sell.rows ?? 0));
+
+    // Top action / reason
+    const aTop = topPair(sell.actions);
+    setText("kpi-top-sell-action", aTop ? `${aTop.label} (${aTop.count})` : "?");
+
+    const rTop = topPair(sell.exit_reasons);
+    setText("kpi-top-sell-reason", rTop ? `${rTop.label}` : "?");
+
+    // Right-side tables
+    fillTable("tbl-buy-triggers", buy.top_triggers, 10);
+    fillTable("tbl-buy-combos", buy.top_combos, 10);
+
+    // BUY mix doughnut from top_triggers
+    const buyMix = pairsToLabelsValues(buy.top_triggers);
+    mkDoughnut(ctx("chart-buy-mix"), buyMix.labels, buyMix.values);
+
+    // SELL hold buckets bar
+    const hold = pairsToLabelsValues(sell.hold_buckets);
+    mkBar(ctx("chart-sell-hold"), hold.labels, hold.values);
+
+    // SELL P/L buckets bar
+    const pl = pairsToLabelsValues(sell.pl_buckets);
+    mkBar(ctx("chart-sell-pl"), pl.labels, pl.values);
+
+    // SELL reasons doughnut
+    const reasons = pairsToLabelsValues(sell.exit_reasons);
+    mkDoughnut(ctx("chart-sell-reasons"), reasons.labels.slice(0,10), reasons.values.slice(0,10));
+
+    // SELL exits per 5-min bucket (may not exist yet; handle empty)
+    const exits = pairsToLabelsValues(sell.exits_5m);
+    mkBar(ctx("chart-sell-exits"), exits.labels, exits.values);
+  }
+
+  document.addEventListener("DOMContentLoaded", async () => {
+    try {
+      const data = await load();
+      render(data);
+    } catch (e) {
+      console.error("[Daily Analytics] load/render failed:", e);
+      setText("ax-date", "error");
+      setText("ax-files", String(e));
+    }
+	async function loadTodayTrades(){
+  const box = document.getElementById("ax-today-trades");
+  if(!box) return;
+
+  try{
+    const r = await fetch("/api/trade_review?limit=50&interval=5m");
+    const j = await r.json();
+    if(!j || !j.ok) throw new Error(j?.error || "trade_review api failed");
+
+    function linkRow(x){
+      const id = x.trade_id || x.id || "";
+      const sym = x.symbol || "";
+      const t  = x.ts_et || "";
+      if(!id) return `<div class="muted">${sym} ${t}</div>`;
+      return `<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+        <a href="/trade_review?trade_id=${encodeURIComponent(id)}" style="color:#ffe900;text-decoration:none;font-weight:800;">${sym}</a>
+        <span style="color:#bdbdbd;margin-left:10px;font-size:12px;">${t}</span>
+      </div>`;
+    }
+
+    const buys  = (j.buys  || []).map(linkRow).join("") || `<div class="muted">No buys found.</div>`;
+    const sells = (j.sells || []).map(linkRow).join("") || `<div class="muted">No sells found.</div>`;
+
+    box.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div><div style="color:#21d07a;font-weight:900;margin-bottom:6px;">BUYS</div>${buys}</div>
+        <div><div style="color:#ff5c5c;font-weight:900;margin-bottom:6px;">SELLS</div>${sells}</div>
+      </div>
+    `;
+  }catch(e){
+    box.innerHTML = `<div style="color:#ff7b7b;white-space:pre-wrap;">${String(e && e.stack ? e.stack : e)}</div>`;
+  }
+}
+  });
+})();

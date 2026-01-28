@@ -1,0 +1,161 @@
+03947:     def _file_for_day(prefix, dt):
+03948:         if not dt:
+03949:             return None
+03950:         fname = f"{prefix}{dt.strftime('%Y-%m-%d')}.csv"
+03951:         f = log_dir / fname
+03952:         return f if f.exists() else None
+03953: 
+03954:     buy_file = _file_for_day("triggers_", buy_dt) or (max(log_dir.glob("triggers_*.csv"), default=None) if log_dir.exists() else None)
+03955:     sell_file = _file_for_day("sell_triggers_", sell_dt) or (max(log_dir.glob("sell_triggers_*.csv"), default=None) if log_dir.exists() else None)
+03956: 
+03957:     def _row_time_dt(row):
+03958:         t = (row.get("time_et") or row.get("timestamp") or row.get("time") or "").strip()
+03959:         if not t:
+03960:             return None
+03961:         return _parse_dt(t)
+03962: 
+03963:     def _load_matches(path, target_dt, window_sec=120):
+03964:         if not path or not path.exists() or not target_dt:
+03965:             return []
+03966:         rows = []
+03967:         with path.open("r", encoding="utf-8", newline="") as f:
+03968:             r = csv.DictReader(f)
+03969:             for row in r:
+03970:                 if (row.get("symbol") or "").strip().upper() != symbol:
+03971:                     continue
+03972:                 rt = _row_time_dt(row)
+03973:                 if not rt:
+03974:                     continue
+03975:                 if abs((rt - target_dt).total_seconds()) <= window_sec:
+03976:                     rows.append(row)
+03977:         return rows
+03978: 
+03979:     buy_triggers = _load_matches(buy_file, buy_dt, 180)
+03980:     sell_triggers = _load_matches(sell_file, sell_dt, 180)
+03981: 
+03982:     return render_template(
+03983:         "trade_review_single.html",
+03984:         trade=trade,
+03985:         buy_triggers=buy_triggers,
+03986:         sell_triggers=sell_triggers,
+03987:         buy_file=str(buy_file) if buy_file else None,
+03988:         sell_file=str(sell_file) if sell_file else None,
+03989:         is_win=is_win,
+03990:         name=name,
+03991:     )
+03992: 
+03993: 
+03994: 
+03995: # --- tz-safe datetime helper (Trade Review) ---
+03996: def _tz_naive_dt(x):
+03997:     """
+03998:     Convert x to pandas datetime and strip timezone if present.
+03999:     Works for tz-aware Series/Index and tz-naive inputs.
+04000:     """
+04001:     try:
+04002:         import pandas as pd
+04003:         x = pd.to_datetime(x, errors="coerce")
+04004:     except Exception:
+04005:         return x
+04006:     # Series dt accessor (Series)
+04007:     try:
+04008:         if hasattr(x, "dt") and getattr(x.dt, "tz", None) is not None:
+04009:             x = x.dt.tz_localize(None)
+04010:     except Exception:
+04011:         pass
+04012:     # DatetimeIndex (Index)
+04013:     try:
+04014:         if getattr(x, "tz", None) is not None:
+04015:             x = x.tz_localize(None)
+04016:     except Exception:
+04017:         pass
+04018:     return x
+04019: 
+04020: 
+04021: @app.route("/trade_review/chart")
+04022: def trade_review_chart(symbol, buy_dt=None, sell_dt=None):
+04023:     """Download intraday bars for Trade Review chart.
+04024:     If trade spans >1 day, pull BUY->SELL window (with padding) so chart isn't smashed right.
+04025:     Otherwise, default to 1d intraday.
+04026:     """
+04027:     import yfinance as yf
+04028:     from datetime import timedelta
+04029: 
+04030:     sym = (symbol or "").strip().upper()
+04031:     if not sym:
+04032:         return None
+04033: 
+04034:     try:
+04035:         held_sec = (sell_dt - buy_dt).total_seconds() if (buy_dt and sell_dt) else 0
+04036:     except Exception:
+04037:         held_sec = 0
+04038: 
+04039:     # Multi-day window fix
+04040:     if buy_dt and sell_dt and held_sec > 86400:  # > 1 day
+04041:         start = buy_dt - timedelta(minutes=60)
+04042:         end   = sell_dt + timedelta(minutes=15)
+04043: 
+04044:         # Use 5m to stay within Yahoo limits and keep it readable
+04045:         return yf.download(
+04046:             sym,
+04047:             start=start,
+04048:             end=end,
+04049:             interval="5m",
+04050:             prepost=True,
+04051:             progress=False,
+04052:             auto_adjust=False,
+04053:         )
+04054: 
+04055:     # Single-day default
+04056:     return yf.download(
+04057:         sym,
+04058:         period="1d",
+04059:         interval="1m",
+04060:         prepost=True,
+04061:         progress=False,
+04062:         auto_adjust=False,
+04063:     )
+04064: def _trade_review_error_png(msg: str):
+04065:     from flask import Response
+04066:     import io
+04067:     try:
+04068:         import matplotlib
+04069:         matplotlib.use("Agg")
+04070:         import matplotlib.pyplot as plt
+04071:     except Exception:
+04072:         return Response(b"", mimetype="image/png")
+04073: 
+04074:     fig = plt.figure(figsize=(12.5, 3.4), dpi=150)
+04075:     ax = fig.add_subplot(111)
+04076:     fig.patch.set_facecolor("#0b0b0b")
+04077:     ax.set_facecolor("#0b0b0b")
+04078:     ax.text(0.5, 0.55, "Trade Review chart error", ha="center", va="center", color="white", fontsize=12)
+04079:     ax.text(0.5, 0.40, msg, ha="center", va="center", color="#cfcfcf", fontsize=10)
+04080:     ax.set_axis_off()
+04081: 
+04082:     buf = io.BytesIO()
+04083:     fig.savefig(buf, format="png", bbox_inches="tight")
+04084:     plt.close(fig)
+04085:     return Response(buf.getvalue(), mimetype="image/png")
+04086: @app.route("/chart/<symbol>")
+04087: def chart_view(symbol):
+04088:     from flask import render_template, abort
+04089:     import sqlite3
+04090: 
+04091:     symbol = symbol.upper()
+04092:     conn = sqlite3.connect(LIVE_DB)
+04093:     conn.row_factory = sqlite3.Row
+04094: 
+04095:     trade = conn.execute(
+04096:         """
+04097:         SELECT *
+04098:         FROM realized_trades
+04099:         WHERE symbol = ?
+04100:         ORDER BY close_date DESC
+04101:         LIMIT 1
+04102:         """,
+04103:         (symbol,)
+04104:     ).fetchone()
+04105: 
+04106:     conn.close()
+04107: 

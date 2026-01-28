@@ -142,6 +142,31 @@ def _ensure_trail_table() -> None:
 
 def _trail_get(symbol: str):
     """Return (peak, since) for trailing stop, or (None, None) if absent."""
+    # --- FIX: derive open_date from buy_cooldowns.last_buy_utc (UTC) ---
+    def _rt_open_date_from_buy_cooldowns(conn, symbol, fallback=None):
+        try:
+            from zoneinfo import ZoneInfo
+            import datetime as _dt
+            ET = ZoneInfo('America/New_York')
+            row = conn.execute(
+                'SELECT last_buy_utc FROM buy_cooldowns WHERE UPPER(symbol)=?',
+                (str(symbol).upper(),)
+            ).fetchone()
+            if not row:
+                return fallback
+            s = (row[0] or '').strip()
+            if not s:
+                return fallback
+            if s.endswith('Z'):
+                s = s[:-1] + '+00:00'
+            dt_utc = _dt.datetime.fromisoformat(s)
+            # store as ET string (matches realized_trades existing format)
+            dt_et = dt_utc.astimezone(ET)
+            return dt_et.strftime('%Y-%m-%d %H:%M:%S')
+        except Exception:
+            return fallback
+
+
     _ensure_trail_table()
     conn = _connect()
     row = conn.execute("SELECT peak, since FROM trail_state WHERE symbol=?;", (symbol,)).fetchone()

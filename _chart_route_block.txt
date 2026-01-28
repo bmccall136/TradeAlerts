@@ -1,0 +1,47 @@
+0001: @app.route("/chart/<symbol>")
+0002: def chart_view(symbol):
+0003:     from flask import render_template, abort
+0004:     import sqlite3
+0005: 
+0006:     symbol = symbol.upper()
+0007:     conn = sqlite3.connect(LIVE_DB)
+0008:     conn.row_factory = sqlite3.Row
+0009: 
+0010:     trade = conn.execute(
+0011:         """
+0012:         SELECT *
+0013:         FROM realized_trades
+0014:         WHERE symbol = ?
+0015:         ORDER BY close_date DESC
+0016:         LIMIT 1
+0017:         """,
+0018:         (symbol,)
+0019:     ).fetchone()
+0020: 
+0021:     conn.close()
+0022: 
+0023:     if not trade:
+0024:         abort(404, f"No realized trade found for {symbol}")
+0025: 
+0026:     # --- FIX: x-axis labels show day/time (multi-day holds readable) ---
+0027:     try:
+0028:         import matplotlib.dates as mdates
+0029:         import matplotlib.pyplot as plt
+0030:         _ax = plt.gca()
+0031:         _ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks=4, maxticks=10))
+0032:         _ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
+0033:         _ax.tick_params(axis='x', labelrotation=0, labelsize=8)
+0034:         try:
+0035:             _ax.figure.autofmt_xdate()
+0036:         except Exception:
+0037:             pass
+0038:     except Exception:
+0039:         pass
+0040: 
+0041:     return render_template(
+0042:         "trade_review_single.html",
+0043:         trade=dict(trade),
+0044:         trade_id=trade["id"],
+0045:     )
+0046: 
+0047: 

@@ -71,6 +71,21 @@ def chart(symbol):
     ax.legend()
 
     buf = io.BytesIO()
+    # --- x-axis: show day + time (multi-day holds readable) ---
+    try:
+        import matplotlib.dates as mdates
+        if 'ax' in locals() and ax is not None:
+            ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks=4, maxticks=10))
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d %H:%M"))
+            ax.tick_params(axis="x", labelrotation=0, labelsize=8)
+        if 'fig' in locals() and fig is not None:
+            try:
+                fig.autofmt_xdate()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     plt.savefig(buf, format="png")
     buf.seek(0)
     image_base64 = base64.b64encode(buf.read()).decode("utf-8")

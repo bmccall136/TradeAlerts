@@ -1,0 +1,40 @@
+00699:     return datetime.combine(d, datetime.max.time(), tzinfo=tz)
+03367:   const yTop = ymax.toFixed(2);
+03588:         import yfinance as yf
+03916:         import yfinance as yf
+04027:     - Intraday price source: Yahoo via yfinance (allowed for intraday only)
+04043:         import yfinance as yf
+04044:         import matplotlib
+04045:         matplotlib.use("Agg")
+04046:         import matplotlib.pyplot as plt
+04173:         return yf.download(
+04255:     fig = plt.figure(figsize=(12.5, 3.4), dpi=150)
+04258:     ax.set_facecolor("#0b0b0b")
+04260:     ax.plot(idx2, y2_vals, linewidth=1.8)
+04264:     ax.axvspan(buy_dt, sell_dt, alpha=shade_alpha)
+04267:     ax.axvline(buy_dt, linewidth=2.0, alpha=0.95)
+04268:     ax.axvline(sell_dt, linewidth=2.0, alpha=0.95)
+04282:         ax.scatter([bx], [by], s=55, zorder=5)
+04283:         ax.text(
+04293:         ax.scatter([sx], [sy], s=55, zorder=5)
+04294:         ax.text(
+04306:     ax.set_title(title, fontsize=12, pad=10)
+04309:     ax.text(0.01, 0.02, f"Held: {held_min} min", transform=ax.transAxes, fontsize=9, alpha=0.85)
+04311:     ax.grid(True, alpha=0.20)
+04312:     ax.tick_params(axis="x", labelsize=8)
+04313:     ax.tick_params(axis="y", labelsize=8)
+04314:     ax.margins(x=0.02)
+04316:     buf = io.BytesIO()
+04317:     fig.savefig(buf, format="png", bbox_inches="tight")
+04318:     plt.close(fig)
+04326:         import matplotlib
+04327:         matplotlib.use("Agg")
+04328:         import matplotlib.pyplot as plt
+04332:     fig = plt.figure(figsize=(12.5, 3.4), dpi=150)
+04335:     ax.set_facecolor("#0b0b0b")
+04336:     ax.text(0.5, 0.55, "Trade Review chart error", ha="center", va="center", color="white", fontsize=12)
+04337:     ax.text(0.5, 0.40, msg, ha="center", va="center", color="#cfcfcf", fontsize=10)
+04338:     ax.set_axis_off()
+04340:     buf = io.BytesIO()
+04341:     fig.savefig(buf, format="png", bbox_inches="tight")
+04342:     plt.close(fig)

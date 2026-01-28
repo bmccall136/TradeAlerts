@@ -1,0 +1,1058 @@
+﻿# -*- coding: utf-8 -*-
+"""
+TradeAlerts – LIVE Dashboard
+
+- VALUE = Buying Power + Positions Value
+- Holdings & account info from services.etrade_service
+- Realized P&L buckets read from E*TRADE
+- All % = cumulative_gain / START_CASH_BASELINE
+- Day/Week/LW/Month % = gain / total_cost
+- Exclude GEVO
+- ET timezone; weeks are Mon–Fri
+- "All" window since 2025-08-22
+
+This file exposes:
+- /live        : HTML shell
+- /live/status : JSON the Live UI expects
+- /auth/etrade/reconnect, /checkpoint helpers
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import math
+import os
+import sqlite3
+import subprocess
+import sys
+import threading
+from dataclasses import dataclass
+from datetime import UTC, datetime, date, timedelta
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
+from flask import (
+    Flask,
+    jsonify,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    current_app,
+)
+# from flask import request as flask_request
+from dotenv import load_dotenv
+
+# services
+from services import etrade_service as et
+from services.trade_source import load_trades_merged
+from services.contributions import get_total_contributions
+from services.event_log import log_event
+
+# live guardrails holds opened_at for live trades
+try:
+    from services import live_guardrails as gr
+except ImportError:  # pragma: no cover
+    gr = None
+
+try:
+    import faulthandler
+    faulthandler.cancel_dump_traceback_later()
+except Exception:
+    pass
+
+# -----------------------------------------------------------------------------#
+# Path / env + timezone
+# -----------------------------------------------------------------------------#
+
+ROOT = os.path.dirname(os.path.abspath(__file__))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
+load_dotenv()
+
+try:
+    from zoneinfo import ZoneInfo  # py3.9+
+except Exception:  # pragma: no cover
+    from backports.zoneinfo import ZoneInfo  # type: ignore
+
+ETZ = ZoneInfo("America/New_York")
+
+# -----------------------------------------------------------------------------#
+# Live tracking config
+# -----------------------------------------------------------------------------#
+
+# DB paths
+LIVE_DB = os.environ.get("LIVE_DB", os.path.join(ROOT, "live.db"))
+
+# Project baseline
+PROJECT_START_DATE = date(2025, 8, 22)
+ALL_START_DATE = PROJECT_START_DATE
+START_CASH_BASELINE = 392.67
+START_DATE = "2025-08-22"
+
+# Original starting cash (what you began with in this app)
+LIVE_APP_STARTING_EQUITY = 392.67
+START_CASH = LIVE_APP_STARTING_EQUITY  # used for unrealized % if needed
+
+# Canonical baseline for “since start” calcs (hero text + since %)
+START_DATE_BASELINE = "2025-08-22"
+LIVE_APP_START_DATE = START_DATE_BASELINE  # backward compat for older code
+START_CASH_BASELINE = LIVE_APP_STARTING_EQUITY  # 392.67
+
+IGNORED_TICKERS = {"GEVO"}
+
+# Live mode toggle
+LIVE_MODE_FILE = os.path.join(os.path.dirname(__file__), "live_mode.txt")
+VALID_LIVE_MODES = {"DAY", "SWING"}
+LIVE_MODE_DEFAULT = "DAY"
+
+# Auth / reconnect flags
+NEED_AUTH_FLAG = Path("need_oauth.flag")
+FLAG_FILE = os.path.join(os.path.dirname(__file__), "need_oauth.flag")
+
+# Checkpoint script
+CHECKPOINT_BAT = r"C:\TradeAlerts\checkpoint.bat"  # adjust if needed
+
+# -----------------------------------------------------------------------------#
+# Flask app + logging
+# -----------------------------------------------------------------------------#
+
+app = Flask(__name__)
+
+LOG = logging.getLogger("dashboard")
+LOG.setLevel(logging.INFO)
+if not LOG.handlers:
+    _h = logging.StreamHandler(sys.stdout)
+    _h.setFormatter(
+        logging.Formatter(
+            "%(asctime)s %(levelname)s dashboard: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    )
+    LOG.addHandler(_h)
+
+def read_flag_file() -> bool:
+    """
+    Returns True if the reconnect flag file exists, False otherwise.
+    Safe fallback if anything weird happens.
+    """
+    try:
+        return os.path.exists(FLAG_FILE)
+    except Exception:
+        return False
+
+def setup_logging(app: Flask) -> None:
+    app.logger.setLevel(logging.INFO)
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.INFO)
+    ch.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)-8s %(name)s: %(message)s")
+    )
+    if not any(isinstance(h, logging.StreamHandler) for h in app.logger.handlers):
+        app.logger.addHandler(ch)
+
+
+setup_logging(app)
+log = app.logger
+
+# -----------------------------------------------------------------------------#
+# Import service layer
+# -----------------------------------------------------------------------------#
+
+from services import etrade_service as et  # canonical E*TRADE wrapper
+
+try:
+    from services.trade_source import load_trades_merged
+except ImportError:
+    def load_trades_merged(
+        days: int | None = None,
+        start_iso: str | None = None,
+        max_count: int = 5000,
+    ):
+        return []
+
+# -----------------------------------------------------------------------------#
+# Helpers
+# -----------------------------------------------------------------------------#
+def fifo_debug_unmatched_sells(days: int = 120) -> dict:
+    """
+    Returns unmatched SELL qty per symbol when FIFO has no lots.
+    Useful to explain small deltas vs broker reports.
+    """
+    fills = _iter_executed_fills(days=days)
+    lots: Dict[str, List[List[float]]] = {}
+    unmatched: Dict[str, float] = {}
+
+    for f in fills:
+        sym = f["symbol"]
+        side = f["side"]
+        qty = float(f["qty"])
+        price = float(f["price"])
+
+        lots.setdefault(sym, [])
+
+        if side == "BUY":
+            lots[sym].append([qty, price])
+            continue
+
+        sell_qty = qty
+        while sell_qty > 0 and lots[sym]:
+            lot_qty, lot_cost = lots[sym][0]
+            take = min(sell_qty, lot_qty)
+            lot_qty -= take
+            sell_qty -= take
+            if lot_qty <= 1e-9:
+                lots[sym].pop(0)
+            else:
+                lots[sym][0][0] = lot_qty
+
+        if sell_qty > 1e-9:
+            unmatched[sym] = unmatched.get(sym, 0.0) + sell_qty
+
+    return dict(sorted(unmatched.items(), key=lambda kv: kv[1], reverse=True))
+
+def _calc_unrealized_all_time_from_holdings(holdings):
+    """
+    All-time unrealized P&L based on cost basis vs last price.
+    Returns (pnl_dollars, pnl_pct).
+    """
+    pnl = 0.0
+    basis = 0.0
+
+    for h in (holdings or []):
+        try:
+            qty = float(h.get("qty") or 0.0)
+            cost = h.get("price_paid")
+            last = h.get("last_price")
+            if qty <= 0 or cost is None or last is None:
+                continue
+
+            cost = float(cost)
+            last = float(last)
+
+            pnl += (last - cost) * qty
+            basis += cost * qty
+        except Exception:
+            # skip any malformed row
+            continue
+
+    pct = (pnl / basis * 100.0) if basis else 0.0
+
+    # keep UI-friendly rounding here (or remove rounding if you prefer raw floats)
+    return round(pnl, 2), round(pct, 2)
+
+def _calc_unrealized_all_time(holdings):
+    pnl = 0.0
+    basis = 0.0
+    for h in holdings or []:
+        qty = float(h.get("qty") or 0.0)
+        cost = h.get("price_paid", None)
+        last = h.get("last_price", None)
+        if qty <= 0 or cost is None or last is None:
+            continue
+        cost = float(cost)
+        last = float(last)
+        pnl += (last - cost) * qty
+        basis += cost * qty
+
+    pct = (pnl / basis * 100.0) if basis else 0.0
+    return pnl, pct
+
+def _unrealized_from_holdings(holdings: list[dict] | None) -> dict:
+    """
+    Compute unrealized P&L from holdings rows.
+
+    Returns:
+      {
+        "day": {"pnl": float, "pct": float},
+        "all": {"pnl": float, "pct": float},
+      }
+
+    Day % is based on current positions_value (sum of qty*last_price).
+    All % is based on total cost basis (sum of qty*price_paid).
+    """
+    holdings = holdings or []
+
+    day_pnl = 0.0
+    all_pnl = 0.0
+
+    positions_value = 0.0
+    cost_basis = 0.0
+
+    for h in holdings:
+        if not isinstance(h, dict):
+            continue
+
+        qty = float(h.get("qty") or 0.0)
+        last = float(h.get("last_price") or 0.0)
+        paid = float(h.get("price_paid") or 0.0)
+
+        if qty <= 0 or last <= 0:
+            continue
+
+        positions_value += qty * last
+        cost_basis += qty * paid
+
+        # Day P&L: prefer field if present, else fall back to last - prior_close if you ever add it.
+        day_pnl += float(h.get("day_pl") or 0.0)
+
+        # All-time unrealized: current value - cost
+        all_pnl += (qty * last) - (qty * paid)
+
+    day_pct = (day_pnl / positions_value * 100.0) if positions_value > 0 else 0.0
+    all_pct = (all_pnl / cost_basis * 100.0) if cost_basis > 0 else 0.0
+
+    return {
+        "day": {"pnl": round(day_pnl, 2), "pct": round(day_pct, 2)},
+        "all": {"pnl": round(all_pnl, 2), "pct": round(all_pct, 2)},
+    }
+def _pick_company_name_from_position(p: dict, symbol: str) -> str:
+    """
+    Best-effort extraction of a human-readable name/description from E*TRADE position objects.
+    Returns symbol if nothing useful found.
+    """
+    if not isinstance(p, dict):
+        return symbol
+
+    # direct fields seen in some E*TRADE shapes
+    for k in ("companyName", "securityDescription", "description", "productDesc", "productDescription"):
+        v = p.get(k)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+
+    # nested "instrument"
+    instr = p.get("instrument") or p.get("Instrument")
+    if isinstance(instr, dict):
+        for k in ("description", "companyName", "securityDescription", "productDesc", "symbolDescription"):
+            v = instr.get(k)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+
+    # nested "Product"
+    prod = p.get("Product") or p.get("product")
+    if isinstance(prod, dict):
+        for k in ("productDesc", "description", "companyName"):
+            v = prod.get(k)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+
+    return symbol
+
+def compute_true_about(nav: float, start_cash: float, net_contrib: float, start_date: str):
+    """
+    Return a corrected about dict with real performance numbers.
+
+    nav          -> current account NAV (e.g. from E*TRADE summary)
+    start_cash   -> starting balance on day 0
+    net_contrib  -> total deposits since start (withdrawals negative)
+    start_date   -> 'YYYY-MM-DD'
+    """
+    true_pnl = nav - net_contrib - start_cash
+    true_pct = (true_pnl / start_cash * 100.0) if start_cash else 0.0
+
+    return {
+        "start_date": start_date,
+        "start_cash": round(start_cash, 2),
+        "net_contrib": round(net_contrib, 2),
+        "since_pnl": round(true_pnl, 2),   # <-- corrected dollars
+        "since_pct": round(true_pct, 2),   # <-- corrected %
+    }
+
+# --- NEW: Fetch realized P&L from E*TRADE (surgical add) ---
+def etrade_realized_pnl(start_date, end_date):
+    """
+    Returns total realized gain (float) between start_date and end_date.
+    start_date, end_date are datetime.date
+    """
+    from services import etrade_service as et
+    import datetime
+
+    try:
+        acct = et.get_account_id_key()
+    except Exception:
+        return 0.0
+
+    # Convert to E*TRADE expected string YYYY-MM-DD
+    sd = start_date.strftime("%Y-%m-%d")
+    ed = end_date.strftime("%Y-%m-%d")
+
+    try:
+        tx = et.list_transactions(acct, sd, ed)
+    except Exception:
+        return 0.0
+
+    total = 0.0
+    for t in tx or []:
+        if t.get("transactionType") == "SELL":
+            gain = float(t.get("gain", 0) or 0)
+            total += gain
+
+    return round(total, 2)
+
+import sqlite3  # if not already imported at top
+
+def get_recent_news_for_symbol(symbol: str, limit: int = 5) -> list[dict]:
+    """
+    Read recent news headlines for a symbol from news_events (live.db).
+
+    Schema expectation for news_events:
+      id INTEGER PRIMARY KEY
+      symbol TEXT
+      headline TEXT
+      source TEXT
+      url TEXT
+      published_at TEXT (ISO or 'YYYY-MM-DD HH:MM:SS')
+    """
+    sym = (symbol or "").upper().strip()
+    if not sym:
+        return []
+
+    rows: list[dict] = []
+    try:
+        conn = sqlite3.connect(str(LIVE_DB))
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT
+                symbol,
+                headline,
+                source,
+                url,
+                published_at
+            FROM news_events
+            WHERE UPPER(symbol) = ?
+            ORDER BY published_at DESC
+            LIMIT ?
+            """,
+            (sym, int(limit)),
+        )
+        for s, headline, source, url, published_at in cur.fetchall():
+            rows.append(
+                {
+                    "symbol": s,
+                    "headline": headline or "",
+                    "source": source or "",
+                    "url": url or "",
+                    "published_at": published_at or "",
+                }
+            )
+        conn.close()
+    except Exception as e:
+        # don't crash the dashboard if news lookup fails
+        app.logger.error("get_recent_news_for_symbol(%s) failed: %s", sym, e)
+
+    return rows
+
+
+@app.route("/news/<symbol>")
+def view_symbol_news(symbol: str):
+    """
+    HTML view for a single symbol's news.
+    This is what the 📰 buttons on the Live holdings table link to.
+    """
+    sym = (symbol or "").upper().strip()
+    news_rows = get_recent_news_for_symbol(sym, limit=10)
+
+    return render_template(
+        "news_view.html",
+        symbol=sym,
+        news_rows=news_rows,
+    )
+
+import datetime as _dt
+
+try:
+    from zoneinfo import ZoneInfo as _ZoneInfo
+    _ET = _ZoneInfo("America/New_York")
+except Exception:
+    _ET = _dt.timezone(_dt.timedelta(hours=-5))  # crude ET fallback
+
+def _read_live_mode() -> str:
+    """Return current live mode: 'DAY' or 'SWING'."""
+    try:
+        with open(LIVE_MODE_FILE, "r", encoding="utf-8") as f:
+            value = f.read().strip().upper()
+            if value in VALID_LIVE_MODES:
+                return value
+    except FileNotFoundError:
+        pass
+    return LIVE_MODE_DEFAULT
+
+
+def _write_live_mode(mode: str) -> str:
+    """Persist live mode to disk and return normalized value."""
+    mode = (mode or "").upper()
+    if mode not in VALID_LIVE_MODES:
+        raise ValueError(f"Invalid live mode: {mode!r}")
+    with open(LIVE_MODE_FILE, "w", encoding="utf-8") as f:
+        f.write(mode)
+    return mode
+
+def _load_position_opened(db_path: str) -> dict[str, str]:
+    try:
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute(
+            "SELECT symbol, opened_at_et FROM position_opened"
+        ).fetchall()
+        conn.close()
+        return {r[0].upper(): r[1] for r in rows}
+    except Exception:
+        return {}
+
+def _realized_buckets_from_trades(trades):
+    """
+    Build Day / Week / Last Week / Month / All realized P&L buckets
+    directly from the trades list returned by E*TRADE.
+
+    BUCKET RULES (all in ET):
+      - Day:        close_date == today
+      - Week:       this Monday .. today
+      - Last Week:  previous Monday .. previous Sunday
+      - Month:      first of this month .. today
+      - All:        2025-08-22 .. today
+
+    Amount  = sum of pl
+    Percent = Amount / total cost basis of those sells (price_paid * qty).
+    """
+    today = _dt.datetime.now(_ET).date()
+    this_monday = today - _dt.timedelta(days=today.weekday())
+    last_monday = this_monday - _dt.timedelta(days=7)
+    last_sunday = this_monday - _dt.timedelta(days=1)
+    month_start = today.replace(day=1)
+    start_all = _dt.date(2025, 8, 22)
+
+    buckets = {
+        "day": {"pnl": 0.0, "cost": 0.0},
+        "week": {"pnl": 0.0, "cost": 0.0},
+        "last_week": {"pnl": 0.0, "cost": 0.0},
+        "month": {"pnl": 0.0, "cost": 0.0},
+        "all": {"pnl": 0.0, "cost": 0.0},
+    }
+
+    for t in trades:
+        if t.get("action") != "SELL":
+            continue
+        pl = t.get("pl")
+        if pl is None:
+            continue
+
+        qty = t.get("qty") or 0.0
+        price_paid = t.get("price_paid") or 0.0
+        cost = float(qty) * float(price_paid)
+
+        # Parse trade time (prefer time_utc)
+        ts = t.get("time_utc") or t.get("time")
+        d = None
+        if ts:
+            try:
+                dt = _dt.datetime.fromisoformat(ts)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=_ET)
+                d = dt.astimezone(_ET).date()
+            except Exception:
+                try:
+                    dt = _dt.datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
+                    d = dt.date()
+                except Exception:
+                    d = today  # worst-case fallback
+
+        if d is None:
+            continue
+
+        # All (since start date)
+        if d >= start_all:
+            buckets["all"]["pnl"] += pl
+            buckets["all"]["cost"] += cost
+
+        # Today
+        if d == today:
+            buckets["day"]["pnl"] += pl
+            buckets["day"]["cost"] += cost
+
+        # This week (Mon..today)
+        if this_monday <= d <= today:
+            buckets["week"]["pnl"] += pl
+            buckets["week"]["cost"] += cost
+
+        # Last week (previous Mon..Sun)
+        if last_monday <= d <= last_sunday:
+            buckets["last_week"]["pnl"] += pl
+            buckets["last_week"]["cost"] += cost
+
+        # This month
+        if d >= month_start:
+            buckets["month"]["pnl"] += pl
+            buckets["month"]["cost"] += cost
+
+    def _finish(b):
+        pnl = round(float(b["pnl"]), 2)
+        cost = float(b["cost"])
+        pct = round((pnl / cost) * 100.0, 2) if cost > 0 else 0.0
+        return {"pnl": pnl, "pct": pct}
+
+    return {
+        "day": _finish(buckets["day"]),
+        "week": _finish(buckets["week"]),
+        "last_week": _finish(buckets["last_week"]),
+        "month": _finish(buckets["month"]),
+        "all": _finish(buckets["all"]),
+    }
+
+from services import live_guardrails as gr
+from zoneinfo import ZoneInfo
+ETZ = ZoneInfo("America/New_York")
+from services.etrade_service import (
+    REALIZED_START_DATE,
+)
+
+from services.realized_service import realized_buckets_from_live_db as realized_buckets_from_live_db_db
+
+def get_opened_at_map():
+    """
+    Map SYMBOL -> opened_at as ET-aware datetime, from live_guardrails.
+    Used by both Sell Guard and dashboard so they agree.
+    """
+    out = {}
+    if gr is None:
+        return out
+
+    try:
+        for e in gr.list_open_entries():
+            sym = (e.get("symbol") or "").upper()
+            ts = e.get("opened_at")
+            if not sym or not ts:
+                continue
+            try:
+                dt = datetime.fromisoformat(ts)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=ETZ)
+                else:
+                    dt = dt.astimezone(ETZ)
+                out[sym] = dt
+            except Exception:
+                continue
+    except Exception as ex:
+        print("get_opened_at_map error:", ex)
+
+    return out
+
+def always_json(f):
+    """Decorator: make view always return JSON + catch exceptions."""
+    from functools import wraps
+
+    @wraps(f)
+    def _wrap(*args, **kwargs):
+        try:
+            out = f(*args, **kwargs)
+            if isinstance(out, (dict, list)):
+                return jsonify(out)
+            return out
+        except Exception as e:
+            log.exception("always_json wrapped error: %s", e)
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    return _wrap
+
+
+def _safe_float(x: Any, default: float = 0.0) -> float:
+    try:
+        if x is None:
+            return default
+        return float(x)
+    except Exception:
+        return default
+
+ENABLE_AI_ENTRIES = False  # hard off switch for now
+ENABLE_AI_EXITS   = False
+
+def ai_decide_entry(snapshot: dict) -> dict:
+    if not ENABLE_AI_ENTRIES:
+        return {
+            "action": "SKIP",
+            "confidence": 0,
+            "sizing_hint": "AVOID_ADDING",
+            "reason_tags": ["ai_disabled"],
+            "comment": "AI advisor disabled; follow base rules only."
+        }
+    # ... existing OpenAI call ...
+
+def ai_decide_exit(snapshot: dict) -> dict:
+    if not ENABLE_AI_EXITS:
+        return {
+            "action": "HOLD",
+            "confidence": 0,
+            "sizing_hint": "AVOID_ADDING",
+            "reason_tags": ["ai_disabled"],
+            "comment": "AI exit advisor disabled; follow sell_guard rules only."
+        }
+    # ... existing OpenAI call ...
+
+def _et_midnight(d: date) -> datetime:
+    tz = ETZ or UTC
+    return datetime.combine(d, datetime.min.time(), tzinfo=tz)
+
+
+def _et_eod(d: date) -> datetime:
+    tz = ETZ or UTC
+    return datetime.combine(d, datetime.max.time(), tzinfo=tz)
+
+def _normalize_account(summ: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Flatten/normalize account summary so UI logic is stable.
+    Expected to receive whatever et.get_account_summary() returns.
+    We try multiple possible keys for NAV & buying power.
+    """
+    ui = summ.get("ui") or {}
+
+    # Buying power / available funds
+    bp = _safe_float(
+        summ.get("buying_power")
+        or summ.get("available_funds")
+        or ui.get("available_funds")
+        or ui.get("cashAvailableForInvestment")
+        or ui.get("marginBuyingPower")
+        or ui.get("cashBuyingPower")
+        or 0.0
+    )
+
+    # Net Account Value (NAV)
+    nav = _safe_float(
+        summ.get("nav")
+        or summ.get("net_account_value")
+        or ui.get("netAccountValue")
+        or ui.get("net_account_value")
+        or 0.0
+    )
+
+    return {
+        "account_id":            summ.get("account_id") or ui.get("account_id"),
+        "account_key":           summ.get("account_key") or ui.get("account_key"),
+        "account_type":          summ.get("account_type") or ui.get("account_type"),
+        "account_type_display":  summ.get("account_type_display") or ui.get("account_type_display"),
+        "available_funds":       bp,
+        "nav":                   nav,
+    }
+
+def compute_value_card(
+    account_ui: Dict[str, Any],
+    holdings_rows: List[Dict[str, Any]],
+) -> Dict[str, float]:
+    """
+    VALUE tile logic:
+
+    - If E*TRADE NAV (NetAccountValue) is present, use it directly as `value`.
+    - Positions Value = sum of holdings
+    - Buying Power:
+        * prefer E*TRADE cash / BP fields if provided
+        * otherwise derive from NAV - PositionsValue (>= 0)
+    - If NAV is missing, fall back to BP + PositionsValue.
+    """
+
+    # Sum of all current positions from holdings table
+    positions_value = round(
+        sum(_safe_float(h.get("value"), 0.0) for h in holdings_rows),
+        2,
+    )
+
+    # True NAV from E*TRADE account summary, if available
+    nav = _safe_float(
+        account_ui.get("NetAccountValue")
+        or account_ui.get("net_account_value")
+        or account_ui.get("nav"),
+        0.0,
+    )
+
+    # Explicit buying power / cash from E*TRADE, if present
+    explicit_bp = _safe_float(
+        account_ui.get("cashPurchasingPower")
+        or account_ui.get("available_funds")
+        or account_ui.get("BuyingPower")
+        or account_ui.get("buying_power")
+        or account_ui.get("cash_balance"),
+        0.0,
+    )
+
+    if nav > 0:
+        # NAV is authoritative. Use it as VALUE.
+        if explicit_bp > 0:
+            buying_power = round(explicit_bp, 2)
+        else:
+            # Derive BP from NAV - positions (never below 0)
+            derived_bp = max(0.0, round(nav - positions_value, 2))
+            buying_power = derived_bp
+
+        value = round(nav, 2)
+    else:
+        # No NAV in account_ui → fall back to old behavior
+        buying_power = round(explicit_bp, 2)
+        value = round(positions_value + buying_power, 2)
+
+    return {
+        "value": value,                 # should match E*TRADE NetAccountValue
+        "positions_value": positions_value,
+        "buying_power": buying_power,
+    }
+
+
+    # --- Unrealized ALL P&L from holdings table ---
+    total_unreal_pl = round(
+        sum(_safe_float(h.get("total_pl"), 0.0) for h in holdings_rows), 2
+    )
+    baseline = float(START_CASH_BASELINE or 0.0)
+    if baseline > 0:
+        total_unreal_pct = round((total_unreal_pl / baseline) * 100.0, 2)
+    else:
+        total_unreal_pct = 0.0
+
+    return {
+        "buying_power": round(buying_power, 2),
+        "positions_value": round(positions_value, 2),
+        "value": round(value, 2),
+
+        # full unrealized (ALL)
+        "unrealized_pl": total_unreal_pl,
+        "unrealized_pl_pct": total_unreal_pct,
+    }
+
+def realized_buckets_from_live_db(db_path: str) -> Dict[str, Dict[str, float]]:
+    """
+    Compatibility wrapper.
+
+    Supports BOTH:
+      A) legacy float buckets: {"today": 1.23, "week": 4.56, "month": 7.89, "all": 9.99}
+      B) rich buckets: {"day":{"pnl":..,"pct":..}, "week":{...}, "month":{...}, "all":{...}}
+    Returns legacy-shaped:
+      {"pnl": {"today": <float>, "week": <float>, "month": <float>, "all": <float>}}
+    """
+    # 1) Prefer the service helper (your canonical DB path)
+    try:
+        buckets = realized_buckets_from_live_db_db(str(db_path))
+
+        def _as_float(v) -> float:
+            if v is None:
+                return 0.0
+            if isinstance(v, dict):
+                return float(v.get("pnl", 0.0) or 0.0)
+            return float(v)
+
+        # Shape B (day/week/month/all as dicts)
+        if isinstance(buckets, dict) and any(isinstance(x, dict) for x in buckets.values()):
+            return {
+                "pnl": {
+                    "today": _as_float(buckets.get("day", buckets.get("today"))),
+                    "week":  _as_float(buckets.get("week")),
+                    "month": _as_float(buckets.get("month")),
+                    "all":   _as_float(buckets.get("all")),
+                }
+            }
+
+        # Shape A (legacy floats)
+        if isinstance(buckets, dict):
+            return {
+                "pnl": {
+                    "today": _as_float(buckets.get("today", buckets.get("day"))),
+                    "week":  _as_float(buckets.get("week")),
+                    "month": _as_float(buckets.get("month")),
+                    "all":   _as_float(buckets.get("all")),
+                }
+            }
+    except Exception as exc:
+        log.warning(
+            "realized_buckets_from_live_db: realized_service failed, falling back to DB: %s",
+            exc,
+        )
+
+    # 2) Fallback: direct SQLite read (robust action handling)
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT close_date, gain
+            FROM realized_trades
+            WHERE symbol <> 'TEST'
+              AND (
+                    action IS NULL
+                    OR TRIM(action) = ''
+                    OR UPPER(action) IN ('SELL','SOLD')
+                  )
+            ORDER BY close_date DESC
+            """
+        )
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    # Bucket calc (same logic you validated)
+    now = datetime.now()
+    today0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week0 = today0 - timedelta(days=today0.weekday())
+    month0 = today0.replace(day=1)
+
+    day = week = month = all_ = 0.0
+    for r in rows:
+        if not r["close_date"]:
+            continue
+        d = datetime.fromisoformat(str(r["close_date"]).replace("T", " "))
+        g = float(r["gain"] or 0.0)
+        all_ += g
+        if d >= month0:
+            month += g
+        if d >= week0:
+            week += g
+        if d >= today0:
+            day += g
+
+    return {"pnl": {"today": day, "week": week, "month": month, "all": all_}}
+
+def _enrich_trades_from_realized(trades: list[dict]) -> list[dict]:
+    """
+    For SELL trades that have price_paid == 0 (or missing), patch them using
+    realized_trades from live.db so Recent Trades shows correct Price Paid and P&L.
+
+    Matching strategy:
+      - key = (symbol, close_date truncated to seconds)
+      - use trade['time_utc'] or trade['time'] for the timestamp
+    """
+    if not trades:
+        return trades
+
+    # Build an index of realized_trades keyed by (SYMBOL, CLOSE_TS)
+    try:
+        conn = sqlite3.connect(str(LIVE_DB))
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT
+                symbol,
+                close_date,
+                qty,
+                cost_share,
+                total_cost,
+                gain
+            FROM realized_trades
+            """
+        )
+        realized_index: dict[tuple[str, str], dict] = {}
+
+        def _norm_ts(s: str | None) -> str:
+            if not s:
+                return ""
+            s = str(s).replace("T", " ")
+            return s[:19]  # "YYYY-MM-DD HH:MM:SS"
+
+        for sym, close_date, qty, cost_share, total_cost, gain in cur.fetchall():
+            key = (str(sym or "").upper(), _norm_ts(close_date))
+            realized_index[key] = {
+                "qty": float(qty or 0.0),
+                "cost_share": float(cost_share or 0.0),
+                "total_cost": float(total_cost or 0.0),
+                "gain": float(gain or 0.0),
+            }
+
+        conn.close()
+    except Exception as exc:
+        log.error("_enrich_trades_from_realized: failed to read realized_trades: %s", exc)
+        return trades
+
+    def _norm_ts_trade(t: dict) -> str:
+        ts = t.get("time_utc") or t.get("time") or ""
+        ts = str(ts).replace("T", " ")
+        return ts[:19]
+
+    enriched: list[dict] = []
+
+    for t in trades:
+        action = (t.get("action") or t.get("side") or "").upper()
+        if action != "SELL":
+            enriched.append(t)
+            continue
+
+        price_paid = t.get("price_paid")
+        # Only patch clearly bogus values
+        if price_paid not in (None, 0, 0.0):
+            enriched.append(t)
+            continue
+
+        sym = (t.get("symbol") or "").upper()
+        if not sym:
+            enriched.append(t)
+            continue
+
+        key = (sym, _norm_ts_trade(t))
+        r = realized_index.get(key)
+        if not r:
+            enriched.append(t)
+            continue
+
+        qty = t.get("qty")
+        try:
+            qty_f = float(qty or r["qty"] or 0.0)
+        except Exception:
+            qty_f = float(r["qty"] or 0.0)
+
+        cost_share = r["cost_share"]
+        total_cost = r["total_cost"] or (cost_share * qty_f)
+        gain = r["gain"]
+
+        if qty_f <= 0 or cost_share <= 0:
+            enriched.append(t)
+            continue
+
+        pl = gain
+        pl_pct = (pl / total_cost * 100.0) if total_cost > 0 else 0.0
+
+        t2 = dict(t)
+        t2["price_paid"] = round(cost_share, 4)
+        t2["pl"] = round(pl, 2)
+        t2["pl_pct"] = round(pl_pct, 2)
+        enriched.append(t2)
+
+    return enriched
+
+from typing import Any
+
+def normalize_positions_payload(raw):
+    """Normalize E*TRADE PortfolioResponse payload -> list[dict] of positions.
+
+    Defensive, supports multiple payload shapes. Non-recursive by design.
+    """
+    def _as_list(x):
+        if x is None:
+            return []
+        if isinstance(x, list):
+            return x
+        return [x]
+
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return [p for p in raw if isinstance(p, dict)]
+    if not isinstance(raw, dict):
+        return []
+
+    # Unwrap common top-level container
+    pr = raw.get("PortfolioResponse") if "PortfolioResponse" in raw else raw
+
+    acct_port = (
+        pr.get("AccountPortfolio")
+        or pr.get("accountPortfolio")
+        or pr.get("Portfolio")
+        or pr.get("portfolio")
+        or pr
+    )
+
+    out = []
+    for ap in _as_list(acct_port):
+        if not isinstance(ap, dict):
+            continue
+        pos_block = ap.get("Position") or ap.get("position") or ap.get("Positions") or ap.get("positions")
+        for p in _as_list(pos_block):
+            if isinstance(p, dict):
+                out.append(p)
+    return out
+
+

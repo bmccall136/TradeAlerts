@@ -1,0 +1,1503 @@
+Scan @ 2026-01-27 22:59:45
+TOTAL=4546
+
+C:\TradeAlerts\dashboard.py:3588:         import yfinance as yf
+C:\TradeAlerts\dashboard.py:3593:         t = yf.Ticker(sym)
+C:\TradeAlerts\graveyard\chartserver.py:6: import matplotlib.pyplot as plt
+C:\TradeAlerts\graveyard\chartserver.py:73:     buf = io.BytesIO()
+C:\TradeAlerts\graveyard\chartserver.py:76:         import matplotlib.dates as mdates
+C:\TradeAlerts\graveyard\chartserver.py:89:     plt.savefig(buf, format="png")
+C:\TradeAlerts\graveyard\chart_view.py:4: import plotly.graph_objs as go
+C:\TradeAlerts\graveyard\chart_view.py:5: import yfinance as yf
+C:\TradeAlerts\graveyard\chart_view.py:30:     df = yf.download(symbol, period="1d", interval="5m")
+C:\TradeAlerts\graveyard\chart_view.py:46:         template="plotly_dark",
+C:\TradeAlerts\graveyard\prune_symbols.py:3: import yfinance as yf
+C:\TradeAlerts\graveyard\prune_symbols.py:17:             df = yf.Ticker(yf_sym).history(period="1d")
+C:\TradeAlerts\graveyard\tune_volume.py:2: import yfinance as yf
+C:\TradeAlerts\graveyard\tune_volume.py:11:     df = yf.Ticker(symbol).history(period=period, interval=interval)
+C:\TradeAlerts\graveyard\Backup\dashboard.py:1731:     buf = io.BytesIO()
+C:\TradeAlerts\graveyard\services\live_loop-backup.py:302:     # Quiet yfinance noise
+C:\TradeAlerts\graveyard\services\live_loop-backup.py:306:         _pylog.getLogger("yfinance").setLevel(_pylog.ERROR)
+C:\TradeAlerts\graveyard\services\historical\backtest_service.py:2: import yfinance as yf
+C:\TradeAlerts\graveyard\services\historical\backtest_service.py:66:     df = yf.Ticker(symbol.replace(".", "-")).history(
+C:\TradeAlerts\graveyard\services\historical\data_fetch.py:7: import yfinance as yf
+C:\TradeAlerts\graveyard\services\historical\data_fetch.py:16:             return yf.download(
+C:\TradeAlerts\graveyard\services\historical\data_fetch.py:49:     # flatten MultiIndex from yfinance (('SYM','Open'), …)
+C:\TradeAlerts\graveyard\services\historical\scanner_backtest_service.py:2: import yfinance as yf
+C:\TradeAlerts\graveyard\services\historical\scanner_backtest_service.py:61:     df = yf.Ticker(symbol.replace(".", "-")).history(
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_internal\network\session.py:229:             # format the exception raised as a io.BytesIO object,
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_internal\network\session.py:233:             resp.raw = io.BytesIO(f"{resp.reason}: {exc}".encode())
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\cachecontrol\serialize.py:35:             response._fp = io.BytesIO(body)  # type: ignore[assignment]
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\cachecontrol\serialize.py:118:                 body = io.BytesIO(body_raw)
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\cachecontrol\serialize.py:128:             body = io.BytesIO(body_raw.encode("utf8"))
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\distlib\resources.py:253:         return io.BytesIO(self.get_bytes(resource))
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\distlib\scripts.py:7: from io import BytesIO
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\distlib\scripts.py:268:             stream = BytesIO()
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\distlib\util.py:1293:     """zip a directory tree into a BytesIO object"""
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\distlib\util.py:1294:     result = io.BytesIO()
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\msgpack\fallback.py:13:     class BytesIO:
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\msgpack\fallback.py:32:     from io import BytesIO
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\msgpack\fallback.py:669:         self._buffer = BytesIO()
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\msgpack\fallback.py:804:             self._buffer = BytesIO()  # force reset
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\msgpack\fallback.py:808:             self._buffer = BytesIO()
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\msgpack\fallback.py:815:             self._buffer = BytesIO()
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\msgpack\fallback.py:824:             self._buffer = BytesIO()
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\msgpack\fallback.py:833:             self._buffer = BytesIO()
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\msgpack\fallback.py:922:         self._buffer = BytesIO()
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\pkg_resources\__init__.py:1648:         return io.BytesIO(self.get_resource_string(manager, resource_name))
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\pygments\__init__.py:27: from io import StringIO, BytesIO
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\pygments\__init__.py:63:             realoutfile = getattr(formatter, 'encoding', None) and BytesIO() or StringIO()
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\requests\utils.py:189:                 # StringIO and BytesIO have seek but no usable fileno
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\rich\ansi.py:222:     stdout = io.BytesIO()
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\urllib3\filepost.py:6: from io import BytesIO
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\urllib3\filepost.py:74:     body = BytesIO()
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\urllib3\response.py:505:             buffer = io.BytesIO()
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\urllib3\contrib\appengine.py:266:             body=io.BytesIO(urlfetch_resp.content),
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\urllib3\contrib\appengine.py:274:             body=io.BytesIO(urlfetch_resp.content),
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\urllib3\contrib\pyopenssl.py:63: from io import BytesIO
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\urllib3\contrib\pyopenssl.py:469:                 self._ctx.load_verify_locations(BytesIO(cadata))
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\urllib3\packages\six.py:703:     BytesIO = io.BytesIO
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pip\_vendor\urllib3\packages\six.py:736:     StringIO = BytesIO = StringIO.StringIO
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\pkg_resources\__init__.py:1672:         return io.BytesIO(self.get_resource_string(manager, resource_name))
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\setuptools\command\editable_wheel.py:582:     with io.BytesIO() as buffer:
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\setuptools\tests\fixtures.py:183:             file_bytes = io.BytesIO(content.encode('utf-8'))
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\setuptools\tests\test_archive_util.py:15:     tarobj = io.BytesIO()
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\setuptools\tests\test_archive_util.py:25:         tgz.addfile(t, io.BytesIO(data))
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\setuptools\tests\test_core_metadata.py:557:     with io.BytesIO() as buffer:
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\setuptools\_vendor\zipp\__init__.py:268:     >>> data = io.BytesIO()
+C:\TradeAlerts\graveyard\venv311\Lib\site-packages\setuptools\_vendor\zipp\__init__.py:372:         >>> Path(zipfile.ZipFile(io.BytesIO(), 'w')) == 'foo'
+C:\TradeAlerts\services\analytics_service.py:286:     Lightweight aggregates for Chart.js.
+C:\TradeAlerts\services\data_fetch.py:4:   - Yahoo/yfinance is allowed ONLY for INTRADAY bars (indicator helpers like VWAP).
+C:\TradeAlerts\services\data_fetch.py:9:   - Provides fetch_intraday_vwap() using yfinance with:
+C:\TradeAlerts\services\data_fetch.py:13:   - Disables historical yfinance fetches by default (enforcing the rule).
+C:\TradeAlerts\services\data_fetch.py:95:     # Common strings seen in yfinance / upstream responses
+C:\TradeAlerts\services\data_fetch.py:134:         import yfinance as yf
+C:\TradeAlerts\services\data_fetch.py:136:         log.error("yfinance import failed: %s", e)
+C:\TradeAlerts\services\data_fetch.py:143:         df = yf.download(
+C:\TradeAlerts\services\data_fetch.py:170:     Yahoo/yfinance is allowed ONLY here (intraday).
+C:\TradeAlerts\services\data_fetch.py:196:         import yfinance as yf
+C:\TradeAlerts\services\data_fetch.py:198:         log.error("yfinance import failed (intraday): %s", e)
+C:\TradeAlerts\services\data_fetch.py:204:         # Use 1d/1m; yfinance is less reliable with range=1d chart params directly.
+C:\TradeAlerts\services\data_fetch.py:205:         df = yf.download(
+C:\TradeAlerts\services\data_fetch.py:220:         # yfinance usually gives: Open High Low Close Adj Close Volume
+C:\TradeAlerts\services\data_fetch.py:252:         # yfinance sometimes wraps upstream html in errors; treat "possibly delisted" as non-fatal.
+C:\TradeAlerts\services\live_loop.py:34: # --- HARD BLOCK: yfinance is forbidden in LIVE ---
+C:\TradeAlerts\services\live_loop.py:37:     if "yfinance" in sys.modules:
+C:\TradeAlerts\services\live_loop.py:38:         raise RuntimeError("❌ yfinance loaded in LIVE mode — this is forbidden")
+C:\TradeAlerts\services\live_loop.py:671:     # Quiet yfinance noise
+C:\TradeAlerts\services\live_loop.py:675:         _pylog.getLogger("yfinance").setLevel(_pylog.ERROR)
+C:\TradeAlerts\services\market_service.py:43:     Handles MultiIndex columns from yfinance (('Close','AAPL') etc).
+C:\TradeAlerts\services\market_service.py:164:     # yfinance typically: open high low close adj close volume
+C:\TradeAlerts\services\scan_speedups.py:168:     - No Yahoo/yfinance fallback
+C:\TradeAlerts\static\js\analytics.js:65:     _charts[chartId] = new Chart(chartCtx, {
+C:\TradeAlerts\static\js\analytics.js:84:     _charts[chartId] = new Chart(chartCtx, {
+C:\TradeAlerts\templates\analytics.html:107: <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+C:\TradeAlerts\templates\layout.html:7: 	<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%92%B0%3C/text%3E%3C/svg%3E">
+C:\TradeAlerts\venv311\Lib\site-packages\pylab.py:1: from matplotlib.pylab import *  # noqa: F401, F403
+C:\TradeAlerts\venv311\Lib\site-packages\pylab.py:2: import matplotlib.pylab
+C:\TradeAlerts\venv311\Lib\site-packages\pylab.py:3: __doc__ = matplotlib.pylab.__doc__
+C:\TradeAlerts\venv311\Lib\site-packages\six.py:662:     BytesIO = io.BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\six.py:690:     StringIO = BytesIO = StringIO.StringIO
+C:\TradeAlerts\venv311\Lib\site-packages\anyio\_core\_subprocesses.py:5: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\anyio\_core\_subprocesses.py:82:         buffer = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\anyio\_core\_tempfile.py:7: from io import BytesIO, TextIOWrapper
+C:\TradeAlerts\venv311\Lib\site-packages\anyio\_core\_tempfile.py:295:             super().__init__(BytesIO())  # type: ignore[arg-type]
+C:\TradeAlerts\venv311\Lib\site-packages\anyio\_core\_tempfile.py:299:                     BytesIO(),
+C:\TradeAlerts\venv311\Lib\site-packages\bs4\diagnose.py:7: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\bs4\diagnose.py:106:         reader = BytesIO(data)
+C:\TradeAlerts\venv311\Lib\site-packages\bs4\builder\_lxml.py:27: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\bs4\builder\_lxml.py:285:         io: Union[BytesIO, StringIO]
+C:\TradeAlerts\venv311\Lib\site-packages\bs4\builder\_lxml.py:287:             io = BytesIO(markup)
+C:\TradeAlerts\venv311\Lib\site-packages\cffi\recompiler.py:1416:     class NativeIO(io.BytesIO):
+C:\TradeAlerts\venv311\Lib\site-packages\cffi\verifier.py:23:     class NativeIO(io.BytesIO):
+C:\TradeAlerts\venv311\Lib\site-packages\click\testing.py:99:     return io.BytesIO(input)
+C:\TradeAlerts\venv311\Lib\site-packages\click\testing.py:213:     ) -> t.Iterator[t.Tuple[io.BytesIO, t.Optional[io.BytesIO]]]:
+C:\TradeAlerts\venv311\Lib\site-packages\click\testing.py:245:         bytes_output = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\click\testing.py:269:             bytes_error = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\types.py:10: # Kind codes used in Matplotlib Paths.
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\bokeh_renderer.py:259:     def save_to_buffer(self, *, webdriver: WebDriver | None = None) -> io.BytesIO:
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\bokeh_renderer.py:260:         """Save plots to an ``io.BytesIO`` buffer.
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\bokeh_renderer.py:268:             BytesIO: PNG image buffer.
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\bokeh_renderer.py:271:         buffer = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:7: import matplotlib.collections as mcollections
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:8: import matplotlib.pyplot as plt
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:20:     from matplotlib.axes import Axes
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:21:     from matplotlib.figure import Figure
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:28:     """Utility renderer using Matplotlib to render a grid of plots over the same (x, y) range.
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:35:         backend (str, optional): Matplotlib backend to use or ``None`` for default backend.
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:54:             import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:136:             ax (int or Matplotlib Axes, optional): Which Axes to plot on, default ``0``.
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:184:             ax (int or Matplotlib Axes, optional): Which Axes to plot on, default ``0``.
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:213:             ax (int or Matplotlib Axes, optional): Which Axes to plot on, default ``0``.
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:232:         self._fig.savefig(filename, transparent=transparent)
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:234:     def save_to_buffer(self) -> io.BytesIO:
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:235:         """Save plots to an ``io.BytesIO`` buffer.
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:238:             BytesIO: PNG image buffer.
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:241:         buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:242:         self._fig.savefig(buf, format="png")
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:247:         """Show plots in an interactive window, in the usual Matplotlib manner.
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:257:             ax (int or Matplotlib Axes, optional): Which Axes to set the title of, default ``0``.
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:260:                 ``tab10`` colormap. Default is ``None`` which uses Matplotlib's default title color
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:284:             ax (int or Matplotlib Axes, optional): Which Axes to plot on, default ``0``.
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:314:     """Test renderer implemented using Matplotlib.
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_renderer.py:347:     """Debug renderer implemented using Matplotlib.
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\mpl_util.py:6: import matplotlib.path as mpath
+C:\TradeAlerts\venv311\Lib\site-packages\contourpy\util\renderer.py:144:     def save_to_buffer(self) -> io.BytesIO:
+C:\TradeAlerts\venv311\Lib\site-packages\cryptography\hazmat\primitives\serialization\pkcs7.py:308:     fp = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\curl_cffi\curl.py:496:             content_type: content_type for the field. for example: ``image/png``.
+C:\TradeAlerts\venv311\Lib\site-packages\curl_cffi\requests\session.py:10: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\curl_cffi\requests\session.py:88:         data: Optional[Union[dict[str, str], list[tuple], str, BytesIO, bytes]]
+C:\TradeAlerts\venv311\Lib\site-packages\curl_cffi\requests\session.py:462:         data: Optional[Union[dict[str, str], list[tuple], str, BytesIO, bytes]] = None,
+C:\TradeAlerts\venv311\Lib\site-packages\curl_cffi\requests\session.py:901:         data: Optional[Union[dict[str, str], list[tuple], str, BytesIO, bytes]] = None,
+C:\TradeAlerts\venv311\Lib\site-packages\curl_cffi\requests\utils.py:11: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\curl_cffi\requests\utils.py:308:     data: Optional[Union[dict[str, str], list[tuple], str, BytesIO, bytes]] = None,
+C:\TradeAlerts\venv311\Lib\site-packages\curl_cffi\requests\utils.py:371:     elif isinstance(data, BytesIO):
+C:\TradeAlerts\venv311\Lib\site-packages\curl_cffi\requests\utils.py:378:         raise TypeError("data must be dict/list/tuple, str, BytesIO or bytes")
+C:\TradeAlerts\venv311\Lib\site-packages\curl_cffi\requests\utils.py:647:         buffer = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\curl_cffi\requests\utils.py:649:     header_buffer = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\dateutil\zoneinfo\__init__.py:7: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\dateutil\zoneinfo\__init__.py:24:         return BytesIO(get_data(__name__, ZONEFILENAME))
+C:\TradeAlerts\venv311\Lib\site-packages\flask\helpers.py:416:     useful when building a file in memory with :class:`io.BytesIO`.
+C:\TradeAlerts\venv311\Lib\site-packages\flask\helpers.py:477:         Passing a :class:`~io.BytesIO` object supports range requests.
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\cffLib\CFFToCFF2.py:16: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\cffLib\CFFToCFF2.py:221:     file = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\cffLib\__init__.py:29: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\designspaceLib\__init__.py:15: from io import BytesIO, StringIO
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\designspaceLib\__init__.py:1989:         f = BytesIO(tobytes(string, encoding="utf-8"))
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\designspaceLib\__init__.py:2773:             f = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\misc\etree.py:205:         stream = io.StringIO() if encoding == "unicode" else io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\misc\macRes.py:1: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\misc\macRes.py:54:         infile = BytesIO(data)
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\misc\macRes.py:62:         infile = BytesIO(data)
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\misc\py23.py:7: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\misc\py23.py:23:     "BytesIO",
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\misc\testTools.py:4: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\misc\testTools.py:127:     writer = XMLWriter(BytesIO(), newlinestr=newlinestr)
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\misc\plistlib\__init__.py:17: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\misc\plistlib\__init__.py:576:     fp = BytesIO(value)
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\misc\plistlib\__init__.py:672:     fp = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\mtiLib\__init__.py:1208:         # TODO BytesIO / StringIO as needed?  also, figure out whether we work on bytes or unicode
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\pens\freetypePen.py:41:     For ``array()`` and ``show()``, `numpy` and `matplotlib` must be installed.
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\pens\freetypePen.py:50:         If `numpy` and `matplotlib` is available, the following code will
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\pens\freetypePen.py:308:         `matplotlib`.
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\pens\freetypePen.py:341:         from matplotlib import pyplot as plt
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\macUtils.py:3: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\macUtils.py:38: class SFNTResourceReader(BytesIO):
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\sfnt.py:16: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\sfnt.py:138:         if isinstance(self.file, BytesIO):
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\sfnt.py:139:             # BytesIO is already pickleable, return the state unmodified
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\ttCollection.py:3: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\ttCollection.py:70:             file = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\ttFont.py:14: from io import BytesIO, StringIO, UnsupportedOperation
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\ttFont.py:179:             tmp = BytesIO(file.read())
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\ttFont.py:224:         tmp = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\ttFont.py:240:             tmp2 = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\woff2.py:1: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\woff2.py:86:         self.transformBuffer = BytesIO(decompressedData)
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\woff2.py:208:         self.transformBuffer = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\tables\C_F_F_.py:1: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\tables\C_F_F_.py:28:         self.cff.decompile(BytesIO(data), otFont, isCFF2=False)
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\tables\C_F_F_.py:32:         f = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\tables\C_F_F__2.py:1: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\tables\C_F_F__2.py:20:         self.cff.decompile(BytesIO(data), otFont, isCFF2=True)
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\tables\C_F_F__2.py:24:         f = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\tables\S_V_G_.py:25: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\tables\S_V_G_.py:99:                     bytesIO = BytesIO(doc)
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\tables\S_V_G_.py:100:                     with gzip.GzipFile(None, "r", fileobj=bytesIO) as gunzipper:
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\tables\S_V_G_.py:102:                     del bytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\tables\S_V_G_.py:133:                 bytesIO = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\tables\S_V_G_.py:136:                 with gzip.GzipFile(None, "w", fileobj=bytesIO, mtime=0) as gzipper:
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\tables\S_V_G_.py:138:                 gzipped = bytesIO.getvalue()
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\ttLib\tables\S_V_G_.py:141:                 del gzipped, bytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\varLib\avarPlanner.py:775:         from matplotlib import pyplot
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\varLib\cff.py:14: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\varLib\interpolatable.py:1190:                     f.write("<img src='data:image/svg+xml;base64,".encode("utf-8"))
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\varLib\interpolatablePlot.py:22: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\varLib\interpolatablePlot.py:1256:         self.sink = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\varLib\interpolatablePlot.py:1268:         self.sink = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\varLib\mutator.py:31: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\varLib\mutator.py:180:         stream = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\varLib\mutator.py:216:             coordinates, _ = glyf._getCoordinatesAndControls(
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\varLib\mutator.py:227:                         origCoords, g = glyf._getCoordinatesAndControls(
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\varLib\mutator.py:232:             glyf._setCoordinates(glyphname, coordinates, hMetrics, vMetrics)
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\varLib\mutator.py:346:         for glyph in glyf.glyphs.values():
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\varLib\mutator.py:354:             for glyph_name in glyf.keys():
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\varLib\plot.py:5: from matplotlib import pyplot
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\varLib\__init__.py:330:             m.glyf._getCoordinatesAndControls(glyph, m.hMetrics, m.vMetrics)
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\varLib\__init__.py:434:     for name, glyph in font_glyf.glyphs.items():
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\varLib\__init__.py:435:         all_pgms = [getattr(glyf.get(name), "program", None) for glyf in master_glyfs]
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\varLib\__init__.py:1074:         for glyphName in glyf.keys():
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\varLib\instancer\__init__.py:885:     coordinates, ctrl = glyf._getCoordinatesAndControls(glyphname, hMetrics, vMetrics)
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\varLib\instancer\__init__.py:908:     glyf._setCoordinates(glyphname, coordinates, hMetrics, vMetrics)
+C:\TradeAlerts\venv311\Lib\site-packages\fontTools\varLib\instancer\__init__.py:956:         glyf.glyphOrder,
+C:\TradeAlerts\venv311\Lib\site-packages\google\protobuf\proto.py:49: def serialize_length_prefixed(message: _MESSAGE, output: io.BytesIO) -> None:
+C:\TradeAlerts\venv311\Lib\site-packages\google\protobuf\proto.py:60:     out = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\google\protobuf\proto.py:66:     output: BytesIO or custom buffered IO that data should be written to.
+C:\TradeAlerts\venv311\Lib\site-packages\google\protobuf\proto.py:80:     message_class: Type[_MESSAGE], input_bytes: io.BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\google\protobuf\internal\decoder.py:89:         # Read from BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\google\protobuf\internal\decoder.py:94:             # End of BytesIO.
+C:\TradeAlerts\venv311\Lib\site-packages\google\protobuf\internal\encoder.py:21: writer function is the write() method of a BytesIO.
+C:\TradeAlerts\venv311\Lib\site-packages\google\protobuf\internal\python_message.py:31: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\google\protobuf\internal\python_message.py:1146:     out = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\gunicorn\util.py:586:     # check BytesIO case and maybe others
+C:\TradeAlerts\venv311\Lib\site-packages\gunicorn\http\body.py:16:         self.buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\gunicorn\http\body.py:36:         self.buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\gunicorn\http\body.py:41:         buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\gunicorn\http\body.py:78:         buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\gunicorn\http\body.py:130:         buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\gunicorn\http\body.py:148:         self.buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\gunicorn\http\body.py:162:             self.buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\gunicorn\http\body.py:178:         self.buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\gunicorn\http\body.py:186:         self.buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\gunicorn\http\body.py:216:             self.buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\gunicorn\http\body.py:228:         self.buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\gunicorn\http\body.py:238:         self.buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\gunicorn\http\message.py:270:         buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\gunicorn\http\message.py:279:             buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\gunicorn\http\message.py:284:         buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\gunicorn\http\unreader.py:14:         self.buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\gunicorn\http\unreader.py:33:             self.buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\gunicorn\http\unreader.py:43:                 self.buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\gunicorn\http\unreader.py:47:         self.buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\httpx\_decoders.py:183:         output = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\httpx\_decoders.py:234:         self._buffer = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\httpx\_multipart.py:160:                 "Multipart file uploads require 'io.BytesIO', not 'io.StringIO'."
+C:\TradeAlerts\venv311\Lib\site-packages\httpx\_utils.py:106:         # No... Maybe it's something that supports random access, like `io.BytesIO`?
+C:\TradeAlerts\venv311\Lib\site-packages\httpx\_transports\wsgi.py:93:         wsgi_input = io.BytesIO(request.content)
+C:\TradeAlerts\venv311\Lib\site-packages\jinja2\bccache.py:19: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\jinja2\bccache.py:94:         self.load_bytecode(BytesIO(string))
+C:\TradeAlerts\venv311\Lib\site-packages\jinja2\bccache.py:98:         out = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\joblib\hashing.py:54:         self.stream = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\joblib\numpy_pickle_compat.py:7: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\joblib\numpy_pickle_compat.py:182:         return BytesIO(read_zfile(file_handle))
+C:\TradeAlerts\venv311\Lib\site-packages\joblib\numpy_pickle_utils.py:182:         # such as io.BytesIO.
+C:\TradeAlerts\venv311\Lib\site-packages\joblib\numpy_pickle_utils.py:185:             if isinstance(fileobj, io.BytesIO):
+C:\TradeAlerts\venv311\Lib\site-packages\joblib\pool.py:26: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\joblib\pool.py:153:                 buffer = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\joblib\externals\cloudpickle\cloudpickle.py:1535:     with io.BytesIO() as file:
+C:\TradeAlerts\venv311\Lib\site-packages\joblib\externals\loky\backend\popen_loky_posix.py:10: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\joblib\externals\loky\backend\popen_loky_posix.py:96:         fp = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\joblib\externals\loky\backend\reduction.py:213:     buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\joblib\test\test_numpy_pickle.py:777:         f = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\joblib\test\test_numpy_pickle.py:822:     buf = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\joblib\test\test_numpy_pickle.py:1020:         bytes_to_send = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:4: from io import BytesIO, TextIOWrapper
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:18: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:19: from matplotlib._animation_data import (
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:21: from matplotlib import _api, cbook
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:22: import matplotlib.colors as mcolors
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:159:         fig : `~matplotlib.figure.Figure`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:241:     fig : `~matplotlib.figure.Figure`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:330:         out = TextIOWrapper(BytesIO(out)).read()
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:331:         err = TextIOWrapper(BytesIO(err)).read()
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:352:         self.fig.savefig(self._proc.stdin, format=self.frame_format,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:390:         fig : `~matplotlib.figure.Figure`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:460:             self.fig.savefig(sink, format=self.frame_format, dpi=self.dpi,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:492:         buf = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:493:         self.fig.savefig(
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:730:     template = '  frames[{0}] = "data:image/{1};base64,{2}"\n'
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:790:             f = BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:791:             self.fig.savefig(f, format=self.frame_format,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:860:     fig : `~matplotlib.figure.Figure`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:1097:         # widget (both are likewise done in savefig()).
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:1418:     fig : `~matplotlib.figure.Figure`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:1489:     fig : `~matplotlib.figure.Figure`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\animation.py:1563:     fig : `~matplotlib.figure.Figure`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:14: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:354:         renderer : `~matplotlib.backend_bases.RendererBase` subclass, optional
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:441:         t : `~matplotlib.transforms.Transform`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:485:         mouseevent : `~matplotlib.backend_bases.MouseEvent`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:744:         fig : `~matplotlib.figure.Figure` or `~matplotlib.figure.SubFigure`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:772:         clipbox : `~matplotlib.transforms.BboxBase` or None
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:790:         path : `~matplotlib.patches.Patch` or `.Path` or `.TransformedPath` or None
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:793:         transform : `~matplotlib.transforms.Transform`, optional
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:809:         from matplotlib.patches import Patch, Rectangle
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:868:         ``fig.savefig(fname, bbox_inches='tight')``.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1003:         renderer : `~matplotlib.backend_bases.RendererBase` subclass.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1077:         See also `matplotlib.animation` and
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1093:         ``fig.savefig(fname, bbox_inches='tight')``.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1290:             raise ValueError('match must be None, a matplotlib.artist.Artist '
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1305:             As an end-user of Matplotlib you will most likely not call this
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1321:         event : `~matplotlib.backend_bases.MouseEvent`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1336:             As an end-user of Matplotlib you will most likely not call this
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1397:     Matplotlib's `.Axes.get_tightbbox` and `.Axis.get_tightbbox` support a
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1409:     A helper class to inspect an `~matplotlib.artist.Artist` and return
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1436:         in the :class:`~matplotlib.artist.ArtistInspector`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1490:         # although barely relevant wrt. matplotlib's total import time.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1565:         'matplotlib.image._ImageBase.set_alpha',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1566:         'matplotlib.image._ImageBase.set_array',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1567:         'matplotlib.image._ImageBase.set_data',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1568:         'matplotlib.image._ImageBase.set_filternorm',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1569:         'matplotlib.image._ImageBase.set_filterrad',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1570:         'matplotlib.image._ImageBase.set_interpolation',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1571:         'matplotlib.image._ImageBase.set_interpolation_stage',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1572:         'matplotlib.image._ImageBase.set_resample',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1573:         'matplotlib.text._AnnotationBase.set_annotation_clip',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1715:     obj : `~matplotlib.artist.Artist`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1754:     obj : `~matplotlib.artist.Artist` or list of `.Artist`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1834:     Inspect an `~matplotlib.artist.Artist` class (using `.ArtistInspector`) and
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\artist.py:1839:     artist : `~matplotlib.artist.Artist` or an iterable of `Artist`\s
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:13: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:14: from matplotlib import _api, cbook
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:15: import matplotlib.artist as martist
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:16: import matplotlib.colors as mcolors
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:17: import matplotlib.lines as mlines
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:18: import matplotlib.scale as mscale
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:19: import matplotlib.text as mtext
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:20: import matplotlib.ticker as mticker
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:21: import matplotlib.transforms as mtransforms
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:22: import matplotlib.units as munits
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:47:     tick1line : `~matplotlib.lines.Line2D`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:49:     tick2line : `~matplotlib.lines.Line2D`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:51:     gridline : `~matplotlib.lines.Line2D`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:53:     label1 : `~matplotlib.text.Text`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:55:     label2 : `~matplotlib.text.Text`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:488:     locator : `~matplotlib.ticker.Locator` subclass
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:490:     formatter : `~matplotlib.ticker.Formatter` subclass
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:508:                             'matplotlib.ticker.Locator')
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:519:                             'matplotlib.ticker.Formatter')
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:565:     axes : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:567:     major : `~matplotlib.axis.Ticker`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:569:     minor : `~matplotlib.axis.Ticker`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:571:     callbacks : `~matplotlib.cbook.CallbackRegistry`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:573:     label : `~matplotlib.text.Text`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:578:     offsetText : `~matplotlib.text.Text`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:616:         axes : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:784:             registered using `matplotlib.scale.register_scale`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:951:         :meth:`matplotlib.axes.Axes.tick_params`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:1127:         Set the axis view limits.  This method is for internal use; Matplotlib
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:1484:         list of `~matplotlib.text.Text`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:1712:         **kwargs : `~matplotlib.lines.Line2D` properties
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:1801:         # If x is natively supported by Matplotlib, doesn't need converting
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:1823:         `~matplotlib.units.ConversionInterface` or None
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:1833:         converter : `~matplotlib.units.ConversionInterface`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:1910:         In addition to a `~matplotlib.ticker.Formatter` instance,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:1913:         For a ``str`` a `~matplotlib.ticker.StrMethodFormatter` is used.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:1916:         See the  `~matplotlib.ticker.StrMethodFormatter` documentation for
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:1919:         For a function, a `~matplotlib.ticker.FuncFormatter` is used.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:1923:         See the  `~matplotlib.ticker.FuncFormatter` documentation for
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:1928:         formatter : `~matplotlib.ticker.Formatter`, ``str``, or function
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:1936:         In addition to a `~matplotlib.ticker.Formatter` instance,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:1942:         formatter : `~matplotlib.ticker.Formatter`, ``str``, or function
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:1978:         locator : `~matplotlib.ticker.Locator`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axis.py:1994:         locator : `~matplotlib.ticker.Locator`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:3: graphics contexts must implement to serve as a Matplotlib backend.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:16:     The base class for all of the Matplotlib event handling.  Derived classes
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:48: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:49: from matplotlib import (
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:52: from matplotlib._pylab_helpers import Gcf
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:53: from matplotlib.backend_managers import ToolManager
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:54: from matplotlib.cbook import _setattr_cm
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:55: from matplotlib.layout_engine import ConstrainedLayoutEngine
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:56: from matplotlib.path import Path
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:57: from matplotlib.texmanager import TexManager
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:58: from matplotlib.transforms import Affine2D
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:59: from matplotlib._enums import JoinStyle, CapStyle
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:80:     'eps': 'matplotlib.backends.backend_ps',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:81:     'jpg': 'matplotlib.backends.backend_agg',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:82:     'jpeg': 'matplotlib.backends.backend_agg',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:83:     'pdf': 'matplotlib.backends.backend_pdf',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:84:     'pgf': 'matplotlib.backends.backend_pgf',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:85:     'png': 'matplotlib.backends.backend_agg',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:86:     'ps': 'matplotlib.backends.backend_ps',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:87:     'raw': 'matplotlib.backends.backend_agg',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:88:     'rgba': 'matplotlib.backends.backend_agg',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:89:     'svg': 'matplotlib.backends.backend_svg',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:90:     'svgz': 'matplotlib.backends.backend_svg',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:91:     'tif': 'matplotlib.backends.backend_agg',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:92:     'tiff': 'matplotlib.backends.backend_agg',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:93:     'webp': 'matplotlib.backends.backend_agg',
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:188:         marker_path : `~matplotlib.path.Path`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:190:         marker_trans : `~matplotlib.transforms.Transform`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:192:         path : `~matplotlib.path.Path`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:194:         trans : `~matplotlib.transforms.Transform`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:261:         from matplotlib.collections import QuadMesh
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:285:         transform : `~matplotlib.transforms.Transform`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:442:         transform : `~matplotlib.transforms.Affine2DBase`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:456:         Return whether image composition by Matplotlib should be skipped.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:485:         prop : `~matplotlib.font_manager.FontProperties`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:489:         mtext : `~matplotlib.text.Text`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:508:         prop : `~matplotlib.font_manager.FontProperties`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:514:         mtext : `~matplotlib.text.Text`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:744:         Return the clip rectangle as a `~matplotlib.transforms.Bbox` instance.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:1167:     A Matplotlib event.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:1179:         The GUI event that triggered the Matplotlib event.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:1255:     inaxes : `~matplotlib.axes.Axes` or None
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:1433:     artist : `~matplotlib.artist.Artist`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:1574:             print_method(io.BytesIO())
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:1667:     figure : `~matplotlib.figure.Figure`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:1710:         from matplotlib.figure import Figure
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:1748:             # functionality has been moved to Matplotlib.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:1757:                 or not hasattr(ip, "enable_matplotlib")):
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:1814:         `~matplotlib.axes.Axes` or None
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:1900:         indicate that said ratio is different. All Matplotlib interaction,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:2035:         if mod.startswith(("matplotlib.", "mpl_toolkits.")):
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:2094:         bbox_extra_artists : list of `~matplotlib.artist.Artist`, optional
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:2259:             be set to the `~matplotlib.axes.Axes` the event occurs is over, and
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:2380:     Implement the default Matplotlib key bindings for the canvas and toolbar
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:2521:     The default Matplotlib button actions for extra mouse buttons.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:2573:     hooking up the `.key_press_handler` to the matplotlib event system. This
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:2697:             pyplot_show = getattr(sys.modules.get("matplotlib.pyplot"), "show", None)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:3217:         from matplotlib.figure import Figure
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:3359:                     "directory or from Matplotlib's image directory.  This behavior "
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:3498:         from matplotlib.figure import Figure
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:3527:         ``%matplotlib`` integration has not been activated.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:3540:             # Hack: Is IPython's %matplotlib integration activated?  If so,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:3541:             # IPython's activate_matplotlib (>= 0.10) tacks a _needmain
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_bases.py:3543:             pyplot_show = getattr(sys.modules.get("matplotlib.pyplot"), "show", None)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_managers.py:1: from matplotlib import _api, backend_tools, cbook, widgets
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_managers.py:40:     keypresslock : `~matplotlib.widgets.LockDraw`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_managers.py:42:     messagelock : `~matplotlib.widgets.LockDraw`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_managers.py:235:         matplotlib.backend_tools.ToolBase : The base class for tools.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_tools.py:3: These tools are used by `matplotlib.backend_managers.ToolManager`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_tools.py:11:     `matplotlib.backend_managers.ToolManager`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_tools.py:24: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_tools.py:25: from matplotlib._pylab_helpers import Gcf
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_tools.py:26: from matplotlib import _api, cbook
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_tools.py:78:     The tool is instantiated by `matplotlib.backend_managers.ToolManager`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_tools.py:219:         * Call to `matplotlib.backend_managers.ToolManager.trigger_tool`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_tools.py:318:         """Call `matplotlib.backend_managers.ToolManager.message_event`."""
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_tools.py:322:         from matplotlib.backend_bases import NavigationToolbar2
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\backend_tools.py:543:         ax : matplotlib.axes.Axes
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\bezier.py:11: from matplotlib import _api
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\bezier.py:273:         # matplotlib uses n <= 4. overflow plausible starting around n = 15.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\bezier.py:348: # matplotlib specific
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\category.py:8: The module uses Matplotlib's `matplotlib.units` mechanism to convert from
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\category.py:20: from matplotlib import _api, cbook, ticker, units
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\category.py:39:         axis : `~matplotlib.axis.Axis`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\category.py:70:         axis : `~matplotlib.axis.Axis`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\category.py:77:         `~matplotlib.units.AxisInfo`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\category.py:91:         Set and update the `~matplotlib.axis.Axis` units.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\category.py:96:         axis : `~matplotlib.axis.Axis`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\category.py:230: # Register the converter with Matplotlib's unit framework
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:31: import matplotlib
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:32: from matplotlib import _api, _c_internal_utils
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:100:     macosx = sys.modules.get("matplotlib.backends._macosx")
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:208:         >>> from matplotlib.cbook import CallbackRegistry
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:230:     However, real code in Matplotlib rarely does so, and due to its design,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:405:         [<matplotlib.lines.Line2D object at 0x7f5749fed3c8>,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:406:          <matplotlib.lines.Line2D object at 0x7f5749fed4e0>,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:407:          <matplotlib.lines.Line2D object at 0x7f5758016550>]
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:432:         warning_cls=_api.MatplotlibDeprecationWarning):
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:576:     the Matplotlib package.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:599:     Return the `pathlib.Path` to a resource file provided by Matplotlib.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:603:     return Path(matplotlib.get_data_path(), *args)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:612:         >>> from matplotlib.cbook import flatten
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:778:     >>> from matplotlib.cbook import Grouper
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:1442:     with the same keys to `~.axes.Axes.violinplot` instead of using Matplotlib
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:1701:         raise RuntimeError("matplotlib does not support generators as input")
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:1736:         raise RuntimeError("matplotlib does not support generators as input")
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:1779:     from matplotlib.artist import Artist
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:1825:     lock_path = path.with_name(path.name + ".matplotlib-lock")
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:1836: Lock error: Matplotlib failed to acquire the following lock file:
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:1839: other Matplotlib process is running, remove this file and try again.""".format(
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:2186:     Perform OS-dependent setup when Matplotlib creates a new GUI application.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:2189:     # already embedded), then set it to "matplotlib", so that taskbar icons are
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:2195:             "matplotlib")
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:2233:     Convert a Unicode key or X keysym to a Matplotlib key name.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cbook.py:2289:             # Better approximation than __module__ = "matplotlib.cbook".
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cm.py:19: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cm.py:20: from matplotlib import _api, colors
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cm.py:22: from matplotlib.colorizer import _ScalarMappable as ScalarMappable  # noqa
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cm.py:23: from matplotlib._cm import datad
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cm.py:24: from matplotlib._cm_listed import cmaps as cmaps_listed
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cm.py:25: from matplotlib._cm_multivar import cmap_families as multivar_cmaps
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cm.py:26: from matplotlib._cm_bivar import cmaps as bivar_cmaps
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cm.py:68:     Container for colormaps that are known to Matplotlib by name.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cm.py:70:     The universal registry instance is `matplotlib.colormaps`. There should be
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cm.py:75:         import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cm.py:87:         from matplotlib import colormaps
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cm.py:125:         parameter in Matplotlib. It is also available in ``pyplot.get_cmap``.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cm.py:134:         cmap : matplotlib.colors.Colormap
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cm.py:208:         cmap : str or `~matplotlib.colors.Colormap` or None
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cm.py:235: # public access to the colormaps should be via `matplotlib.colormaps`. For now,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cm.py:252:     alternative="``matplotlib.colormaps[name]`` or ``matplotlib.colormaps.get_cmap()``"
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cm.py:261:     name : `~matplotlib.colors.Colormap` or str or None, default: None
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\cm.py:263:         a colormap known to Matplotlib, which will be resampled by *lut*. The
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\collections.py:20: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\collections.py:68:     #: `~matplotlib.backend_bases.RendererBase.draw_path_collection`;
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\collections.py:70:     #: `~matplotlib.transforms.Affine2D` object.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\collections.py:375:             from matplotlib.patheffects import PathEffectRenderer
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\collections.py:1083:         fmt : str, `~matplotlib.ticker.Formatter`, or None (default)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\collections.py:2116:         The use of `~matplotlib.cm.ScalarMappable` functionality is optional.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\collections.py:2117:         If the `~matplotlib.cm.ScalarMappable` matrix ``_A`` has been set (via
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\collections.py:2148:     A triangular mesh is a `~matplotlib.tri.Triangulation` object.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:3: In Matplotlib they are drawn into a dedicated `~.axes.Axes`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:18: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:19: from matplotlib import _api, cbook, collections, cm, colors, contour, ticker
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:20: import matplotlib.artist as martist
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:21: import matplotlib.patches as mpatches
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:22: import matplotlib.path as mpath
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:23: import matplotlib.spines as mspines
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:24: import matplotlib.transforms as mtransforms
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:25: from matplotlib import _docstring
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:214:     ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:244:         ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:270:         cmap : `~matplotlib.colors.Colormap`, default: :rc:`image.cmap`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:274:         norm : `~matplotlib.colors.Normalize`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:1004:             - `matplotlib.scale.LinearScale`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:1005:             - `matplotlib.scale.LogScale`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:1006:             - `matplotlib.scale.SymmetricalLogScale`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:1007:             - `matplotlib.scale.LogitScale`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:1008:             - `matplotlib.scale.FuncScale`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:1009:             - `matplotlib.scale.AsinhScale`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:1013:         By default, Matplotlib supports the above-mentioned scales.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:1015:         `matplotlib.scale.register_scale`. These scales can then also
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:1381:     parents : `~matplotlib.axes.Axes` or iterable or `numpy.ndarray` of `~.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:1387:     cax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:1495:     parent : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorbar.py:1501:     cax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorizer.py:27: from matplotlib import _api, colors, cbook, scale, artist
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorizer.py:28: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorizer.py:32: colorizer : `~matplotlib.colorizer.Colorizer` or None, default: None
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorizer.py:235:         from matplotlib import cm
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorizer.py:500:     the given `~matplotlib.colors.Colormap`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorizer.py:528:         cmap : str or `~matplotlib.colors.Colormap`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorizer.py:604: cmap : str or `~matplotlib.colors.Colormap`, default: :rc:`image.cmap`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorizer.py:608: norm : str or `~matplotlib.colors.Normalize`, optional
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorizer.py:618:       list of available scales, call `matplotlib.scale.get_scale_names()`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colorizer.py:636:     returning RGBA colors from a `~matplotlib.colors.Colormap`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:35: Colors that Matplotlib recognizes are listed at
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:55: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:57: from matplotlib import _api, _cm, cbook, scale, _image
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:100:     Container for sequences of colors that are known to Matplotlib by name.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:102:     The universal registry instance is `matplotlib.color_sequences`. There
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:108:         import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:171:             An iterable returning valid Matplotlib colors when iterating over.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:284:     c : Matplotlib color or ``np.ma.masked``
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:425:     c : Matplotlib color or array of colors
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:687:     `matplotlib.colors.Normalize`. Subclasses of `matplotlib.cm.ScalarMappable`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:714:         #: `matplotlib.colorbar.Colorbar` constructor.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:951:         png_bytes = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:953:         author = f'Matplotlib v{mpl.__version__}, https://matplotlib.org'
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:983:                 f'src="data:image/png;base64,{png_base64}"></div>'
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:1177:         Sequence of Matplotlib color specifications (color names or RGB(A)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:1263:     Class for holding multiple `~matplotlib.colors.Colormap` for use in a
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:1264:     `~matplotlib.cm.ScalarMappable` object
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:1270:         colormaps: list or tuple of `~matplotlib.colors.Colormap` objects
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:1451:             If Matplotlib color, the bad value is set accordingly in the copy
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:1498:         png_bytes = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:1500:         author = f'Matplotlib v{mpl.__version__}, https://matplotlib.org'
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:1519:     lookup table. To be used with `~matplotlib.cm.ScalarMappable`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:1563:         #: `matplotlib.colorbar.Colorbar` constructor.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:1819:             If Matplotlib color, the *bad* value is set accordingly in the copy
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:1822:             If Matplotlib color and shape is 'ignore' or 'circleignore', values
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:1968:         png_bytes = io.BytesIO()
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:1970:         author = f'Matplotlib v{mpl.__version__}, https://matplotlib.org'
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:2000:                 f'src="data:image/png;base64,{png_base64}"></div>'
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:2095:         # matplotlib.image.pil_to_array() results in a circular import
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:2375:             >>> import matplotlib.colors as mcolors
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:2486:             >>> import matplotlib.colors as mcolors
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:2969:             `~matplotlib.colorbar.Colorbar` will be drawn with
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:3061:     indices directly in a `~matplotlib.cm.ScalarMappable`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:3407:         cmap : `~matplotlib.colors.Colormap`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:3409:             a `~matplotlib.colors.Colormap` instance.  For example, rather than
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:3412:         norm : `~matplotlib.colors.Normalize` instance, optional
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:3681:     cmap : `~matplotlib.colors.Colormap`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\colors.py:3682:     norm : `~matplotlib.colors.Normalize`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\container.py:1: from matplotlib import cbook
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\container.py:2: from matplotlib.artist import Artist
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\container.py:52:     patches : list of :class:`~matplotlib.patches.Rectangle`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\container.py:55:     errorbar : None or :class:`~matplotlib.container.ErrorbarContainer`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\container.py:90:         - data_line : A `~matplotlib.lines.Line2D` instance of x, y plot markers
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\container.py:92:         - caplines : A tuple of `~matplotlib.lines.Line2D` instances of the error
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\container.py:94:         - barlinecols : A tuple of `~matplotlib.collections.LineCollection` with the
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\container.py:118:     markerline : `~matplotlib.lines.Line2D`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\container.py:121:     stemlines : `~matplotlib.collections.LineCollection`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\container.py:124:     baseline : `~matplotlib.lines.Line2D`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\contour.py:13: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\contour.py:14: from matplotlib import _api, _docstring
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\contour.py:15: from matplotlib.backend_bases import MouseButton
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\contour.py:16: from matplotlib.lines import Line2D
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\contour.py:17: from matplotlib.path import Path
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\contour.py:18: from matplotlib.text import Text
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\contour.py:19: import matplotlib.ticker as ticker
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\contour.py:20: import matplotlib.cm as cm
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\contour.py:21: import matplotlib.colors as mcolors
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\contour.py:22: import matplotlib.collections as mcoll
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\contour.py:23: import matplotlib.font_manager as font_manager
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\contour.py:24: import matplotlib.cbook as cbook
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\contour.py:25: import matplotlib.patches as mpatches
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\contour.py:26: import matplotlib.transforms as mtransforms
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\contour.py:560:     ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\contour.py:612:         ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\contour.py:1485:     If an int *n*, use `~matplotlib.ticker.MaxNLocator`, which tries
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\contour.py:1608:     :class:`matplotlib.units.ConversionInterface`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\contour.py:1676: clip_path : `~matplotlib.patches.Patch` or `.Path` or `.TransformedPath`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\contour.py:1677:     Set the clip path.  See `~matplotlib.artist.Artist.set_clip_path`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:2: Matplotlib provides sophisticated date plotting capabilities, standing on the
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:5: By default, Matplotlib uses the units machinery described in
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:6: `~matplotlib.units` to convert `datetime.datetime`, and `numpy.datetime64`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:29: Matplotlib date format
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:32: Matplotlib represents dates using floating point numbers specifying the number
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:45:    Before Matplotlib 3.3, the epoch was 0000-12-31 which lost modern
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:54: objects and Matplotlib dates:
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:56: .. currentmodule:: matplotlib.dates
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:71:    Like Python's `datetime.datetime`, Matplotlib uses the Gregorian calendar
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:74:    differences between what Python and Matplotlib give as the number of days
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:85: All the Matplotlib date converters, locators and formatters are timezone aware.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:94: :mod:`matplotlib.ticker` for general information on tick locators
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:110:     from matplotlib.dates import MO, TU, WE, TH, FR, SA, SU
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:189: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:190: from matplotlib import _api, cbook, ticker, units
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:229: # EPOCH_OFFSET is not used by matplotlib
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:258:     Reset the Matplotlib date epoch so it can be set again.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:273:     within approximately 70 years of the epoch. Matplotlib internally
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:351:                          f'epoch {get_epoch()}), but Matplotlib dates must be '
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:407:     Convert datetime objects to Matplotlib dates.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:459:     Convert Matplotlib dates to `~datetime.datetime` objects.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:512:     Return a sequence of equally spaced Matplotlib dates.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:527:         A list floats representing Matplotlib dates.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:648:         import matplotlib.dates as mdates
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:854:             x = matplotlib.dates.num2date(x)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:952:             but they are accessible from `matplotlib.dates` as well.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:1440:                     'supported. See matplotlib.dates.set_epoch to change the '
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:1539:             imported into the :mod:`matplotlib.dates` namespace.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:1659:         By default, Matplotlib uses a floating point representation of time in
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dates.py:1738:         Return the `~matplotlib.units.AxisInfo` for *unit*.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dviread.py:33: from matplotlib import _api, cbook
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dviread.py:213:         >>> with matplotlib.dviread.Dvi('input.dvi', 72) as dvi:
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dviread.py:896:                 f"An associated PostScript font (required by Matplotlib) "
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dviread.py:1082:             # it to always use utf-8 encoding.  See Matplotlib issue #11848.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\dviread.py:1100:             f"Matplotlib's TeX implementation searched for a file named "
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:2: `matplotlib.figure` implements the following classes:
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:5:     Top level `~matplotlib.artist.Artist`, which holds all plot elements.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:39: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:40: from matplotlib import _blocking_input, backend_bases, _docstring, projections
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:41: from matplotlib.artist import (
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:43: from matplotlib.backend_bases import (
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:45: import matplotlib._api as _api
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:46: import matplotlib.cbook as cbook
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:47: import matplotlib.colorbar as cbar
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:48: import matplotlib.image as mimage
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:50: from matplotlib.axes import Axes
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:51: from matplotlib.gridspec import GridSpec, SubplotParams
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:52: from matplotlib.layout_engine import (
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:56: import matplotlib.legend as mlegend
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:57: from matplotlib.patches import Rectangle
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:58: from matplotlib.text import Text
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:59: from matplotlib.transforms import (Affine2D, Bbox, BboxTransformTo,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:258:             message = ('From Matplotlib 3.12 SubFigure.get_figure will by default '
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:283:                 message=(f"{no_switch} From Matplotlib 3.12 this operation will raise "
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:348:             Additional kwargs are `matplotlib.text.Text` properties.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:506:         artist : `~matplotlib.artist.Artist`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:515:         `~matplotlib.artist.Artist`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:551:             a custom projection, see `~matplotlib.projections`. The default
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:562:         sharex, sharey : `~matplotlib.axes.Axes`, optional
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:563:             Share the x or y `~matplotlib.axis` with sharex and/or sharey.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:682:             name of a custom projection, see `~matplotlib.projections`. The
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:693:         sharex, sharey : `~matplotlib.axes.Axes`, optional
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:694:             Share the x or y `~matplotlib.axis` with sharex and/or sharey.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:811:             ticklabels on, use `~matplotlib.axes.Axes.tick_params`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:850:             `~matplotlib.gridspec.GridSpec` constructor used to create
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:856:             Either a single `~matplotlib.axes.Axes` object or an array of Axes
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1118:         `~matplotlib.legend.Legend`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1169:         **kwargs : `~matplotlib.text.Text` properties
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1202:             The `matplotlib.cm.ScalarMappable` (i.e., `.AxesImage`,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1214:         cax : `~matplotlib.axes.Axes`, optional
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1219:         ax : `~matplotlib.axes.Axes` or iterable or `numpy.ndarray` of Axes, optional
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1233:         colorbar : `~matplotlib.colorbar.Colorbar`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1255:         the viewers, not Matplotlib.  As a workaround, the colorbar can be
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1372:         axs : list of `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1373:             Optional list of (or `~numpy.ndarray`) `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1379:         matplotlib.figure.Figure.align_ylabels
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1380:         matplotlib.figure.Figure.align_titles
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1381:         matplotlib.figure.Figure.align_labels
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1434:         axs : list of `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1435:             Optional list (or `~numpy.ndarray`) of `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1441:         matplotlib.figure.Figure.align_xlabels
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1442:         matplotlib.figure.Figure.align_titles
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1443:         matplotlib.figure.Figure.align_labels
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1490:         axs : list of `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1491:             Optional list of (or ndarray) `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1497:         matplotlib.figure.Figure.align_xlabels
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1498:         matplotlib.figure.Figure.align_ylabels
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1499:         matplotlib.figure.Figure.align_labels
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1537:         axs : list of `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1538:             Optional list (or `~numpy.ndarray`) of `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1544:         matplotlib.figure.Figure.align_xlabels
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1545:         matplotlib.figure.Figure.align_ylabels
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1546:         matplotlib.figure.Figure.align_titles
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1584:         matplotlib.pyplot.subplots
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:1722:         # Helper for `~matplotlib.pyplot.gci`.  Do not use elsewhere.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:2429:     See `matplotlib.figure` for an index of class methods.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:2500:         subplotpars : `~matplotlib.gridspec.SubplotParams`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:2755:             from matplotlib.backends import backend_webagg
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:2781:             python script, you should use `matplotlib.pyplot.show` with
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:3062:         `matplotlib.image.FigureImage`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:3071:         figimage complements the Axes image (`~matplotlib.axes.Axes.imshow`)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:3074:         `~matplotlib.axes.Axes` with extent [0, 0, 1, 1].
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:3130:         matplotlib.figure.Figure.get_size_inches
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:3131:         matplotlib.figure.Figure.set_figwidth
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:3132:         matplotlib.figure.Figure.set_figheight
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:3161:         matplotlib.figure.Figure.set_size_inches
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:3162:         matplotlib.figure.Figure.get_figwidth
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:3163:         matplotlib.figure.Figure.get_figheight
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:3206:         matplotlib.figure.Figure.set_figheight
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:3207:         matplotlib.figure.Figure.set_size_inches
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:3223:         matplotlib.figure.Figure.set_figwidth
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:3224:         matplotlib.figure.Figure.set_size_inches
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:3296:         from matplotlib import _pylab_helpers
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:3307:                 f"This figure was saved with matplotlib version {version} and "
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:3317:             import matplotlib.pyplot as plt
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:3318:             import matplotlib._pylab_helpers as pylab_helpers
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:3334:     def savefig(self, fname, *, transparent=None, **kwargs):
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:3340:           savefig(fname, *, transparent=None, dpi='figure', format=None,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:3353:             `matplotlib.backends.backend_pdf.PdfPages`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\figure.py:3443:         bbox_extra_artists : list of `~matplotlib.artist.Artist`, optional
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:35: from io import BytesIO
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:47: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:48: from matplotlib import _api, _afm, cbook, ft2font
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:49: from matplotlib._fontconfig_pattern import (
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:51: from matplotlib.rcsetup import _validators
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:256:                 'Matplotlib needs fontconfig>=2.7 to query system fonts.')
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:328:         return f"<img src=\"data:image/png;base64, {png_b64}\" />"
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:331:         from matplotlib.figure import Figure  # Circular import.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:335:         with BytesIO() as buf:
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:336:             fig.savefig(buf, bbox_inches='tight', transparent=True)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:565:                         "positionally was deprecated in Matplotlib %(since)s and "
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:575:                         "was deprecated in Matplotlib %(since)s and will be removed "
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:650:     Note that Matplotlib's internal font manager and fontconfig use a
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:652:     may be different in Matplotlib than in other applications that use
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:946:             :ref:`default matplotlibrc file <customizing-with-matplotlibrc-files>`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:979:                 # Cache paths of fonts shipped with Matplotlib relative to the
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:980:                 # Matplotlib data path, which helps in the presence of venvs.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:1016:     File paths that are children of the Matplotlib data path (typically, fonts
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:1017:     shipped with Matplotlib) are stored relative to that data path (to remain
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:1051:     cache; therefore, `addfont` will need to be called every time Matplotlib is
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:1062:         import matplotlib.pyplot as plt
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:1063:         from matplotlib import font_manager
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:1096:             'Matplotlib is building the font cache; this may take a moment.'))
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:1300:         prop : str or `~matplotlib.font_manager.FontProperties`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\font_manager.py:1370:         prop : str or `~matplotlib.font_manager.FontProperties`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\gridspec.py:2: :mod:`~matplotlib.gridspec` contains classes that help to layout multiple
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\gridspec.py:19: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\gridspec.py:20: from matplotlib import _api, _pylab_helpers, _tight_layout
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\gridspec.py:21: from matplotlib.transforms import Bbox
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\gridspec.py:150:         fig : `~matplotlib.figure.Figure`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\gridspec.py:532:     gridspec : `~matplotlib.gridspec.GridSpec`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\gridspec.py:714:         matplotlib.pyplot.subplots
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\hatch.py:5: from matplotlib import _api
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\hatch.py:6: from matplotlib.path import Path
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:16: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:17: from matplotlib import _api, cbook
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:19: from matplotlib import _image
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:22: from matplotlib._image import *  # noqa: F401, F403
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:23: import matplotlib.artist as martist
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:24: import matplotlib.colorizer as mcolorizer
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:25: from matplotlib.backend_bases import FigureCanvasBase
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:26: import matplotlib.colors as mcolors
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:27: from matplotlib.transforms import (
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:122:     For internal Matplotlib use only: It is here to reduce duplication
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:246:     Additional kwargs are matplotlib.artist properties
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:355:         in_bbox : `~matplotlib.transforms.Bbox`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:357:         out_bbox : `~matplotlib.transforms.Bbox`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:359:         clip_bbox : `~matplotlib.transforms.Bbox`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:380:         trans : `~matplotlib.transforms.Affine2D`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:572:         trans : `~matplotlib.transforms.Affine2D`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:825:     ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:827:     cmap : str or `~matplotlib.colors.Colormap`, default: :rc:`image.cmap`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:830:     norm : str or `~matplotlib.colors.Normalize`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:864:     **kwargs : `~matplotlib.artist.Artist` properties
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:986:         matplotlib.artist.Artist.get_cursor_data
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:1013:         ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:1193:         ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:1207:         cmap : str or `~matplotlib.colors.Colormap`, default: :rc:`image.cmap`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:1210:         norm : str or `~matplotlib.colors.Normalize`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:1212:         **kwargs : `~matplotlib.artist.Artist` properties
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:1546:     cmap : str or `~matplotlib.colors.Colormap`, default: :rc:`image.cmap`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:1569:     from matplotlib.figure import Figure
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:1583:         fig.savefig(fname, dpi=dpi, format=format, transparent=True,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:1623:                     "Software": (f"Matplotlib version{mpl.__version__}, "
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:1624:                                  f"https://matplotlib.org/"),
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:1722:         The image file. Matplotlib relies on Pillow_ for image reading, and
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:1741:         `~matplotlib.pyplot.show` is called.  If it is False, the figure is
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:1762:         import matplotlib.pyplot as plt
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:1765:         from matplotlib.figure import Figure
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\image.py:1772:     fig.savefig(thumbfile, dpi=dpi)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\inset.py:7: from matplotlib.patches import ConnectionPatch, PathPatch, Rectangle
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\inset.py:8: from matplotlib.path import Path
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\inset.py:264:         message=('Since Matplotlib 3.10 indicate_inset_[zoom] returns a single '
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\layout_engine.py:13: Matplotlib supplies two layout engines, `.TightLayoutEngine` and
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\layout_engine.py:20: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\layout_engine.py:22: from matplotlib._constrained_layout import do_constrained_layout
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\layout_engine.py:23: from matplotlib._tight_layout import (get_subplotspec_list,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\layout_engine.py:29:     Base class for Matplotlib layout engines.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:16: defined in the :mod:`~matplotlib.legend_handler` module. While not all artist
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:31: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:32: from matplotlib import _api, _docstring, cbook, colors, offsetbox
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:33: from matplotlib.artist import Artist, allow_rasterization
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:34: from matplotlib.cbook import silent_list
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:35: from matplotlib.font_manager import FontProperties
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:36: from matplotlib.lines import Line2D
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:37: from matplotlib.patches import (Patch, Rectangle, Shadow, FancyBboxPatch,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:39: from matplotlib.collections import (
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:42: from matplotlib.text import Text
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:43: from matplotlib.transforms import Bbox, BboxBase, TransformedBbox
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:44: from matplotlib.transforms import BboxTransformTo, BboxTransformFrom
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:45: from matplotlib.offsetbox import (
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:50: from matplotlib.container import ErrorbarContainer, BarContainer, StemContainer
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:128: prop : None or `~matplotlib.font_manager.FontProperties` or dict
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:130:     :data:`matplotlib.rcParams` will be used.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:204: bbox_transform : None or `~matplotlib.transforms.Transform`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:207:     :data:`~matplotlib.axes.Axes.transAxes` transform will be used.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:212: title_fontproperties : None or `~matplotlib.font_manager.FontProperties` or dict
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:252:     found at `matplotlib.legend.Legend.get_legend_handler_map`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:401:         parent : `~matplotlib.axes.Axes` or `.Figure`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:424:         from matplotlib.axes import Axes
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:425:         from matplotlib.figure import FigureBase
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:878:                              "instead.\nSee: https://matplotlib.org/"
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:1091:         bbox : `~matplotlib.transforms.BboxBase` or tuple
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:1101:         transform : `~matplotlib.transforms.Transform`, optional
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:1138:         bbox : `~matplotlib.transforms.Bbox`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:1140:         parentbbox : `~matplotlib.transforms.Bbox`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend.py:1257:                              "instances.\nSee: https://matplotlib.org/stable/"
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend_handler.py:34: from matplotlib import cbook
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend_handler.py:35: from matplotlib.lines import Line2D
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend_handler.py:36: from matplotlib.patches import Rectangle
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend_handler.py:37: import matplotlib.collections as mcoll
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend_handler.py:111:         legend : `~matplotlib.legend.Legend`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend_handler.py:113:         orig_handle : :class:`matplotlib.artist.Artist` or similar
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend_handler.py:118:         handlebox : `~matplotlib.offsetbox.OffsetBox`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend_handler.py:148:         legend : `~matplotlib.legend.Legend`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend_handler.py:150:         orig_handle : `~matplotlib.artist.Artist` or similar
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend_handler.py:158:         trans : `~matplotlib.transforms.Transform`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\legend_handler.py:363:     Handler for `~.matplotlib.patches.StepPatch` instances.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\lines.py:12: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\lines.py:439:         mouseevent : `~matplotlib.backend_bases.MouseEvent`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\lines.py:733:         """Return this line's `~matplotlib.transforms.TransformedPath`."""
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\lines.py:765:             from matplotlib.patheffects import PathEffectRenderer
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\lines.py:1036:         """Return the `~matplotlib.path.Path` associated with this line."""
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\lines.py:1197:             See `~matplotlib.markers` for full description of possible
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\lines.py:1639:         import matplotlib.pyplot as plt
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\lines.py:1640:         import matplotlib.lines as lines
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\lines.py:1663:         line : `~matplotlib.lines.Line2D`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\markers.py:3: `~matplotlib.axes.Axes.plot`, `~matplotlib.axes.Axes.scatter`, and
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\markers.py:4: `~matplotlib.axes.Axes.errorbar`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\markers.py:58: ``path``                              A `~matplotlib.path.Path` instance.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\markers.py:78:     plt.plot([1, 2, 3], marker=matplotlib.markers.CARETDOWNBASE)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\markers.py:82: A MarkerStyle can also have a custom `~matplotlib.transforms.Transform`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\markers.py:136: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\markers.py:228:               `matplotlib.markers`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\markers.py:233:         transform : `~matplotlib.transforms.Transform`, optional
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\markers.py:308:               `matplotlib.markers`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\markers.py:388:         transform : `~matplotlib.transforms.Affine2D`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\markers.py:490:         from matplotlib.text import TextPath
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\mathtext.py:3: Matplotlib backend.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\mathtext.py:21: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\mathtext.py:22: from matplotlib import _api, _mathtext
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\mathtext.py:23: from matplotlib.ft2font import LoadFlags
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\mathtext.py:24: from matplotlib.font_manager import FontProperties
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\mathtext.py:81:         from matplotlib.backends import backend_agg
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\mathtext.py:131:     from matplotlib import figure
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\mathtext.py:138:     fig.savefig(filename_or_obj, dpi=dpi, format=format)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\mlab.py:55: from matplotlib import _api, _docstring, cbook
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\mlab.py:448:     is a vector, in Matplotlib it is a function.  The :mod:`~matplotlib.mlab`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\offsetbox.py:29: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\offsetbox.py:30: from matplotlib import _api, _docstring
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\offsetbox.py:31: import matplotlib.artist as martist
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\offsetbox.py:32: import matplotlib.path as mpath
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\offsetbox.py:33: import matplotlib.text as mtext
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\offsetbox.py:34: import matplotlib.transforms as mtransforms
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\offsetbox.py:35: from matplotlib.font_manager import FontProperties
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\offsetbox.py:36: from matplotlib.image import BboxImage
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\offsetbox.py:37: from matplotlib.patches import (
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\offsetbox.py:39: from matplotlib.transforms import Bbox, BboxBase, TransformedBbox
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\offsetbox.py:227:         fig : `~matplotlib.figure.Figure`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\offsetbox.py:250:         mouseevent : `~matplotlib.backend_bases.MouseEvent`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\offsetbox.py:541:         child : `~matplotlib.artist.Artist`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\offsetbox.py:640:         Return the `~matplotlib.transforms.Transform` applied to the children.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\offsetbox.py:856:         Return the :class:`~matplotlib.transforms.Transform` applied
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\offsetbox.py:961:         bbox_transform : None or :class:`matplotlib.transforms.Transform`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\offsetbox.py:1123:             `~matplotlib.text.Text` instance contained inside AnchoredText.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patches.py:12: from matplotlib.transforms import Affine2D
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patches.py:16: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patches.py:133:         mouseevent : `~matplotlib.backend_bases.MouseEvent`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patches.py:623:             from matplotlib.patheffects import PathEffectRenderer
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patches.py:678:         patch : `~matplotlib.patches.Patch`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patches.py:769:         **kwargs : `~matplotlib.patches.Patch` properties
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patches.py:2048:         **kwargs : `~matplotlib.patches.Patch` properties
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patches.py:3410:             from matplotlib.bezier import get_normal_points
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patches.py:3919:         boxstyle : str or `~matplotlib.patches.BoxStyle`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patches.py:3942:         **kwargs : `~matplotlib.patches.Patch` properties
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patches.py:3968:         boxstyle : str or `~matplotlib.patches.BoxStyle`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patches.py:4178:         path : `~matplotlib.path.Path`, default: None
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patches.py:4200:         patchA, patchB : `~matplotlib.patches.Patch`, default: None
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patches.py:4217:         **kwargs : `~matplotlib.patches.Patch` properties, optional
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patches.py:4307:         connectionstyle : str or `~matplotlib.patches.ConnectionStyle`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patches.py:4351:         arrowstyle : str or `~matplotlib.patches.ArrowStyle`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patches.py:4513:         ?                any key for `matplotlib.patches.PathPatch`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patches.py:4543:         `~matplotlib.transforms.Transform`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\path.py:2: A module for dealing with the polylines used throughout Matplotlib.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\path.py:4: The primary class for polyline handling in Matplotlib is `Path`.  Almost all
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\path.py:18: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\path.py:361:         transform : None or :class:`~matplotlib.transforms.Transform`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\path.py:424:         B : `~matplotlib.bezier.BezierSegment`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\path.py:428:         code : `~matplotlib.path.Path.code_type`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\path.py:495:         matplotlib.transforms.TransformedPath
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\path.py:514:         transform : `~matplotlib.transforms.Transform`, optional
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\path.py:564:         transform : `~matplotlib.transforms.Transform`, optional
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\path.py:613:         transform : `~matplotlib.transforms.Transform`, optional
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\path.py:620:         matplotlib.transforms.Bbox
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\path.py:1036:         from matplotlib.hatch import get_path
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\path.py:1065:     master_transform : `~matplotlib.transforms.Transform`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\path.py:1068:     transforms : list of `~matplotlib.transforms.Affine2DBase`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\path.py:1071:     offset_transform : `~matplotlib.transforms.Affine2DBase`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patheffects.py:9: from matplotlib.backend_bases import RendererBase
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patheffects.py:10: from matplotlib import colors as mcolors
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patheffects.py:11: from matplotlib import patches as mpatches
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patheffects.py:12: from matplotlib import transforms as mtransforms
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patheffects.py:13: from matplotlib.path import Path
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patheffects.py:62:         as :meth:`matplotlib.backend_bases.RendererBase.draw_path`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patheffects.py:90:         renderer : `~matplotlib.backend_bases.RendererBase` subclass
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\patheffects.py:357:             :class:`~matplotlib.patches.PathPatch` constructor. The
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pylab.py:3: replacement is `matplotlib.pyplot`.  See :ref:`api_interfaces` for a full overview
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pylab.py:4: of Matplotlib interfaces.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pylab.py:13:    ``from pylab import *`` imports all the functions from `matplotlib.pyplot`, `numpy`,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pylab.py:24: from matplotlib.cbook import flatten, silent_list
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pylab.py:26: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pylab.py:28: from matplotlib.dates import (
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pylab.py:40: from matplotlib.mlab import (
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pylab.py:44: from matplotlib import cbook, mlab, pyplot as plt
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pylab.py:45: from matplotlib.pyplot import *
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:5: `matplotlib.pyplot` is a state-based interface to matplotlib. It provides
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:13:     import matplotlib.pyplot as plt
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:27:     import matplotlib.pyplot as plt
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:56: import matplotlib
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:57: import matplotlib.colorbar
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:58: import matplotlib.image
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:59: from matplotlib import _api
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:61: from matplotlib import get_backend as get_backend, rcParams as rcParams
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:62: from matplotlib import cm as cm  # noqa: F401
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:63: from matplotlib import style as style  # noqa: F401
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:64: from matplotlib import _pylab_helpers
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:65: from matplotlib import interactive  # noqa: F401
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:66: from matplotlib import cbook
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:67: from matplotlib import _docstring
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:68: from matplotlib.backend_bases import (
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:70: from matplotlib.figure import Figure, FigureBase, figaspect
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:71: from matplotlib.gridspec import GridSpec, SubplotSpec
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:72: from matplotlib import rcsetup, rcParamsDefault, rcParamsOrig
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:73: from matplotlib.artist import Artist
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:74: from matplotlib.axes import Axes
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:75: from matplotlib.axes import Subplot  # noqa: F401
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:76: from matplotlib.backends import BackendFilter, backend_registry
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:77: from matplotlib.projections import PolarAxes
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:78: from matplotlib.colorizer import _ColorizerInterface, ColorizingArtist, Colorizer
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:79: from matplotlib import mlab  # for detrend_none, window_hanning
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:80: from matplotlib.scale import get_scale_names  # noqa: F401
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:82: from matplotlib.cm import _colormaps
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:83: from matplotlib.colors import _color_sequences, Colormap
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:98:     import matplotlib.axes
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:99:     import matplotlib.artist
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:100:     import matplotlib.backend_bases
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:101:     from matplotlib.axis import Tick
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:102:     from matplotlib.axes._base import _AxesBase
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:103:     from matplotlib.backend_bases import Event
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:104:     from matplotlib.cm import ScalarMappable
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:105:     from matplotlib.contour import ContourSet, QuadContourSet
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:106:     from matplotlib.collections import (
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:115:     from matplotlib.colorbar import Colorbar
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:116:     from matplotlib.container import (
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:121:     from matplotlib.figure import SubFigure
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:122:     from matplotlib.legend import Legend
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:123:     from matplotlib.mlab import GaussianKDE
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:124:     from matplotlib.image import AxesImage, FigureImage
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:125:     from matplotlib.patches import FancyArrow, StepPatch, Wedge
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:126:     from matplotlib.quiver import Barbs, Quiver, QuiverKey
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:127:     from matplotlib.scale import ScaleBase
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:128:     from matplotlib.typing import (
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:135:     from matplotlib.widgets import SubplotTool
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:143: from matplotlib.colors import Normalize
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:144: from matplotlib.lines import Line2D, AxLine
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:145: from matplotlib.text import Text, Annotation
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:146: from matplotlib.patches import Arrow, Circle, Rectangle  # noqa: F401
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:147: from matplotlib.patches import Polygon
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:148: from matplotlib.widgets import Button, Slider, Widget  # noqa: F401
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:278:     if matplotlib.is_interactive():
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:314:         # has been moved to Matplotlib.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:340: @_copy_docstring_and_deprecators(matplotlib.set_loglevel)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:342:     return matplotlib.set_loglevel(*args, **kwargs)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:356: _backend_mod: type[matplotlib.backend_bases._Backend] | None = None
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:359: def _get_backend_mod() -> type[matplotlib.backend_bases._Backend]:
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:370:     return cast(type[matplotlib.backend_bases._Backend], _backend_mod)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:392:     import matplotlib.backends
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:449:     class backend_mod(matplotlib.backend_bases._Backend):
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:466:             if matplotlib.is_interactive():
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:504:         from matplotlib import _parse_to_version_info  # type: ignore[attr-defined]
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:519:     # See https://github.com/matplotlib/matplotlib/issues/6092
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:520:     matplotlib.backends.backend = newbackend  # type: ignore[attr-defined]
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:544:             "Starting a Matplotlib GUI outside of the main thread will likely "
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:608:     The jupyter backends (activated via ``%matplotlib inline``,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:609:     ``%matplotlib notebook``, or ``%matplotlib widget``), call ``show()`` at
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:644:     return matplotlib.is_interactive()
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:649: # See https://github.com/matplotlib/matplotlib/issues/27659
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:650: # and https://github.com/matplotlib/matplotlib/pull/27667 for more info.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:686:     matplotlib.interactive(False)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:693: # See https://github.com/matplotlib/matplotlib/issues/27659
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:694: # and https://github.com/matplotlib/matplotlib/pull/27667 for more info.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:730:     matplotlib.interactive(True)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:743:     :mod:`matplotlib.animation`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:749:     matplotlib.animation : Proper animations
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:763: @_copy_docstring_and_deprecators(matplotlib.rc)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:765:     matplotlib.rc(group, **kwargs)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:768: @_copy_docstring_and_deprecators(matplotlib.rc_context)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:773:     return matplotlib.rc_context(rc, fname)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:776: @_copy_docstring_and_deprecators(matplotlib.rcdefaults)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:778:     matplotlib.rcdefaults()
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:779:     if matplotlib.is_interactive():
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:786: @_copy_docstring_and_deprecators(matplotlib.artist.getp)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:788:     return matplotlib.artist.getp(obj, *args, **kwargs)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:791: @_copy_docstring_and_deprecators(matplotlib.artist.get)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:793:     return matplotlib.artist.get(obj, *args, **kwargs)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:796: @_copy_docstring_and_deprecators(matplotlib.artist.setp)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:798:     return matplotlib.artist.setp(obj, *args, **kwargs)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:810:     font; xkcd fonts are not packaged with Matplotlib.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:847:     from matplotlib import patheffects
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:924:     FigureClass : subclass of `~matplotlib.figure.Figure`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:969:     `~matplotlib.figure.Figure`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:987:     `~matplotlib.rcParams` defines the default values, which can be modified
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:988:     in the matplotlibrc file.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1036:                 f"(`matplotlib.pyplot.figure`) are retained until explicitly "
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1039:                 f"Consider using `matplotlib.pyplot.close()`.",
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1084:     if (val and matplotlib.is_interactive()
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1239: def savefig(*args, **kwargs) -> None:
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1243:     res = fig.savefig(*args, **kwargs)  # type: ignore[func-returns-value]
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1266: ) -> matplotlib.axes.Axes:
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1290:         a custom projection, see `~matplotlib.projections`. The default
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1296:     sharex, sharey : `~matplotlib.axes.Axes`, optional
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1297:         Share the x or y `~matplotlib.axis` with sharex and/or sharey.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1352: def delaxes(ax: matplotlib.axes.Axes | None = None) -> None:
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1417:         of a custom projection, see `~matplotlib.projections`. The default
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1423:     sharex, sharey : `~matplotlib.axes.Axes`, optional
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1424:         Share the x or y `~matplotlib.axis` with sharex and/or sharey. The
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1649:         on, use `~matplotlib.axes.Axes.tick_params`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1658:           array of `~matplotlib.axes.Axes`:
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1684:         `~matplotlib.figure.Figure.add_subplot` call used to create each
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1688:         Dict with keywords passed to the `~matplotlib.gridspec.GridSpec`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1699:     ax : `~matplotlib.axes.Axes` or array of Axes
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1790: ) -> tuple[Figure, dict[str, matplotlib.axes.Axes]]: ...
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1806: ) -> tuple[Figure, dict[_T, matplotlib.axes.Axes]]: ...
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1822: ) -> tuple[Figure, dict[Hashable, matplotlib.axes.Axes]]: ...
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1839: ) -> tuple[Figure, dict[str, matplotlib.axes.Axes]] | \
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1840:      tuple[Figure, dict[_T, matplotlib.axes.Axes]] | \
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1841:      tuple[Figure, dict[Hashable, matplotlib.axes.Axes]]:
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:1959: ) -> matplotlib.axes.Axes:
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2006: def twinx(ax: matplotlib.axes.Axes | None = None) -> _AxesBase:
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2022: def twiny(ax: matplotlib.axes.Axes | None = None) -> _AxesBase:
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2044:     `matplotlib.widgets.SubplotTool`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2050:         from matplotlib.backend_bases import NavigationToolbar2
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2053:         from matplotlib.backend_bases import ToolContainerBase
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2068:         The new `~matplotlib.axes.Axes` box state. If ``None``, toggle
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2073:     :meth:`matplotlib.axes.Axes.set_frame_on`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2074:     :meth:`matplotlib.axes.Axes.get_frame_on`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2355:         `matplotlib.ticker.ScalarFormatter` will be used if None.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2361:         Format string used in `matplotlib.ticker.FormatStrFormatter`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2436:         Format string used in `matplotlib.ticker.FormatStrFormatter`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2515:     cax: matplotlib.axes.Axes | None = None,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2516:     ax: matplotlib.axes.Axes | Iterable[matplotlib.axes.Axes] | None = None,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2557:     name : `~matplotlib.colors.Colormap` or str or None, default: None
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2559:         a colormap known to Matplotlib, which will be resampled by *lut*. The
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2586:     cmap : `~matplotlib.colors.Colormap` or str
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2603: @_copy_docstring_and_deprecators(matplotlib.image.imread)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2607:     return matplotlib.image.imread(fname, format)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2610: @_copy_docstring_and_deprecators(matplotlib.image.imsave)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2614:     matplotlib.image.imsave(fname, arr, **kwargs)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2654:     `~matplotlib.image.AxesImage`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\pyplot.py:2658:     **kwargs : `~matplotlib.axes.Axes.imshow` arguments
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\quiver.py:22: from matplotlib import _api, cbook, _docstring
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\quiver.py:23: import matplotlib.artist as martist
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\quiver.py:24: import matplotlib.collections as mcollections
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\quiver.py:25: from matplotlib.patches import CirclePolygon
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\quiver.py:26: import matplotlib.text as mtext
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\quiver.py:27: import matplotlib.transforms as transforms
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\quiver.py:235: **kwargs : `~matplotlib.collections.PolyCollection` properties, optional
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\quiver.py:242: `~matplotlib.quiver.Quiver`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\quiver.py:299:         Q : `~matplotlib.quiver.Quiver`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\quiver.py:328:             `~matplotlib.font_manager.FontProperties` initializer:
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\quiver.py:898: barbs : `~matplotlib.quiver.Barbs`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:3: Matplotlib's rc settings.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:8: and is referenced throughout Matplotlib.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:10: The default values of the rc settings are set in the default matplotlibrc file.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:12: propagated to the :file:`lib/matplotlib/mpl-data/matplotlibrc` in Matplotlib's
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:25: from matplotlib import _api, cbook
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:26: from matplotlib.backends import BackendFilter, backend_registry
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:27: from matplotlib.cbook import ls_mapper
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:28: from matplotlib.colors import Colormap, is_color_like
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:29: from matplotlib._fontconfig_pattern import parse_fontconfig_pattern
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:30: from matplotlib._enums import JoinStyle, CapStyle
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:40:         alternative="``matplotlib.backends.backend_registry.list_builtin"
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:41:             "(matplotlib.backends.BackendFilter.INTERACTIVE)``")
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:48:         alternative="``matplotlib.backends.backend_registry.list_builtin"
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:49:             "(matplotlib.backends.BackendFilter.NON_INTERACTIVE)``")
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:56:         alternative="``matplotlib.backends.backend_registry.list_builtin()``")
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:345:     # If it is still valid, it must be a tuple (as a string from matplotlibrc).
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:403:     # Note: Historically, weights have been case-sensitive in Matplotlib
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:417:     # Note: Historically, stretchvalues have been case-sensitive in Matplotlib
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:485:             ls = ast.literal_eval(ls)  # Parsing matplotlibrc.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:904: # The rcParams defaults are defined in lib/matplotlib/mpl-data/matplotlibrc, which
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:905: # gets copied to matplotlib/mpl-data/matplotlibrc by the setup script.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:1359:     # altogether.  For that use `matplotlib.style.use("classic")`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\rcsetup.py:1363:     # lib/matplotlib/mpl-data/matplotlibrc...
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\sankey.py:2: Module for creating Sankey diagrams using Matplotlib.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\sankey.py:10: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\sankey.py:11: from matplotlib.path import Path
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\sankey.py:12: from matplotlib.patches import PathPatch
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\sankey.py:13: from matplotlib.transforms import Affine2D
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\sankey.py:14: from matplotlib import _docstring
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\sankey.py:73:         ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\sankey.py:143:             import matplotlib.pyplot as plt
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\sankey.py:186:         # Note:  It would be possible to use matplotlib's transforms to rotate,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\sankey.py:426:            Additional keyword arguments set `matplotlib.patches.PathPatch`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\sankey.py:788:         *patch*   Sankey outline (a `~matplotlib.patches.PathPatch`).
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\scale.py:37: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\scale.py:38: from matplotlib import _api, _docstring
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\scale.py:39: from matplotlib.ticker import (
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\scale.py:43: from matplotlib.transforms import Transform, IdentityTransform
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\scale.py:76:         For back-compatibility reasons, scales take an `~matplotlib.axis.Axis`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\scale.py:79:         `~matplotlib.axis.Axis`\es at the same time.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\scale.py:135:         `~matplotlib.transforms.IdentityTransform`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\scale.py:187:         axis : `~matplotlib.axis.Axis`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\scale.py:286:         axis : `~matplotlib.axis.Axis`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\scale.py:337:         axis : `~matplotlib.axis.Axis`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\scale.py:653:         axis : `~matplotlib.axis.Axis`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\scale.py:725:     axis : `~matplotlib.axis.Axis`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\spines.py:6: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\spines.py:7: from matplotlib import _api, _docstring
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\spines.py:8: from matplotlib.artist import allow_rasterization
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\spines.py:9: import matplotlib.transforms as mtransforms
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\spines.py:10: import matplotlib.patches as mpatches
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\spines.py:11: import matplotlib.path as mpath
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\spines.py:40:         axes : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\spines.py:44:         path : `~matplotlib.path.Path`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\spines.py:149:         matplotlib.axes.Axes.get_tightbbox
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\spines.py:150:         matplotlib.axes.Axes.get_window_extent
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\stackplot.py:13: from matplotlib import _api
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\streamplot.py:8: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\streamplot.py:9: from matplotlib import _api, cm, patches
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\streamplot.py:10: import matplotlib.colors as mcolors
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\streamplot.py:11: import matplotlib.collections as mcollections
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\streamplot.py:12: import matplotlib.lines as mlines
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\streamplot.py:57:         See `~matplotlib.patches.FancyArrowPatch`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\table.py:6: #    The Matplotlib development team
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\table.py:7: #    Copyright The Matplotlib development team
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\table.py:13:     The table implementation in Matplotlib is lightly maintained. For a more
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\table.py:17: Use the factory function `~matplotlib.table.table` to create a ready-made
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\table.py:44:     should use either the `~matplotlib.table.table` factory function or
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\table.py:252:     `~matplotlib.table.table` to create a table from data.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\table.py:284:         ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\table.py:723:     `~matplotlib.table.Table`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\texmanager.py:2: Support for embedded TeX expressions in Matplotlib.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\texmanager.py:13: To enable TeX rendering of all text in your Matplotlib figure, set
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\texmanager.py:17: in ~/.matplotlib/tex.cache for reuse between sessions.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\texmanager.py:33: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\texmanager.py:34: from matplotlib import cbook, dviread
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\texmanager.py:226:             r"% matplotlibbaselinemarker is used by dviread to detect the",
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\text.py:13: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\text.py:620:         ``savefig(..., bbox_inches='tight')`` (which is also used internally
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\text.py:621:         by ``%matplotlib inline`` in IPython/Jupyter). The 'tight' setting
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\text.py:797:                     from matplotlib.patheffects import PathEffectRenderer
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\text.py:1128:         Return the font family name for math text rendered by Matplotlib.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\text.py:1140:         Set the font family for math text rendered by Matplotlib.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\text.py:1142:         This does only affect Matplotlib's own math renderer. It has no effect
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\text.py:1151:             :ref:`default matplotlibrc file
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\text.py:1152:             <customizing-with-matplotlibrc-files>`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\text.py:1391:         artist : `~matplotlib.artist.Artist` or `.BboxBase` or `.Transform`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\text.py:1484:             from matplotlib.transforms import blended_transform_factory
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\text.py:1513:             from matplotlib.projections import PolarAxes
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\text.py:1613:         from matplotlib.offsetbox import DraggableAnnotation
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\text.py:1709:               `~matplotlib.transforms.Bbox`. E.g. *(0, 0)* would be the lower
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\textpath.py:7: from matplotlib import _text_helpers, dviread
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\textpath.py:8: from matplotlib.font_manager import (
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\textpath.py:11: from matplotlib.ft2font import LoadFlags
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\textpath.py:12: from matplotlib.mathtext import MathTextParser
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\textpath.py:13: from matplotlib.path import Path
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\textpath.py:14: from matplotlib.texmanager import TexManager
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\textpath.py:15: from matplotlib.transforms import Affine2D
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\textpath.py:75:         matplotlib.path.Path).
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\textpath.py:79:         prop : `~matplotlib.font_manager.FontProperties`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\textpath.py:98:             from matplotlib.path import Path
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\textpath.py:99:             from matplotlib.text import TextToPath
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\textpath.py:100:             from matplotlib.font_manager import FontProperties
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\textpath.py:317:         prop : `~matplotlib.font_manager.FontProperties`, optional
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\textpath.py:333:             from matplotlib.text import TextPath
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\textpath.py:334:             from matplotlib.font_manager import FontProperties
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\textpath.py:343:         from matplotlib.text import Text
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\ticker.py:72:     `~matplotlib.axis.Axis` or `~matplotlib.axes.Axes`. So instead of::
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\ticker.py:129: and minor ticks. See the :mod:`matplotlib.dates` module for more information
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\ticker.py:142: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\ticker.py:143: from matplotlib import _api, cbook
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\ticker.py:144: from matplotlib import transforms as mtransforms
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\ticker.py:590:                     from matplotlib import font_manager
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\ticker.py:1654:     `~matplotlib.axis.Axis` because the locator stores references to the Axis
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\ticker.py:1702:         number of ticks, causing Matplotlib to run out of memory.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\ticker.py:2913:     This is a subclass of `~matplotlib.ticker.MaxNLocator`, with parameters
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\ticker.py:2919:         look to the defaults of `~matplotlib.ticker.MaxNLocator`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\transforms.py:2: Matplotlib includes a framework for arbitrary geometric transformations that is used to
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\transforms.py:48: from matplotlib import _api
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\transforms.py:49: from matplotlib._path import (
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\transforms.py:857:         path : `~matplotlib.path.Path`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\transforms.py:1300:     `matplotlib.path.Path` objects, such as adding curves
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\transforms.py:1565:         Matplotlib), see `TransformedBbox`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\transforms.py:2974:     fig : `~matplotlib.figure.Figure`, default: None
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\typing.py:2: Typing support for Matplotlib
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\typing.py:4: This module contains Type aliases which are useful for Matplotlib and potentially
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\units.py:3: Matplotlib, e.g., those that do not expose the array interface but know
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\units.py:13:     import matplotlib.units as units
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\units.py:14:     import matplotlib.dates as dates
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\units.py:15:     import matplotlib.ticker as ticker
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\units.py:39:     # Finally we register our object type with the Matplotlib units registry.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\units.py:49: from matplotlib import cbook
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\units.py:58:     Return whether *x* is of a type that Matplotlib natively supports or an
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\units.py:61:     # Matplotlib natively supports all number types except Decimal.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\units.py:111:     sequences) and convert them to values Matplotlib can use.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:7: instance and pass that as the first parameter.  Matplotlib doesn't try to
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:20: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:96:     Widget connected to a single `~matplotlib.axes.Axes`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:108:     ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:110:     canvas : `~matplotlib.backend_bases.FigureCanvasBase`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:172:         ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:420:         `~matplotlib.patches.Rectangle` that draws the slider knob.  See the
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:688:         `~matplotlib.patches.Polygon` that draws the slider knob.  See the
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:987:     ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:989:     labels : list of `~matplotlib.text.Text`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:1000:         ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:1290:     ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:1292:     label : `~matplotlib.text.Text`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:1306:         ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:1469:             with _api.suppress_matplotlib_deprecation_warning():
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:1548:     ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:1567:         ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:1809:         targetfig : `~matplotlib.figure.Figure`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:1811:         toolfig : `~matplotlib.figure.Figure`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:1880:     ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:1971:     axes : list of `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:2462:     ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:2516:     >>> import matplotlib.pyplot as plt
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:2517:     >>> import matplotlib.widgets as mwidgets
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:2866:     ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:2867:         Matplotlib Axes where tool handles are displayed.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:2976:     ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:2977:         Matplotlib Axes where tool handles are displayed.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:3039:     ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:3139:     >>> import matplotlib.pyplot as plt
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:3140:     >>> import matplotlib.widgets as mwidgets
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:3676:     ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:3748:     ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:4104:     `~matplotlib.path.Path.contains_point` to select data points from an image.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\widgets.py:4111:     ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_afm.py:15: >>> import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_afm.py:19: >>> from matplotlib.afm import AFM
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_afm.py:52:     # change to _to_int should at least prevent Matplotlib from crashing on
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_blocking_input.py:12:     figure : `~matplotlib.figure.Figure`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_cm.py:508: # LICENSE_COLORBREWER in the license directory of the matplotlib
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_cm.py:961: # the license directory of the matplotlib source distribution).
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_cm.py:1256: # >>> import matplotlib.colors as c
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_cm_bivar.py:5: from matplotlib.colors import SegmentedBivarColormap
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_cm_multivar.py:5: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_constrained_layout.py:7: Layout is done via `~matplotlib.gridspec`, with one constraint per gridspec,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_constrained_layout.py:9: using `~matplotlib.gridspec.GridSpecFromSubplotSpec`).  Axes placed using
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_constrained_layout.py:54: from matplotlib import _api, artist as martist
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_constrained_layout.py:55: import matplotlib.transforms as mtransforms
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_constrained_layout.py:56: import matplotlib._layoutgrid as mlayoutgrid
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_constrained_layout.py:72:     fig : `~matplotlib.figure.Figure`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_constrained_layout.py:354:     fig : `~matplotlib.figure.Figure`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_constrained_layout.py:356:     renderer : `~matplotlib.backend_bases.RendererBase` subclass.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_constrained_layout.py:602:     cbax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_constrained_layout.py:627:     ax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_constrained_layout.py:628:     renderer : `~matplotlib.backend_bases.RendererBase` subclass.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_constrained_layout.py:632:     pos : `~matplotlib.transforms.Bbox`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_constrained_layout.py:634:     bbox : `~matplotlib.transforms.Bbox`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_constrained_layout.py:698:     cbax : `~matplotlib.axes.Axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_constrained_layout.py:700:     renderer : `~matplotlib.backend_bases.RendererBase` subclass.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_docstring.py:25:     matplotlib.artist.kwdoc
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_docstring.py:77:         from matplotlib.artist import Artist, kwdoc
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_docstring.py:140: # throughout Matplotlib.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_enums.py:2: Enums representing sets of strings that Matplotlib uses as input parameters.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_enums.py:4: Matplotlib often uses simple data types like strings or tuples to define a
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_enums.py:14: from matplotlib import _docstring
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_enums.py:24:     Lines in Matplotlib are typically defined by a 1D `~.path.Path` and a
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_enums.py:57:         in a default value of 4 per the SVG specification. Matplotlib does not
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_enums.py:67:         from matplotlib._enums import JoinStyle
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_enums.py:80:         import matplotlib.pyplot as plt
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_enums.py:140:         from matplotlib._enums import CapStyle
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_enums.py:151:         import matplotlib.pyplot as plt
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_fontconfig_pattern.py:8: # This class logically belongs in `matplotlib.font_manager`, but placing it
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_fontconfig_pattern.py:10: # to be available from `matplotlib.rcsetup` (for parsing matplotlibrc files).
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_internal_utils.py:12: from matplotlib.transforms import TransformNode
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_internal_utils.py:23:     transform : `~matplotlib.transform.Transform`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_internal_utils.py:29:     highlight : list of `~matplotlib.transform.Transform` or None
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_layoutgrid.py:24: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_layoutgrid.py:25: import matplotlib.patches as mpatches
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_layoutgrid.py:26: from matplotlib.transforms import Bbox
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_mathtext.py:27: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_mathtext.py:46: _log = logging.getLogger("matplotlib.mathtext")
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_mathtext.py:94: VectorParse.__module__ = "matplotlib.mathtext"
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_mathtext.py:117: RasterParse.__module__ = "matplotlib.mathtext"
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_mathtext.py:894: # matplotlib.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_mathtext.py:2041:         # ref https://github.com/matplotlib/matplotlib/issues/25204
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_text_helpers.py:43:             f"Matplotlib currently does not support {block} natively.")
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_tight_bbox.py:5: from matplotlib.transforms import Bbox, TransformedBbox, Affine2D
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_tight_layout.py:14: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_tight_layout.py:15: from matplotlib import _api, artist as martist
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_tight_layout.py:16: from matplotlib.font_manager import FontProperties
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_tight_layout.py:17: from matplotlib.transforms import Bbox
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\_type1font.py:36: from matplotlib.cbook import _format_approx
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:7:     import matplotlib.pyplot as plt
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:15:     In [1]: %matplotlib
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:16:     In [2]: import matplotlib.pyplot as plt
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:30: :mod:`matplotlib.axes`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:35: :mod:`matplotlib.figure`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:38: :mod:`matplotlib.artist`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:41: :mod:`matplotlib.lines`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:44: :mod:`matplotlib.patches`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:47: :mod:`matplotlib.text`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:50: :mod:`matplotlib.image`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:53: :mod:`matplotlib.collections`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:56: :mod:`matplotlib.colors`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:59: :mod:`matplotlib.cm`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:63: :mod:`matplotlib.ticker`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:66: :mod:`matplotlib.backends`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:69: The base matplotlib namespace includes:
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:71: `~matplotlib.rcParams`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:73:     a :file:`matplotlibrc` file.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:75: `~matplotlib.use`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:76:     Setting the Matplotlib backend.  This should be called before any
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:83:     This optional variable can be set to choose the Matplotlib backend. See
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:88:     Matplotlib, as well as some caches to improve performance. If
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:89:     :envvar:`MPLCONFIGDIR` is not defined, :file:`{HOME}/.config/matplotlib`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:90:     and :file:`{HOME}/.cache/matplotlib` are used on Linux, and
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:91:     :file:`{HOME}/.matplotlib` on other platforms, if they are
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:93:     is used to find a base directory in which the :file:`matplotlib`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:96: Matplotlib was initially written by John D. Hunter (1968-2012) and is now
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:113:     "matplotlib_fname",
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:114:     "MatplotlibDeprecationWarning",
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:159: # cbook must import matplotlib only within function
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:162: from matplotlib._api import MatplotlibDeprecationWarning
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:163: from matplotlib.rcsetup import cycler  # noqa: F401
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:170:   Title     = {Matplotlib: A 2D graphics environment},
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:175:   abstract  = {Matplotlib is a 2D graphics package used for Python
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:215:     # a matplotlib git repo but not in a shallow clone, such as those used by
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:218:     if ((root / ".matplotlib-repo").exists()
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:228:                 dist_name="matplotlib",
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:260:             raise ImportError(f"Matplotlib requires {modname}>={minver}; "
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:273:     same format as `logging.basicConfig` to the Matplotlib root logger.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:285:     Configure Matplotlib's logging levels.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:287:     Matplotlib uses the standard library `logging` framework under the root
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:288:     logger 'matplotlib'.  This is a helper function to:
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:290:     - set Matplotlib's root logger level
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:298:     may want to directly manipulate ``logging.getLogger('matplotlib')`` rather
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:309:     to Matplotlib's root handler; this handler is reused every time and this
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:353:     Error raised when an executable that Matplotlib optionally
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:362:     Get the version of some executable that Matplotlib optionally depends on.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:366:        Matplotlib's internal needs, and may change without notice.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:385:         supported by Matplotlib.  For debugging purposes, it is also
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:386:         possible to "hide" an executable from Matplotlib by adding it to the
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:417:                     f"version supported by Matplotlib is {min_ver}")
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:494:                 f"version supported by Matplotlib is 3.0")
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:526:         configdir = Path(xdg_base_getter(), "matplotlib")
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:528:         configdir = Path.home() / ".matplotlib"
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:542:         tmpdir = tempfile.mkdtemp(prefix="matplotlib-")
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:545:             f"Matplotlib requires access to a writable cache directory, but there "
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:552:         "Matplotlib created a temporary cache directory at %s because there was "
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:555:         "speed up the import of Matplotlib and to better support multiprocessing.",
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:570:        platforms, choose ``$HOME/.matplotlib``.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:590: @_logged_cached('matplotlib data path: %s')
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:592:     """Return the path to Matplotlib data."""
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:596: def matplotlib_fname():
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:602:     - ``$PWD/matplotlibrc``
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:603:     - ``$MATPLOTLIBRC`` if it is not a directory
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:604:     - ``$MATPLOTLIBRC/matplotlibrc``
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:605:     - ``$MPLCONFIGDIR/matplotlibrc``
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:607:         - ``$XDG_CONFIG_HOME/matplotlib/matplotlibrc`` (if ``$XDG_CONFIG_HOME``
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:609:         - or ``$HOME/.config/matplotlib/matplotlibrc`` (if ``$XDG_CONFIG_HOME``
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:612:       - ``$HOME/.matplotlib/matplotlibrc`` if ``$HOME`` is defined
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:613:     - Lastly, it looks in ``$MATPLOTLIBDATA/matplotlibrc``, which should always
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:622:         yield 'matplotlibrc'
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:624:             matplotlibrc = os.environ['MATPLOTLIBRC']
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:628:             yield matplotlibrc
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:629:             yield os.path.join(matplotlibrc, 'matplotlibrc')
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:630:         yield os.path.join(get_configdir(), 'matplotlibrc')
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:631:         yield os.path.join(get_data_path(), 'matplotlibrc')
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:637:     raise RuntimeError("Could not find matplotlibrc file; your Matplotlib "
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:661:     :mod:`matplotlib.rcsetup`.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:669:     :ref:`customizing-with-matplotlibrc-files`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:692:         i.e. it is subject to Matplotlib's API and deprecation policy.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:713:         i.e. it is subject to Matplotlib's API and deprecation policy.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:740:         Normally, the default matplotlibrc file contains *no* entry for "backend" (the
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:796:                 from matplotlib import pyplot as plt
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:809:         with _api.suppress_matplotlib_deprecation_warning():
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:820:         with _api.suppress_matplotlib_deprecation_warning():
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:851:     """Construct a `RcParams` instance from the default Matplotlib rc file."""
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:852:     return rc_params_from_file(matplotlib_fname(), fail_on_error)
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:901:     import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:945:                 addendum="Please update your matplotlibrc.")
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:953: You probably need to get an updated matplotlibrc file from
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:954: https://github.com/matplotlib/matplotlib/blob/%(version)s/lib/matplotlib/mpl-data/matplotlibrc
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:955: or from the matplotlib source distribution""",
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:968:         A file with Matplotlib rc settings.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:981:     with _api.suppress_matplotlib_deprecation_warning():
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:998:     cbook._get_data_path("matplotlibrc"),
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1007: rcParams._update_raw(_rc_params_in_file(matplotlib_fname()))
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1009: with _api.suppress_matplotlib_deprecation_warning():
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1065:     ``matplotlib.style.use('default')`` or :func:`~matplotlib.rcdefaults` to
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1100:     Restore the `.rcParams` from Matplotlib's internal default style.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1103:     ``matplotlib.style.core.STYLE_BLACKLIST``) are not updated.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1107:     matplotlib.rc_file_defaults
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1109:         Matplotlib.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1110:     matplotlib.style.use
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1116:     with _api.suppress_matplotlib_deprecation_warning():
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1125:     Restore the `.rcParams` from the original rc file loaded by Matplotlib.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1128:     ``matplotlib.style.core.STYLE_BLACKLIST``) are not updated.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1132:     with _api.suppress_matplotlib_deprecation_warning():
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1143:     ``matplotlib.style.core.STYLE_BLACKLIST``) are not updated.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1148:         A file with Matplotlib rc settings.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1157:     with _api.suppress_matplotlib_deprecation_warning():
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1180:         A file with Matplotlib rc settings. If both *fname* and *rc* are given,
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1185:     :ref:`customizing-with-matplotlibrc-files`
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1194:             fig.savefig('example.png')
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1226:     If pyplot is already imported, `~matplotlib.pyplot.switch_backend` is used
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1261:     matplotlib.get_backend
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1262:     matplotlib.pyplot.switch_backend
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1274:         plt = sys.modules.get('matplotlib.pyplot')
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1320:     matplotlib.use
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1363:     from matplotlib import ft2font
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1367:             "Matplotlib is not built with the correct FreeType version to run tests.  "
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1512:         "Matplotlib internal error: invalid replace_names "
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1515:         "Matplotlib internal error: invalid label_namer "
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1561: @_api.deprecated("3.10", alternative="matplotlib.cbook.sanitize_sequence")
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1566: @_api.deprecated("3.10", alternative="matplotlib.rcsetup.validate_backend")
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1573: from matplotlib.cm import _colormaps as colormaps  # noqa: E402
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1574: from matplotlib.cm import _multivar_colormaps as multivar_colormaps  # noqa: E402
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1575: from matplotlib.cm import _bivar_colormaps as bivar_colormaps  # noqa: E402
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\__init__.py:1576: from matplotlib.colors import _color_sequences as color_sequences  # noqa: E402
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:10: import matplotlib as mpl
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:11: import matplotlib.category  # Register category unit converter as side effect.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:12: import matplotlib.cbook as cbook
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:13: import matplotlib.collections as mcoll
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:14: import matplotlib.colorizer as mcolorizer
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:15: import matplotlib.colors as mcolors
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:16: import matplotlib.contour as mcontour
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:17: import matplotlib.dates  # noqa: F401, Register date unit converter as side effect.
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:18: import matplotlib.image as mimage
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:19: import matplotlib.inset as minset
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:20: import matplotlib.legend as mlegend
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:21: import matplotlib.lines as mlines
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:22: import matplotlib.markers as mmarkers
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:23: import matplotlib.mlab as mlab
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:24: import matplotlib.patches as mpatches
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:25: import matplotlib.path as mpath
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:26: import matplotlib.quiver as mquiver
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:27: import matplotlib.stackplot as mstack
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:28: import matplotlib.streamplot as mstream
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:29: import matplotlib.table as mtable
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:30: import matplotlib.text as mtext
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:31: import matplotlib.ticker as mticker
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:32: import matplotlib.transforms as mtransforms
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:33: import matplotlib.tri as mtri
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:34: import matplotlib.units as munits
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:35: from matplotlib import _api, _docstring, _preprocess_data
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:36: from matplotlib.axes._base import (
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:38: from matplotlib.axes._secondary_axes import SecondaryAxis
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:39: from matplotlib.container import BarContainer, ErrorbarContainer, StemContainer
+C:\TradeAlerts\venv311\Lib\site-packages\matplotlib\axes\_axes.py:40: from matplotlib.transforms import _ScaledRotation

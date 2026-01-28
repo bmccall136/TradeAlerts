@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 from services.market_service import analyze_symbol
+from services.position_opened import upsert_position_opened
 
 from ai_advisor import get_ai_recommendation
 
@@ -1118,6 +1119,15 @@ def run_live_loop(settings, symbols, broker_mode=None):
                     getattr(broker, "name", "BROKER"),
                     resp,
                 )
+                try:
+                    upsert_position_opened(
+                    live_db_path,
+                    sym,
+                    datetime.now(UTC),
+                    source="live_fill"
+                    )
+                except Exception as e:
+                    log.warning("[LIVE] position_opened upsert failed for %s: %s", sym, e)
 
                 # persist cooldown + in-memory dedupe for the rest of this iteration
                 try:
