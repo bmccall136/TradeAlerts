@@ -3644,21 +3644,32 @@ def _tz_naive_dt(x):
 
 @app.route("/trade_review/chart")
 def trade_review_chart():
+
+    # --- $$Machine: chart fallback (symbol+ts) ---
+    trade_id = (request.args.get("trade_id") or "").strip()
+    symbol = (request.args.get("symbol") or request.args.get("sym") or "").strip().upper()
+    ts = (request.args.get("ts") or request.args.get("buy_ts") or "").strip()
+
+    # If template didn't provide trade_id, allow symbol+ts
+    if (not trade_id) and symbol and ts:
+        trade_id = f"{symbol}|{ts}"
+
     """
     Server-rendered trade review chart (PNG).
 
-    - If trade_id is provided (digits): use realized_trades as source of truth
-    - If trade_id is missing/blank: infer symbol+ts from querystring or HTTP Referer (/chart/<symbol>?ts=...)
+    - Source of truth: realized_trades row (open_date/close_date, gain)
     - Intraday price source: Yahoo via yfinance (allowed for intraday only)
     - Always returns an image (never 204)
     - Robust tz handling
-    - Draws BUY + SELL markers + shaded held period for realized trades
-    - For alert-only (no trade_id): draws a single ALERT marker at ts and plots a 1h window around it
+    - Draws BUY + SELL markers and shades held period (green win / red loss)
+    - If open_date is missing/equals close_date, infer BUY time from triggers_YYYY-MM-DD.csv
     """
     from flask import request, Response
     import io
+    import os
     import sqlite3
-    from pathlib import Path
+    from datetime import timedelta
+
     import pandas as pd
 
     # Lazy imports so dashboard can still boot even if chart deps missing
@@ -3671,6 +3682,35 @@ def trade_review_chart():
     except Exception as e:
         return _trade_review_error_png(f"Missing chart dependency: {e}")
 
+    trade_id = (request.args.get("trade_id") or "").strip()
+    if not trade_id.isdigit():
+        return _trade_review_error_png("Missing/invalid trade_id")
+
+    name = (request.args.get("name") or "").strip()
+
+    # Optional override timestamps (preferred)
+    buy_ts_arg = (request.args.get("buy_ts") or "").strip()
+    sell_ts_arg = (request.args.get("sell_ts") or "").strip()
+
+    # ---- Load realized trade ----
+    try:
+        con = sqlite3.connect(str(LIVE_DB))
+        cur = con.cursor()
+        cur.execute(
+            "SELECT id, symbol, qty, open_date, close_date, gain, gain_pct, price_paid, price_sold "
+            "FROM realized_trades WHERE id=?",
+            (int(trade_id),),
+        )
+        row = cur.fetchone()
+        con.close()
+    except Exception as e:
+        return _trade_review_error_png(f"DB error: {e}")
+
+    if not row:
+        return _trade_review_error_png("Trade not found")
+
+    _id, symbol, qty, open_date, close_date, gain, gain_pct, price_paid, price_sold = row
+
     def _parse_et_naive(ts: str):
         if not ts:
             return None
@@ -3678,100 +3718,89 @@ def trade_review_chart():
             t = pd.to_datetime(ts, errors="coerce")
             if pd.isna(t):
                 return None
+            # If tz-aware, convert to NY and drop tz; else keep naive as-is
             if getattr(t, "tzinfo", None) is not None:
                 t = t.tz_convert("America/New_York").tz_localize(None)
             return pd.Timestamp(t)
         except Exception:
             return None
 
-    # --- Read args (may be blank) ---
-    trade_id = (request.args.get("trade_id") or "").strip()
-    name = (request.args.get("name") or "").strip()
-    buy_ts_arg = (request.args.get("buy_ts") or "").strip()
-    sell_ts_arg = (request.args.get("sell_ts") or "").strip()
-    symbol_arg = (request.args.get("symbol") or request.args.get("sym") or "").strip().upper()
-    ts_arg = (request.args.get("ts") or "").strip()
+    buy_dt = _parse_et_naive(buy_ts_arg) or _parse_et_naive(open_date)
+    sell_dt = _parse_et_naive(sell_ts_arg) or _parse_et_naive(close_date)
+    if buy_dt is None or sell_dt is None:
+        return _trade_review_error_png("Could not parse buy/sell timestamps")
 
-    # --- Helper: infer symbol+ts from Referer (/chart/<symbol>?ts=...) ---
-    def _infer_from_referer():
+    # If DB open_date is junk (same as sell), try infer BUY time from triggers log
+    def _infer_buy_from_triggers(sym: str, sell_ts: pd.Timestamp):
         try:
-            ref = request.headers.get("Referer") or ""
-            if not ref:
-                return None, None
-            from urllib.parse import urlparse, parse_qs
-            u = urlparse(ref)
-            # path like /chart/CBOE
-            m = re.search(r"^/chart/([A-Za-z0-9\.\-\_]+)$", u.path or "")
-            sym = (m.group(1).upper() if m else "")
-            qs = parse_qs(u.query or "")
-            ts = (qs.get("ts", [""])[0] or "").strip()
-            return sym, ts
+            # triggers_YYYY-MM-DD.csv based on sell date (ET)
+            ymd = sell_ts.strftime("%Y-%m-%d")
+            trig_path = Path(r"C:\TradeAlerts\logs") / f"triggers_{ymd}.csv"
+            if not trig_path.exists():
+                return None
+
+            df = pd.read_csv(trig_path)
+            if df is None or df.empty:
+                return None
+
+            # Find a timestamp-ish column
+            ts_col = None
+            for c in df.columns:
+                cl = str(c).strip().lower()
+                if cl in ("time", "timestamp", "datetime", "dt", "date"):
+                    ts_col = c
+                    break
+            if ts_col is None:
+                # fallback: first column
+                ts_col = df.columns[0]
+
+            # Find a symbol-ish column
+            sym_col = None
+            for c in df.columns:
+                cl = str(c).strip().lower()
+                if cl in ("symbol", "ticker"):
+                    sym_col = c
+                    break
+            if sym_col is None:
+                # heuristic: any column containing exact symbol
+                sym_col = None
+
+            # Build ts series
+            ts = pd.to_datetime(df[ts_col], errors="coerce")
+            if getattr(ts.dt, "tz", None) is not None:
+                ts = ts.dt.tz_convert("America/New_York").dt.tz_localize(None)
+            ts = ts.astype("datetime64[ns]", errors="ignore")
+
+            # Filter rows for symbol
+            if sym_col is not None:
+                sym_mask = (df[sym_col].astype(str).str.upper() == sym.upper())
+            else:
+                # search across all cells for exact match (slower but robust)
+                sym_mask = df.astype(str).apply(lambda r: any(x.upper() == sym.upper() for x in r.values), axis=1)
+
+            # Only rows before/at sell time
+            m = sym_mask & ts.notna() & (ts <= sell_ts)
+            if not m.any():
+                return None
+
+            # Pick last occurrence before sell
+            ts2 = ts[m]
+            return pd.Timestamp(ts2.iloc[-1])
         except Exception:
-            return None, None
+            return None
 
-    # --- Load realized trade if trade_id is valid ---
-    has_trade = False
-    symbol = ""
-    qty = None
-    open_date = ""
-    close_date = ""
-    gain = 0.0
-    gain_pct = None
-    price_paid = None
-    price_sold = None
+    if buy_dt == sell_dt:
+        inferred = _infer_buy_from_triggers(symbol, sell_dt)
+        if inferred is not None and inferred < sell_dt:
+            buy_dt = inferred
 
-    if trade_id.isdigit():
-        try:
-            con = sqlite3.connect(str(LIVE_DB))
-            cur = con.cursor()
-            cur.execute(
-                "SELECT id, symbol, qty, open_date, close_date, gain, gain_pct, price_paid, price_sold "
-                "FROM realized_trades WHERE id=?",
-                (int(trade_id),),
-            )
-            row = cur.fetchone()
-            con.close()
-        except Exception as e:
-            return _trade_review_error_png(f"DB error: {e}")
+    # Ensure ordering
+    if sell_dt < buy_dt:
+        buy_dt, sell_dt = sell_dt, buy_dt
 
-        if not row:
-            return _trade_review_error_png("Trade not found")
-
-        _id, symbol, qty, open_date, close_date, gain, gain_pct, price_paid, price_sold = row
-        symbol = (symbol or "").strip().upper()
-        has_trade = True
-    else:
-        # Alert-only / fallback mode
-        symbol = symbol_arg
-        if not symbol:
-            sym2, ts2 = _infer_from_referer()
-            if sym2:
-                symbol = sym2
-            if not ts_arg and ts2:
-                ts_arg = ts2
-
-        if not symbol:
-            return _trade_review_error_png("Missing trade_id and could not infer symbol")
-
-    # --- Determine buy/sell datetimes ---
-    if has_trade:
-        buy_dt = _parse_et_naive(buy_ts_arg) or _parse_et_naive(open_date)
-        sell_dt = _parse_et_naive(sell_ts_arg) or _parse_et_naive(close_date)
-        if buy_dt is None or sell_dt is None:
-            return _trade_review_error_png("Could not parse buy/sell timestamps")
-
-        # If equal, force non-zero window
-        if sell_dt < buy_dt:
-            buy_dt, sell_dt = sell_dt, buy_dt
-        if sell_dt == buy_dt:
-            sell_dt = buy_dt + pd.Timedelta(minutes=1)
-    else:
-        # Alert-only: use ts (or "now") as the marker, with a 1h chart window around it
-        alert_dt = _parse_et_naive(ts_arg)
-        if alert_dt is None:
-            alert_dt = pd.Timestamp.now(tz="America/New_York").tz_localize(None)
-        buy_dt = alert_dt
-        sell_dt = alert_dt + pd.Timedelta(minutes=1)  # just to keep marker math happy
+    # If still identical, force 1 minute window so markers don't overlap perfectly
+    if sell_dt == buy_dt:
+        sell_dt = buy_dt + pd.Timedelta(minutes=1)
 
     # ---- Fetch intraday ----
     def _fetch_df(period: str, interval: str):
@@ -3788,6 +3817,7 @@ def trade_review_chart():
     df = _fetch_df("1d", "1m")
     if df is None or df.empty:
         df = _fetch_df("5d", "5m")
+
     if df is None or df.empty:
         return _trade_review_error_png("No Yahoo intraday bars returned")
 
@@ -3810,14 +3840,23 @@ def trade_review_chart():
     # ---- Choose price series safely (handles MultiIndex) ----
     y = None
     if isinstance(df.columns, pd.MultiIndex):
+        # Prefer ('Close', symbol) if present
         if ("Close", symbol) in df.columns:
             y = df[("Close", symbol)]
         else:
+            # else take first available Close-like column
             close_cols = [c for c in df.columns if str(c[0]).lower() == "close"]
-            y = df[close_cols[0]] if close_cols else df[df.columns[0]]
+            if close_cols:
+                y = df[close_cols[0]]
+            else:
+                y = df[df.columns[0]]
     else:
-        y = df["Close"] if "Close" in df.columns else df[df.columns[0]]
+        if "Close" in df.columns:
+            y = df["Close"]
+        else:
+            y = df[df.columns[0]]
 
+    # If y is still a DataFrame, squeeze to a Series
     if hasattr(y, "ndim") and y.ndim != 1:
         y = y.iloc[:, 0]
 
@@ -3825,7 +3864,7 @@ def trade_review_chart():
     pad_left = pd.Timedelta(minutes=60)
     pad_right = pd.Timedelta(minutes=60)
     w0 = buy_dt - pad_left
-    w1 = (sell_dt + pad_right) if has_trade else (buy_dt + pad_right)
+    w1 = sell_dt + pad_right
 
     mask = (idx_et >= w0) & (idx_et <= w1)
     idx2 = idx_et[mask]
@@ -3835,6 +3874,7 @@ def trade_review_chart():
         idx2 = idx_et
         y2 = y
 
+    # Final cleanup for NaNs
     y2_vals = pd.Series(y2).astype("float64", errors="ignore")
     y2_vals = pd.to_numeric(y2_vals, errors="coerce").to_numpy()
     good2 = pd.notna(y2_vals)
@@ -3853,11 +3893,15 @@ def trade_review_chart():
 
     ax.plot(idx2, y2_vals, linewidth=1.8)
 
-    # Shade held period only for realized trades
-    if has_trade:
-        ax.axvspan(buy_dt, sell_dt, alpha=0.18)
+    # Shade held period (win=green, loss=red)
+    shade_alpha = 0.18
+    ax.axvspan(buy_dt, sell_dt, alpha=shade_alpha)
 
-    # Markers
+    # Buy/Sell lines
+    ax.axvline(buy_dt, linewidth=2.0, alpha=0.95)
+    ax.axvline(sell_dt, linewidth=2.0, alpha=0.95)
+
+    # Nearest marker points
     def _nearest_point(ts):
         try:
             i = int((abs(idx2 - ts)).argmin())
@@ -3865,39 +3909,38 @@ def trade_review_chart():
         except Exception:
             return None, None
 
-    if has_trade:
-        ax.axvline(buy_dt, linewidth=2.0, alpha=0.95)
-        ax.axvline(sell_dt, linewidth=2.0, alpha=0.95)
+    bx, by = _nearest_point(buy_dt)
+    sx, sy = _nearest_point(sell_dt)
 
-        bx, by = _nearest_point(buy_dt)
-        sx, sy = _nearest_point(sell_dt)
+    if bx is not None:
+        ax.scatter([bx], [by], s=55, zorder=5)
+        ax.text(
+            bx, by, " BUY",
+            fontsize=9,
+            va="center",
+            ha="left",
+            color="#00e676",      # neon green
+            fontweight="bold"
+        )
 
-        if bx is not None:
-            ax.scatter([bx], [by], s=55, zorder=5)
-            ax.text(bx, by, " BUY", fontsize=9, va="center", ha="left",
-                    color="#00e676", fontweight="bold")
-
-        if sx is not None:
-            ax.scatter([sx], [sy], s=55, zorder=5)
-            ax.text(sx, sy, " SELL", fontsize=9, va="center", ha="left",
-                    color="#ff5252", fontweight="bold")
-    else:
-        # Alert-only marker
-        ax.axvline(buy_dt, linewidth=2.0, alpha=0.95)
-        axx, ayy = _nearest_point(buy_dt)
-        if axx is not None:
-            ax.scatter([axx], [ayy], s=55, zorder=5)
-            ax.text(axx, ayy, " ALERT", fontsize=9, va="center", ha="left",
-                    color="#ffe900", fontweight="bold")
+    if sx is not None:
+        ax.scatter([sx], [sy], s=55, zorder=5)
+        ax.text(
+            sx, sy, " SELL",
+            fontsize=9,
+            va="center",
+            ha="left",
+            color="#ff5252",      # bright red
+            fontweight="bold"
+        )
 
     title = symbol
     if name:
-        title = f"{symbol}  |  {name}"
+        title = f"{symbol} ? {name}"
     ax.set_title(title, fontsize=12, pad=10)
 
-    if has_trade:
-        held_min = int(max(0, (sell_dt - buy_dt).total_seconds() // 60))
-        ax.text(0.01, 0.02, f"Held: {held_min} min", transform=ax.transAxes, fontsize=9, alpha=0.85)
+    held_min = int(max(0, (sell_dt - buy_dt).total_seconds() // 60))
+    ax.text(0.01, 0.02, f"Held: {held_min} min", transform=ax.transAxes, fontsize=9, alpha=0.85)
 
     ax.grid(True, alpha=0.20)
     ax.tick_params(axis="x", labelsize=8)
@@ -3908,6 +3951,7 @@ def trade_review_chart():
     fig.savefig(buf, format="png", bbox_inches="tight")
     plt.close(fig)
     return Response(buf.getvalue(), mimetype="image/png")
+
 def _trade_review_error_png(msg: str):
     from flask import Response
     import io

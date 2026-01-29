@@ -3102,9 +3102,335 @@ def analytics_page():
 
 
 # =========================
-# Trade Review (RESTORED)
-# source: dashboard.py.bak_trade_review_restore_clean_20260128_205005
+# Trade Review Routes (restored)
 # =========================
+
+
+# =========================
+# Trade Review Routes (RESTORED)
+# source: dashboard.py.bak_fix_positions_recursion_20260128_011816
+# =========================
+
+
+# =========================
+# Trade Review (FULL RESTORE)
+# source: dashboard.py.bak_fix_tr_req_20260128_203321
+# =========================
+
+
+# =========================
+# Trade Review (RESTORED FULL SECTION)
+# source: dashboard.py.bak_fix_chart_trade_id_20260127_111642
+# =========================
+
+    if _Path(buy_path).exists():
+        buy_rows = _read_csv_rows(buy_path)
+    else:
+        errors.append(f"Missing buy log: {buy_path}")
+
+    if _Path(sell_path).exists():
+        sell_rows = _read_csv_rows(sell_path)
+    else:
+        errors.append(f"Missing sell log: {sell_path}")
+
+    buy = _compute_buy_analytics(buy_rows)
+    sell = _compute_sell_analytics(sell_rows)
+
+    # --- SELL GUARD rollups from sell_triggers CSV (EVAL + EXEC) ---
+    from collections import Counter
+    from datetime import datetime
+
+    def _bucket_5m(ts_et: str) -> str:
+        # ts_et like: 2026-01-23T09:30:05.787048-05:00
+        # keep it robust: parse as ISO, floor to 5 minutes, return HH:MM
+        try:
+            dt = datetime.fromisoformat(ts_et)
+            floorm = (dt.minute // 5) * 5
+            dt2 = dt.replace(minute=floorm, second=0, microsecond=0)
+            return dt2.strftime("%H:%M")
+        except Exception:
+            return ""
+
+    exits_5m = Counter()
+    exit_reasons = Counter()
+
+    for r in (sell_rows or []):
+        # depending on your CSV reader, r may be dict; be defensive
+        if not isinstance(r, dict):
+            continue
+        ts_et = (r.get("ts_et") or "").strip()
+        reason = (r.get("reason") or "").strip()
+        action = (r.get("action") or "").strip()
+
+        b = _bucket_5m(ts_et)
+        if b:
+            exits_5m[b] += 1
+
+        # reasons chart: count all decisions for now (HOLD/SELL).
+        # later we can switch this to action=="SELL" only if you want “executions only”.
+        if reason:
+            exit_reasons[reason] += 1
+
+    # convert Counters to list-of-pairs sorted desc
+    sell["exits_5m"] = sorted(exits_5m.items(), key=lambda x: x[0])  # chronological
+    sell["exit_reasons"] = sorted(exit_reasons.items(), key=lambda x: x[1], reverse=True)
+
+    top = sell["exit_reasons"][0] if sell["exit_reasons"] else None
+    sell["top_reason"] = {"label": top[0], "count": int(top[1])} if top else None
+
+    return jsonify({
+        "ok": True,
+        "date_et": ymd,
+        "buy_file": buy_path if _Path(buy_path).exists() else None,
+        "sell_file": sell_path if _Path(sell_path).exists() else None,
+        "errors": errors,
+        "buy": buy,
+        "sell": sell,
+    })
+
+@app.route("/analytics")
+def analytics_page():
+    from services.analytics_service import compute_daily_analytics
+    logs_dir = r"C:\TradeAlerts\logs"
+    a = compute_daily_analytics(log_dir=logs_dir)
+    return render_template("analytics.html", a=a)
+# =========================
+# TRADE REVIEW (Charts + Trigger Details)
+# =========================
+from flask import request as _tr_req, jsonify as _tr_jsonify, render_template_string as _tr_render_template_string
+
+_TRADE_REVIEW_HTML = r"""
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>$$Machine - Trade Review</title>
+  <style>
+    body { background:#0b0b0b; color:#eee; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin:0; }
+    .wrap { max-width: 1500px; margin: 0 auto; padding: 14px 14px 26px; }
+    h1 { margin: 8px 0 10px; font-size: 22px; letter-spacing: .2px; }
+    .sub { color:#b8b8b8; font-size: 13px; margin-bottom: 12px; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .col h2 { margin: 0 0 10px; font-size: 16px; color:#ffe900; }
+    .card { border:1px solid #2a2a2a; border-radius: 12px; padding: 10px 10px 12px; background:#111; box-shadow: 0 8px 18px rgba(0,0,0,.25); }
+    .head { display:flex; justify-content:space-between; align-items:flex-start; gap: 10px; }
+    .sym { font-size: 16px; font-weight: 700; }
+    .meta { color:#bdbdbd; font-size: 12px; line-height: 1.35; text-align:right; }
+    .chart { margin-top: 8px; border-radius: 10px; background:#0d0d0d; border: 1px solid #202020; overflow:hidden; }
+    .details { margin-top: 8px; border-top:1px solid #232323; padding-top: 8px; }
+    .details-title { color:#ffe900; font-weight: 700; font-size: 13px; margin-bottom: 6px; }
+    table { width:100%; border-collapse: collapse; table-layout: fixed; }
+    th, td { border-bottom:1px solid #1f1f1f; padding: 6px 6px; font-size: 12px; vertical-align: top; }
+    th { color:#cfcfcf; text-align:left; }
+    td { color:#e6e6e6; word-break: break-word; }
+    .pill { display:inline-block; padding:2px 8px; border-radius: 999px; font-size: 12px; border: 1px solid #2b2b2b; }
+    .g { color:#21d07a; }
+    .r { color:#ff5c5c; }
+    .muted { color:#aaa; }
+    .topbar { display:flex; justify-content:space-between; align-items:center; gap: 10px; margin-bottom: 10px; }
+    .btn { background:#1b1b1b; color:#ffe900; border: 1px solid #3a3a3a; border-radius: 10px; padding: 7px 10px; text-decoration:none; font-size: 13px; }
+    .btn:hover { background:#202020; }
+    .note { color:#9a9a9a; font-size: 12px; }
+    .err { color:#ff7b7b; font-size: 13px; margin-top: 10px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <h1>$$Machine ? Trade Review</h1>
+        <div class="sub">Last 5 buys (left) and last 5 sells (right). Each card prints the exact trigger rows under the chart (no hover).</div>
+      </div>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <a class="btn" href="/analytics">Analytics</a>
+        <button class="btn" id="refreshBtn" type="button">Refresh</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="col">
+        <h2>Recent Buys</h2>
+        <div id="buys"></div>
+      </div>
+      <div class="col">
+        <h2>Recent Sells</h2>
+        <div id="sells"></div>
+      </div>
+    </div>
+
+    <div id="err" class="err" style="display:none;"></div>
+    <div class="note" style="margin-top:12px;">
+      Data sources: logs\\triggers_YYYY-MM-DD.csv (buys) + logs\\sell_triggers_YYYY-MM-DD.csv (sells) + Yahoo intraday (1d/5m).
+    </div>
+  </div>
+
+<script>
+function esc(s){ return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+function svgLineChart(series, marks) {
+  // series: [{t:"iso", c:float}], marks: {buy_t, sell_t, shade:{from,to,color}}
+  const W=760, H=220, PAD=10;
+  if(!series || series.length < 3){
+    return `<div style="padding:10px" class="muted">No intraday data.</div>`;
+  }
+  const xs = series.map((p,i)=>i);
+  const ys = series.map(p=>Number(p.c));
+  const ymin = Math.min(...ys), ymax = Math.max(...ys);
+  const yspan = (ymax-ymin) || 1;
+
+  const xTo = (i)=> PAD + (i/(series.length-1))*(W-2*PAD);
+  const yTo = (v)=> PAD + (1-((v-ymin)/yspan))*(H-2*PAD);
+
+  // build line path
+  let d = "";
+  for(let i=0;i<series.length;i++){
+    const x = xTo(i), y = yTo(ys[i]);
+    d += (i===0?`M ${x} ${y}`:` L ${x} ${y}`);
+  }
+
+  // helper to find nearest index for a timestamp
+  function idxFor(tiso){
+    if(!tiso) return null;
+    const t = Date.parse(tiso);
+    if(!Number.isFinite(t)) return null;
+    let best=0, bestDiff=Infinity;
+    for(let i=0;i<series.length;i++){
+      const ti = Date.parse(series[i].t);
+      const diff = Math.abs(ti - t);
+      if(diff < bestDiff){ best=i; bestDiff=diff; }
+    }
+    return best;
+  }
+
+  const buyIdx = idxFor(marks?.buy_t);
+  const sellIdx = idxFor(marks?.sell_t);
+
+  let shade = "";
+  if(marks?.shade?.from && marks?.shade?.to){
+    const a = idxFor(marks.shade.from);
+    const b = idxFor(marks.shade.to);
+    if(a!==null && b!==null){
+      const x1 = xTo(Math.min(a,b));
+      const x2 = xTo(Math.max(a,b));
+      const col = marks.shade.color || "rgba(33,208,122,0.18)";
+      shade = `<rect x="${x1}" y="${PAD}" width="${Math.max(1,(x2-x1))}" height="${H-2*PAD}" fill="${col}" />`;
+    }
+  }
+
+  function vline(idx, stroke){
+    if(idx===null) return "";
+    const x = xTo(idx);
+    return `<line x1="${x}" y1="${PAD}" x2="${x}" y2="${H-PAD}" stroke="${stroke}" stroke-width="2" />`;
+  }
+
+  const buyLine = vline(buyIdx, "#21d07a");
+  const sellLine = vline(sellIdx, "#ff5c5c");
+
+  // y labels
+  const yTop = ymax.toFixed(2);
+  const yBot = ymin.toFixed(2);
+
+  return `
+  <svg width="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    ${shade}
+    <path d="${d}" fill="none" stroke="#6aa9ff" stroke-width="2" />
+    ${buyLine}
+    ${sellLine}
+    <text x="${PAD+2}" y="${PAD+12}" fill="#bdbdbd" font-size="12">${esc(yTop)}</text>
+    <text x="${PAD+2}" y="${H-PAD-4}" fill="#bdbdbd" font-size="12">${esc(yBot)}</text>
+  </svg>`;
+}
+
+function renderCard(item, side){
+  const sym = item.symbol;
+  const pnl = item.pnl_pct;
+  const pnlClass = (pnl===null || pnl===undefined) ? "muted" : (pnl>=0 ? "g" : "r");
+  const pnlTxt = (pnl===null || pnl===undefined) ? "" : `${pnl>=0?"+":""}${pnl.toFixed(2)}%`;
+  const pill = (pnlTxt?`<span class="pill ${pnlClass}">${esc(pnlTxt)}</span>`:"");
+
+  const buyT = item.buy_ts_et || null;
+  const sellT = item.sell_ts_et || null;
+
+  const shade = item.shade || null;
+
+  const chartHtml = svgLineChart(item.series || [], {
+    buy_t: buyT,
+    sell_t: sellT,
+    shade: shade
+  });
+
+  // Details rows table (no hover)
+  const rows = (item.detail_rows || []);
+  let detailsHtml = `<div class="muted">No trigger rows found.</div>`;
+  if(rows.length){
+    const head = Object.keys(rows[0]);
+    detailsHtml = `
+      <table>
+        <thead><tr>${head.map(h=>`<th>${esc(h)}</th>`).join("")}</tr></thead>
+        <tbody>
+          ${rows.slice(0, 22).map(r=>`<tr>${head.map(h=>`<td>${esc(r[h])}</td>`).join("")}</tr>`).join("")}
+        </tbody>
+      </table>
+      ${rows.length>22 ? `<div class="muted" style="margin-top:6px;">Showing 22/${rows.length} rows (trimmed for readability).</div>` : ``}
+    `;
+  }
+
+  return `
+  <div class="card">
+    <div class="head">
+      <div>
+        <div class="sym">${esc(sym)} ${pill}</div>
+        <div class="muted" style="font-size:12px;margin-top:2px;">
+          ${esc(item.title_line || "")}
+        </div>
+      </div>
+      <div class="meta">
+        <div>${esc(item.qty ?? "")} shares</div>
+        <div>${side === "buy" ? "BUY" : "SELL"} ? ${esc(item.reason ?? "")}</div>
+        <div>${esc(item.ts_et ?? "")}</div>
+      </div>
+    </div>
+
+    <div class="chart">${chartHtml}</div>
+
+    <div class="details">
+      <div class="details-title">Details (exact trigger rows)</div>
+      ${detailsHtml}
+    </div>
+  </div>`;
+}
+
+async function load(){
+  const err = document.getElementById("err");
+  err.style.display="none";
+  err.textContent="";
+
+  const buys = document.getElementById("buys");
+  const sells = document.getElementById("sells");
+  buys.innerHTML = `<div class="muted">Loading?</div>`;
+  sells.innerHTML = `<div class="muted">Loading?</div>`;
+
+  try{
+    const r = await fetch("/api/trade_review?limit=5&interval=5m");
+    const j = await r.json();
+    if(!j || !j.ok) throw new Error(j?.error || "Unknown error");
+
+    buys.innerHTML = (j.buys||[]).map(x=>renderCard(x,"buy")).join('<div style="height:10px"></div>') || `<div class="muted">No recent buys found.</div>`;
+    sells.innerHTML = (j.sells||[]).map(x=>renderCard(x,"sell")).join('<div style="height:10px"></div>') || `<div class="muted">No recent sells found.</div>`;
+  }catch(e){
+    buys.innerHTML = "";
+    sells.innerHTML = "";
+    err.style.display="block";
+    err.textContent = String(e && e.stack ? e.stack : e);
+  }
+}
+
+document.getElementById("refreshBtn").addEventListener("click", load);
+load();
+</script>
+</body>
+</html>
+"""
 
 def _tr__safe_json_loads(s):
     try:
@@ -3251,845 +3577,6 @@ def _tr__yahoo_intraday_series(symbol, interval="5m"):
 def api_trade_review():
     import os
     try:
-        limit = int(request.args.get("limit", "5"))
-    except Exception:
-        limit = 5
-    interval = (request.args.get("interval") or "5m").strip()
-
-    buy_path = _tr__latest_log_path("triggers")
-    sell_path = _tr__latest_log_path("sell_triggers")
-
-    if not buy_path and not sell_path:
-        return jsonify({"ok": False, "error": "No logs found under .\\logs (triggers_*.csv / sell_triggers_*.csv)."}), 200
-
-    buy_rows = _tr__read_csv_rows(buy_path) if buy_path else []
-    sell_rows = _tr__read_csv_rows(sell_path) if sell_path else []
-
-    # pick events
-    recent_buys = _tr__pick_last_events(buy_rows, want_action="BUY", want_event="ORDER_PLACED", limit=limit)
-
-    # If trigger logs don't include BUY ORDER_PLACED events, fall back to position_opened (today)
-    if not recent_buys:
-        try:
-            from datetime import datetime as _dt
-            from zoneinfo import ZoneInfo as _ZI
-            _ET = _ZI("America/New_York")
-            _con = sqlite3.connect(LIVE_DB)
-            _con.row_factory = sqlite3.Row
-            _cur = _con.cursor()
-            _rows = _cur.execute(
-                "SELECT symbol, opened_at_et, opened_epoch FROM position_opened "
-                "WHERE opened_at_et IS NOT NULL AND date(opened_at_et)=date('now','localtime') "
-                "ORDER BY opened_epoch DESC LIMIT ?",
-                (limit,)
-            ).fetchall()
-            _con.close()
-    
-            # Build pseudo trigger-like rows so build_buy_item() can render cards
-            _pseudo = []
-            for r in _rows:
-                sym = (r["symbol"] or "").strip().upper()
-                oat = (r["opened_at_et"] or "").strip()
-                ts_et = None
-                if oat:
-                    try:
-                        d = _dt.strptime(oat, "%Y-%m-%d %H:%M:%S").replace(tzinfo=_ET)
-                        ts_et = d.isoformat()
-                    except Exception:
-                        ts_et = oat.replace(" ", "T")
-                _pseudo.append({
-                    "symbol": sym,
-                    "ts_et": ts_et,
-                    "action": "BUY",
-                    "event": "OPENED_DB",
-                    "qty": "",
-                    "reason": "position_opened",
-                    "entry_price": "",
-                    "last_price": ""
-                })
-    
-            recent_buys = _pseudo
-        except Exception:
-            pass
-
-
-    # for sells: prefer POSITION_CLOSED, fallback ORDER_PLACED if none
-    recent_sells = _tr__pick_last_events(sell_rows, want_action="SELL", want_event="POSITION_CLOSED", limit=limit)
-    if not recent_sells:
-        recent_sells = _tr__pick_last_events(sell_rows, want_action="SELL", want_event="ORDER_PLACED", limit=limit)
-
-    # Combine all rows for details panel search
-    all_rows = []
-    # keep roughly time order by concatenating (they're different files; we filter by ts anyway)
-    all_rows.extend(buy_rows)
-    all_rows.extend(sell_rows)
-
-    def build_buy_item(row):
-        sym = (row.get("symbol") or "").upper().strip()
-        ts_et = row.get("ts_et")
-        qty = row.get("qty") or ""
-        reason = row.get("reason") or ""
-        entry = row.get("entry_price") or ""
-        lastp = row.get("last_price") or ""
-
-        buy_dt = _tr__parse_iso(ts_et)
-        detail_rows = _tr__rows_in_window(all_rows, sym, buy_dt, None)
-
-        series = _tr__yahoo_intraday_series(sym, interval=interval)
-
-        title = f"Entry: {entry}  Last: {lastp}".strip()
-        shade = {"from": ts_et, "to": (series[-1]["t"] if series else ts_et), "color": "rgba(33,208,122,0.16)"}
-
-        return {
-            "symbol": sym,
-            "ts_et": ts_et,
-            "qty": qty,
-            "reason": reason,
-            "title_line": title,
-            "pnl_pct": None,
-            "buy_ts_et": ts_et,
-            "sell_ts_et": None,
-            "series": series,
-            "shade": shade,
-            "detail_rows": detail_rows[-40:] if len(detail_rows) > 40 else detail_rows,
-        }
-
-    def build_sell_item(row):
-        sym = (row.get("symbol") or "").upper().strip()
-        sell_ts = row.get("ts_et")
-        qty = row.get("qty") or ""
-        reason = row.get("reason") or ""
-
-        sell_dt = _tr__parse_iso(sell_ts)
-
-        buy_row, buy_dt = _tr__find_last_buy_for_symbol(buy_rows, sym, sell_dt)
-
-        buy_ts = buy_row.get("ts_et") if buy_row else None
-
-        # compute pnl from prices if available
-        def f(x):
-            try:
-                return float(x)
-            except Exception:
-                return None
-
-        entry_px = f(buy_row.get("entry_price")) if buy_row else None
-        # sell log may have last_price; else try last_price in row
-        exit_px = f(row.get("last_price")) or f(row.get("limit_price")) or None
-
-        pnl_pct = None
-        if entry_px and exit_px:
-            try:
-                pnl_pct = ((exit_px - entry_px) / entry_px) * 100.0
-            except Exception:
-                pnl_pct = None
-
-        # details rows window buy->sell if buy exists; else last 60 mins worth around sell
-        if buy_dt:
-            start_dt = buy_dt
-        else:
-            from datetime import timedelta
-            start_dt = sell_dt - timedelta(minutes=90) if sell_dt else None
-
-        detail_rows = _tr__rows_in_window(all_rows, sym, start_dt, sell_dt)
-
-        series = _tr__yahoo_intraday_series(sym, interval=interval)
-
-        # shade buy->sell if known; else sell->sell
-        shade_color = "rgba(33,208,122,0.16)" if (pnl_pct is not None and pnl_pct >= 0) else "rgba(255,92,92,0.16)"
-        shade = None
-        if buy_ts and sell_ts:
-            shade = {"from": buy_ts, "to": sell_ts, "color": shade_color}
-
-        title = ""
-        if entry_px and exit_px:
-            title = f"Buy: {entry_px:.2f}  Sell: {exit_px:.2f}"
-
-        return {
-            "symbol": sym,
-            "ts_et": sell_ts,
-            "qty": qty,
-            "reason": reason,
-            "title_line": title,
-            "pnl_pct": pnl_pct,
-            "buy_ts_et": buy_ts,
-            "sell_ts_et": sell_ts,
-            "series": series,
-            "shade": shade,
-            "detail_rows": detail_rows[-40:] if len(detail_rows) > 40 else detail_rows,
-        }
-
-    buys_out = [build_buy_item(r) for r in recent_buys]
-    sells_out = [build_sell_item(r) for r in recent_sells]
-
-    return jsonify({"ok": True, "buy_log": buy_path, "sell_log": sell_path, "buys": buys_out, "sells": sells_out}), 200
-
-@app.route("/trade_review")
-def trade_review():
-    """
-    Single-trade review page.
-    Source of truth = local DB (realized_trades).
-    Logs are used ONLY for trigger explanations.
-    """
-    from flask import request, abort
-    import sqlite3
-    from datetime import datetime, timedelta
-    from pathlib import Path
-    import csv
-
-    trade_id = request.args.get("trade_id")
-
-    # analytics links may call /trade_review?symbol=XXX&ts=... (no trade_id)
-    sym = (request.args.get("symbol") or "").strip().upper()
-    ts  = (request.args.get("ts") or "").strip()
-
-    # If no trade_id but we have symbol+ts, send to chart view (open trades / pseudo-buys)
-    if (not trade_id) and sym and ts:
-        return redirect(f"/chart/{(request.args.get('symbol') or '').strip().upper()}?ts={(request.args.get('ts') or '').strip()}")
-
-    # --- fallback: allow /trade_review?symbol=XYZ&ts_et=... (resolve to a realized trade_id) ---
-    if not trade_id:
-        symbol = (request.args.get("symbol") or "").strip().upper()
-        ts_et = (request.args.get("ts_et") or request.args.get("sell_ts_et") or "").strip()
-        if symbol:
-            try:
-                import sqlite3
-                db = LIVE_DB if "LIVE_DB" in globals() else "live.db"
-                conn = sqlite3.connect(db)
-                conn.row_factory = sqlite3.Row
-    
-                target = ts_et.replace("Z","") if ts_et else None
-    
-                if target:
-                    row = conn.execute(
-                        "SELECT id, close_date FROM realized_trades "
-                        "WHERE symbol=? AND close_date IS NOT NULL "
-                        "ORDER BY ABS(strftime('%s', close_date) - strftime('%s', ?)) ASC "
-                        "LIMIT 1",
-                        (symbol, target)
-                    ).fetchone()
-                else:
-                    row = conn.execute(
-                        "SELECT id, close_date FROM realized_trades "
-                        "WHERE symbol=? AND close_date IS NOT NULL "
-                        "ORDER BY close_date DESC "
-                        "LIMIT 1",
-                        (symbol,)
-                    ).fetchone()
-    
-                conn.close()
-    
-                if row:
-                    return redirect(url_for("trade_review", trade_id=row["id"]))
-                return redirect(f"/chart/{(request.args.get('symbol') or '').strip().upper()}?ts={(request.args.get('ts') or '').strip()}")
-            except Exception as e:
-                return (f"Bad Request\ntrade_id missing and resolve failed: {e}\n", 400)
-
-    chart_name = (request.args.get("name") or "").strip() or None
-    # --- fallback: allow /trade_review?symbol=XXX&ts=... (analytics links) ---
-    if not trade_id:
-        sym = (request.args.get("symbol") or "").strip().upper()
-        ts  = (request.args.get("ts") or "").strip()
-        if sym and ts:
-            # Best-effort lookup:
-            # 1) realized_trades: close_date startswith(ts) (handles your ISO timestamps)
-            # 2) if not found, try exact match after normalizing ":" encoding
-            try:
-                con = sqlite3.connect(LIVE_DB)
-                con.row_factory = sqlite3.Row
-                cur = con.cursor()
-
-                # try startswith match
-                cur.execute(
-                    "SELECT trade_id FROM realized_trades WHERE symbol=? AND close_date LIKE ? ORDER BY close_date DESC LIMIT 1",
-                    (sym, ts + "%")
-                )
-                r = cur.fetchone()
-                if not r:
-                    # some callers might pass url-decoded vs stored string formats
-                    cur.execute(
-                        "SELECT trade_id FROM realized_trades WHERE symbol=? ORDER BY close_date DESC LIMIT 1",
-                        (sym,)
-                    )
-                    r = cur.fetchone()
-
-                con.close()
-
-                if r and r["trade_id"]:
-                    return redirect(url_for("trade_review", trade_id=r["trade_id"]))
-            except Exception:
-                pass
-        abort(400, "missing trade_id")
-
-    conn = sqlite3.connect(LIVE_DB)
-    conn.row_factory = sqlite3.Row
-    trade = conn.execute(
-        "SELECT * FROM realized_trades WHERE id = ?",
-        (trade_id,)
-    ).fetchone()
-    conn.close()
-
-    if not trade:
-        abort(404, "trade not found")
-
-    symbol = (trade["symbol"] or "").strip().upper()
-
-    # --- company name (best-effort, no placeholders) ---
-    name = None  # company name
-    try:
-        import yfinance as yf
-        info = yf.Ticker(symbol).info or {}
-        name = (info.get("shortName") or info.get("longName") or "").strip() or None
-    except Exception:
-        name = None
-
-    buy_time_s = (trade["open_date"] or "").strip()
-    sell_time_s = (trade["close_date"] or "").strip()
-
-    def _parse_dt(s):
-        # expected: 'YYYY-MM-DD HH:MM:SS'
-        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-            try:
-                return datetime.strptime(s[:19], fmt)
-            except Exception:
-                pass
-        return None
-
-    buy_dt = _parse_dt(buy_time_s)
-    sell_dt = _parse_dt(sell_time_s)
-
-    # Determine win/loss from gain
-    gain = trade["gain"]
-    try:
-        gain_f = float(gain)
-    except Exception:
-        gain_f = 0.0
-    is_win = gain_f >= 0.0
-
-    log_dir = Path(__file__).resolve().parent / "logs"
-
-    def _file_for_day(prefix, dt):
-        if not dt:
-            return None
-        fname = f"{prefix}{dt.strftime('%Y-%m-%d')}.csv"
-        f = log_dir / fname
-        return f if f.exists() else None
-
-    buy_file = _file_for_day("triggers_", buy_dt) or (max(log_dir.glob("triggers_*.csv"), default=None) if log_dir.exists() else None)
-    sell_file = _file_for_day("sell_triggers_", sell_dt) or (max(log_dir.glob("sell_triggers_*.csv"), default=None) if log_dir.exists() else None)
-
-    def _row_time_dt(row):
-        t = (row.get("time_et") or row.get("timestamp") or row.get("time") or "").strip()
-        if not t:
-            return None
-        return _parse_dt(t)
-
-    def _load_matches(path, target_dt, window_sec=120):
-        if not path or not path.exists() or not target_dt:
-            return []
-        rows = []
-        with path.open("r", encoding="utf-8", newline="") as f:
-            r = csv.DictReader(f)
-            for row in r:
-                if (row.get("symbol") or "").strip().upper() != symbol:
-                    continue
-                rt = _row_time_dt(row)
-                if not rt:
-                    continue
-                if abs((rt - target_dt).total_seconds()) <= window_sec:
-                    rows.append(row)
-        return rows
-
-    buy_triggers = _load_matches(buy_file, buy_dt, 180)
-    sell_triggers = _load_matches(sell_file, sell_dt, 180)
-
-    return render_template(
-        "trade_review_single.html",
-        trade=trade,
-        buy_triggers=buy_triggers,
-        sell_triggers=sell_triggers,
-        buy_file=str(buy_file) if buy_file else None,
-        sell_file=str(sell_file) if sell_file else None,
-        is_win=is_win,
-        name=name,
-    )
-
-
-
-# --- tz-safe datetime helper (Trade Review) ---
-def _tz_naive_dt(x):
-    """
-    Convert x to pandas datetime and strip timezone if present.
-    Works for tz-aware Series/Index and tz-naive inputs.
-    """
-    try:
-        import pandas as pd
-        x = pd.to_datetime(x, errors="coerce")
-    except Exception:
-        return x
-    # Series dt accessor (Series)
-    try:
-        if hasattr(x, "dt") and getattr(x.dt, "tz", None) is not None:
-            x = x.dt.tz_localize(None)
-    except Exception:
-        pass
-    # DatetimeIndex (Index)
-    try:
-        if getattr(x, "tz", None) is not None:
-            x = x.tz_localize(None)
-    except Exception:
-        pass
-    return x
-
-
-@app.route("/trade_review/chart")
-def trade_review_chart():
-    """
-    Server-rendered trade review chart (PNG).
-
-    - If trade_id is provided (digits): use realized_trades as source of truth
-    - If trade_id is missing/blank: infer symbol+ts from querystring or HTTP Referer (/chart/<symbol>?ts=...)
-    - Intraday price source: Yahoo via yfinance (allowed for intraday only)
-    - Always returns an image (never 204)
-    - Robust tz handling
-    - Draws BUY + SELL markers + shaded held period for realized trades
-    - For alert-only (no trade_id): draws a single ALERT marker at ts and plots a 1h window around it
-    """
-    from flask import request, Response
-    import io
-    import sqlite3
-    from pathlib import Path
-    import pandas as pd
-
-    # Lazy imports so dashboard can still boot even if chart deps missing
-    try:
-        import yfinance as yf
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-        import numpy as np
-    except Exception as e:
-        return _trade_review_error_png(f"Missing chart dependency: {e}")
-
-    def _parse_et_naive(ts: str):
-        if not ts:
-            return None
-        try:
-            t = pd.to_datetime(ts, errors="coerce")
-            if pd.isna(t):
-                return None
-            if getattr(t, "tzinfo", None) is not None:
-                t = t.tz_convert("America/New_York").tz_localize(None)
-            return pd.Timestamp(t)
-        except Exception:
-            return None
-
-    # --- Read args (may be blank) ---
-    trade_id = (request.args.get("trade_id") or "").strip()
-    name = (request.args.get("name") or "").strip()
-    buy_ts_arg = (request.args.get("buy_ts") or "").strip()
-    sell_ts_arg = (request.args.get("sell_ts") or "").strip()
-    symbol_arg = (request.args.get("symbol") or request.args.get("sym") or "").strip().upper()
-    ts_arg = (request.args.get("ts") or "").strip()
-
-    # --- Helper: infer symbol+ts from Referer (/chart/<symbol>?ts=...) ---
-    def _infer_from_referer():
-        try:
-            ref = request.headers.get("Referer") or ""
-            if not ref:
-                return None, None
-            from urllib.parse import urlparse, parse_qs
-            u = urlparse(ref)
-            # path like /chart/CBOE
-            m = re.search(r"^/chart/([A-Za-z0-9\.\-\_]+)$", u.path or "")
-            sym = (m.group(1).upper() if m else "")
-            qs = parse_qs(u.query or "")
-            ts = (qs.get("ts", [""])[0] or "").strip()
-            return sym, ts
-        except Exception:
-            return None, None
-
-    # --- Load realized trade if trade_id is valid ---
-    has_trade = False
-    symbol = ""
-    qty = None
-    open_date = ""
-    close_date = ""
-    gain = 0.0
-    gain_pct = None
-    price_paid = None
-    price_sold = None
-
-    if trade_id.isdigit():
-        try:
-            con = sqlite3.connect(str(LIVE_DB))
-            cur = con.cursor()
-            cur.execute(
-                "SELECT id, symbol, qty, open_date, close_date, gain, gain_pct, price_paid, price_sold "
-                "FROM realized_trades WHERE id=?",
-                (int(trade_id),),
-            )
-            row = cur.fetchone()
-            con.close()
-        except Exception as e:
-            return _trade_review_error_png(f"DB error: {e}")
-
-        if not row:
-            return _trade_review_error_png("Trade not found")
-
-        _id, symbol, qty, open_date, close_date, gain, gain_pct, price_paid, price_sold = row
-        symbol = (symbol or "").strip().upper()
-        has_trade = True
-    else:
-        # Alert-only / fallback mode
-        symbol = symbol_arg
-        if not symbol:
-            sym2, ts2 = _infer_from_referer()
-            if sym2:
-                symbol = sym2
-            if not ts_arg and ts2:
-                ts_arg = ts2
-
-        if not symbol:
-            return _trade_review_error_png("Missing trade_id and could not infer symbol")
-
-    # --- Determine buy/sell datetimes ---
-    if has_trade:
-        buy_dt = _parse_et_naive(buy_ts_arg) or _parse_et_naive(open_date)
-        sell_dt = _parse_et_naive(sell_ts_arg) or _parse_et_naive(close_date)
-        if buy_dt is None or sell_dt is None:
-            return _trade_review_error_png("Could not parse buy/sell timestamps")
-
-        # If equal, force non-zero window
-        if sell_dt < buy_dt:
-            buy_dt, sell_dt = sell_dt, buy_dt
-        if sell_dt == buy_dt:
-            sell_dt = buy_dt + pd.Timedelta(minutes=1)
-    else:
-        # Alert-only: use ts (or "now") as the marker, with a 1h chart window around it
-        alert_dt = _parse_et_naive(ts_arg)
-        if alert_dt is None:
-            alert_dt = pd.Timestamp.now(tz="America/New_York").tz_localize(None)
-        buy_dt = alert_dt
-        sell_dt = alert_dt + pd.Timedelta(minutes=1)  # just to keep marker math happy
-
-    # ---- Fetch intraday ----
-    def _fetch_df(period: str, interval: str):
-        return yf.download(
-            tickers=symbol,
-            period=period,
-            interval=interval,
-            progress=False,
-            auto_adjust=True,
-            prepost=True,
-            threads=False,
-        )
-
-    df = _fetch_df("1d", "1m")
-    if df is None or df.empty:
-        df = _fetch_df("5d", "5m")
-    if df is None or df.empty:
-        return _trade_review_error_png("No Yahoo intraday bars returned")
-
-    # ---- Normalize df index to ET-naive ----
-    idx = df.index
-    try:
-        if getattr(idx, "tz", None) is not None:
-            idx_et = idx.tz_convert("America/New_York").tz_localize(None)
-        else:
-            idx_et = pd.to_datetime(idx, errors="coerce")
-            if getattr(idx_et, "tz", None) is not None:
-                idx_et = idx_et.tz_convert("America/New_York").tz_localize(None)
-    except Exception:
-        idx_et = pd.to_datetime(idx, errors="coerce")
-
-    good = pd.notna(idx_et)
-    idx_et = idx_et[good]
-    df = df.loc[good]
-
-    # ---- Choose price series safely (handles MultiIndex) ----
-    y = None
-    if isinstance(df.columns, pd.MultiIndex):
-        if ("Close", symbol) in df.columns:
-            y = df[("Close", symbol)]
-        else:
-            close_cols = [c for c in df.columns if str(c[0]).lower() == "close"]
-            y = df[close_cols[0]] if close_cols else df[df.columns[0]]
-    else:
-        y = df["Close"] if "Close" in df.columns else df[df.columns[0]]
-
-    if hasattr(y, "ndim") and y.ndim != 1:
-        y = y.iloc[:, 0]
-
-    # Window padding
-    pad_left = pd.Timedelta(minutes=60)
-    pad_right = pd.Timedelta(minutes=60)
-    w0 = buy_dt - pad_left
-    w1 = (sell_dt + pad_right) if has_trade else (buy_dt + pad_right)
-
-    mask = (idx_et >= w0) & (idx_et <= w1)
-    idx2 = idx_et[mask]
-    y2 = y.loc[mask]
-
-    if len(idx2) < 3:
-        idx2 = idx_et
-        y2 = y
-
-    y2_vals = pd.Series(y2).astype("float64", errors="ignore")
-    y2_vals = pd.to_numeric(y2_vals, errors="coerce").to_numpy()
-    good2 = pd.notna(y2_vals)
-    idx2 = idx2[good2]
-    y2_vals = y2_vals[good2]
-
-    if len(idx2) < 3:
-        return _trade_review_error_png("Not enough clean bars to plot")
-
-    is_win = (gain or 0) >= 0
-
-    fig = plt.figure(figsize=(12.5, 3.4), dpi=150)
-    ax = fig.add_subplot(111)
-    fig.patch.set_facecolor("#0b0b0b")
-    ax.set_facecolor("#0b0b0b")
-
-    ax.plot(idx2, y2_vals, linewidth=1.8)
-
-    # Shade held period only for realized trades
-    if has_trade:
-        ax.axvspan(buy_dt, sell_dt, alpha=0.18)
-
-    # Markers
-    def _nearest_point(ts):
-        try:
-            i = int((abs(idx2 - ts)).argmin())
-            return idx2[i], float(y2_vals[i])
-        except Exception:
-            return None, None
-
-    if has_trade:
-        ax.axvline(buy_dt, linewidth=2.0, alpha=0.95)
-        ax.axvline(sell_dt, linewidth=2.0, alpha=0.95)
-
-        bx, by = _nearest_point(buy_dt)
-        sx, sy = _nearest_point(sell_dt)
-
-        if bx is not None:
-            ax.scatter([bx], [by], s=55, zorder=5)
-            ax.text(bx, by, " BUY", fontsize=9, va="center", ha="left",
-                    color="#00e676", fontweight="bold")
-
-        if sx is not None:
-            ax.scatter([sx], [sy], s=55, zorder=5)
-            ax.text(sx, sy, " SELL", fontsize=9, va="center", ha="left",
-                    color="#ff5252", fontweight="bold")
-    else:
-        # Alert-only marker
-        ax.axvline(buy_dt, linewidth=2.0, alpha=0.95)
-        axx, ayy = _nearest_point(buy_dt)
-        if axx is not None:
-            ax.scatter([axx], [ayy], s=55, zorder=5)
-            ax.text(axx, ayy, " ALERT", fontsize=9, va="center", ha="left",
-                    color="#ffe900", fontweight="bold")
-
-    title = symbol
-    if name:
-        title = f"{symbol}  |  {name}"
-    ax.set_title(title, fontsize=12, pad=10)
-
-    if has_trade:
-        held_min = int(max(0, (sell_dt - buy_dt).total_seconds() // 60))
-        ax.text(0.01, 0.02, f"Held: {held_min} min", transform=ax.transAxes, fontsize=9, alpha=0.85)
-
-    ax.grid(True, alpha=0.20)
-    ax.tick_params(axis="x", labelsize=8)
-    ax.tick_params(axis="y", labelsize=8)
-    ax.margins(x=0.02)
-
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight")
-    plt.close(fig)
-    return Response(buf.getvalue(), mimetype="image/png")
-def _trade_review_error_png(msg: str):
-    from flask import Response
-    import io
-    try:
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-    except Exception:
-        return Response(b"", mimetype="image/png")
-
-    fig = plt.figure(figsize=(12.5, 3.4), dpi=150)
-    ax = fig.add_subplot(111)
-    fig.patch.set_facecolor("#0b0b0b")
-    ax.set_facecolor("#0b0b0b")
-    ax.text(0.5, 0.55, "Trade Review chart error", ha="center", va="center", color="white", fontsize=12)
-    ax.text(0.5, 0.40, msg, ha="center", va="center", color="#cfcfcf", fontsize=10)
-    ax.set_axis_off()
-
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight")
-    plt.close(fig)
-    return Response(buf.getvalue(), mimetype="image/png")
-@app.route("/chart/<symbol>")
-def chart_view(symbol):
-    # Minimal context so trade_review_single.html doesn't crash.
-    # If ts is provided, we treat it as the buy timestamp anchor for charting.
-    from flask import request, render_template
-
-    ts = request.args.get("ts")
-
-    # `trade_review_single.html` expects `trade` to exist.
-    # We provide a minimal dict; missing fields will render blank instead of crashing.
-    trade = {
-        "symbol": str(symbol).upper(),
-        "name": str(symbol).upper(),
-        "buy_time": ts,
-        "sell_time": None,
-        "buy_price": None,
-        "sell_price": None,
-        "pnl": None,
-        "pnl_pct": None,
-        "qty": None,
-    }
-
-    return render_template(
-        "trade_review_single.html",
-        trade=trade,
-        symbol=str(symbol).upper(),
-        ts=ts,
-        # Some versions of the template reference these names too:
-        buy_ts=ts,
-        sell_ts=None,
-        buy_log=None,
-        sell_log=None,
-        buy_triggers=[],
-        sell_triggers=[],
-    )
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
-
-# --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
-def normalize_positions_payload(raw):
-    return normalize_positions_payload(raw)
-
-
-# --- Fix: compute realized P/L for SELLs from price_paid when available ---
-
-try:
-
-    for t in trades or []:
-
-        if not isinstance(t, dict):
-
-            continue
-
-        if str(t.get("action","")).upper() != "SELL":
-
-            continue
-
-        qty = t.get("qty")
-
-        price = t.get("price")
-
-        paid = t.get("price_paid")
-
-        if qty in (None,"") or price in (None,"") or paid in (None,""):
-
-            continue
-
-        qty = float(qty)
-
-        price = float(price)
-
-        paid = float(paid)
-
-        if qty <= 0:
-
-            continue
-
-        pl = (price - paid) * qty
-
-        t["pl"] = pl
-
-        denom = (paid * qty)
-
-        t["pl_pct"] = (pl / denom * 100.0) if denom else None
-
-except Exception:
-
-    pass
-
-
-# --- Realized P/L hygiene: recompute SELL pl from (price - price_paid)*qty; poison SELLs get pl=None ---
-
-try:
-
-    for t in trades or []:
-
-        if not isinstance(t, dict):
-
-            continue
-
-        if str(t.get("action","")).upper() != "SELL":
-
-            continue
-
-        qty = t.get("qty")
-
-        price = t.get("price")
-
-        paid = t.get("price_paid")
-
-        # If we don't have a valid cost basis, do NOT allow this SELL to contribute to realized math.
-
-        if paid in (None,"") or float(paid) <= 0.0001:
-
-            t["_poison"] = True
-
-            t["pl"] = None
-
-            t["pl_pct"] = None
-
-            continue
-
-        if qty in (None,"") or price in (None,""):
-
-            continue
-
-        qty = float(qty)
-
-        price = float(price)
-
-        paid = float(paid)
-
-        if qty <= 0:
-
-            continue
-
-        pl = (price - paid) * qty
-
-        t["pl"] = pl
-
-        denom = (paid * qty)
-
-        t["pl_pct"] = (pl / denom * 100.0) if denom else None
-
-except Exception:
-
-    pass
-
-@app.route("/analytics/data")
-def analytics_data():
-    from services.analytics_service import compute_analytics_charts
-    logs_dir = r"C:\TradeAlerts\logs"
-    return compute_analytics_charts(log_dir=logs_dir)
-
-@app.route("/api/trade_review")
-def api_trade_review():
-    import os
-    try:
         limit = int(_tr_req.args.get("limit", "5"))
     except Exception:
         limit = 5
@@ -4099,7 +3586,7 @@ def api_trade_review():
     sell_path = _tr__latest_log_path("sell_triggers")
 
     if not buy_path and not sell_path:
-        return jsonify({"ok": False, "error": "No logs found under .\\logs (triggers_*.csv / sell_triggers_*.csv)."}), 200
+        return _tr_jsonify({"ok": False, "error": "No logs found under .\\logs (triggers_*.csv / sell_triggers_*.csv)."}), 200
 
     buy_rows = _tr__read_csv_rows(buy_path) if buy_path else []
     sell_rows = _tr__read_csv_rows(sell_path) if sell_path else []
@@ -4261,7 +3748,7 @@ def api_trade_review():
     buys_out = [build_buy_item(r) for r in recent_buys]
     sells_out = [build_sell_item(r) for r in recent_sells]
 
-    return jsonify({"ok": True, "buy_log": buy_path, "sell_log": sell_path, "buys": buys_out, "sells": sells_out}), 200
+    return _tr_jsonify({"ok": True, "buy_log": buy_path, "sell_log": sell_path, "buys": buys_out, "sells": sells_out}), 200
 
 @app.route("/trade_review")
 def trade_review():
@@ -4840,125 +4327,6 @@ def chart_view(symbol):
         sell_triggers=[],
     )
 
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
-
-# --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
-def normalize_positions_payload(raw):
-    return normalize_positions_payload(raw)
-
-
-# --- Fix: compute realized P/L for SELLs from price_paid when available ---
-
-try:
-
-    for t in trades or []:
-
-        if not isinstance(t, dict):
-
-            continue
-
-        if str(t.get("action","")).upper() != "SELL":
-
-            continue
-
-        qty = t.get("qty")
-
-        price = t.get("price")
-
-        paid = t.get("price_paid")
-
-        if qty in (None,"") or price in (None,"") or paid in (None,""):
-
-            continue
-
-        qty = float(qty)
-
-        price = float(price)
-
-        paid = float(paid)
-
-        if qty <= 0:
-
-            continue
-
-        pl = (price - paid) * qty
-
-        t["pl"] = pl
-
-        denom = (paid * qty)
-
-        t["pl_pct"] = (pl / denom * 100.0) if denom else None
-
-except Exception:
-
-    pass
-
-
-# --- Realized P/L hygiene: recompute SELL pl from (price - price_paid)*qty; poison SELLs get pl=None ---
-
-try:
-
-    for t in trades or []:
-
-        if not isinstance(t, dict):
-
-            continue
-
-        if str(t.get("action","")).upper() != "SELL":
-
-            continue
-
-        qty = t.get("qty")
-
-        price = t.get("price")
-
-        paid = t.get("price_paid")
-
-        # If we don't have a valid cost basis, do NOT allow this SELL to contribute to realized math.
-
-        if paid in (None,"") or float(paid) <= 0.0001:
-
-            t["_poison"] = True
-
-            t["pl"] = None
-
-            t["pl_pct"] = None
-
-            continue
-
-        if qty in (None,"") or price in (None,""):
-
-            continue
-
-        qty = float(qty)
-
-        price = float(price)
-
-        paid = float(paid)
-
-        if qty <= 0:
-
-            continue
-
-        pl = (price - paid) * qty
-
-        t["pl"] = pl
-
-        denom = (paid * qty)
-
-        t["pl_pct"] = (pl / denom * 100.0) if denom else None
-
-except Exception:
-
-    pass
-
-@app.route("/analytics/data")
-def analytics_data():
-    from services.analytics_service import compute_analytics_charts
-    logs_dir = r"C:\TradeAlerts\logs"
-    return compute_analytics_charts(log_dir=logs_dir)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
