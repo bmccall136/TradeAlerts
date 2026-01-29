@@ -132,48 +132,6 @@ if not LOG.handlers:
     )
     LOG.addHandler(_h)
 
-
-
-def _opened_map_et_from_db(db_path: str) -> dict:
-    """
-    Return {SYMBOL: 'YYYY-MM-DD HH:MM'} in America/New_York from live.db position_opened.opened_utc.
-    position_opened.opened_utc stored as ISO UTC string.
-    """
-    out = {}
-    try:
-        import sqlite3
-        from datetime import datetime as _dt
-
-        # zoneinfo exists in py3.9+, but keep fallback
-        try:
-            from zoneinfo import ZoneInfo as _ZoneInfo
-            _NY = _ZoneInfo("America/New_York")
-        except Exception:
-            _NY = None
-
-        con = sqlite3.connect(db_path)
-        cur = con.cursor()
-        cur.execute("SELECT symbol, opened_utc FROM position_opened")
-        for sym, opened_utc in cur.fetchall():
-            if not sym or not opened_utc:
-                continue
-            s = str(sym).upper().strip()
-            t = str(opened_utc).strip()
-
-            try:
-                dt = _dt.fromisoformat(t.replace("Z", "+00:00"))
-            except Exception:
-                continue
-
-            if _NY is not None and getattr(dt, "tzinfo", None) is not None:
-                dt = dt.astimezone(_NY)
-
-            out[s] = dt.strftime("%Y-%m-%d %H:%M")
-        con.close()
-    except Exception:
-        pass
-    return out
-
 def read_flag_file() -> bool:
     """
     Returns True if the reconnect flag file exists, False otherwise.
@@ -204,27 +162,6 @@ log = app.logger
 
 from services import etrade_service as et  # canonical E*TRADE wrapper
 
-# -----------------------------------------------------------------------------#
-# Opened (ET): format opened_utc -> string for UI
-def _fmt_opened_et(opened_utc):
-    try:
-        import datetime as _dt
-        from zoneinfo import ZoneInfo as _ZoneInfo
-        if opened_utc is None or opened_utc == "":
-            return ""
-        # numeric epoch seconds?
-        if isinstance(opened_utc, (int, float)):
-            dt = _dt.datetime.fromtimestamp(float(opened_utc), tz=_dt.timezone.utc)
-        else:
-            s = str(opened_utc).strip()
-            # allow "2026-01-28T19:53:10.798941+00:00" style
-            dt = _dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=_dt.timezone.utc)
-        et = dt.astimezone(_ZoneInfo("America/New_York"))
-        return et.strftime("%Y-%m-%d %H:%M")
-    except Exception:
-        return ""
 try:
     from services.trade_source import load_trades_merged
 except ImportError:
@@ -1444,7 +1381,6 @@ def _build_holdings_from_positions(rows: list[dict]) -> tuple[list[dict], float]
         even if we don't display them as a holding row.
       - Prefer broker-provided market value when present; fall back to qty*last.
     """
-    opened_map_et = _opened_map_et_from_db(LIVE_DB)
     holdings: list[dict] = []
     positions_value = 0.0
 
@@ -1495,7 +1431,7 @@ def _build_holdings_from_positions(rows: list[dict]) -> tuple[list[dict], float]
             {
                 "symbol": sym,
                 "name": r.get("name") or "",
-                "opened_et": (opened_map_et.get(str(sym).upper(), "") or _fmt_opened_et(r.get("opened_utc"))),
+                "opened_et": r.get("opened_et") or "",
                 "last_price": float(round(last, 4)) if last else 0.0,
                 "qty": qty,
                 "price_paid": float(round(price_paid, 4)) if price_paid else 0.0,

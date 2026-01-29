@@ -76,6 +76,69 @@ try:
 except Exception:  # pragma: no cover
     from backports.zoneinfo import ZoneInfo  # type: ignore
 
+def _opened_map_from_db(db_path: str) -> dict:
+    """
+    Returns: { "SYM": "MM/DD HH:MM" } in America/New_York
+    Source: live.db table position_opened(symbol TEXT PRIMARY KEY, opened_utc TEXT)
+    """
+    try:
+        import sqlite3
+        from datetime import datetime
+        try:
+            from zoneinfo import ZoneInfo
+            _ET = ZoneInfo("America/New_York")
+            _UTC = ZoneInfo("UTC")
+        except Exception:
+            _ET = None
+            _UTC = None
+
+        if not db_path:
+            return {}
+
+        con = sqlite3.connect(db_path)
+        cur = con.cursor()
+        try:
+            cur.execute("SELECT symbol, opened_utc FROM position_opened")
+            rows = cur.fetchall()
+        except Exception:
+            con.close()
+            return {}
+        con.close()
+
+        out = {}
+        for sym, opened_utc in (rows or []):
+            if not sym or not opened_utc:
+                continue
+            s = str(sym).upper().strip()
+            ts = str(opened_utc).strip()
+
+            dt = None
+            # Most rows look like: 2026-01-28T19:53:10.798941+00:00
+            try:
+                dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            except Exception:
+                dt = None
+
+            if not dt:
+                continue
+
+            try:
+                if dt.tzinfo is None and _UTC is not None:
+                    dt = dt.replace(tzinfo=_UTC)
+                if _ET is not None:
+                    dt_et = dt.astimezone(_ET)
+                    out[s] = dt_et.strftime("%m/%d %H:%M")
+                else:
+                    # Fallback: show raw if zoneinfo unavailable
+                    out[s] = ts
+            except Exception:
+                continue
+
+        return out
+    except Exception:
+        return {}
+
+
 ETZ = ZoneInfo("America/New_York")
 
 # -----------------------------------------------------------------------------#
@@ -132,48 +195,6 @@ if not LOG.handlers:
     )
     LOG.addHandler(_h)
 
-
-
-def _opened_map_et_from_db(db_path: str) -> dict:
-    """
-    Return {SYMBOL: 'YYYY-MM-DD HH:MM'} in America/New_York from live.db position_opened.opened_utc.
-    position_opened.opened_utc stored as ISO UTC string.
-    """
-    out = {}
-    try:
-        import sqlite3
-        from datetime import datetime as _dt
-
-        # zoneinfo exists in py3.9+, but keep fallback
-        try:
-            from zoneinfo import ZoneInfo as _ZoneInfo
-            _NY = _ZoneInfo("America/New_York")
-        except Exception:
-            _NY = None
-
-        con = sqlite3.connect(db_path)
-        cur = con.cursor()
-        cur.execute("SELECT symbol, opened_utc FROM position_opened")
-        for sym, opened_utc in cur.fetchall():
-            if not sym or not opened_utc:
-                continue
-            s = str(sym).upper().strip()
-            t = str(opened_utc).strip()
-
-            try:
-                dt = _dt.fromisoformat(t.replace("Z", "+00:00"))
-            except Exception:
-                continue
-
-            if _NY is not None and getattr(dt, "tzinfo", None) is not None:
-                dt = dt.astimezone(_NY)
-
-            out[s] = dt.strftime("%Y-%m-%d %H:%M")
-        con.close()
-    except Exception:
-        pass
-    return out
-
 def read_flag_file() -> bool:
     """
     Returns True if the reconnect flag file exists, False otherwise.
@@ -204,27 +225,6 @@ log = app.logger
 
 from services import etrade_service as et  # canonical E*TRADE wrapper
 
-# -----------------------------------------------------------------------------#
-# Opened (ET): format opened_utc -> string for UI
-def _fmt_opened_et(opened_utc):
-    try:
-        import datetime as _dt
-        from zoneinfo import ZoneInfo as _ZoneInfo
-        if opened_utc is None or opened_utc == "":
-            return ""
-        # numeric epoch seconds?
-        if isinstance(opened_utc, (int, float)):
-            dt = _dt.datetime.fromtimestamp(float(opened_utc), tz=_dt.timezone.utc)
-        else:
-            s = str(opened_utc).strip()
-            # allow "2026-01-28T19:53:10.798941+00:00" style
-            dt = _dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=_dt.timezone.utc)
-        et = dt.astimezone(_ZoneInfo("America/New_York"))
-        return et.strftime("%Y-%m-%d %H:%M")
-    except Exception:
-        return ""
 try:
     from services.trade_source import load_trades_merged
 except ImportError:
@@ -277,6 +277,7 @@ def fifo_debug_unmatched_sells(days: int = 120) -> dict:
 
 def _calc_unrealized_all_time_from_holdings(holdings):
     """
+    opened_map = _opened_map_from_db(globals().get('LIVE_DB') or globals().get('DB_PATH') or r'C:\TradeAlerts\live.db')
     All-time unrealized P&L based on cost basis vs last price.
     Returns (pnl_dollars, pnl_pct).
     """
@@ -304,9 +305,20 @@ def _calc_unrealized_all_time_from_holdings(holdings):
 
     # keep UI-friendly rounding here (or remove rounding if you prefer raw floats)
     return round(pnl, 2), round(pct, 2)
-
-def _calc_unrealized_all_time(holdings):
+    # --- Opened (ET) from position_opened ---
+    try:
+        _h = holdings
+        if isinstance(_h, list):
+            for _row in _h:
+                if not isinstance(_row, dict):
+                    continue
+                _sym = _row.get('symbol') or _row.get('sym') or _row.get('Symbol') or ''
+                if _sym:
+                    _row['opened_et'] = opened_map.get(str(_sym).upper(), '')
+    except Exception:
+        passdef _calc_unrealized_all_time(holdings):
     pnl = 0.0
+    opened_map = _opened_map_from_db(globals().get('LIVE_DB') or globals().get('DB_PATH') or r'C:\TradeAlerts\live.db')
     basis = 0.0
     for h in holdings or []:
         qty = float(h.get("qty") or 0.0)
@@ -321,8 +333,18 @@ def _calc_unrealized_all_time(holdings):
 
     pct = (pnl / basis * 100.0) if basis else 0.0
     return pnl, pct
-
-def _unrealized_from_holdings(holdings: list[dict] | None) -> dict:
+    # --- Opened (ET) from position_opened ---
+    try:
+        _h = holdings
+        if isinstance(_h, list):
+            for _row in _h:
+                if not isinstance(_row, dict):
+                    continue
+                _sym = _row.get('symbol') or _row.get('sym') or _row.get('Symbol') or ''
+                if _sym:
+                    _row['opened_et'] = opened_map.get(str(_sym).upper(), '')
+    except Exception:
+        passdef _unrealized_from_holdings(holdings: list[dict] | None) -> dict:
     """
     Compute unrealized P&L from holdings rows.
 
@@ -511,6 +533,7 @@ def get_recent_news_for_symbol(symbol: str, limit: int = 5) -> list[dict]:
 @app.route("/news/<symbol>")
 def view_symbol_news(symbol: str):
     """
+    opened_map = _opened_map_from_db(globals().get('LIVE_DB') or globals().get('DB_PATH') or r'C:\TradeAlerts\live.db')
     HTML view for a single symbol's news.
     This is what the 📰 buttons on the Live holdings table link to.
     """
@@ -522,8 +545,18 @@ def view_symbol_news(symbol: str):
         symbol=sym,
         news_rows=news_rows,
     )
-
-import datetime as _dt
+    # --- Opened (ET) from position_opened ---
+    try:
+        _h = holdings
+        if isinstance(_h, list):
+            for _row in _h:
+                if not isinstance(_row, dict):
+                    continue
+                _sym = _row.get('symbol') or _row.get('sym') or _row.get('Symbol') or ''
+                if _sym:
+                    _row['opened_et'] = opened_map.get(str(_sym).upper(), '')
+    except Exception:
+        passimport datetime as _dt
 
 try:
     from zoneinfo import ZoneInfo as _ZoneInfo
@@ -1444,7 +1477,6 @@ def _build_holdings_from_positions(rows: list[dict]) -> tuple[list[dict], float]
         even if we don't display them as a holding row.
       - Prefer broker-provided market value when present; fall back to qty*last.
     """
-    opened_map_et = _opened_map_et_from_db(LIVE_DB)
     holdings: list[dict] = []
     positions_value = 0.0
 
@@ -1457,6 +1489,7 @@ def _build_holdings_from_positions(rows: list[dict]) -> tuple[list[dict], float]
             "value", "Value",
         ):
             v = r.get(k)
+            opened_map = _opened_map_from_db(globals().get('LIVE_DB') or globals().get('DB_PATH') or r'C:\TradeAlerts\live.db')
             if v is not None:
                 try:
                     return float(v)
@@ -1495,7 +1528,7 @@ def _build_holdings_from_positions(rows: list[dict]) -> tuple[list[dict], float]
             {
                 "symbol": sym,
                 "name": r.get("name") or "",
-                "opened_et": (opened_map_et.get(str(sym).upper(), "") or _fmt_opened_et(r.get("opened_utc"))),
+                "opened_et": r.get("opened_et") or "",
                 "last_price": float(round(last, 4)) if last else 0.0,
                 "qty": qty,
                 "price_paid": float(round(price_paid, 4)) if price_paid else 0.0,
@@ -1508,9 +1541,19 @@ def _build_holdings_from_positions(rows: list[dict]) -> tuple[list[dict], float]
             }
         )
 
-    return holdings, float(round(positions_value, 2))
-
-# -----------------------------------------------------------------------------#
+            # --- Opened (ET) from position_opened ---
+            try:
+                _h = holdings
+                if isinstance(_h, list):
+                    for _row in _h:
+                        if not isinstance(_row, dict):
+                            continue
+                        _sym = _row.get('symbol') or _row.get('sym') or _row.get('Symbol') or ''
+                        if _sym:
+                            _row['opened_et'] = opened_map.get(str(_sym).upper(), '')
+            except Exception:
+                pass
+    return holdings, float(round(positions_value, 2))# -----------------------------------------------------------------------------#
 
 
 def _etrade_log_wrap() -> None:
