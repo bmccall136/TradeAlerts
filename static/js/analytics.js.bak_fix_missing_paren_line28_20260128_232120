@@ -1,0 +1,80 @@
+﻿(function () {
+  // -------------------------------
+  // Helpers
+  // -------------------------------
+
+  // ------------------------------------------------------------
+  // $$Machine: surface JS errors directly on the page (no console needed)
+  // ------------------------------------------------------------
+  function __showJsErr(msg){
+{ /* removed broken try */
+      const box = document.querySelector("#ax-errors") || document.querySelector("#today-trades") || null;
+      if (!box) return;
+      box.style.display = "block";
+      box.style.whiteSpace = "pre-wrap";
+      box.style.color = "#ff7b7b";
+      box.innerText = String(msg || "JS error (unknown)");
+    }/* stray-catch-removed */{}
+  }
+
+  window.addEventListener("error", (ev) => {
+      const box = el("today-trades") || el("ax-today-trades") || document.querySelector("#today-trades") || null;
+      if (box){
+        box.innerHTML = `<div style="color:#ff7b7b;white-space:pre-wrap;">loadTodayTrades error:
+${String(e && e.stack ? e.stack : e)}</div>`;
+      }console.error("[Daily Analytics] loadTodayTrades failed:", e);
+    }
+
+}      // If API doesn't provide per-row buys, fall back to buy.top_symbols (signals summary)
+      if ((!buysArr || !buysArr.length) && buy && Array.isArray(buy.top_symbols) && buy.top_symbols.length){
+        buysArr = buy.top_symbols.map(([sym, cnt]) => ({
+          symbol: sym,
+          ts_et: (data && data.date_et ? (data.date_et + " (signals: " + cnt + ")") : ("signals: " + cnt))
+        }));
+      }
+
+      const buys  = buysArr.map(linkRow).join("")  || `<div class="muted">No buy signals today.</div>`;
+      const sells = sellsArr.map(linkRow).join("") || `<div class="muted">No sells today.</div>`;
+
+      box.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div><div style="color:#21d07a;font-weight:900;margin-bottom:6px;">BUYS</div>${buys}</div>
+          <div><div style="color:#ff5c5c;font-weight:900;margin-bottom:6px;">SELLS</div>${sells}</div>
+        </div>
+      `;
+    }catch(e){
+      box.innerHTML = `<div style="color:#ff7b7b;white-space:pre-wrap;">${String(e && e.stack ? e.stack : e)}</div>`;
+    }
+  }
+
+  // -------------------------------
+  // Boot
+  // -------------------------------
+  document.addEventListener("DOMContentLoaded", async () => {
+    try{
+      const t = new Date();
+      const stamp = t.toISOString().replace("T"," ").slice(0,19);
+      const el2 = document.querySelector("#ax-date");
+      if (el2) el2.textContent = "js booted " + stamp;
+    }catch(e){}
+
+    try{
+      const data = await loadAnalytics();
+      renderAnalytics(data);
+    }catch(e){
+      console.error("[Daily Analytics] analytics load failed:", e);
+      setText("ax-date", "error");
+      setText("ax-files", String(e && e.stack ? e.stack : e));
+    }
+
+    // ALWAYS run this so it doesnâ€™t sit on â€œloadingâ€¦â€
+    try{
+      await loadTodayTrades();
+    }catch(e){
+      console.error("[Daily Analytics] today trades load failed:", e);
+      const box = el("ax-today-trades");
+      if (box) box.innerHTML = `<div style="color:#ff7b7b;white-space:pre-wrap;">${String(e && e.stack ? e.stack : e)}</div>`;
+    }
+  });
+})();
+

@@ -3097,8 +3097,6 @@ def analytics_page():
     from services.analytics_service import compute_daily_analytics
     logs_dir = r"C:\TradeAlerts\logs"
     a = compute_daily_analytics(log_dir=logs_dir)
-    import time
-
     return render_template("analytics.html",cache_bust=int(time.time()),
          a=a)
 

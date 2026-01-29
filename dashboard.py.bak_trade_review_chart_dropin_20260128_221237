@@ -3097,10 +3097,7 @@ def analytics_page():
     from services.analytics_service import compute_daily_analytics
     logs_dir = r"C:\TradeAlerts\logs"
     a = compute_daily_analytics(log_dir=logs_dir)
-    import time
-
-    return render_template("analytics.html",cache_bust=int(time.time()),
-         a=a)
+    return render_template("analytics.html", a=a)
 
 
 
@@ -3689,35 +3686,6 @@ def trade_review_chart():
 
     # --- Read args (may be blank) ---
     trade_id = (request.args.get("trade_id") or "").strip()
-
-    # --- $$Machine: infer symbol+ts when trade_id is blank ---
-    symbol = (request.args.get("symbol") or request.args.get("sym") or "").strip().upper()
-    ts = (request.args.get("ts") or "").strip()
-
-    if (not symbol) or (not ts):
-        try:
-            from urllib.parse import urlparse, parse_qs
-            ref = request.headers.get("Referer") or ""
-            u = urlparse(ref) if ref else None
-            qs = parse_qs(u.query or "") if u else {}
-
-            # /trade_review?symbol=...&ts=...
-            if not symbol:
-                symbol = (qs.get("symbol", [""])[0] or qs.get("sym", [""])[0] or "").strip().upper()
-            if not ts:
-                ts = (qs.get("ts", [""])[0] or "").strip()
-
-            # /chart/<symbol>?ts=...
-            if not symbol and u and u.path:
-                import re as _re
-                m2 = _re.search(r"^/chart/([A-Za-z0-9\.\-\_]+)$", u.path)
-                if m2:
-                    symbol = m2.group(1).strip().upper()
-            if not ts:
-                ts = (qs.get("ts", [""])[0] or "").strip()
-        except Exception:
-            pass
-
     name = (request.args.get("name") or "").strip()
     buy_ts_arg = (request.args.get("buy_ts") or "").strip()
     sell_ts_arg = (request.args.get("sell_ts") or "").strip()

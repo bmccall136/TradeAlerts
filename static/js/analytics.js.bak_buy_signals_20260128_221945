@@ -241,7 +241,7 @@
     <a href="${href}" style="color:#ffe900;text-decoration:none;font-weight:800;">${sym || "(unknown)"}</a>
     ${t ? `<span style="color:#bdbdbd;margin-left:10px;font-size:12px;">${t}</span>` : ``}
   </div>`;
-}      const buys  = buysArr.map(linkRow).join("")  || `<div class="muted">No buy signals today.</div>`;
+}      const buys  = buysArr.map(linkRow).join("")  || `<div class="muted">No buys today.</div>`;
       const sells = sellsArr.map(linkRow).join("") || `<div class="muted">No sells today.</div>`;
 
       box.innerHTML = `

@@ -111,6 +111,9 @@
     if (!data || data.ok !== true) return;
 
     const buy = data.buy || {};
+    window.__AX_DATA = data;
+    window.__AX_BUY  = buy;
+
     const sell = data.sell || {};
     window.__AX_DATE_ET = data.date_et || ""; // used by Todayâ€™s Trades filter
 
@@ -172,7 +175,12 @@
   // Todayâ€™s Trades (hyperlinks)
   // -------------------------------
   async function loadTodayTrades(){
-    const box = el("ax-today-trades");
+    
+    try{
+      // $$Machine guard: make analytics payload available inside Today?s Trades renderer
+      const data = (window.__AX_DATA || {});
+      const buy  = (window.__AX_BUY  || (data.buy || {}));
+const box = el("ax-today-trades");
     if(!box) return;
 
     box.innerHTML = `<div class="muted">Loading...</div>`;
@@ -219,7 +227,7 @@
         const t = String(x.ts_et || x.time_et || "");
         return t.startsWith(today);
       }
-  const buysArr  = (j.buys || j.buy || j.today_buys || j.todayBuys || []).filter(isTodayRow);
+  let buysArr  = (j.buys || j.buy || j.today_buys || j.todayBuys || []).filter(isTodayRow);
   const sellsArr = (j.sells || j.sell || j.today_sells || j.todaySells || []).filter(isTodayRow);
       function linkRow(x){
   const sym = (x.symbol || x.sym || "").toString();
@@ -241,7 +249,25 @@
     <a href="${href}" style="color:#ffe900;text-decoration:none;font-weight:800;">${sym || "(unknown)"}</a>
     ${t ? `<span style="color:#bdbdbd;margin-left:10px;font-size:12px;">${t}</span>` : ``}
   </div>`;
-}      const buys  = buysArr.map(linkRow).join("")  || `<div class="muted">No buy signals today.</div>`;
+    }catch(e){
+      try{
+        const box = el("today-trades") || el("ax-today-trades") || document.querySelector("#today-trades") || null;
+        if (box){
+          box.innerHTML = `<div style="color:#ff7b7b;white-space:pre-wrap;">loadTodayTrades error:\n${String(e && e.stack ? e.stack : e)}</div>`;
+        }
+      }catch(_){}
+      console.error("[Daily Analytics] loadTodayTrades failed:", e);
+    }
+
+}      // If API doesn't provide per-row buys, fall back to buy.top_symbols (signals summary)
+      if ((!buysArr || !buysArr.length) && buy && Array.isArray(buy.top_symbols) && buy.top_symbols.length){
+        buysArr = buy.top_symbols.map(([sym, cnt]) => ({
+          symbol: sym,
+          ts_et: (data && data.date_et ? (data.date_et + " (signals: " + cnt + ")") : ("signals: " + cnt))
+        }));
+      }
+
+      const buys  = buysArr.map(linkRow).join("")  || `<div class="muted">No buy signals today.</div>`;
       const sells = sellsArr.map(linkRow).join("") || `<div class="muted">No sells today.</div>`;
 
       box.innerHTML = `

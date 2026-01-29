@@ -241,7 +241,15 @@
     <a href="${href}" style="color:#ffe900;text-decoration:none;font-weight:800;">${sym || "(unknown)"}</a>
     ${t ? `<span style="color:#bdbdbd;margin-left:10px;font-size:12px;">${t}</span>` : ``}
   </div>`;
-}      const buys  = buysArr.map(linkRow).join("")  || `<div class="muted">No buy signals today.</div>`;
+}      // If API doesn't provide per-row buys, fall back to buy.top_symbols (signals summary)
+      if ((!buysArr || !buysArr.length) && buy && Array.isArray(buy.top_symbols) && buy.top_symbols.length){
+        buysArr = buy.top_symbols.map(([sym, cnt]) => ({
+          symbol: sym,
+          ts_et: (data && data.date_et ? (data.date_et + " (signals: " + cnt + ")") : ("signals: " + cnt))
+        }));
+      }
+
+      const buys  = buysArr.map(linkRow).join("")  || `<div class="muted">No buy signals today.</div>`;
       const sells = sellsArr.map(linkRow).join("") || `<div class="muted">No sells today.</div>`;
 
       box.innerHTML = `
