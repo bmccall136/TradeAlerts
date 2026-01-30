@@ -18,7 +18,7 @@ This file exposes:
 """
 
 from __future__ import annotations
-import re
+
 import json
 import logging
 import math
@@ -4176,7 +4176,6 @@ def trade_review_chart():
             return None
 
     def _infer_symbol_from_referrer():
-        import re
         ref = request.headers.get("Referer") or ""
         # expects .../chart/HPQ or .../chart/HPQ?ts=...
         m = re.search(r"/chart/([A-Za-z\.\-_]{1,12})", ref)

@@ -18,7 +18,7 @@ This file exposes:
 """
 
 from __future__ import annotations
-import re
+
 import json
 import logging
 import math
@@ -4149,173 +4149,146 @@ def chart_view(symbol):
         sell_triggers=[],
     )
 
+
+
+
 @app.route("/trade_review/chart")
 def trade_review_chart():
     """
-    Returns a PNG chart for Trade Review.
+    Trade Review chart PNG.
 
-    Query params supported:
-      symbol=HPQ          (preferred; if missing, we try to infer from Referer /chart/HPQ)
-      ts=YYYY-mm-dd HH:MM:SS   (optional "focus" timestamp; also draws a yellow marker if provided)
-      buy_ts=...          (optional; draws green marker)
-      sell_ts=...         (optional; draws red marker)
+    Works even if template sends empty params by inferring:
+      - symbol from ?symbol= or HTTP Referer (/chart/SYMBOL...)
+      - ts from ?ts= or Referer ts=
     """
     from flask import request, send_file, make_response
     from io import BytesIO
-    from datetime import datetime
+    from urllib.parse import urlparse, parse_qs
     import traceback
 
-    def _parse_dt(s):
-        s = (s or "").strip()
-        if not s:
-            return None
-        # tolerate "2026-01-29 14:01:09" or URL-encoded
-        try:
-            return datetime.fromisoformat(s.replace("T"," ").split(".")[0])
-        except Exception:
-            return None
-
-    def _infer_symbol_from_referrer():
-        import re
+    def _infer_symbol():
+        sym = (request.args.get("symbol") or "").strip().upper()
+        if sym:
+            return sym
         ref = request.headers.get("Referer") or ""
-        # expects .../chart/HPQ or .../chart/HPQ?ts=...
-        m = re.search(r"/chart/([A-Za-z\.\-_]{1,12})", ref)
-        return (m.group(1).upper() if m else "")
+        try:
+            path = urlparse(ref).path or ""
+            # common: /chart/HPQ  or /trade_review/HPQ
+            m = re.search(r"/(chart|trade_review)/([A-Za-z\.\-]{1,12})", path)
+            if m:
+                return (m.group(2) or "").strip().upper()
+        except Exception:
+            pass
+        return ""
 
-    symbol = (request.args.get("symbol") or "").strip().upper()
-    if not symbol:
-        symbol = _infer_symbol_from_referrer()
+    def _infer_ts():
+        # accept ?ts=, ?buy_ts=, ?sell_ts=
+        ts = (request.args.get("ts") or request.args.get("buy_ts") or request.args.get("sell_ts") or "").strip()
+        if ts:
+            return ts
+        ref = request.headers.get("Referer") or ""
+        try:
+            q = parse_qs(urlparse(ref).query or "")
+            for k in ("ts", "buy_ts", "sell_ts"):
+                v = (q.get(k) or [""])[0]
+                if v:
+                    return v
+        except Exception:
+            pass
+        return ""
 
-    ts      = _parse_dt(request.args.get("ts"))
-    buy_ts  = _parse_dt(request.args.get("buy_ts"))
-    sell_ts = _parse_dt(request.args.get("sell_ts"))
+    symbol = _infer_symbol()
+    ts_s   = _infer_ts()
 
-    # If still missing, return a small error PNG (do NOT hard-crash the page)
-    if not symbol:
+    # ---- helper: return a tiny png error (so UI never hard-breaks)
+    def _err_png(title, msg):
         try:
             import matplotlib
             matplotlib.use("Agg")
             import matplotlib.pyplot as plt
-
             fig = plt.figure(figsize=(10, 2.2), dpi=150)
             fig.patch.set_facecolor("#0b0b0b")
             ax = fig.add_subplot(111)
             ax.set_facecolor("#0b0b0b")
             ax.axis("off")
-            ax.text(0.5, 0.62, "Trade Review chart error", ha="center", va="center", color="white", fontsize=14)
-            ax.text(0.5, 0.35, "Missing symbol (expected ?symbol=XYZ or referrer /chart/XYZ)", ha="center", va="center", color="#bbbbbb", fontsize=11)
+            ax.text(0.5, 0.62, title, ha="center", va="center", color="white", fontsize=14)
+            ax.text(0.5, 0.35, msg, ha="center", va="center", color="#bbbbbb", fontsize=11)
             buf = BytesIO()
             fig.savefig(buf, format="png", bbox_inches="tight")
             plt.close(fig)
             buf.seek(0)
             return send_file(buf, mimetype="image/png", max_age=0)
         except Exception:
-            return make_response("Missing symbol", 400)
+            return make_response(msg, 400)
 
+    if not symbol:
+        return _err_png("Trade Review chart error", "Missing symbol (expected ?symbol=XYZ or referrer /chart/XYZ)")
+
+    # ---- build chart (Yahoo intraday allowed)
     try:
         import pandas as pd
         import yfinance as yf
-        import pytz
-
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+        import matplotlib.dates as mdates
 
-        # Pull 1d 1m bars (Yahoo intraday is allowed)
-        df = yf.download(symbol, period="1d", interval="1m", progress=False, auto_adjust=True)
+        df = yf.download(symbol, period="1d", interval="1m", progress=False)
         if df is None or df.empty:
-            raise RuntimeError("No intraday bars returned")
+            return _err_png(f"{symbol}", "No intraday bars returned")
 
-        # Normalize index to US/Eastern if possible
-        try:
-            et = pytz.timezone("America/New_York")
-            if df.index.tz is None:
-                # yfinance often gives naive index; treat as UTC then convert
-                df.index = pd.to_datetime(df.index).tz_localize("UTC").tz_convert(et)
-            else:
-                df.index = df.index.tz_convert(et)
-        except Exception:
-            # fallback: keep as-is
-            pass
+        # Normalize index
+        if not isinstance(df.index, pd.DatetimeIndex):
+            return _err_png(f"{symbol}", "Bad intraday index")
 
-        # Focus window: around ts if provided (?60 minutes), else full day
-        if ts:
-            # interpret ts as ET naive -> localize ET if df index is tz-aware
+        # pick a window
+        ts = None
+        if ts_s:
+            # accept "YYYY-MM-DD HH:MM:SS" (your links) or ISO-ish
             try:
-                et = pytz.timezone("America/New_York")
-                ts_et = et.localize(ts) if df.index.tz is not None and ts.tzinfo is None else ts
-                lo = ts_et - pd.Timedelta(minutes=60)
-                hi = ts_et + pd.Timedelta(minutes=60)
-                dfw = df.loc[(df.index >= lo) & (df.index <= hi)].copy()
-                if dfw.empty:
-                    dfw = df.copy()
+                ts = pd.to_datetime(ts_s)
             except Exception:
-                dfw = df.copy()
+                ts = None
+
+        if ts is not None:
+            # 60m before ? now/60m after
+            start = ts - pd.Timedelta(minutes=60)
+            end   = ts + pd.Timedelta(minutes=90)
+            w = df.loc[(df.index >= start) & (df.index <= end)]
+            if w.empty:
+                # if timezone mismatch, just use last 120 minutes
+                w = df.tail(120)
         else:
-            dfw = df.copy()
+            w = df.tail(180)
 
-        close = dfw["Close"]
+        y = None
+        for col in ("Close","Adj Close","close","adjclose"):
+            if col in w.columns:
+                y = w[col]
+                break
+        if y is None:
+            return _err_png(f"{symbol}", "Missing Close column")
 
-        # Build chart
-        fig = plt.figure(figsize=(12, 3.2), dpi=140)
+        fig = plt.figure(figsize=(14, 4.2), dpi=140)
         fig.patch.set_facecolor("#0b0b0b")
         ax = fig.add_subplot(111)
         ax.set_facecolor("#0b0b0b")
 
-        ax.plot(close.index, close.values, linewidth=2)
+        ax.plot(w.index, y.values, linewidth=2)
 
-        # Shade held period if buy_ts and sell_ts exist (best effort)
-        def _to_index_tz(dt):
-            if dt is None:
-                return None
-            try:
-                import pandas as pd
-                if hasattr(close.index, "tz") and close.index.tz is not None and getattr(dt, "tzinfo", None) is None:
-                    import pytz
-                    et = pytz.timezone("America/New_York")
-                    return et.localize(dt)
-            except Exception:
-                pass
-            return dt
+        # marker at ts (if we have it)
+        if ts is not None:
+            ax.axvline(ts, linewidth=2)
+            ax.text(ts, float(y.min()), " ALERT", va="bottom", ha="left", fontsize=10)
 
-        buy_t  = _to_index_tz(buy_ts)
-        sell_t = _to_index_tz(sell_ts)
+        ax.set_title(symbol, color="white", fontsize=14)
+        ax.tick_params(axis="x", colors="#bbbbbb")
+        ax.tick_params(axis="y", colors="#bbbbbb")
+        ax.grid(True, alpha=0.25)
 
-        if buy_t and sell_t:
-            # green for win, red for loss (based on closest bar prices)
-            try:
-                import numpy as np
-                # find nearest bar values
-                b_idx = close.index.get_indexer([buy_t], method="nearest")[0]
-                s_idx = close.index.get_indexer([sell_t], method="nearest")[0]
-                b_px = float(close.iloc[b_idx])
-                s_px = float(close.iloc[s_idx])
-                win = (s_px >= b_px)
-            except Exception:
-                win = True
-            ax.axvspan(buy_t, sell_t, alpha=0.18 if win else 0.22)
-
-        # BUY/SELL vertical markers
-        if buy_t:
-            ax.axvline(buy_t, linewidth=2)
-            ax.text(buy_t, close.min(), " BUY", va="bottom", ha="left", fontsize=10)
-        if sell_t:
-            ax.axvline(sell_t, linewidth=2)
-            ax.text(sell_t, close.min(), " SELL", va="bottom", ha="left", fontsize=10)
-
-        # Optional "ts" marker (yellow-ish label); does NOT break anything if absent
-        if ts:
-            t = _to_index_tz(ts)
-            if t:
-                ax.axvline(t, linewidth=2, alpha=0.8)
-                ax.text(t, close.max(), " ALERT", va="top", ha="left", fontsize=10)
-
-        # Styling
-        ax.tick_params(colors="#bbbbbb")
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%d %H:%M"))
         for spine in ax.spines.values():
             spine.set_color("#333333")
-        ax.grid(True, alpha=0.12)
-        ax.set_title(symbol, color="#dddddd", fontsize=14)
 
         buf = BytesIO()
         fig.savefig(buf, format="png", bbox_inches="tight")
@@ -4324,33 +4297,8 @@ def trade_review_chart():
         return send_file(buf, mimetype="image/png", max_age=0)
 
     except Exception:
-        # Return a readable PNG error (and log traceback to console)
-        traceback.print_exc()
-        try:
-            import matplotlib
-            matplotlib.use("Agg")
-            import matplotlib.pyplot as plt
-            from io import BytesIO
-
-            fig = plt.figure(figsize=(10, 2.2), dpi=150)
-            fig.patch.set_facecolor("#0b0b0b")
-            ax = fig.add_subplot(111)
-            ax.set_facecolor("#0b0b0b")
-            ax.axis("off")
-            ax.text(0.5, 0.62, f"{symbol}", ha="center", va="center", color="white", fontsize=16)
-            ax.text(0.5, 0.35, "Exception building chart (see console logs)", ha="center", va="center", color="#bbbbbb", fontsize=11)
-            buf = BytesIO()
-            fig.savefig(buf, format="png", bbox_inches="tight")
-            plt.close(fig)
-            buf.seek(0)
-            return send_file(buf, mimetype="image/png", max_age=0)
-        except Exception:
-            return make_response("Chart exception", 500)
-
-
-
-
-
+        # last resort error png with traceback hint
+        return _err_png(f"{symbol}", "Exception building chart (see console logs)")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
@@ -6698,5 +6646,4 @@ def analytics_data():
     from services.analytics_service import compute_analytics_charts
     logs_dir = r"C:\TradeAlerts\logs"
     return compute_analytics_charts(log_dir=logs_dir)
-
 

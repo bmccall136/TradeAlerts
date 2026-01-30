@@ -442,7 +442,6 @@ class SellGuardConfig:
     target_gain_pct: float
     trail_arm_gain_pct: float
     trail_backoff_pct: float
-    timeout_exit_pct: float
     intraday_stoploss_pct: float
     intraday_stoploss_pct: float
     avoid_daytrades: bool
@@ -866,82 +865,66 @@ def place_with_adaptive_variants(
     """
     Try to place a SELL order, retrying on transient E*TRADE errors.
 
-    Uses preview_equity_order / place_equity_order from services.etrade_service.
-    DB-backed SELL_INFLIGHT latch prevents repeated SELL spam per symbol.
+    This version only uses the high-level preview_equity_order /
+    place_equity_order helpers from services.etrade_service.
+    It does NOT depend on any older place_equity_order_direct
+    or ensure_session() helpers.
     """
-    # Normalize inputs once
-    sym = (symbol or "").strip().upper()
-    if not sym:
-        return
-    try:
-        q = float(qty or 0.0)
-    except Exception:
-        q = 0.0
-    if q <= 0:
-        return
-
+    # Normalize the order type
     order_type = (order_type or "MARKET").upper()
     price_type = "MARKET" if order_type == "MARKET" else "LIMIT"
 
     from importlib import import_module
+
     et = import_module("services.etrade_service")
 
     # --- SELL_INFLIGHT latch + cooldown (prevents repeat SELL spam) ---
     import os, time, sqlite3
-
     _SELL_INFLIGHT_COOLDOWN_SEC = int(os.environ.get("SELL_INFLIGHT_COOLDOWN_SEC", "120") or "120")
     _db_path = os.path.join(os.path.dirname(__file__), "live.db")
 
-    def _inflight_get_ts(sym2: str) -> int | None:
+    def _inflight_get_ts(sym: str) -> int | None:
         try:
             con = sqlite3.connect(_db_path)
             cur = con.cursor()
-            cur.execute("SELECT ts_utc FROM sell_inflight WHERE symbol=?", (sym2,))
+            cur.execute("SELECT ts_utc FROM sell_inflight WHERE symbol=?", (sym,))
             row = cur.fetchone()
             con.close()
             return int(row[0]) if row and row[0] is not None else None
         except Exception:
             return None
 
-    def _inflight_set(sym2: str, ts_utc: int, why: str) -> None:
+    def _inflight_set(sym: str, ts_utc: int, why: str) -> None:
         try:
             con = sqlite3.connect(_db_path)
             cur = con.cursor()
             cur.execute(
                 "INSERT INTO sell_inflight(symbol, ts_utc, reason) VALUES(?,?,?) "
                 "ON CONFLICT(symbol) DO UPDATE SET ts_utc=excluded.ts_utc, reason=excluded.reason",
-                (sym2, int(ts_utc), str(why)[:200]),
+                (sym, int(ts_utc), str(why)[:200])
             )
             con.commit()
             con.close()
         except Exception:
             pass
 
-    def _inflight_clear(sym2: str) -> None:
+    def _inflight_clear(sym: str) -> None:
         try:
             con = sqlite3.connect(_db_path)
             cur = con.cursor()
-            cur.execute("DELETE FROM sell_inflight WHERE symbol=?", (sym2,))
+            cur.execute("DELETE FROM sell_inflight WHERE symbol=?", (sym,))
             con.commit()
             con.close()
         except Exception:
             pass
 
-    now = int(time.time())
-    prev_ts = _inflight_get_ts(sym)
-
-    # If we recently tried a SELL for this symbol, SKIP (do NOT clear latch)
-    if prev_ts is not None and (now - prev_ts) < _SELL_INFLIGHT_COOLDOWN_SEC:
-        LOG.info(
-            "[SELL_INFLIGHT] SKIP %s: cooldown=%ss elapsed=%ss",
-            sym,
-            _SELL_INFLIGHT_COOLDOWN_SEC,
-            (now - prev_ts),
-        )
+    _now = int(time.time())
+    _ts = _inflight_get_ts(symbol)
+    if _ts is not None and (_now - _ts) < _SELL_INFLIGHT_COOLDOWN_SEC:
+        LOG.info("[SELL_INFLIGHT] SKIP %s: cooldown %ss (elapsed %ss)", symbol, _SELL_INFLIGHT_COOLDOWN_SEC, (_now - _ts))
+        _inflight_clear(symbol)
         return
-
-    # Set latch before any E*TRADE calls (prevents double-fire across loops)
-    _inflight_set(sym, now, f"start:{order_type}")
+    _inflight_set(symbol, _now, f"start:{order_type}")
 
     attempts = 0
     last_err: Exception | None = None
@@ -952,8 +935,8 @@ def place_with_adaptive_variants(
             LOG.info(
                 "place_with_adaptive_variants attempt %s: %s qty=%s type=%s limit=%s",
                 attempts,
-                sym,
-                q,
+                symbol,
+                qty,
                 order_type,
                 limit_price,
             )
@@ -963,25 +946,26 @@ def place_with_adaptive_variants(
             if price_type == "LIMIT" and limit_price is not None:
                 limit = float(limit_price)
 
+            # Use the canonical preview + place helpers from etrade_service.
             preview = et.preview_equity_order(
                 acct_key,
-                sym,
-                int(q),
+                symbol,
+                int(qty),
                 limit,
                 action="SELL",
                 price_type=price_type,
             )
-            et.place_equity_order(preview, qty=int(q))
+            et.place_equity_order(preview, qty=int(qty))
 
             # --- sell_triggers logging: order placed (best-effort) ---
             try:
                 emit_sell_event(
-                    symbol=sym,
+                    symbol=(symbol or "").upper().strip(),
                     event="ORDER_PLACED",
                     action=str(order_type or "SELL"),
                     reason="place_equity_order_success",
                     hold_min=None,
-                    qty=float(q),
+                    qty=float(qty or 0.0),
                     last_price=None,
                     entry_price=None,
                     pnl_pct=None,
@@ -996,50 +980,44 @@ def place_with_adaptive_variants(
                 pass
             # ---------------------------------------------------------
 
-            LOG.info("place_with_adaptive_variants success for %s", sym)
-
-            # Clear latch on success (we placed the order)
-            _inflight_clear(sym)
+            LOG.info("place_with_adaptive_variants success for %s", symbol)
+            _inflight_clear(symbol)
             return
-
         except Exception as exc:  # noqa: BLE001
             last_err = exc
             msg = str(exc)
 
-            # Update latch reason so the DB shows what happened most recently
-            _inflight_set(sym, int(time.time()), f"err:{order_type}:{msg[:120]}")
-
-            # 1028 duplicate order / 1049 prior request processing:
-            # This means a sell is already in-flight. KEEP latch, stop retries.
+            # Treat these as "order is already in flight" - do not keep hammering.
+            # 1028 = duplicate order, 1049 = prior request processing.
             if ("code': 1028" in msg) or ('code": 1028' in msg) or ("code': 1049" in msg) or ('code": 1049' in msg):
                 LOG.warning(
-                    "[SELL_INFLIGHT] %s pending/duplicate for %s; stop retries this loop. (%s)",
+                    "place_with_adaptive_variants: %s appears pending/duplicate for %s; stopping retries this loop. (%s)",
                     order_type,
-                    sym,
+                    symbol,
                     msg,
                 )
+                _inflight_clear(symbol)
                 return
-
-            # 1514: symbol/account mismatch for closing order — treat as terminal for this loop.
-            # KEEP latch (cooldown) so we don't hammer it every 30s.
+            # Special-case E*TRADE code 1514 (symbol not found for closing order)
+            # so we don't crash the loop.
             if ("code': 1514" in msg) or ('code": 1514' in msg):
                 LOG.error(
-                    "place_with_adaptive_variants: E*TRADE code 1514 for %s; skipping auto-sell this loop. Error: %s",
-                    sym,
+                    "place_with_adaptive_variants: E*TRADE code 1514 for %s; symbol/account mismatch for closing order, skipping auto-sell. Error: %s",
+                    symbol,
                     msg,
                 )
+                _inflight_clear(symbol)
                 return
-
             LOG.warning(
                 "place_with_adaptive_variants attempt %s failed for %s: %s",
                 attempts,
-                sym,
+                symbol,
                 msg,
             )
             time.sleep(1.0)
 
-    # All attempts failed. KEEP latch so next loop cools down.
-    raise RuntimeError(f"Failed to place order for {sym}: {last_err}")
+    # If we get here, all attempts failed with non-1514 errors.
+    raise RuntimeError(f"Failed to place order for {symbol}: {last_err}")
 
 
 
@@ -1636,7 +1614,6 @@ def main() -> None:
                         try:
                             emit_sell_event(
                                 event="TARGET_EXIT",
-                        trigger="TARGET",
                                 symbol=s,
                                 qty=qty,
                                 pl_pct=pl_pct,

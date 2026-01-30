@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import csv
 import json
@@ -11,8 +11,14 @@ from pathlib import Path
 from typing import Any, Optional
 
 # -----------------------------------------------------------------------------
-# Sell Triggers Logger (never raises)
-#   logs/sell_triggers_YYYY-MM-DD.csv
+# Sell Triggers Logger
+#
+# Writes: logs/sell_triggers_YYYY-MM-DD.csv  (date boundary default: ET)
+#
+# Goals:
+#   - Never raise (must not crash sell_guard)
+#   - Capture REAL sell reasons (DECISION) and order outcomes (PREVIEW/PLACE)
+#   - Avoid CSV spam by default (EVAL rows disabled unless explicitly enabled)
 #
 # Env:
 #   SELL_TRIGGERS_DIR             override log dir
@@ -25,7 +31,7 @@ _LOCK = threading.Lock()
 _PRUNE_EVERY_SEC = 300
 _LAST_PRUNE_TS = 0.0
 
-DATE_FILE_RE = re.compile(r"^sell_triggers_(\\d{4}-\\d{2}-\\d{2})\\.csv$")
+DATE_FILE_RE = re.compile(r"^sell_triggers_(\d{4}-\d{2}-\d{2})\.csv$")
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -39,11 +45,16 @@ def _env_bool(name: str, default: bool = False) -> bool:
 
 
 def _now_et() -> datetime:
-    # Uses system local timezone; your box is ET.
+    # Avoid external deps; rely on system local time being ET on the box
+    # If your server is not in ET, set SELL_TRIGGERS_ROTATE_UTC=true to at least be consistent.
     return datetime.now().astimezone()
 
 
 def _day_key_dt() -> datetime:
+    """
+    Return datetime used to compute "today's" file name boundary.
+    If SELL_TRIGGERS_ROTATE_UTC=true, use UTC. Default: local (ET).
+    """
     rotate_utc = _env_bool("SELL_TRIGGERS_ROTATE_UTC", default=False)
     if rotate_utc:
         return datetime.now(tz=UTC)
@@ -55,10 +66,12 @@ def _log_dir() -> Path:
     if d:
         p = Path(d).expanduser()
     else:
+        # services/ -> project root -> logs/
         p = (Path(__file__).resolve().parent.parent / "logs").resolve()
     try:
         p.mkdir(parents=True, exist_ok=True)
     except Exception:
+        # last resort: current working directory
         p = Path(".").resolve()
         try:
             p.mkdir(parents=True, exist_ok=True)
@@ -76,20 +89,20 @@ def _file_path_for_today() -> Path:
 DEFAULT_COLUMNS = [
     "ts_utc",
     "ts_et",
-    "event",
+    "event",        # EVAL | DECISION | PREVIEW_OK | PLACE_OK | SKIP | ERROR | POSITION_DISAPPEARED
     "symbol",
     "qty",
-    "action",
-    "reason",
-    "trigger",
+    "action",       # SELL (mostly), but keep flexible
+    "reason",       # human-readable reason string
+    "trigger",      # STOPLOSS | TARGET | TRAIL | PROTECT | TIMEOUT | MANUAL | ...
     "pl_pct",
     "hold_min",
-    "order_type",
+    "order_type",   # MARKET/LIMIT/STOP/...
     "limit_price",
     "attempt",
-    "status",
+    "status",       # OK/SKIP/ERR
     "err",
-    "meta_json",
+    "meta_json",    # freeform json blob (dict)
 ]
 
 
@@ -97,7 +110,8 @@ def _ensure_header(path: Path, columns: list[str]) -> None:
     try:
         if not path.exists() or path.stat().st_size == 0:
             with path.open("a", newline="", encoding="utf-8") as f:
-                csv.writer(f).writerow(columns)
+                w = csv.writer(f)
+                w.writerow(columns)
     except Exception:
         return
 
@@ -121,6 +135,7 @@ def _prune_old_files(now_ts: float) -> None:
                 if not m:
                     continue
                 dt = datetime.strptime(m.group(1), "%Y-%m-%d")
+                # interpret dt in same boundary system as _day_key_dt()
                 if _env_bool("SELL_TRIGGERS_ROTATE_UTC", default=False):
                     dt = dt.replace(tzinfo=UTC)
                 else:
@@ -149,18 +164,18 @@ def emit_sell_event(
     status: str = "",
     err: str = "",
     meta: Optional[dict[str, Any]] = None,
-    **_compat: Any,
+    **_compat: Any,  # swallow unknown kwargs so logging never breaks caller
 ) -> None:
     """
     Append a sell-trigger row to today's dated CSV file.
-    Must NEVER raise.
+    This function must NEVER raise.
     """
     try:
         sym = (symbol or "").strip().upper()
         if not sym:
             return
 
-        # Do not spam EVAL rows unless explicitly enabled
+        # Default: do NOT spam EVAL rows unless explicitly enabled.
         if (event or "").upper() == "EVAL" and not _env_bool("SELL_TRIGGERS_LOG_EVAL", default=False):
             return
 
@@ -186,7 +201,7 @@ def emit_sell_event(
             "meta_json": "",
         }
 
-        if isinstance(meta, dict) and meta:
+        if meta and isinstance(meta, dict):
             try:
                 row["meta_json"] = json.dumps(meta, separators=(",", ":"), ensure_ascii=False)
             except Exception:
@@ -200,6 +215,7 @@ def emit_sell_event(
                 w = csv.DictWriter(f, fieldnames=DEFAULT_COLUMNS, extrasaction="ignore")
                 w.writerow(row)
 
+            # retention cleanup (cheap, rate-limited)
             try:
                 _prune_old_files(time.time())
             except Exception:

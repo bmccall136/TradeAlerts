@@ -317,26 +317,3 @@
 </script>
 
 {% endblock %}
-
-
-<!-- TRADE_REVIEW_FORCE_SYMBOL_V1 -->
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-  const sym = "{{ symbol|default('') }}".trim();
-  const ts  = "{{ ts|default('') }}".trim();
-  if (!sym) return;
-
-  // Find the chart img (first img that points at /trade_review/chart)
-  const img = document.querySelector('img[src*="/trade_review/chart"]');
-  if (!img) return;
-
-  const cur = (img.getAttribute('src') || '');
-  // If it's already symbol-based, do nothing
-  if (cur.includes('symbol=')) return;
-
-  const url = "/trade_review/chart?symbol=" + encodeURIComponent(sym)
-            + (ts ? ("&ts=" + encodeURIComponent(ts)) : "")
-            + "&v=" + Date.now();
-  img.setAttribute('src', url);
-});
-</script>

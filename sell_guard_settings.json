@@ -1,49 +1,55 @@
 {
+  "ai": {
+    "enabled": false,
+    "use_entries": false,
+    "use_exits": false
+  },
   "sell_guard": {
     "mode": "live",
-
-    "use_extended_hours": true,
+    "interval_sec": 30,
     "sell_window_start_et": "09:35",
     "sell_window_end_et": "15:55",
+    "use_extended_hours": true,
 
-    "avoid_daytrades": false,
-    "min_hold_days": 0,
+    "blocklist": [],
+    "only_allow_symbol": null,
+
     "min_hold_minutes": 0,
+    "min_hold_days": 0,
+
+    "enable_timeout_exits": false,
+    "max_hold_minutes": 9999999,
+    "max_hold_mins": 9999999,
+    "timeout_exit_pct": -999.0,
 
     "allow_intraday_stoploss": true,
-    "pdt_allow_stop": true,
+    "intraday_stoploss_pct": -0.6,
 
-    "target_bps": 200,
-    "stop_bps": 100,
+    "target_bps": 80,
+    "stop_bps": 60,
 
-    "sell_protect_after_mins": 60,
-    "max_hold_mins": 4320,
+    "protect_min_gain_pct": 0.6,
+    "protect_trail_arm_pct": 1.2,
+    "protect_trail_pct": 1.0,
+    "sell_protect_after_mins": 15,
 
-    "protect_min_gain_pct": 1.5,
-    "protect_trail_arm_pct": 3.0,
-    "protect_trail_pct": 3.0,
+    "avoid_daytrades": false,
+    "pdt_allow_stop": false,
+
+    "max_place_attempts": 4,
+    "normalize_tick": 0.01,
 
     "limit_from": "bid",
     "limit_offset_bps": 0,
 
+    "market_fallback_for": ["SELL_STOP"],
+
     "throttle_ms": 30000,
-    "blocklist": [],
-    "force_symbols": [],
-    "force_without_entry": false,
 
-    "market_fallback_for": [
-      "SELL_STOP",
-      "TIMEOUT"
-    ],
-
+    "circuit_fail_threshold": 2,
     "circuit_open_seconds": 480,
-    "max_place_attempts": 4,
-    "normalize_tick": 0.01,
-    "circuit_fail_threshold": 2
-  },
-  "ai": {
-    "enabled": true,
-    "use_entries": true,
-    "use_exits": true
+
+    "force_symbols": [],
+    "force_without_entry": false
   }
 }
