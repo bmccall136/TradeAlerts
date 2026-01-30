@@ -75,11 +75,6 @@ from dotenv import load_dotenv
 load_dotenv("etrade.env")
 
 ETRADE_BASE_URL = "https://api.etrade.com"
-
-# Hard capital-preservation guardrail: block BUY previews when NAV <= floor
-# Override with env var NAV_FLOOR_BUY_BLOCK (set to 0 to disable).
-NAV_FLOOR_BUY_BLOCK=4000
-
 TOKEN_FILE = "etrade_tokens.json"
 ET = ZoneInfo("America/New_York")
 # Dot-ticker fixes + normalizer
@@ -3007,24 +3002,6 @@ def preview_equity_order(
     """
     action = (action or "BUY").upper()
     pt = (price_type or ("LIMIT" if price is not None else "MARKET")).upper()
-
-    # --- NAV floor BUY-block (sells still allowed) ---
-    if action == "BUY" and NAV_FLOOR_BUY_BLOCK and NAV_FLOOR_BUY_BLOCK > 0:
-        try:
-            summ = get_account_summary(account_id_key)
-            nav = float((summ or {}).get("nav") or 0.0)
-            if nav and nav <= NAV_FLOOR_BUY_BLOCK:
-                raise RuntimeError(f"NAV_FLOOR_BUY_BLOCK: nav=${nav:.2f} <= floor=${NAV_FLOOR_BUY_BLOCK:.2f}")
-        except RuntimeError:
-            raise
-        except Exception as e:
-            # If we can?t read NAV, do NOT hard-block (avoid surprise halts).
-            # We only block when NAV is confirmed <= floor.
-            try:
-                LOG.warning("[NAV_FLOOR] Could not evaluate NAV floor: %s", e)
-            except Exception:
-                pass
-    # --- end NAV floor BUY-block ---
 
     # --- IMPORTANT: map legacy callers that pass STOP trigger as "price"
     if pt in {"STOP", "STOP_MARKET"} and stop_price is None and price is not None:

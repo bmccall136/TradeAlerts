@@ -1,0 +1,286 @@
+﻿/* Daily Analytics (clean, crash-proof)
+   - Matches template IDs:
+     ax-date, ax-errors, ax-files, ax-today-trades, ax-yesterday
+     chart-buy-mix, chart-sell-exits, chart-sell-hold, chart-sell-pl
+*/
+
+(function () {
+  "use strict";
+
+  const LOGP = "[Daily Analytics]";
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return ("" + (s ?? "")).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+  function listDomIds(tag) {
+    try {
+      const ids = Array.from(document.querySelectorAll("[id]")).map(e => e.id).filter(Boolean).sort();
+      console.log(LOGP, "DOM ids (" + tag + "):", ids);
+    } catch (e) {}
+  }
+
+  function setText(id, txt) {
+    const el = $(id);
+    if (!el) { console.warn(LOGP, "missing #" + id); return false; }
+    el.textContent = txt ?? "";
+    return true;
+  }
+
+  function setHtml(id, html) {
+    const el = $(id);
+    if (!el) { console.warn(LOGP, "missing #" + id); return false; }
+    el.innerHTML = html ?? "";
+    return true;
+  }
+
+  function toYMD(d) {
+    const yy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,"0");
+    const dd = String(d.getDate()).padStart(2,"0");
+    return `${yy}-${mm}-${dd}`;
+  }
+
+  function ymdYesterday(ymd) {
+    // ymd = YYYY-MM-DD
+    const m = (ymd || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return "";
+    const d = new Date(Date.UTC(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10), 12, 0, 0));
+    d.setUTCDate(d.getUTCDate() - 1);
+    return toYMD(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0)));
+  }
+
+  function pick(obj, keys) {
+    if (!obj) return "";
+    for (const k of keys) {
+      if (obj[k] != null && obj[k] !== "") return obj[k];
+      const lk = (""+k).toLowerCase();
+      if (obj[lk] != null && obj[lk] !== "") return obj[lk];
+    }
+    return "";
+  }
+
+  function countBy(rows, keyCandidates) {
+    const m = new Map();
+    for (const r of (rows || [])) {
+      const v = (pick(r, keyCandidates) || "").toString().trim();
+      if (!v) continue;
+      m.set(v, (m.get(v) || 0) + 1);
+    }
+    const arr = Array.from(m.entries()).sort((a,b)=>b[1]-a[1]);
+    return { labels: arr.map(x=>x[0]), values: arr.map(x=>x[1]) };
+  }
+
+  function bucketByTime5m(rows) {
+    const m = new Map();
+    for (const r of (rows || [])) {
+      const t = (pick(r, ["time_et","time","timestamp","dt_et","datetime_et"]) || "").toString();
+      const mm = t.match(/(\d{1,2}):(\d{2})/);
+      if (!mm) continue;
+      const hh = parseInt(mm[1],10);
+      const mi = parseInt(mm[2],10);
+      if (!Number.isFinite(hh) || !Number.isFinite(mi)) continue;
+      const b = Math.floor(mi/5)*5;
+      const label = String(hh).padStart(2,"0")+":"+String(b).padStart(2,"0");
+      m.set(label, (m.get(label)||0)+1);
+    }
+    const labels = Array.from(m.keys()).sort();
+    const values = labels.map(l => m.get(l) || 0);
+    return { labels, values };
+  }
+
+  function makeTableHtml(buys, sells) {
+    const takeN = 12;
+    const buyTake = (buys || []).slice(0, takeN);
+    const sellTake = (sells || []).slice(0, takeN);
+
+    function row(side, r) {
+      const t = pick(r, ["time_et","time","timestamp"]) || "";
+      const s = pick(r, ["symbol","sym","ticker"]) || "";
+      const px = pick(r, ["price","last","last_price"]) || "";
+      const trig = pick(r, ["trigger","triggers","reason","action"]) || "";
+      return `<tr><td>${esc(side)}</td><td>${esc(t)}</td><td>${esc(s)}</td><td>${esc(px)}</td><td>${esc(trig)}</td></tr>`;
+    }
+
+    const body = []
+      .concat(buyTake.map(r => row("BUY", r)))
+      .concat(sellTake.map(r => row("SELL", r)))
+      .join("");
+
+    return `
+      <div style="font-size:12px; opacity:.95; margin-bottom:6px">
+        Showing first ${takeN} buys + first ${takeN} sells
+      </div>
+      <table class="table table-sm table-dark table-striped" style="font-size:12px; margin:0">
+        <thead><tr><th>Side</th><th>Time</th><th>Symbol</th><th>Price</th><th>Trigger</th></tr></thead>
+        <tbody>${body || ""}</tbody>
+      </table>
+    `;
+  }
+
+  function chart(canvasId, config) {
+    const c = $(canvasId);
+    if (!c) { console.warn(LOGP, "missing canvas #" + canvasId); return; }
+    if (!window.Chart) { console.warn(LOGP, "Chart.js missing; skip #" + canvasId); return; }
+    const ctx = c.getContext ? c.getContext("2d") : null;
+    if (!ctx) { console.warn(LOGP, "no 2d ctx; skip #" + canvasId); return; }
+
+    window.__axCharts = window.__axCharts || {};
+    if (window.__axCharts[canvasId]) {
+      try { window.__axCharts[canvasId].destroy(); } catch (e) {}
+      window.__axCharts[canvasId] = null;
+    }
+    try {
+      window.__axCharts[canvasId] = new Chart(ctx, config);
+    } catch (e) {
+      console.error(LOGP, "Chart create failed for #" + canvasId, e);
+      if (e && e.stack) console.error(e.stack);
+    }
+  }
+
+  function renderAnalytics(data) {
+    const d = data || {};
+    const buys = Array.isArray(d.buys) ? d.buys : [];
+    const sells = Array.isArray(d.sells) ? d.sells : [];
+    const errs = Array.isArray(d.errors) ? d.errors : [];
+
+    setText("ax-date", d.date_et || "");
+
+    // Files box
+    if ($("ax-files")) {
+      const bf = d.buy_file || "";
+      const sf = d.sell_file || "";
+      setHtml("ax-files",
+        `<div style="font-size:12px; opacity:.9">
+          <div><b>Buy file:</b> ${esc(bf || "(missing)")}</div>
+          <div><b>Sell file:</b> ${esc(sf || "(missing)")}</div>
+          <div><b>Counts:</b> buys=${buys.length} sells=${sells.length}</div>
+        </div>`
+      );
+    }
+
+    // Errors box
+    if ($("ax-errors")) {
+      if (!errs.length) setHtml("ax-errors", "");
+      else setHtml("ax-errors",
+        `<div style="color:#ff6b6b; font-size:12px">
+          ${errs.map(x => `<div>• ${esc(x)}</div>`).join("")}
+        </div>`
+      );
+    }
+
+    // Today's trades table (proof of life)
+    if ($("ax-today-trades")) {
+      setHtml("ax-today-trades", makeTableHtml(buys, sells));
+    }
+
+    // Charts (guarded)
+    if ($("chart-buy-mix")) {
+      const mix = countBy(buys, ["trigger","triggers","reason"]);
+      chart("chart-buy-mix", {
+        type: "doughnut",
+        data: {
+          labels: mix.labels.slice(0, 12),
+          datasets: [{ data: mix.values.slice(0, 12) }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { position: "right", labels: { color: "#ddd", boxWidth: 10 } }
+          }
+        }
+      });
+    }
+
+    if ($("chart-sell-exits")) {
+      const b = bucketByTime5m(sells);
+      chart("chart-sell-exits", {
+        type: "bar",
+        data: { labels: b.labels, datasets: [{ label: "Sell evals", data: b.values }] },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: "#ddd", maxRotation: 60, minRotation: 60 } },
+            y: { ticks: { color: "#ddd" } }
+          }
+        }
+      });
+    }
+
+    if ($("chart-sell-hold")) {
+      const hb = countBy(sells, ["hold_bucket","hold_bucket_label","hold"]);
+      chart("chart-sell-hold", {
+        type: "bar",
+        data: { labels: hb.labels.slice(0, 12), datasets: [{ label: "Hold buckets", data: hb.values.slice(0, 12) }] },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: { x: { ticks: { color: "#ddd" } }, y: { ticks: { color: "#ddd" } } }
+        }
+      });
+    }
+
+    if ($("chart-sell-pl")) {
+      const pb = countBy(sells, ["pl_bucket","pl_bucket_label","pnl_bucket","pnl"]);
+      chart("chart-sell-pl", {
+        type: "bar",
+        data: { labels: pb.labels.slice(0, 12), datasets: [{ label: "P/L buckets", data: pb.values.slice(0, 12) }] },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: { x: { ticks: { color: "#ddd" } }, y: { ticks: { color: "#ddd" } } }
+        }
+      });
+    }
+
+    console.log(LOGP, "render OK", { date: d.date_et, buys: buys.length, sells: sells.length });
+  }
+
+  async function fetchAnalytics(dateYmd) {
+    const q = dateYmd ? `?date=${encodeURIComponent(dateYmd)}&_=${Date.now()}` : `?_=${Date.now()}`;
+    const url = `/api/analytics/today${q}`;
+    const r = await fetch(url, { cache: "no-store" });
+    if (!r.ok) throw new Error(`HTTP ${r.status} from ${url}`);
+    return await r.json();
+  }
+
+  function wireYesterday() {
+    const btn = $("ax-yesterday");
+    if (!btn) return;
+    btn.addEventListener("click", async () => {
+      try {
+        const cur = $("ax-date") ? ($("ax-date").textContent || "").trim() : "";
+        const y = ymdYesterday(cur) || "";
+        if (!y) { console.warn(LOGP, "cannot compute yesterday from", cur); return; }
+        setText("ax-date", y);
+        setHtml("ax-errors", "");
+        const data = await fetchAnalytics(y);
+        console.log(LOGP, "data (yesterday):", data);
+        listDomIds("after-fetch(yesterday)");
+        renderAnalytics(data);
+      } catch (e) {
+        console.error(LOGP, "yesterday load failed:", e);
+        if (e && e.stack) console.error(e.stack);
+        setHtml("ax-errors", `<div style="color:#ff6b6b; font-size:12px">Yesterday load failed: ${esc(e.message || e)}</div>`);
+      }
+    });
+  }
+
+  async function main() {
+    try {
+      listDomIds("initial");
+      wireYesterday();
+
+      const data = await fetchAnalytics("");
+      console.log(LOGP, "data:", data);
+      listDomIds("after-fetch");
+      renderAnalytics(data);
+    } catch (e) {
+      console.error(LOGP, "init failed:", e);
+      if (e && e.stack) console.error(e.stack);
+      setHtml("ax-errors", `<div style="color:#ff6b6b; font-size:12px">Analytics init failed: ${esc(e.message || e)}</div>`);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", main);
+})();

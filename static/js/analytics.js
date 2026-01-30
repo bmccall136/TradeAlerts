@@ -1,285 +1,177 @@
-﻿(function () {
-  // -------------------------------
-  // Helpers
-  // -------------------------------
-  function el(id){ return document.getElementById(id); }
-  function ctx(id){ const c = el(id); return c ? c.getContext("2d") : null; }
+/* Daily Analytics (DB-backed) - crash-proof renderer */
+(function () {
+  "use strict";
 
-  function setText(id, txt){
-    const e = el(id);
-    if (e) e.textContent = txt;
+  function qs(name) {
+    try { return new URLSearchParams(window.location.search).get(name); }
+    catch { return null; }
   }
 
-  function isPairList(x){
-    return Array.isArray(x) && (x.length === 0 || (Array.isArray(x[0]) && x[0].length >= 2));
+  function setText(id, txt) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = (txt == null ? "" : String(txt));
   }
 
-  function pairsToLabelsValues(pairs){
-    if (!isPairList(pairs)) return { labels: [], values: [] };
-    return {
-      labels: pairs.map(p => String(p[0])),
-      values: pairs.map(p => Number(p[1]) || 0),
-    };
+  function setHtml(id, html) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = html || "";
   }
 
-  function topPair(pairs){
-    if (!isPairList(pairs) || pairs.length === 0) return null;
-    let best = pairs[0];
-    for (const p of pairs) if ((Number(p[1])||0) > (Number(best[1])||0)) best = p;
-    return { label: String(best[0]), count: Number(best[1])||0 };
+  function enc(x){ return encodeURIComponent(String(x || "")); }
+
+  function tradeReviewUrl(sym, ts_et) {
+    // Safe default: dashboard routes usually ignore unknown params
+    return `/trade_review?symbol=${enc(sym)}&ts=${enc(ts_et)}`;
   }
 
-  function clearTable(tbody){ while(tbody.firstChild) tbody.removeChild(tbody.firstChild); }
+  function fmt(x) {
+    if (x == null) return "";
+    if (typeof x === "number") return Number.isFinite(x) ? x.toFixed(2) : "";
+    const s = String(x);
+    return s;
+  }
 
-  function fillTable(tableId, pairs, limit){
-    const t = el(tableId);
-    if (!t) return;
-    const tb = t.querySelector("tbody");
-    if (!tb) return;
-    clearTable(tb);
-
-    if (!isPairList(pairs) || pairs.length === 0) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td style="opacity:.7;">(none)</td><td>0</td>`;
-      tb.appendChild(tr);
-      return;
+  function makeTable(rows, kind) {
+    if (!rows || !rows.length) {
+      return `<div class="ax-empty">No ${kind.toLowerCase()}s for this day.</div>`;
     }
 
-    const rows = pairs.slice(0, limit || 12);
-    for (const [k,v] of rows) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${String(k)}</td><td>${Number(v)||0}</td>`;
-      tb.appendChild(tr);
-    }
-  }
-
-  // Track chart instances so reload doesnâ€™t stack charts
-  const _charts = {};
-  function destroyChart(id){
-    try{ if (_charts[id]) { _charts[id].destroy(); _charts[id] = null; } }catch(_){}
-  }
-
-  function mkBar(chartId, chartCtx, labels, values){
-    if (!chartCtx) return null;
-    destroyChart(chartId);
-    _charts[chartId] = new Chart(chartCtx, {
-      type: "bar",
-      data: { labels, datasets: [{ data: values, borderWidth: 1 }] },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { ticks: { color: "#d7d7d7" }, grid: { color: "rgba(255,255,255,0.06)" } },
-          y: { beginAtZero: true, ticks: { color: "#d7d7d7", precision: 0 }, grid: { color: "rgba(255,255,255,0.06)" } }
-        }
+    // BUY rows: symbol | time ET | reason
+    if (kind === "BUY") {
+      let out = `<table class="ax-table"><thead><tr>
+        <th>Time (ET)</th><th>Symbol</th><th>Reason</th>
+      </tr></thead><tbody>`;
+      for (const r of rows) {
+        const sym = r.symbol || "";
+        const ts  = r.ts_et || "";
+        const why = r.reason || "";
+        const url = tradeReviewUrl(sym, ts);
+        out += `<tr>
+          <td class="ax-time"><a href="${url}">${ts}</a></td>
+          <td class="ax-sym"><a href="${url}">${sym}</a></td>
+          <td class="ax-reason">${why}</td>
+        </tr>`;
       }
-    });
-    return _charts[chartId];
-  }
-
-  function mkDoughnut(chartId, chartCtx, labels, values){
-    if (!chartCtx) return null;
-    destroyChart(chartId);
-    _charts[chartId] = new Chart(chartCtx, {
-      type: "doughnut",
-      data: { labels, datasets: [{ data: values, borderWidth: 1 }] },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: true, position: "bottom", labels: { color: "#d7d7d7", boxWidth: 10 } } }
-      }
-    });
-    return _charts[chartId];
-  }
-
-  async function fetchJSON(url){
-    const r = await fetch(url, { cache: "no-store" });
-    if (!r.ok) throw new Error(url + " -> HTTP " + r.status);
-    const j = await r.json();
-    return j;
-  }
-
-  // -------------------------------
-  // Analytics load/render
-  // -------------------------------
-  async function loadAnalytics(){
-    return await fetchJSON("/api/analytics/today");
-  }
-
-  function renderAnalytics(data){
-    window.__AX_DATA = data;
-window.__AX_BUY  = (data && data.buy)  ? data.buy  : null;
-window.__AX_SELL = (data && data.sell) ? data.sell : null;
-window.__AX_DATE_ET = (data && data.date_et) ? data.date_et : "";
-if (!data || data.ok !== true) return;
-
-    const buy = data.buy || {};
-    const sell = data.sell || {};
-    window.__AX_DATE_ET = data.date_et || ""; // used by Todayâ€™s Trades filter
-
-    // Title/date + file paths
-    setText("ax-date", data.date_et || "?");
-
-    const files = [];
-    files.push(`BUY log: ${data.buy_file || "(missing)"}`);
-    files.push(`SELL log: ${data.sell_file || "(missing)"}`);
-    setText("ax-files", files.join("\n"));
-
-    // Errors
-    const errs = Array.isArray(data.errors) ? data.errors : [];
-    const errBox = el("ax-errors");
-    if (errBox) {
-      if (errs.length) {
-        errBox.style.display = "block";
-        errBox.innerHTML =
-          "<div style='color:#ffe900;font-weight:800;margin-bottom:6px;'>Errors</div>" +
-          errs.map(e => `<div style="opacity:.85;">${String(e)}</div>`).join("");
-      } else {
-        errBox.style.display = "none";
-      }
+      out += `</tbody></table>`;
+      return out;
     }
 
-    // KPIs
-    setText("kpi-buy-rows", String(buy.rows ?? 0));
-    setText("kpi-sell-rows", String(sell.rows ?? 0));
-
-    // Top action / reason
-    const aTop = topPair(sell.actions);
-    setText("kpi-top-sell-action", aTop ? `${aTop.label} (${aTop.count})` : "?");
-
-    const rTop = topPair(sell.exit_reasons);
-    setText("kpi-top-sell-reason", rTop ? `${rTop.label}` : "?");
-
-    // Tables
-    fillTable("tbl-buy-triggers", buy.top_triggers, 10);
-    fillTable("tbl-buy-combos", buy.top_combos, 10);
-
-    // Charts
-    const buyMix = pairsToLabelsValues(buy.top_triggers);
-    mkDoughnut("chart-buy-mix", ctx("chart-buy-mix"), buyMix.labels, buyMix.values);
-
-    const hold = pairsToLabelsValues(sell.hold_buckets);
-    mkBar("chart-sell-hold", ctx("chart-sell-hold"), hold.labels, hold.values);
-
-    const pl = pairsToLabelsValues(sell.pl_buckets);
-    mkBar("chart-sell-pl", ctx("chart-sell-pl"), pl.labels, pl.values);
-
-    const reasons = pairsToLabelsValues(sell.exit_reasons);
-    mkDoughnut("chart-sell-reasons", ctx("chart-sell-reasons"), reasons.labels.slice(0,10), reasons.values.slice(0,10));
-
-    const exits = pairsToLabelsValues(sell.exits_5m);
-    mkBar("chart-sell-exits", ctx("chart-sell-exits"), exits.labels, exits.values);
-  }
-
-  // -------------------------------
-  // Todayâ€™s Trades (hyperlinks)
-  // -------------------------------
-  async function loadTodayTrades(){
-    const box = el("ax-today-trades");
-    if(!box) return;
-
-    box.innerHTML = `<div class="muted">Loading...</div>`;
-    // --- Trade Review hyperlink helper (symbol + ts_et) ---
-    function tradeLink(sym, tsEt){
-      const s = String(sym || "").trim();
-      const t = String(tsEt || "").trim();
-      if(!s) return "";
-      // trade_review currently requires trade_id, but we pass symbol+ts_et so backend can resolve it.
-      const qs = "symbol=" + encodeURIComponent(s) + (t ? ("&ts_et=" + encodeURIComponent(t)) : "");
-      return `<a class="trade-link" href="/trade_review?${qs}">${s}</a>`;
+    // SELL rows: symbol | time ET | price | gain
+    let out = `<table class="ax-table"><thead><tr>
+      <th>Time (ET)</th><th>Symbol</th><th>Price</th><th>Gain</th>
+    </tr></thead><tbody>`;
+    for (const r of rows) {
+      const sym = r.symbol || "";
+      const ts  = r.ts_et || "";
+      const url = tradeReviewUrl(sym, ts);
+      const price = (r.price == null) ? "" : fmt(r.price);
+      const gain  = (r.gain  == null) ? "" : fmt(r.gain);
+      const gainCls = (typeof r.gain === "number")
+        ? (r.gain >= 0 ? "ax-pos" : "ax-neg")
+        : "";
+      out += `<tr>
+        <td class="ax-time"><a href="${url}">${ts}</a></td>
+        <td class="ax-sym"><a href="${url}">${sym}</a></td>
+        <td class="ax-num">${price}</td>
+        <td class="ax-num ${gainCls}">${gain}</td>
+      </tr>`;
     }
-
-
-
-    try{
-      const url = "/api/trade_review?limit=50&interval=5m";
-      const r = await fetch(url, { cache: "no-store" });
-
-      const ct = (r.headers.get("content-type") || "").toLowerCase();
-      const txt = await r.text();
-
-      if(!r.ok || !ct.includes("application/json")){
-        box.innerHTML = `
-          <div style="color:#ff7b7b;font-weight:900;">Trade Review API error</div>
-          <div class="muted" style="margin-top:6px;">GET ${url}</div>
-          <div class="muted">HTTP ${r.status} ${r.statusText}</div>
-          <div class="muted">content-type: ${ct || "(none)"}</div>
-          <pre style="margin-top:8px;white-space:pre-wrap;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.08);padding:10px;border-radius:10px;max-height:260px;overflow:auto;">${txt.slice(0,2000)}</pre>
-        `;
-        return;
-      }
-
-      const j = JSON.parse(txt);
-      if(!j || !j.ok){
-        box.innerHTML = `<div style="color:#ff7b7b;white-space:pre-wrap;">${JSON.stringify(j,null,2)}</div>`;
-        return;
-      }
-
-      // Filter to TODAY only (uses analytics date if available)
-      const today = (window.__AX_DATE_ET || "").trim(); // "YYYY-MM-DD"
-      function isTodayRow(x){
-        if(!today) return true;
-        const t = String(x.ts_et || x.time_et || "");
-        return t.startsWith(today);
-      }
-  const buysArr  = (j.buys || j.buy || j.today_buys || j.todayBuys || []).filter(isTodayRow);
-  const sellsArr = (j.sells || j.sell || j.today_sells || j.todaySells || []).filter(isTodayRow);
-      function linkRow(x){
-  const sym = (x.symbol || x.sym || "").toString();
-  const t   = (x.ts_et || x.ts || x.time_et || x.time || "").toString();
-  const id  = (x.trade_id || x.id || x.tradeId || "").toString();
-
-  // Prefer trade_id when present; otherwise fall back to symbol+timestamp so it's always clickable.
-  let href = "";
-  if (id){
-    href = `/trade_review?trade_id=${encodeURIComponent(id)}`;
-  } else if (sym){
-    href = `/trade_review?symbol=${encodeURIComponent(sym)}${t ? `&ts=${encodeURIComponent(t)}` : ""}`;
+    out += `</tbody></table>`;
+    return out;
   }
 
-  const label = `${sym}${t ? "  " + t : ""}`.trim();
-  if (!href) return `<div class="muted">${label || "(unknown)"}</div>`;
-
-  return `<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
-    <a href="${href}" style="color:#ffe900;text-decoration:none;font-weight:800;">${sym || "(unknown)"}</a>
-    ${t ? `<span style="color:#bdbdbd;margin-left:10px;font-size:12px;">${t}</span>` : ``}
-  </div>`;
-}      const buys  = buysArr.map(linkRow).join("")  || `<div class="muted">No buy signals today.</div>`;
-      const sells = sellsArr.map(linkRow).join("") || `<div class="muted">No sells today.</div>`;
-
-      box.innerHTML = `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-          <div><div style="color:#21d07a;font-weight:900;margin-bottom:6px;">BUYS</div>${buys}</div>
-          <div><div style="color:#ff5c5c;font-weight:900;margin-bottom:6px;">SELLS</div>${sells}</div>
-        </div>
-      `;
-    }catch(e){
-      box.innerHTML = `<div style="color:#ff7b7b;white-space:pre-wrap;">${String(e && e.stack ? e.stack : e)}</div>`;
+  function etTodayISO() {
+    // Use Intl TZ conversion if supported
+    try {
+      const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year:"numeric", month:"2-digit", day:"2-digit" });
+      return fmt.format(new Date()); // YYYY-MM-DD
+    } catch {
+      // fallback: local date
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth()+1).padStart(2,"0");
+      const da = String(d.getDate()).padStart(2,"0");
+      return `${y}-${m}-${da}`;
     }
   }
 
-  // -------------------------------
-  // Boot
-  // -------------------------------
-  document.addEventListener("DOMContentLoaded", async () => {
-    try{
-      const data = await loadAnalytics();
-      renderAnalytics(data);
-    }catch(e){
-      console.error("[Daily Analytics] analytics load failed:", e);
-      setText("ax-date", "error");
-      setText("ax-files", String(e && e.stack ? e.stack : e));
+  function isoMinusDays(iso, days) {
+    try {
+      const [y,m,d] = iso.split("-").map(Number);
+      const dt = new Date(Date.UTC(y, m-1, d, 12, 0, 0));
+      dt.setUTCDate(dt.getUTCDate() - days);
+      const yy = dt.getUTCFullYear();
+      const mm = String(dt.getUTCMonth()+1).padStart(2,"0");
+      const dd = String(dt.getUTCDate()).padStart(2,"0");
+      return `${yy}-${mm}-${dd}`;
+    } catch {
+      return iso;
+    }
+  }
+
+  async function loadDay(dateISO) {
+    const url = `/api/analytics/day?date=${enc(dateISO)}&cb=${Date.now()}`;
+    const res = await fetch(url, { cache: "no-store" });
+    const d = await res.json();
+
+    // banner/errors
+    const errs = (d.errors || []).filter(Boolean);
+    if (errs.length) {
+      setHtml("ax-errors", errs.map(e => `<div>${e}</div>`).join(""));
+      const box = document.getElementById("ax-errors-box");
+      if (box) box.style.display = "block";
+    } else {
+      setHtml("ax-errors", "");
+      const box = document.getElementById("ax-errors-box");
+      if (box) box.style.display = "none";
     }
 
-    // ALWAYS run this so it doesnâ€™t sit on â€œloadingâ€¦â€
-    try{
-      await loadTodayTrades();
-    }catch(e){
-      console.error("[Daily Analytics] today trades load failed:", e);
-      const box = el("ax-today-trades");
-      if (box) box.innerHTML = `<div style="color:#ff7b7b;white-space:pre-wrap;">${String(e && e.stack ? e.stack : e)}</div>`;
+    setText("ax-date", d.date_et || dateISO);
+
+    const buys = d.buys || [];
+    const sells = d.sells || [];
+
+    setText("ax-buy-count", buys.length);
+    setText("ax-sell-count", sells.length);
+
+    // render into columns if present, else fallback IDs
+    const buyCol = document.getElementById("ax-buy-col") || document.getElementById("buy-col");
+    const sellCol = document.getElementById("ax-sell-col") || document.getElementById("sell-col");
+
+    if (buyCol) buyCol.innerHTML = makeTable(buys, "BUY");
+    if (sellCol) sellCol.innerHTML = makeTable(sells, "SELL");
+
+    // source footer if present
+    setText("ax-source", d.source || "");
+  }
+
+  function hookButtons() {
+    const ybtn = document.getElementById("ax-yesterday");
+    if (ybtn) {
+      ybtn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        const today = etTodayISO();
+        const yday = isoMinusDays(today, 1);
+        const u = new URL(window.location.href);
+        u.searchParams.set("date", yday);
+        u.searchParams.set("cb", String(Date.now()));
+        window.location.href = u.toString();
+      });
     }
-  });
+  }
+
+  async function boot() {
+    hookButtons();
+    const dateISO = (qs("date") || "").trim() || etTodayISO();
+    try {
+      await loadDay(dateISO);
+    } catch (e) {
+      console.error("[AX] load failed:", e);
+      setHtml("ax-errors", `<div>Analytics load failed: ${String(e)}</div>`);
+      const box = document.getElementById("ax-errors-box");
+      if (box) box.style.display = "block";
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", boot, { once: true });
 })();
-

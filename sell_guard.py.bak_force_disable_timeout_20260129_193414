@@ -442,8 +442,7 @@ class SellGuardConfig:
     target_gain_pct: float
     trail_arm_gain_pct: float
     trail_backoff_pct: float
-    intraday_stoploss_pct: float
-    intraday_stoploss_pct: float
+    timeout_exit_pct: float
     avoid_daytrades: bool
     max_place_attempts: int
     normalize_tick: float
@@ -467,10 +466,6 @@ class SellGuardConfig:
             trail_arm_gain_pct=float(d.get("trail_arm_gain_pct", 1.5)),
             trail_backoff_pct=float(d.get("trail_backoff_pct", 1.0)),
             timeout_exit_pct=float(d.get("timeout_exit_pct", -1.0)),
-intraday_stoploss_pct=float(
-    d.get("intraday_stoploss_pct",
-          (-abs(float(d.get("stop_bps") or 100)) / 100.0) if d.get("stop_bps") is not None else float(d.get("timeout_exit_pct", -1.0)))
-),
             avoid_daytrades=bool(d.get("avoid_daytrades", False)),
             max_place_attempts=int(d.get("max_place_attempts", 4)),
             normalize_tick=float(d.get("normalize_tick", 0.01)),
@@ -531,37 +526,19 @@ def merge_dict(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]
 
 def load_settings() -> Dict[str, Any]:
     """
-    Load settings from SELL_GUARD_SETTINGS (resolved SETTINGS_FILE), merged over DEFAULTS.
-    Merge rule: DEFAULTS first, then user overrides (user wins).
-    Supports either:
-      - root object containing {'sell_guard': {...}}
-      - flat root object that is itself the sell_guard dict
+    Load settings from SELL_GUARD_SETTINGS, merged over DEFAULTS.
     """
     user = _load_user_settings(SETTINGS_FILE)
     if not isinstance(user, dict):
         raise SystemExit(f"Settings root must be an object, got {type(user)!r}")
 
-    base = dict(DEFAULT_SETTINGS) if 'DEFAULT_SETTINGS' in globals() and isinstance(DEFAULT_SETTINGS, dict) else {}
+    merged = dict(DEFAULTS)
+    merged.update(user)
 
-    # Normalize user: if it doesn't contain 'sell_guard', treat the whole dict as sell_guard.
-    if 'sell_guard' not in user and isinstance(user, dict):
-        user = {'sell_guard': user}
-
-    # Ensure sell_guard dict exists in base
-    if 'sell_guard' not in base or not isinstance(base.get('sell_guard'), dict):
-        base['sell_guard'] = {}
-
-    # Merge sell_guard specifically (deep-ish)
-    if isinstance(user.get('sell_guard'), dict):
-        sg = dict(base.get('sell_guard') or {})
-        sg.update(user.get('sell_guard') or {})
-        base.update(user)
-        base['sell_guard'] = sg
-        return base
-
-    # Fallback: shallow merge
-    base.update(user)
-    return base
+    # Fill defaults for nested sell_guard block
+    merged.setdefault("sell_guard", {})
+    merged["sell_guard"] = merge_dict(DEFAULTS["sell_guard"], merged["sell_guard"])
+    return merged
 
 
 def get_ai_flags(settings: Dict[str, Any]) -> tuple[bool, bool]:
@@ -878,54 +855,6 @@ def place_with_adaptive_variants(
 
     et = import_module("services.etrade_service")
 
-    # --- SELL_INFLIGHT latch + cooldown (prevents repeat SELL spam) ---
-    import os, time, sqlite3
-    _SELL_INFLIGHT_COOLDOWN_SEC = int(os.environ.get("SELL_INFLIGHT_COOLDOWN_SEC", "120") or "120")
-    _db_path = os.path.join(os.path.dirname(__file__), "live.db")
-
-    def _inflight_get_ts(sym: str) -> int | None:
-        try:
-            con = sqlite3.connect(_db_path)
-            cur = con.cursor()
-            cur.execute("SELECT ts_utc FROM sell_inflight WHERE symbol=?", (sym,))
-            row = cur.fetchone()
-            con.close()
-            return int(row[0]) if row and row[0] is not None else None
-        except Exception:
-            return None
-
-    def _inflight_set(sym: str, ts_utc: int, why: str) -> None:
-        try:
-            con = sqlite3.connect(_db_path)
-            cur = con.cursor()
-            cur.execute(
-                "INSERT INTO sell_inflight(symbol, ts_utc, reason) VALUES(?,?,?) "
-                "ON CONFLICT(symbol) DO UPDATE SET ts_utc=excluded.ts_utc, reason=excluded.reason",
-                (sym, int(ts_utc), str(why)[:200])
-            )
-            con.commit()
-            con.close()
-        except Exception:
-            pass
-
-    def _inflight_clear(sym: str) -> None:
-        try:
-            con = sqlite3.connect(_db_path)
-            cur = con.cursor()
-            cur.execute("DELETE FROM sell_inflight WHERE symbol=?", (sym,))
-            con.commit()
-            con.close()
-        except Exception:
-            pass
-
-    _now = int(time.time())
-    _ts = _inflight_get_ts(symbol)
-    if _ts is not None and (_now - _ts) < _SELL_INFLIGHT_COOLDOWN_SEC:
-        LOG.info("[SELL_INFLIGHT] SKIP %s: cooldown %ss (elapsed %ss)", symbol, _SELL_INFLIGHT_COOLDOWN_SEC, (_now - _ts))
-        _inflight_clear(symbol)
-        return
-    _inflight_set(symbol, _now, f"start:{order_type}")
-
     attempts = 0
     last_err: Exception | None = None
 
@@ -981,7 +910,6 @@ def place_with_adaptive_variants(
             # ---------------------------------------------------------
 
             LOG.info("place_with_adaptive_variants success for %s", symbol)
-            _inflight_clear(symbol)
             return
         except Exception as exc:  # noqa: BLE001
             last_err = exc
@@ -996,8 +924,8 @@ def place_with_adaptive_variants(
                     symbol,
                     msg,
                 )
-                _inflight_clear(symbol)
                 return
+
             # Special-case E*TRADE code 1514 (symbol not found for closing order)
             # so we don't crash the loop.
             if ("code': 1514" in msg) or ('code": 1514' in msg):
@@ -1006,8 +934,8 @@ def place_with_adaptive_variants(
                     symbol,
                     msg,
                 )
-                _inflight_clear(symbol)
                 return
+
             LOG.warning(
                 "place_with_adaptive_variants attempt %s failed for %s: %s",
                 attempts,
@@ -1420,10 +1348,10 @@ def main() -> None:
                 #   - position is older than max_hold_minutes
                 #   - AND P/L is worse than timeout_exit_pct (e.g. <= -1.0%)
                 if (
-                    False  # TIMEOUT disabled until opened_epoch-based hold_min is reliable
+                    cfg.max_hold_minutes > 0
                     and is_prior_day
                     and hold_min > cfg.max_hold_minutes
-                    and pl_pct <= cfg.intraday_stoploss_pct
+                    and pl_pct <= cfg.timeout_exit_pct
                 ):
                     if ai_enabled and ai_use_exits and ai_action == "HOLD":
                         LOG.info(

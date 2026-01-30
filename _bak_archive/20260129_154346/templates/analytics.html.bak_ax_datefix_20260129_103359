@@ -1,0 +1,111 @@
+{% extends "layout.html" %}
+{% block content %}
+<script>window.__AX_DATE = "{{ date_et }}";</script>
+
+<style>
+  .ax-wrap{max-width:1400px;margin:0 auto;padding:18px 0;}
+  .ax-title{font-size:24px;font-weight:800;margin:8px 0 18px 0;}
+  .ax-grid{display:grid;grid-template-columns:1.35fr 0.65fr 1fr;gap:14px;align-items:start;}
+  .ax-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:12px 12px 10px;}
+  .ax-card h3{margin:0 0 8px 0;font-size:13px;letter-spacing:.3px;color:#ffe900;font-weight:800;}
+  .ax-metric{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:12px;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.08);}
+  .ax-metric .k{color:#ffe900;font-weight:800;font-size:12px;}
+  .ax-metric .v{font-size:22px;font-weight:900;}
+  .ax-side{display:grid;grid-template-columns:1fr;gap:14px;}
+  .ax-subgrid{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .ax-chart{height:260px;}
+  .ax-mini{height:210px;}
+  .ax-chart canvas,.ax-mini canvas{width:100% !important;height:100% !important;display:block;}
+  .ax-table{width:100%;border-collapse:collapse;font-size:12px;}
+  .ax-table td{padding:6px 4px;border-bottom:1px solid rgba(255,255,255,0.06);}
+  .ax-table td:last-child{text-align:right;color:#d7d7d7;}
+  .ax-table tr:last-child td{border-bottom:none;}
+  .ax-note{opacity:.75;font-size:12px;margin-top:10px;line-height:1.35;}
+  .ax-pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid rgba(255,255,255,0.10);background:rgba(0,0,0,0.25);font-size:12px;margin-left:8px;opacity:.9;}
+</style>
+
+<div class="ax-wrap">
+  <div class="ax-title">Daily Analytics <a class="btn btn-sm btn-outline-warning" style="margin-left:10px; vertical-align:middle;" href="/analytics?date={{ yesterday_et }}">Yesterday</a> <span class="ax-pill" id="ax-date">loading?</span></div>
+
+  <div class="ax-grid">
+
+    <!-- LEFT -->
+    <div class="ax-card">
+      <h3>SELL Guard Evaluations (per 5-min bucket)</h3>
+      <div class="ax-chart"><canvas id="chart-sell-exits"></canvas></div>
+
+      <div class="ax-subgrid">
+        <div class="ax-card">
+          <h3>SELL Hold Time Buckets</h3>
+          <div class="ax-mini"><canvas id="chart-sell-hold"></canvas></div>
+        </div>
+        <div class="ax-card">
+          <h3>SELL P/L Buckets</h3>
+          <div class="ax-mini"><canvas id="chart-sell-pl"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MIDDLE -->
+    <div class="ax-side">
+      <div class="ax-metric">
+        <div class="k">BUY Rows</div>
+        <div class="v" id="kpi-buy-rows">?</div>
+      </div>
+      <div class="ax-metric">
+        <div class="k">SELL Rows</div>
+        <div class="v" id="kpi-sell-rows">?</div>
+      </div>
+	<div class="ax-card">
+	  <h3>Today’s Trades</h3>
+	  <div id="ax-today-trades" class="muted">loading…</div>
+	</div>
+
+      <div class="ax-card">
+        <h3>SELL Reasons (all decisions)</h3>
+        <div class="ax-mini"><canvas id="chart-sell-reasons"></canvas></div>
+      </div>
+
+      <div class="ax-card">
+        <h3>Top SELL Action</h3>
+        <div style="font-size:22px;font-weight:900;margin-top:6px;" id="kpi-top-sell-action">?</div>
+      </div>
+
+      <div class="ax-card">
+        <h3>Top SELL Reason</h3>
+        <div style="font-size:18px;font-weight:900;margin-top:6px;" id="kpi-top-sell-reason">?</div>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div class="ax-side">
+      <div class="ax-card">
+        <h3>BUY Trigger Mix</h3>
+        <div class="ax-mini"><canvas id="chart-buy-mix"></canvas></div>
+      </div>
+
+      <div class="ax-card">
+        <h3>BUY Trigger Families</h3>
+        <table class="ax-table" id="tbl-buy-triggers"><tbody></tbody></table>
+      </div>
+
+      <div class="ax-card">
+        <h3>BUY Trigger Combos</h3>
+        <table class="ax-table" id="tbl-buy-combos"><tbody></tbody></table>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="ax-note" id="ax-files">
+    loading?
+  </div>
+
+  <div class="ax-note" id="ax-errors" style="display:none;">
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/analytics.js') }}?v={{ a.date_et }}"></script>
+
+{% endblock %}

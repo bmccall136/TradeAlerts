@@ -12,7 +12,6 @@
     "blocklist": [],
     "circuit_fail_threshold": 2,
     "circuit_open_seconds": 480,
-    "enable_timeout_exits": false,
     "force_symbols": [],
     "force_without_entry": false,
     "limit_from": "bid",
@@ -22,7 +21,6 @@
       "TIMEOUT"
     ],
     "max_hold_mins": 390,
-    "max_hold_minutes": 9999999,
     "max_place_attempts": 4,
     "min_hold_days": 0,
     "min_hold_minutes": 0,
@@ -38,7 +36,6 @@
     "stop_bps": 60,
     "target_bps": 80,
     "throttle_ms": 30000,
-    "timeout_exit_pct": -999.0,
     "use_extended_hours": true
   },
   "timeout_exit_pct": -999.0

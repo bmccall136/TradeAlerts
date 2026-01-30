@@ -1,0 +1,368 @@
+﻿;(() => {
+  // DA_UI_DIAG (Daily Analytics UI Diagnostics)
+  // Captures real runtime exceptions and DOM inventory after fetch.
+  window.addEventListener('error', (ev) => {
+    try {
+      console.error('[Daily Analytics] window.onerror:', ev.message, ev.filename + ':' + ev.lineno + ':' + ev.colno);
+      if (ev.error && ev.error.stack) console.error(ev.error.stack);
+    } catch (e) {}
+  });
+
+  window.addEventListener('unhandledrejection', (ev) => {
+    try {
+      console.error('[Daily Analytics] unhandledrejection:', ev.reason);
+      if (ev.reason && ev.reason.stack) console.error(ev.reason.stack);
+    } catch (e) {}
+  });
+
+  window.__axDumpIdsOnce = function __axDumpIdsOnce(tag) {
+    try {
+      if (window.__axDumped) return;
+      window.__axDumped = true;
+      const ids = Array.from(document.querySelectorAll('[id]')).map(e => e.id).filter(Boolean);
+      console.log('[Daily Analytics] DOM ids (' + (tag||'') + '):', ids.sort());
+    } catch (e) {}
+  };
+})();
+(function () {
+  // $$Machine Daily Analytics (robust date wiring + Yesterday button)
+
+  function el(id){ return document.getElementById(id); }
+  function ctx(id){ const c = el(id); return c ? c.getContext("2d") : null; }
+  function setText(id, txt){ const e = el(id); if (e) e.textContent = (txt == null ? "" : String(txt)); }
+
+  function parseYMD(s){
+    if (!s) return null;
+    const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    const y = Number(m[1]), mo = Number(m[2]) - 1, d = Number(m[3]);
+    const dt = new Date(Date.UTC(y, mo, d));
+    if (isNaN(dt.getTime())) return null;
+    return dt;
+  }
+
+  function fmtYMD(dt){
+    const y = dt.getUTCFullYear();
+    const m = String(dt.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(dt.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  function ymdMinusDays(ymd, days){
+    const dt = parseYMD(ymd);
+    if (!dt) return null;
+    dt.setUTCDate(dt.getUTCDate() - (days || 0));
+    return fmtYMD(dt);
+  }
+
+  function isPairList(x){
+    return Array.isArray(x) && (x.length === 0 || (Array.isArray(x[0]) && x[0].length >= 2));
+  }
+
+  function pairsToLabelsValues(pairs){
+    if (!isPairList(pairs)) return { labels: [], values: [] };
+    return {
+      labels: pairs.map(p => String(p[0])),
+      values: pairs.map(p => Number(p[1]) || 0),
+    };
+  }
+
+  function topPair(pairs){
+    if (!isPairList(pairs) || pairs.length === 0) return null;
+    let best = pairs[0];
+    for (const p of pairs) if ((Number(p[1])||0) > (Number(best[1])||0)) best = p;
+    return { label: String(best[0]), count: Number(best[1])||0 };
+  }
+
+  function clearTable(tbody){ while(tbody && tbody.firstChild) tbody.removeChild(tbody.firstChild); }
+
+  function fillTable(tableId, pairs, limit){
+    const t = el(tableId);
+    if (!t) return;
+    const tb = t.querySelector("tbody");
+    if (!tb) return;
+    clearTable(tb);
+
+    if (!isPairList(pairs) || pairs.length === 0) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td style="opacity:.7;">(none)</td><td>0</td>`;
+      tb.appendChild(tr);
+      return;
+    }
+
+    const rows = pairs.slice(0, limit || 12);
+    for (const [k,v] of rows) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${String(k)}</td><td>${Number(v)||0}</td>`;
+      tb.appendChild(tr);
+    }
+  }
+
+  // Track chart instances so reload doesn't stack charts
+  const _charts = {};
+  function destroyChart(id){
+    try { if (_charts[id]) { _charts[id].destroy(); _charts[id] = null; } } catch(_){}
+  }
+
+  function mkBar(chartId, chartCtx, labels, values){
+    if (!chartCtx || typeof Chart === "undefined") return null;
+    destroyChart(chartId);
+    _charts[chartId] = new Chart(chartCtx, {
+      type: "bar",
+      data: { labels, datasets: [{ data: values, borderWidth: 1 }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: "#d7d7d7" }, grid: { color: "rgba(255,255,255,0.06)" } },
+          y: { beginAtZero: true, ticks: { color: "#d7d7d7", precision: 0 }, grid: { color: "rgba(255,255,255,0.06)" } }
+        }
+      }
+    });
+    return _charts[chartId];
+  }
+
+  function mkDoughnut(chartId, chartCtx, labels, values){
+    if (!chartCtx || typeof Chart === "undefined") return null;
+    destroyChart(chartId);
+    _charts[chartId] = new Chart(chartCtx, {
+      type: "doughnut",
+      data: { labels, datasets: [{ data: values, borderWidth: 1 }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: true, position: "bottom", labels: { color: "#d7d7d7", boxWidth: 10 } } }
+      }
+    });
+    return _charts[chartId];
+  }
+
+  async function fetchJSON(url){
+    const r = await fetch(url, { cache: "no-store" });
+    if (!r.ok) throw new Error(url + " -> HTTP " + r.status);
+    return await r.json();
+  }
+
+  function getSelectedDateFromURL(){
+    try {
+      const q = new URLSearchParams(window.location.search);
+      const d = q.get("date") || "";
+      return d;
+    } catch(_) {
+      return "";
+    }
+  }
+
+  async function loadAnalytics(dateStr){
+    const d = (dateStr != null ? String(dateStr) : "").trim();
+    const qs = [];
+    if (d) qs.push("date=" + encodeURIComponent(d));
+    qs.push("_=" + Date.now());
+    const url = "/api/analytics/today" + (qs.length ? ("?" + qs.join("&")) : "");
+    return await fetchJSON(url);
+  }
+
+  function renderAnalytics(data){
+    console.log("[Daily Analytics] data:", data);
+
+    const buy  = (data && data.buy)  ? data.buy  : {};
+    const sell = (data && data.sell) ? data.sell : {};
+    const date_et = (data && data.date_et) ? String(data.date_et) : "";
+
+    // Date label (top)
+    if (date_et) setText("ax-date", date_et);
+
+    // File paths
+    const files = [];
+    files.push(`BUY log: ${data.buy_file || "(missing)"}`);
+    files.push(`SELL log: ${data.sell_file || "(missing)"}`);
+    setText("ax-files", files.join("\n"));
+
+    // Errors
+    const errs = Array.isArray(data.errors) ? data.errors : [];
+    const errBox = el("ax-errors");
+    if (errBox) {
+      if (errs.length) {
+        errBox.style.display = "block";
+        errBox.innerHTML =
+          "<div style='color:#ffe900;font-weight:800;margin-bottom:6px;'>Errors</div>" +
+          errs.map(e => `<div style="opacity:.85;">${String(e)}</div>`).join("");
+      } else {
+        errBox.style.display = "none";
+      }
+    }
+
+    // KPIs
+    setText("kpi-buy-rows",  String(buy.rows  ?? (Array.isArray(data.buys) ? data.buys.length : 0)));
+    setText("kpi-sell-rows", String(sell.rows ?? (Array.isArray(data.sells) ? data.sells.length : 0)));
+
+    // Top action / reason (SELL side)
+    const topAction = topPair(sell.top_actions);
+    const topReason = topPair(sell.top_reasons);
+    setText("kpi-top-sell-action", topAction ? `${topAction.label} (${topAction.count})` : "?");
+    setText("kpi-top-sell-reason", topReason ? `${topReason.label} (${topReason.count})` : "?");
+
+    // Charts
+    // SELL guard evals (5-min bucket)
+    if (sell.eval_buckets){
+      const p = pairsToLabelsValues(sell.eval_buckets);
+      mkBar("chart-sell-evals", ctx("chart-sell-evals"), p.labels, p.values);
+    }
+
+    // SELL hold time buckets
+    if (sell.hold_buckets){
+      const p = pairsToLabelsValues(sell.hold_buckets);
+      mkBar("chart-sell-hold", ctx("chart-sell-hold"), p.labels, p.values);
+    }
+
+    // SELL P/L buckets
+    if (sell.pl_buckets){
+      const p = pairsToLabelsValues(sell.pl_buckets);
+      mkBar("chart-sell-pl", ctx("chart-sell-pl"), p.labels, p.values);
+    }
+
+    // BUY trigger mix (doughnut)
+    if (buy.trigger_mix){
+      const p = pairsToLabelsValues(buy.trigger_mix);
+      mkDoughnut("chart-buy-mix", ctx("chart-buy-mix"), p.labels, p.values);
+    }
+
+    // Tables (if present in template)
+    fillTable("tbl-sell-reasons", sell.top_reasons, 18);
+    fillTable("tbl-buy-families", buy.trigger_families, 18);
+    fillTable("tbl-buy-combos", buy.trigger_combos, 18);
+
+    // Today's Trades list (if present)
+    const tradesBox = el("ax-todays-trades");
+    if (tradesBox) {
+      const rows = Array.isArray(data.buys) ? data.buys : [];
+      tradesBox.textContent = rows.length ? `${rows.length} buys` : "(none)";
+    }
+
+    // Persist current date for Yesterday button
+    window.__AX_DATE_ET = date_et;
+  }
+  window.renderAnalytics = renderAnalytics;
+
+  function wireYesterday(){
+    const btn = el("ax-yesterday");
+    if (!btn) return;
+
+    btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      const cur = (window.__AX_DATE_ET || getSelectedDateFromURL() || "").trim();
+      const base = cur || "";
+      const y = ymdMinusDays(base, 1);
+
+      if (!y) {
+        console.warn("[Daily Analytics] can't compute yesterday from:", base);
+        return;
+      }
+
+      // Navigate to /analytics?date=YYYY-MM-DD
+      const url = new URL(window.location.href);
+      url.searchParams.set("date", y);
+      window.location.href = url.toString();
+    });
+  }
+
+  async function boot(){
+    try {
+      wireYesterday();
+      const d = getSelectedDateFromURL();
+      const data = await loadAnalytics(d);
+      safeRenderAnalytics(data);
+    } catch (e) {
+      console.error("[Daily Analytics] analytics load failed:", e);
+      setText("ax-date", "load failed");
+      const errBox = el("ax-errors");
+      if (errBox) {
+        errBox.style.display = "block";
+        errBox.innerHTML = `<div style="color:#ffe900;font-weight:800;margin-bottom:6px;">Analytics load failed</div>
+                            <div style="opacity:.85;">${String(e)}</div>`;
+      }
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", boot);
+})();
+/* ===== Daily Analytics: safe DOM helpers ===== */
+function axGet(id) {
+  const el = document.getElementById(id);
+  if (!el) console.warn('[Daily Analytics] missing element #' + id);
+  return el;
+}
+function axSetText(id, text) {
+  const el = axGet(id);
+  if (el) el.textContent = (text ?? '');
+}
+function axSetHtml(id, html) {
+  const el = axGet(id);
+  if (el) el.innerHTML = (html ?? '');
+}
+function axHide(id) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = 'none';
+}
+function axShow(id) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = '';
+}
+function axSafeCanvasCtx(id) {
+  const c = document.getElementById(id);
+  if (!c) { console.warn('[Daily Analytics] missing canvas #' + id); return null; }
+  const ctx = c.getContext ? c.getContext('2d') : null;
+  if (!ctx) console.warn('[Daily Analytics] canvas has no 2d ctx #' + id);
+  return ctx;
+}
+
+/* Render a table into an existing <table> OR an existing <tbody>.
+   If neither exists, logs and returns. */
+function axRenderRows(tableOrTbodyId, columns, rows, maxRows) {
+  const el = document.getElementById(tableOrTbodyId);
+  if (!el) { console.warn('[Daily Analytics] axRenderRows target missing #' + tableOrTbodyId); return; }
+
+  const take = (Array.isArray(rows) ? rows : []).slice(0, maxRows || 200);
+  const isTbody = el.tagName && el.tagName.toLowerCase() === 'tbody';
+  const tbody = isTbody ? el : (el.querySelector('tbody') || null);
+  if (!tbody) { console.warn('[Daily Analytics] No <tbody> in #' + tableOrTbodyId); return; }
+
+  tbody.innerHTML = '';
+  for (const r of take) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = columns.map(col => {
+      const v = (r && (r[col] ?? r[col.toLowerCase()] ?? '')) ?? '';
+      const safe = ('' + v).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return '<td>' + safe + '</td>';
+    }).join('');
+    tbody.appendChild(tr);
+  }
+}
+/* ===== Daily Analytics: crash-proof render wrapper ===== */
+function safeRenderAnalytics(data) {
+  try {
+    if (window.__axDumpIdsOnce) window.__axDumpIdsOnce('after-fetch');
+
+    // Prefer the global export from inside the IIFE:
+    const fn = (typeof window.renderAnalytics === 'function')
+      ? window.renderAnalytics
+      : ((typeof renderAnalytics === 'function') ? renderAnalytics : null);
+
+    if (typeof fn === 'function') {
+      fn(data);
+      return;
+    }
+
+    console.error('[Daily Analytics] renderAnalytics() is not defined/visible (no window.renderAnalytics).');
+  } catch (e) {
+    console.error('[Daily Analytics] renderAnalytics crashed:', e);
+    if (e && e.stack) console.error(e.stack);
+  }
+}console.error('[Daily Analytics] renderAnalytics() is not defined in analytics.js');
+  } catch (e) {
+    console.error('[Daily Analytics] renderAnalytics crashed:', e);
+    if (e && e.stack) console.error(e.stack);
+  }
+}
+

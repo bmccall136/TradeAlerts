@@ -14,6 +14,22 @@ Write-Host "=== TradeAlerts – Start Sell Guard ===" -ForegroundColor Cyan
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+# --- Load env vars from etrade.env if present (guarantees NAV_FLOOR_BUY_BLOCK) ---
+$envFile = Join-Path $root "etrade.env"
+if (Test-Path $envFile) {
+  Get-Content $envFile | ForEach-Object {
+    $line = $_.Trim()
+    if (-not $line -or $line.StartsWith("#") -or ($line -notmatch "=")) { return }
+    $k, $v = $line.Split("=", 2)
+    $k = $k.Trim()
+    $v = $v.Trim().Trim('"').Trim("'")
+    if ($k) { Set-Item -Path ("Env:\" + $k) -Value $v }
+  }
+}
+
+# Hard floor for kids' money — override here if you ever need to
+if (-not $env:NAV_FLOOR_BUY_BLOCK) { $env:NAV_FLOOR_BUY_BLOCK = "4000" }
+
 $py = Join-Path $env:LOCALAPPDATA "Programs\Python\Python311\python.exe"
 if (-not (Test-Path $py)) {
   # fallback: whatever python is in PATH

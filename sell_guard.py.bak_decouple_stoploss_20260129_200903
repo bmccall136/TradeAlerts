@@ -442,8 +442,7 @@ class SellGuardConfig:
     target_gain_pct: float
     trail_arm_gain_pct: float
     trail_backoff_pct: float
-    intraday_stoploss_pct: float
-    intraday_stoploss_pct: float
+    timeout_exit_pct: float
     avoid_daytrades: bool
     max_place_attempts: int
     normalize_tick: float
@@ -467,10 +466,6 @@ class SellGuardConfig:
             trail_arm_gain_pct=float(d.get("trail_arm_gain_pct", 1.5)),
             trail_backoff_pct=float(d.get("trail_backoff_pct", 1.0)),
             timeout_exit_pct=float(d.get("timeout_exit_pct", -1.0)),
-intraday_stoploss_pct=float(
-    d.get("intraday_stoploss_pct",
-          (-abs(float(d.get("stop_bps") or 100)) / 100.0) if d.get("stop_bps") is not None else float(d.get("timeout_exit_pct", -1.0)))
-),
             avoid_daytrades=bool(d.get("avoid_daytrades", False)),
             max_place_attempts=int(d.get("max_place_attempts", 4)),
             normalize_tick=float(d.get("normalize_tick", 0.01)),
@@ -1423,7 +1418,7 @@ def main() -> None:
                     False  # TIMEOUT disabled until opened_epoch-based hold_min is reliable
                     and is_prior_day
                     and hold_min > cfg.max_hold_minutes
-                    and pl_pct <= cfg.intraday_stoploss_pct
+                    and pl_pct <= cfg.timeout_exit_pct
                 ):
                     if ai_enabled and ai_use_exits and ai_action == "HOLD":
                         LOG.info(

@@ -1,0 +1,91 @@
+/* $$Machine Daily Analytics JS (clean) */
+(function () {
+  "use strict";
+
+  function getQueryParam(name) {
+    try {
+      return new URL(window.location.href).searchParams.get(name);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function currentDateYMD() {
+    const urlDate = getQueryParam("date");
+    if (urlDate && /^\d{4}-\d{2}-\d{2}$/.test(urlDate)) return urlDate;
+    if (window.__AX_DATE && /^\d{4}-\d{2}-\d{2}$/.test(window.__AX_DATE)) return window.__AX_DATE;
+
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  function ymdMinusOne(ymd) {
+    try {
+      const [y, m, d] = ymd.split("-").map(Number);
+      const dt = new Date(y, m - 1, d);
+      dt.setDate(dt.getDate() - 1);
+      const yyyy = dt.getFullYear();
+      const mm = String(dt.getMonth() + 1).padStart(2, "0");
+      const dd = String(dt.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    } catch (e) {
+      return ymd;
+    }
+  }
+
+  function setDateChip(ymd) {
+    const chip = document.getElementById("ax-date-chip");
+    if (chip) chip.textContent = ymd;
+  }
+
+  function apiURL(path, ymd) {
+    const u = new URL(path, window.location.origin);
+    if (ymd) u.searchParams.set("date", ymd);
+    u.searchParams.set("_", String(Date.now())); // cache-bust per request
+    return u.toString();
+  }
+
+  async function fetchJSON(url) {
+    const r = await fetch(url, { cache: "no-store" });
+    if (!r.ok) throw new Error(`${url} -> HTTP ${r.status}`);
+    return await r.json();
+  }
+
+  function wireYesterday(ymd) {
+    const a = document.getElementById("ax-yesterday-btn");
+    if (!a) return;
+    a.addEventListener("click", function (e) {
+      e.preventDefault();
+      const y = ymdMinusOne(ymd);
+      const u = new URL(window.location.href);
+      u.searchParams.set("date", y);
+      window.location.href = u.toString();
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", async function () {
+    const ymd = currentDateYMD();
+    setDateChip(ymd);
+    wireYesterday(ymd);
+
+    try {
+      const data = await fetchJSON(apiURL("/api/analytics/today", ymd));
+
+      // If your old page defines a renderer, call it. Otherwise just log.
+      if (typeof window.renderDailyAnalytics === "function") {
+        window.renderDailyAnalytics(data);
+      } else if (typeof window.renderAnalytics === "function") {
+        window.renderAnalytics(data);
+      } else {
+        console.log("[Daily Analytics] data:", data);
+      }
+    } catch (err) {
+      console.error("[Daily Analytics] analytics load failed:", err);
+      const el = document.getElementById("ax-error");
+      if (el) el.textContent = String(err);
+    }
+  });
+})();

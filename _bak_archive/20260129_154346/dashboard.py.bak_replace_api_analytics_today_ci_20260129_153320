@@ -3221,202 +3221,39 @@ def _today_log_paths():
     sell = log_dir / f"sell_triggers_{ymd}.csv"
     return ymd, str(buy), str(sell)
 
-@app.route("/api/analytics/day")
-def api_analytics_day():
-    """
-    Daily Analytics (DB-backed)
 
-      BUYS  = buy_cooldowns.last_buy_utc (ET day bucket)
-      SELLS = realized_trades.close_date (ET day bucket)
-
-    Notes:
-      - buy_cooldowns schema (confirmed): symbol, last_buy_utc, reason
-      - realized_trades schema (confirmed): symbol, qty, open_date, close_date, gain, gain_pct, price_bought, price_sold
-    """
-    from flask import request, jsonify
-    import sqlite3
-    from datetime import datetime, timezone, timedelta
-
-    # --- pick DB path safely (your project usually defines LIVE_DB or DB_PATH) ---
-    db_path = None
-    for name in ("LIVE_DB", "DB_PATH"):
-        try:
-            v = globals().get(name)
-            if v:
-                db_path = str(v)
-                break
-        except Exception:
-            pass
-    if not db_path:
-        db_path = r"C:\TradeAlerts\live.db"
-
-    # --- helpers ---
-    def _parse_dt(s):
-        if not s:
-            return None
-        s = str(s).strip()
-        if not s:
-            return None
-        if s.endswith("Z"):
-            s = s[:-1] + "+00:00"
-        try:
-            dt = datetime.fromisoformat(s)
-        except Exception:
-            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f"):
-                try:
-                    dt = datetime.strptime(s, fmt)
-                    break
-                except Exception:
-                    dt = None
-            if dt is None:
-                return None
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc)
-
-    def _utc_to_et(dt_utc):
-        try:
-            from zoneinfo import ZoneInfo
-            et = ZoneInfo("America/New_York")
-            return dt_utc.astimezone(et)
-        except Exception:
-            # fallback: UTC-5 (DST edge cases near midnight only)
-            return dt_utc + timedelta(hours=-5)
-
-    def _utc_to_et_date(dt_utc):
-        return _utc_to_et(dt_utc).date().isoformat()
-
-    def _utc_to_et_ts(dt_utc):
-        return _utc_to_et(dt_utc).strftime("%Y-%m-%d %H:%M:%S")
-
-    # date=YYYY-MM-DD in ET
-    date_et = (request.args.get("date") or "").strip()
-    if not date_et:
-        try:
-            from zoneinfo import ZoneInfo
-            et = ZoneInfo("America/New_York")
-            date_et = datetime.now(et).date().isoformat()
-        except Exception:
-            date_et = datetime.utcnow().date().isoformat()
-
-    buys = []
-    sells = []
-    errors = []
-
-    con = sqlite3.connect(db_path)
-    con.row_factory = sqlite3.Row
-    cur = con.cursor()
-
-    # helper to get column list
-    def _cols(table):
-        try:
-            rows = cur.execute(f"PRAGMA table_info({table})").fetchall()
-            return [r[1] for r in rows]
-        except Exception:
-            return []
-
-    cols_bc = _cols("buy_cooldowns")
-    cols_rt = _cols("realized_trades")
-
-    # --- BUYS from buy_cooldowns ---
-    try:
-        # select only columns that exist
-        sel = ["symbol", "last_buy_utc"]
-        if "reason" in cols_bc:
-            sel.append("reason")
-        q = "SELECT " + ", ".join(sel) + " FROM buy_cooldowns WHERE last_buy_utc IS NOT NULL AND trim(last_buy_utc) <> '' ORDER BY last_buy_utc DESC"
-        rows = cur.execute(q).fetchall()
-
-        for r in rows:
-            dt_utc = _parse_dt(r["last_buy_utc"])
-            if not dt_utc:
-                continue
-            if _utc_to_et_date(dt_utc) != date_et:
-                continue
-            buys.append({
-                "symbol": r["symbol"],
-                "ts_utc": dt_utc.strftime("%Y-%m-%d %H:%M:%S"),
-                "ts_et": _utc_to_et_ts(dt_utc),
-                "reason": (r["reason"] if "reason" in r.keys() else "") or ""
-            })
-    except Exception as e:
-        errors.append(f"BUYS query failed (buy_cooldowns): {e}")
-
-    # --- SELLS from realized_trades ---
-    try:
-        # confirmed schema fields
-        sel = ["symbol", "qty", "close_date", "gain", "gain_pct"]
-        if "price_sold" in cols_rt:
-            sel.append("price_sold")
-        # some historical variants might have notes/reason; include if present
-        if "notes" in cols_rt:
-            sel.append("notes")
-        if "reason" in cols_rt:
-            sel.append("reason")
-
-        q = "SELECT " + ", ".join(sel) + " FROM realized_trades WHERE close_date IS NOT NULL AND trim(close_date) <> '' ORDER BY close_date DESC"
-        rows = cur.execute(q).fetchall()
-
-        for r in rows:
-            dt_utc = _parse_dt(r["close_date"])
-            if not dt_utc:
-                continue
-            if _utc_to_et_date(dt_utc) != date_et:
-                continue
-
-            reason = ""
-            if "reason" in r.keys() and r["reason"]:
-                reason = r["reason"]
-            elif "notes" in r.keys() and r["notes"]:
-                reason = r["notes"]
-
-            sells.append({
-                "symbol": r["symbol"],
-                "qty": r["qty"],
-                "ts_utc": dt_utc.strftime("%Y-%m-%d %H:%M:%S"),
-                "ts_et": _utc_to_et_ts(dt_utc),
-                "price": (r["price_sold"] if "price_sold" in r.keys() else None),
-                "gain": r["gain"],
-                "gain_pct": r["gain_pct"],
-                "reason": reason or ""
-            })
-    except Exception as e:
-        errors.append(f"SELLS query failed (realized_trades): {e}")
-
-    con.close()
-
-    return jsonify({
-        "date_et": date_et,
-        "buys": buys,
-        "sells": sells,
-        "errors": errors,
-        "source": f"DB={db_path} | BUYS=buy_cooldowns(last_buy_utc) | SELLS=realized_trades(close_date)"
-    })
 @app.route("/api/analytics/today")
 def api_analytics_today():
     """
     Daily Analytics JSON for today (ET).
+    Returns:
       - date_et, buy_file, sell_file, errors
       - buy (summary), sell (summary)
-      - buys (rows), sells (rows filtered to true SELL actions)
+      - buys (normalized rows), sells (normalized rows filtered to true sells)
     """
+    import re as _re
+    from pathlib import Path as _Path
+
     errors = []
-    buys_rows = []
-    sell_rows_all = []
+    buy_rows = []
+    sell_rows = []
 
-    def _ci_get(d, want_key):
-        """Case-insensitive dict get (handles Action/action/ACTION)."""
-        if not isinstance(d, dict):
-            return None
-        lk = str(want_key).lower()
-        for k, v in d.items():
-            if str(k).lower() == lk:
-                return v
-        return None
-
+    # Resolve today's CSV paths (existing helper in this file)
     try:
         ymd, buy_path, sell_path = _today_log_paths()
     except Exception as e:
+        # --- FIX: include SELL action rows even when pl_pct/hold_min/etc are blank (position_disappeared)
+        try:
+            _sr = sell_rows
+        except Exception:
+            _sr = []
+        sells_trades = [r for r in (_sr or []) if str((r.get("action") or "")).upper() == "SELL"]
+        # --- FORCE: build sells_trades directly from sell CSV (action==SELL)
+        try:
+            _sell_rows_for_trades = _read_csv_rows(sell_path) if (_Path(sell_path).exists()) else []
+        except Exception:
+            _sell_rows_for_trades = []
+        sells_trades = [r for r in (_sell_rows_for_trades or []) if str((r.get("action") or "")).upper() == "SELL"]
         return jsonify(
             date_et="",
             buy_file=None,
@@ -3425,77 +3262,153 @@ def api_analytics_today():
             buy={},
             sell={},
             buys=[],
-            sells=[],
+            sells=sells_trades,
         )
 
-    # Read BUY log
+    # Read CSVs if present
     try:
         if buy_path and _Path(buy_path).exists():
-            buys_rows = _read_csv_rows(buy_path) or []
+            buy_rows = _read_csv_rows(buy_path)
         else:
             errors.append(f"Missing buy log: {buy_path}")
-            buys_rows = []
     except Exception as e:
         errors.append(f"Error reading buy log {buy_path}: {e!r}")
-        buys_rows = []
 
-    # Read SELL log
     try:
         if sell_path and _Path(sell_path).exists():
-            sell_rows_all = _read_csv_rows(sell_path) or []
+            sell_rows = _read_csv_rows(sell_path)
         else:
             errors.append(f"Missing sell log: {sell_path}")
-            sell_rows_all = []
     except Exception as e:
         errors.append(f"Error reading sell log {sell_path}: {e!r}")
-        sell_rows_all = []
 
-    # Normalize rows lightly (keep keys analytics.js expects)
-    def _norm_buy(r):
-        return {
-            "ts_et": _ci_get(r, "ts_et") or _ci_get(r, "time_et") or _ci_get(r, "time") or "",
-            "symbol": _ci_get(r, "symbol") or "",
-            "price": _ci_get(r, "price") or _ci_get(r, "last_price") or "",
-            "trigger": _ci_get(r, "trigger") or _ci_get(r, "family") or _ci_get(r, "reason") or "",
-            "extra_json": _ci_get(r, "extra_json") or "",
-        }
+    def _first_val(row: dict, keys: list[str]) -> str:
+        if not isinstance(row, dict):
+            return ""
+        for k in keys:
+            if k in row and row.get(k) is not None:
+                return str(row.get(k))
+        # fallback: case-insensitive match
+        low = {str(k).lower(): k for k in row.keys() if k is not None}
+        for k in keys:
+            kk = str(k).lower()
+            if kk in low:
+                v = row.get(low[kk])
+                if v is not None:
+                    return str(v)
+        return ""
 
-    def _norm_sell(r):
-        return {
-            "ts_et": _ci_get(r, "ts_et") or _ci_get(r, "time_et") or _ci_get(r, "time") or "",
-            "symbol": _ci_get(r, "symbol") or "",
-            "qty": _ci_get(r, "qty") or "",
-            "action": _ci_get(r, "action") or "",
-            "reason": _ci_get(r, "reason") or "",
-            "pl_pct": _ci_get(r, "pl_pct") or "",
-            "hold_min": _ci_get(r, "hold_min") or "",
-            "entry_price": _ci_get(r, "entry_price") or "",
-            "last_price": _ci_get(r, "last_price") or "",
-            "order_type": _ci_get(r, "order_type") or "",
-            "limit_price": _ci_get(r, "limit_price") or "",
-            "source": _ci_get(r, "source") or "",
-            "extra_json": _ci_get(r, "extra_json") or "",
-        }
+    def _is_junk_reason(s: str) -> bool:
+        if s is None:
+            return True
+        t = str(s).strip()
+        if not t:
+            return True
+        tl = t.lower()
+        # common junk / progress / placeholders
+        if tl in ("none", "null", "nan", "n/a", "na", "?", "hold"):
+            return True
+        if "progress" in tl or "scanned" in tl or "candidates" in tl or "skipped" in tl:
+            return True
+        if tl.startswith("[live]") or tl.startswith("[data]"):
+            return True
+        return False
 
-    buys_out = [_norm_buy(r) for r in (buys_rows or []) if isinstance(r, dict)]
+    def _norm_row(row: dict, side: str) -> dict:
+        # canonical symbol + timestamp keys
+        sym = _first_val(row, ["symbol","Symbol","ticker","Ticker"]).strip()
+        ts  = _first_val(row, ["ts_et","time_et","time","Time","timestamp","Timestamp","ts"]).strip()
 
-    sells_norm_all = [_norm_sell(r) for r in (sell_rows_all or []) if isinstance(r, dict)]
-    sell_summary = _compute_sell_analytics(sells_norm_all)
+        # preferred trigger/reason keys
+        reason = _first_val(row, [
+            "reason","Reason",
+            "trigger","Trigger",
+            "trigger_reason","TriggerReason",
+            "Trigger/Reason","trigger/reason",
+            "why","Why",
+            "decision","Decision",
+            "action","Action",
+        ]).strip()
 
-    # ONLY true SELL actions for the "Today's Trades" sell column
-    sell_trades = [r for r in sells_norm_all if str((r.get("action") or "")).upper() == "SELL"]
+        # salvage: scan all fields if header drifted
+        if _is_junk_reason(reason):
+            if isinstance(row, dict):
+                for k, v in row.items():
+                    if k is None or v is None:
+                        continue
+                    kk = str(k).strip().lower()
+                    if kk in ("symbol","ticker","ts_et","time_et","time","timestamp","qty","quantity","price","side"):
+                        continue
+                    vv = str(v).strip()
+                    if not vv:
+                        continue
+                    if _is_junk_reason(vv):
+                        continue
+                    if _re.match(r"^[-+]?\d+(?:\.\d+)?$", vv):
+                        continue
+                    reason = vv
+                    break
 
-    buy_summary = _compute_buy_analytics(buys_out)
+        if _is_junk_reason(reason):
+            reason = ""
+
+        return {"ts_et": ts, "symbol": sym, "reason": reason}
+
+    # Normalize
+    buys_norm  = [_norm_row(r, "BUY")  for r in (buy_rows  or [])]
+    sells_norm = [_norm_row(r, "SELL") for r in (sell_rows or [])]
+
+    # Filter sells: keep only likely sell rows (avoid 4k HOLD spam)
+    def _looks_like_sell_trade(r: dict) -> bool:
+        if not isinstance(r, dict):
+            return False
+        reason = (r.get("reason") or "").strip()
+        if not reason:
+            return False
+        rl = reason.lower()
+
+        # drop HOLD / keepalive style rows
+        if rl == "hold" or "hold" == rl:
+            return False
+
+        # keep strong sell indicators
+        if "position_disappeared" in rl:
+            return True
+        if "sold" in rl or "sell" in rl:
+            return True
+        if "exit" in rl:
+            return True
+        if "stop" in rl or "take" in rl or "profit" in rl:
+            return True
+        return True  # default keep if it has a non-junk reason
+
+    # Real sell events only (exclude HOLD/loop EVAL spam)
+    sells_trades = [r for r in (sells_norm or [])
+                  if str((r.get('action') or '')).upper() == 'SELL']
+
+    # Summary blocks (existing helpers)
+    try:
+        buy = _compute_buy_analytics(buy_rows)
+    except Exception as e:
+        buy = {}
+        errors.append(f"_compute_buy_analytics failed: {e!r}")
+
+    try:
+        sell = _compute_sell_analytics(sells_trades)
+
+    except Exception as e:
+        sell = {}
+        errors.append(f"_compute_sell_analytics failed: {e!r}")
 
     return jsonify(
         date_et=ymd,
         buy_file=buy_path if _Path(buy_path).exists() else None,
         sell_file=sell_path if _Path(sell_path).exists() else None,
         errors=errors,
-        buy=buy_summary,
-        sell=sell_summary,
-        buys=buys_out,
-        sells=sell_trades,
+        buy=buy,
+        sell=sell,
+        buys=buys_norm,
+        sells=sells_trades,
     )
 def _ax_parse_date_arg(arg: str | None) -> str:
     """

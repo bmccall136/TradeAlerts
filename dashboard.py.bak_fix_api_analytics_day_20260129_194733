@@ -3224,174 +3224,125 @@ def _today_log_paths():
 @app.route("/api/analytics/day")
 def api_analytics_day():
     """
-    Daily Analytics (DB-backed)
-
-      BUYS  = buy_cooldowns.last_buy_utc (ET day bucket)
-      SELLS = realized_trades.close_date (ET day bucket)
-
-    Notes:
-      - buy_cooldowns schema (confirmed): symbol, last_buy_utc, reason
-      - realized_trades schema (confirmed): symbol, qty, open_date, close_date, gain, gain_pct, price_bought, price_sold
+    DB-backed Daily Analytics:
+      - BUYS: buy_cooldowns.last_buy_utc (converted to ET), last_buy_reason, last_buy_qty
+      - SELLS: realized_trades.close_date (ET-ish), gain, gain_pct
+    Accepts: ?date=YYYY-MM-DD (ET date)
+    Returns: { date_et, buys:[], sells:[], errors:[], source }
     """
     from flask import request, jsonify
     import sqlite3
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime
+    try:
+        from zoneinfo import ZoneInfo
+        TZ = ZoneInfo("America/New_York")
+    except Exception:
+        TZ = None
 
-    # --- pick DB path safely (your project usually defines LIVE_DB or DB_PATH) ---
-    db_path = None
-    for name in ("LIVE_DB", "DB_PATH"):
-        try:
-            v = globals().get(name)
-            if v:
-                db_path = str(v)
-                break
-        except Exception:
-            pass
-    if not db_path:
-        db_path = r"C:\TradeAlerts\live.db"
+    # Choose DB path (prefer LIVE_DB if present in this file)
+    db_path = globals().get("LIVE_DB") or globals().get("DB_PATH") or globals().get("DB") or r"C:\\TradeAlerts\\live.db"
 
-    # --- helpers ---
-    def _parse_dt(s):
-        if not s:
-            return None
-        s = str(s).strip()
-        if not s:
-            return None
-        if s.endswith("Z"):
-            s = s[:-1] + "+00:00"
-        try:
-            dt = datetime.fromisoformat(s)
-        except Exception:
-            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f"):
-                try:
-                    dt = datetime.strptime(s, fmt)
-                    break
-                except Exception:
-                    dt = None
-            if dt is None:
-                return None
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc)
+    # Resolve date_et
+    q_date = (request.args.get("date") or "").strip()
+    if q_date:
+        date_et = q_date
+    else:
+        now = datetime.now(TZ) if TZ else datetime.now()
+        date_et = now.strftime("%Y-%m-%d")
 
-    def _utc_to_et(dt_utc):
-        try:
-            from zoneinfo import ZoneInfo
-            et = ZoneInfo("America/New_York")
-            return dt_utc.astimezone(et)
-        except Exception:
-            # fallback: UTC-5 (DST edge cases near midnight only)
-            return dt_utc + timedelta(hours=-5)
-
-    def _utc_to_et_date(dt_utc):
-        return _utc_to_et(dt_utc).date().isoformat()
-
-    def _utc_to_et_ts(dt_utc):
-        return _utc_to_et(dt_utc).strftime("%Y-%m-%d %H:%M:%S")
-
-    # date=YYYY-MM-DD in ET
-    date_et = (request.args.get("date") or "").strip()
-    if not date_et:
-        try:
-            from zoneinfo import ZoneInfo
-            et = ZoneInfo("America/New_York")
-            date_et = datetime.now(et).date().isoformat()
-        except Exception:
-            date_et = datetime.utcnow().date().isoformat()
-
+    errors = []
     buys = []
     sells = []
-    errors = []
 
-    con = sqlite3.connect(db_path)
-    con.row_factory = sqlite3.Row
-    cur = con.cursor()
-
-    # helper to get column list
-    def _cols(table):
+    def _to_et_hhmm(iso_utc: str):
+        if not iso_utc:
+            return ""
         try:
-            rows = cur.execute(f"PRAGMA table_info({table})").fetchall()
-            return [r[1] for r in rows]
+            # allow "...Z"
+            s = iso_utc.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(s)
+            if TZ and dt.tzinfo:
+                dt = dt.astimezone(TZ)
+            return dt.strftime("%H:%M:%S")
         except Exception:
-            return []
+            return ""
 
-    cols_bc = _cols("buy_cooldowns")
-    cols_rt = _cols("realized_trades")
+    def _utc_to_et_ymd(iso_utc: str):
+        if not iso_utc:
+            return ""
+        try:
+            s = iso_utc.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(s)
+            if TZ and dt.tzinfo:
+                dt = dt.astimezone(TZ)
+            return dt.strftime("%Y-%m-%d")
+        except Exception:
+            return ""
 
-    # --- BUYS from buy_cooldowns ---
     try:
-        # select only columns that exist
-        sel = ["symbol", "last_buy_utc"]
-        if "reason" in cols_bc:
-            sel.append("reason")
-        q = "SELECT " + ", ".join(sel) + " FROM buy_cooldowns WHERE last_buy_utc IS NOT NULL AND trim(last_buy_utc) <> '' ORDER BY last_buy_utc DESC"
-        rows = cur.execute(q).fetchall()
+        con = sqlite3.connect(db_path)
+        con.row_factory = sqlite3.Row
+        cur = con.cursor()
 
-        for r in rows:
-            dt_utc = _parse_dt(r["last_buy_utc"])
-            if not dt_utc:
-                continue
-            if _utc_to_et_date(dt_utc) != date_et:
-                continue
-            buys.append({
-                "symbol": r["symbol"],
-                "ts_utc": dt_utc.strftime("%Y-%m-%d %H:%M:%S"),
-                "ts_et": _utc_to_et_ts(dt_utc),
-                "reason": (r["reason"] if "reason" in r.keys() else "") or ""
-            })
+        # BUYS: buy_cooldowns last_buy_utc is UTC ISO, filter by ET date
+        try:
+            rows = cur.execute(
+                "SELECT symbol, last_buy_utc, last_buy_reason, last_buy_qty "
+                "FROM buy_cooldowns WHERE last_buy_utc IS NOT NULL AND last_buy_utc <> ''"
+            ).fetchall()
+            for r in rows:
+                sym = (r["symbol"] or "").strip()
+                if not sym:
+                    continue
+                ymd = _utc_to_et_ymd(r["last_buy_utc"])
+                if ymd != date_et:
+                    continue
+                buys.append({
+                    "symbol": sym,
+                    "ts_et": _to_et_hhmm(r["last_buy_utc"]),
+                    "qty": r["last_buy_qty"],
+                    "reason": r["last_buy_reason"] or "",
+                })
+            buys.sort(key=lambda x: x.get("ts_et") or "")
+        except Exception as e:
+            errors.append(f"BUYS query failed (buy_cooldowns): {e}")
+
+        # SELLS: realized_trades close_date is stored as TEXT (often ET-ish), filter by YYYY-MM-DD prefix
+        try:
+            rows = cur.execute(
+                "SELECT symbol, close_date, gain, gain_pct, close_reason "
+                "FROM realized_trades WHERE close_date IS NOT NULL AND substr(close_date,1,10)=? "
+                "ORDER BY close_date DESC",
+                (date_et,)
+            ).fetchall()
+            for r in rows:
+                sym = (r["symbol"] or "").strip()
+                if not sym:
+                    continue
+                ts = (r["close_date"] or "")
+                hhmm = ts[11:19] if len(ts) >= 19 else ts
+                sells.append({
+                    "symbol": sym,
+                    "ts_et": hhmm,
+                    "gain": r["gain"],
+                    "gain_pct": r["gain_pct"],
+                    "reason": r["close_reason"] or "",
+                })
+        except Exception as e:
+            errors.append(f"SELLS query failed (realized_trades): {e}")
+
+        con.close()
     except Exception as e:
-        errors.append(f"BUYS query failed (buy_cooldowns): {e}")
-
-    # --- SELLS from realized_trades ---
-    try:
-        # confirmed schema fields
-        sel = ["symbol", "qty", "close_date", "gain", "gain_pct"]
-        if "price_sold" in cols_rt:
-            sel.append("price_sold")
-        # some historical variants might have notes/reason; include if present
-        if "notes" in cols_rt:
-            sel.append("notes")
-        if "reason" in cols_rt:
-            sel.append("reason")
-
-        q = "SELECT " + ", ".join(sel) + " FROM realized_trades WHERE close_date IS NOT NULL AND trim(close_date) <> '' ORDER BY close_date DESC"
-        rows = cur.execute(q).fetchall()
-
-        for r in rows:
-            dt_utc = _parse_dt(r["close_date"])
-            if not dt_utc:
-                continue
-            if _utc_to_et_date(dt_utc) != date_et:
-                continue
-
-            reason = ""
-            if "reason" in r.keys() and r["reason"]:
-                reason = r["reason"]
-            elif "notes" in r.keys() and r["notes"]:
-                reason = r["notes"]
-
-            sells.append({
-                "symbol": r["symbol"],
-                "qty": r["qty"],
-                "ts_utc": dt_utc.strftime("%Y-%m-%d %H:%M:%S"),
-                "ts_et": _utc_to_et_ts(dt_utc),
-                "price": (r["price_sold"] if "price_sold" in r.keys() else None),
-                "gain": r["gain"],
-                "gain_pct": r["gain_pct"],
-                "reason": reason or ""
-            })
-    except Exception as e:
-        errors.append(f"SELLS query failed (realized_trades): {e}")
-
-    con.close()
+        errors.append(f"DB open failed: {e}")
 
     return jsonify({
         "date_et": date_et,
         "buys": buys,
         "sells": sells,
         "errors": errors,
-        "source": f"DB={db_path} | BUYS=buy_cooldowns(last_buy_utc) | SELLS=realized_trades(close_date)"
+        "source": f"DB={db_path} | BUYS=buy_cooldowns(last_buy_utc) | SELLS=realized_trades(close_date)",
     })
+
 @app.route("/api/analytics/today")
 def api_analytics_today():
     """

@@ -1,0 +1,132 @@
+/* Daily Analytics (DB-backed)
+   - BUYS from live.db: buy_cooldowns (last_buy_utc, last_buy_reason, last_buy_qty)
+   - SELLS from live.db: realized_trades (close_date, gain, gain_pct)
+   - Rows link to Trade Review: /trade_review?symbol=...&ts=...
+*/
+
+function axEsc(s) {
+  s = String(s ?? "");
+  return s.replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+}
+function axEnc(s) { return encodeURIComponent(String(s ?? "")); }
+
+function axHref(sym, ts) {
+  // send symbol + ts; server can ignore extras if it wants
+  return `/trade_review?symbol=${axEnc(sym)}&ts=${axEnc(ts)}`;
+}
+
+function axGetParam(name) {
+  const u = new URL(window.location.href);
+  return u.searchParams.get(name);
+}
+
+function axSetErrors(msgs) {
+  const el = document.getElementById("ax-errors");
+  if (!el) return;
+  if (!msgs || !msgs.length) { el.innerHTML = ""; return; }
+  el.innerHTML = `<div class="alert alert-warning py-2 mb-0"><div class="small">${msgs.map(axEsc).join("<br/>")}</div></div>`;
+}
+
+function axTable(rows, kind) {
+  if (!rows || !rows.length) return `<div class="text-secondary small">No ${kind} for this day.</div>`;
+
+  if (kind === "buys") {
+    const head = `<table class="table table-sm table-dark table-striped align-middle mb-0">
+      <thead><tr>
+        <th style="width:110px;">Time (ET)</th>
+        <th style="width:90px;">Symbol</th>
+        <th style="width:70px;" class="text-end">Qty</th>
+        <th>Reason</th>
+      </tr></thead><tbody>`;
+    const body = rows.map(r => {
+      const sym = r.symbol || "";
+      const ts  = r.ts_et || "";
+      const href = axHref(sym, ts);
+      return `<tr>
+        <td><a class="link-warning text-decoration-none" href="${href}">${axEsc(ts)}</a></td>
+        <td><a class="link-warning text-decoration-none" href="${href}">${axEsc(sym)}</a></td>
+        <td class="text-end">${axEsc(r.qty ?? "")}</td>
+        <td><a class="link-warning text-decoration-none" href="${href}">${axEsc(r.reason || "")}</a></td>
+      </tr>`;
+    }).join("");
+    return head + body + `</tbody></table>`;
+  }
+
+  // sells
+  const head = `<table class="table table-sm table-dark table-striped align-middle mb-0">
+    <thead><tr>
+      <th style="width:110px;">Time (ET)</th>
+      <th style="width:90px;">Symbol</th>
+      <th style="width:90px;" class="text-end">Gain</th>
+      <th style="width:90px;" class="text-end">Gain %</th>
+      <th>Reason</th>
+    </tr></thead><tbody>`;
+  const body = rows.map(r => {
+    const sym = r.symbol || "";
+    const ts  = r.ts_et || "";
+    const href = axHref(sym, ts);
+    return `<tr>
+      <td><a class="link-warning text-decoration-none" href="${href}">${axEsc(ts)}</a></td>
+      <td><a class="link-warning text-decoration-none" href="${href}">${axEsc(sym)}</a></td>
+      <td class="text-end">${axEsc(r.gain ?? "")}</td>
+      <td class="text-end">${axEsc(r.gain_pct ?? "")}</td>
+      <td><a class="link-warning text-decoration-none" href="${href}">${axEsc(r.reason || "")}</a></td>
+    </tr>`;
+  }).join("");
+  return head + body + `</tbody></table>`;
+}
+
+async function axLoadDay(dateYmd) {
+  const cb = Math.floor(Date.now() / 1000);
+  const url = `/api/analytics/day?date=${axEnc(dateYmd)}&cb=${cb}`;
+
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(`HTTP ${r.status} from ${url}`);
+  const d = await r.json();
+
+  const dateEl = document.getElementById("ax-date");
+  if (dateEl) dateEl.textContent = d.date_et || dateYmd;
+
+  axSetErrors(d.errors || []);
+
+  const buyCol = document.getElementById("ax-buy-col");
+  const sellCol = document.getElementById("ax-sell-col");
+  if (buyCol) buyCol.innerHTML = axTable(d.buys || [], "buys");
+  if (sellCol) sellCol.innerHTML = axTable(d.sells || [], "sells");
+
+  const bc = document.getElementById("ax-buy-count");
+  const sc = document.getElementById("ax-sell-count");
+  if (bc) bc.textContent = `${(d.buys || []).length} rows`;
+  if (sc) sc.textContent = `${(d.sells || []).length} rows`;
+
+  const files = document.getElementById("ax-files");
+  if (files) files.textContent = d.source || "";
+}
+
+function axBoot() {
+  // date selection: URL param ?date=YYYY-MM-DD else today (server will default too, but keep UI consistent)
+  const date = axGetParam("date");
+  const yEl = document.getElementById("ax-yesterday");
+  if (yEl) {
+    yEl.addEventListener("click", (e) => {
+      e.preventDefault();
+      // naive yesterday: good enough for UI navigation
+      const base = date ? new Date(date + "T12:00:00") : new Date();
+      base.setDate(base.getDate() - 1);
+      const ymd = base.toISOString().slice(0,10);
+      window.location = `/analytics?date=${ymd}`;
+    });
+  }
+
+  const chosen = date || new Date().toISOString().slice(0,10);
+  axLoadDay(chosen).catch(err => {
+    console.error("[AX] load failed:", err);
+    axSetErrors([String(err)]);
+  });
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", axBoot, { once: true });
+} else {
+  axBoot();
+}
