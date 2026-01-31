@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>$$Machine ? Wins vs Losses</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { background:#0b0b0b; color:#f3f3f3; font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin:0; }
+    a { color:#ffe900; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .wrap { padding:18px 18px 28px; max-width:1400px; margin:0 auto; }
+    .topbar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; }
+    .title { font-size:22px; font-weight:700; }
+    .sub { opacity:.75; font-size:13px; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .col { background:#111; border:1px solid #222; border-radius:12px; overflow:hidden; box-shadow: 0 8px 28px rgba(0,0,0,.35); }
+    .hdr { padding:10px 12px; font-weight:800; letter-spacing:.4px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #222; }
+    .hdr.win { background: rgba(0, 180, 90, .12); }
+    .hdr.loss { background: rgba(230, 60, 60, .12); }
+    .hdr .count { font-weight:700; opacity:.85; font-size:13px; }
+    .summary { padding:10px 12px; border-bottom:1px solid #222; font-size:12px; opacity:.9; }
+    .summary b { color:#ffe900; }
+    .list { padding:10px 12px; }
+    .row { padding:10px 10px; border:1px solid #202020; border-radius:10px; margin-bottom:10px; background:#0e0e0e; }
+    .row:last-child { margin-bottom:0; }
+    .r1 { display:flex; justify-content:space-between; gap:10px; align-items:baseline; }
+    .sym { font-weight:800; font-size:14px; letter-spacing:.2px; }
+    .pl { font-weight:900; font-size:13px; }
+    .pl.win { color:#2ee08a; }
+    .pl.loss { color:#ff6262; }
+    .meta { font-size:12px; opacity:.8; margin-top:4px; }
+    .trigs { margin-top:6px; font-size:12px; line-height:1.35; }
+    .trigs .k { opacity:.8; width:46px; display:inline-block; }
+    .pill { display:inline-block; padding:2px 7px; border-radius:999px; border:1px solid #2a2a2a; background:#141414; margin:2px 4px 0 0; font-size:11px; }
+    .footer { margin-top:14px; font-size:12px; opacity:.7; }
+    @media (max-width: 1100px) { .grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <div class="title">Wins vs Losses</div>
+        <div class="sub">
+          Source: trigger CSV logs (same ones feeding Analytics). This is v1: patterns first.
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <a href="/analytics">? Back to Analytics</a>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="col">
+        <div class="hdr win">WINS <span class="count">{{ wins|length }}</span></div>
+        <div class="summary">
+          <div><b>Common Buy:</b> {{ wins_common_buy }}</div>
+          <div><b>Common Sell:</b> {{ wins_common_sell }}</div>
+        </div>
+        <div class="list">
+          {% for t in wins %}
+          <div class="row">
+            <div class="r1">
+              <div class="sym">{{ t.symbol }}</div>
+              <div class="pl win">{{ t.pl_text }}</div>
+            </div>
+            <div class="meta">Held: {{ t.held_text }} | Exit: {{ t.sell_time }}</div>
+            <div class="trigs">
+              <div><span class="k">Buy:</span>
+                {% for b in t.buy_triggers %}
+                  <span class="pill">{{ b }}</span>
+                {% endfor %}
+              </div>
+              <div><span class="k">Sell:</span>
+                {% for s in t.sell_triggers %}
+                  <span class="pill">{{ s }}</span>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+          {% if wins|length == 0 %}
+            <div class="row" style="opacity:.75;">No wins found in the selected window.</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="hdr loss">LOSSES <span class="count">{{ losses|length }}</span></div>
+        <div class="summary">
+          <div><b>Common Buy:</b> {{ losses_common_buy }}</div>
+          <div><b>Common Sell:</b> {{ losses_common_sell }}</div>
+        </div>
+        <div class="list">
+          {% for t in losses %}
+          <div class="row">
+            <div class="r1">
+              <div class="sym">{{ t.symbol }}</div>
+              <div class="pl loss">{{ t.pl_text }}</div>
+            </div>
+            <div class="meta">Held: {{ t.held_text }} | Exit: {{ t.sell_time }}</div>
+            <div class="trigs">
+              <div><span class="k">Buy:</span>
+                {% for b in t.buy_triggers %}
+                  <span class="pill">{{ b }}</span>
+                {% endfor %}
+              </div>
+              <div><span class="k">Sell:</span>
+                {% for s in t.sell_triggers %}
+                  <span class="pill">{{ s }}</span>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+          {% if losses|length == 0 %}
+            <div class="row" style="opacity:.75;">No losses found in the selected window.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      Tip: this page is designed to make it obvious which trigger families cluster in losses.
+    </div>
+  </div>
+</body>
+</html>

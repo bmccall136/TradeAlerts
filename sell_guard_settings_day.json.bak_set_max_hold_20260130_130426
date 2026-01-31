@@ -4,15 +4,13 @@
     "use_entries": false,
     "use_exits": false
   },
-  "enable_timeout_exits": true,
-  "max_hold_minutes": 60.0,
   "sell_guard": {
     "allow_intraday_stoploss": true,
     "avoid_daytrades": false,
     "blocklist": [],
     "circuit_fail_threshold": 2,
     "circuit_open_seconds": 480,
-    "enable_timeout_exits": false,
+    "enable_timeout_exits": true,
     "force_symbols": [],
     "force_without_entry": false,
     "intraday_stoploss_pct": -0.6,
@@ -39,13 +37,9 @@
     "target_bps": 80,
     "target_gain_pct": 1.0,
     "throttle_ms": 30000,
-    "timeout_exit_pct": -999.0,
+    "timeout_exit_pct": -0.3,
     "trail_arm_gain_pct": 1.5,
     "trail_backoff_pct": 1.0,
     "use_extended_hours": true
-  },
-  "target_gain_pct": 1.0,
-  "timeout_exit_pct": -0.3,
-  "trail_arm_gain_pct": 1.5,
-  "trail_backoff_pct": 1.0
+  }
 }

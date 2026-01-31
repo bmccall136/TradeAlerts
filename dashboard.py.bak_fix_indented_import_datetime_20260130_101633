@@ -122,8 +122,8 @@ CHECKPOINT_BAT = r"C:\TradeAlerts\checkpoint.bat"  # adjust if needed
 # Analytics helpers (date + CSV)
 # =========================
 import csv as _csv
-import datetime as _dt
-
+import datetime as _dtmod
+from datetime import datetime as _dt
 def _ax_parse_ymd(s: str | None) -> str | None:
     if not s:
         return None
@@ -141,10 +141,10 @@ def _ax_today_ymd_et() -> str:
         import datetime as dt
         import pytz
         tz = pytz.timezone("America/New_York")
-        return dt.datetime.now(tz).strftime("%Y-%m-%d")
+        return dt.datetime.datetime.datetime.now(tz).strftime("%Y-%m-%d")
     except Exception:
         import datetime as dt
-        return dt.datetime.now().strftime("%Y-%m-%d")
+        return dt.datetime.datetime.datetime.now().strftime("%Y-%m-%d")
 
 
 
@@ -202,8 +202,6 @@ def _ax_rows_to_trades(rows: list[dict], side: str) -> list[dict]:
 
 
 app = Flask(__name__)
-
-DASHBOARD_PORT = 5001
 
 LOG = logging.getLogger("dashboard")
 LOG.setLevel(logging.INFO)
@@ -299,7 +297,7 @@ def _fmt_opened_et(opened_utc):
             return ""
         # numeric epoch seconds?
         if isinstance(opened_utc, (int, float)):
-            dt = _dt.datetime.fromtimestamp(float(opened_utc), tz=_dt.timezone.utc)
+            dt = _dt.datetime.datetime.fromtimestamp(float(opened_utc), tz=_dt.timezone.utc)
         else:
             s = str(opened_utc).strip()
             # allow "2026-01-28T19:53:10.798941+00:00" style
@@ -613,7 +611,7 @@ def _ax_yesterday_ymd(ymd: str | None) -> str:
     base = None
     try:
         if ymd:
-            base = dt.datetime.strptime(str(ymd), "%Y-%m-%d")
+            base = dt.datetime.datetime.strptime(str(ymd), "%Y-%m-%d")
     except Exception:
         base = None
 
@@ -621,9 +619,9 @@ def _ax_yesterday_ymd(ymd: str | None) -> str:
         try:
             import pytz
             tz = pytz.timezone("America/New_York")
-            base = dt.datetime.now(tz).replace(tzinfo=None)
+            base = dt.datetime.datetime.datetime.now(tz).replace(tzinfo=None)
         except Exception:
-            base = dt.datetime.now()
+            base = dt.datetime.datetime.datetime.now()
 
     return (base - dt.timedelta(days=1)).strftime("%Y-%m-%d")
 
@@ -664,7 +662,7 @@ def _realized_buckets_from_trades(trades):
     Amount  = sum of pl
     Percent = Amount / total cost basis of those sells (price_paid * qty).
     """
-    today = _dt.datetime.now(_ET).date()
+    today = _dt.datetime.datetime.datetime.now(_ET).date()
     this_monday = today - _dt.timedelta(days=today.weekday())
     last_monday = this_monday - _dt.timedelta(days=7)
     last_sunday = this_monday - _dt.timedelta(days=1)
@@ -701,7 +699,7 @@ def _realized_buckets_from_trades(trades):
                 d = dt.astimezone(_ET).date()
             except Exception:
                 try:
-                    dt = _dt.datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
+                    dt = _dt.datetime.datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
                     d = dt.date()
                 except Exception:
                     d = today  # worst-case fallback
@@ -1035,7 +1033,7 @@ def realized_buckets_from_live_db(db_path: str) -> Dict[str, Dict[str, float]]:
         conn.close()
 
     # Bucket calc (same logic you validated)
-    now = datetime.now()
+    now = datetime.datetime.datetime.now()
     today0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week0 = today0 - timedelta(days=today0.weekday())
     month0 = today0.replace(day=1)
@@ -2427,11 +2425,11 @@ def live_data():
             except Exception:
                 return None
 
-        now = datetime.now()
+        now = datetime.datetime.datetime.now()
         day_start   = now.replace(hour=0, minute=0, second=0, microsecond=0)
         week_start  = day_start - timedelta(days=day_start.weekday())  # Monday 00:00
         month_start = day_start.replace(day=1)
-        all_start   = datetime(2025, 8, 22, 0, 0, 0)
+        all_start   = datetime.datetime(2025, 8, 22, 0, 0, 0)
 
         db_path = None
         for name in ("LIVE_DB", "DB_PATH"):
@@ -2745,11 +2743,11 @@ def live_data():
             except Exception:
                 return None
 
-        now = datetime.now()
+        now = datetime.datetime.datetime.now()
         day_start   = now.replace(hour=0, minute=0, second=0, microsecond=0)
         week_start  = day_start - timedelta(days=day_start.weekday())
         month_start = day_start.replace(day=1)
-        all_start   = datetime(2025, 8, 22, 0, 0, 0)
+        all_start   = datetime.datetime(2025, 8, 22, 0, 0, 0)
 
         db_path = None
         for name in ("LIVE_DB", "DB_PATH"):
@@ -2929,9 +2927,9 @@ def compute_realized_buckets_from_trades(
     Percentages are vs start_cash.
     """
     if ETZ is not None:
-        now_local = datetime.now(tz=ETZ)
+        now_local = datetime.datetime.datetime.now(tz=ETZ)
     else:  # pragma: no cover
-        now_local = datetime.now()
+        now_local = datetime.datetime.datetime.now()
 
     today = now_local.date()
     week_start = today - timedelta(days=6)         # last 7 days incl. today
@@ -3266,7 +3264,7 @@ def api_analytics_day():
         except Exception:
             for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f"):
                 try:
-                    dt = datetime.strptime(s, fmt)
+                    dt = datetime.datetime.strptime(s, fmt)
                     break
                 except Exception:
                     dt = None
@@ -3297,9 +3295,9 @@ def api_analytics_day():
         try:
             from zoneinfo import ZoneInfo
             et = ZoneInfo("America/New_York")
-            date_et = datetime.now(et).date().isoformat()
+            date_et = datetime.datetime.datetime.now(et).date().isoformat()
         except Exception:
-            date_et = datetime.utcnow().date().isoformat()
+            date_et = datetime.datetime.utcnow().date().isoformat()
 
     buys = []
     sells = []
@@ -3506,16 +3504,16 @@ def _ax_parse_date_arg(arg: str | None) -> str:
     """
     try:
         if arg:
-            dt = datetime.strptime(arg.strip(), "%Y-%m-%d")
+            dt = datetime.datetime.strptime(arg.strip(), "%Y-%m-%d")
             return dt.strftime("%Y-%m-%d")
     except Exception:
         pass
     # fallback: today ET (no tz import needed; date string only)
-    return datetime.now().strftime("%Y-%m-%d")
+    return datetime.datetime.datetime.now().strftime("%Y-%m-%d")
 
 def _ax_yesterday(ymd: str) -> str:
     try:
-        dt = datetime.strptime(ymd, "%Y-%m-%d") - timedelta(days=1)
+        dt = datetime.datetime.strptime(ymd, "%Y-%m-%d") - timedelta(days=1)
         return dt.strftime("%Y-%m-%d")
     except Exception:
         return ymd
@@ -3552,6 +3550,202 @@ def analytics_page():
         a=a,
     
     )
+
+
+# =========================
+# Wins vs Losses (v1)
+# - Reads existing buy/sell trigger CSV logs used by Analytics
+# - Splits closed trades into Wins/Losses and lists buy/sell triggers per trade
+# =========================
+from collections import Counter as _Counter
+import datetime as _dt
+
+def _parse_dt_fuzzy(s):
+    if not s:
+        return None
+    s = str(s).strip()
+    # common formats we see in logs
+    fmts = [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%m/%d/%Y %H:%M:%S",
+        "%m/%d/%Y %H:%M",
+        "%Y-%m-%dT%H:%M:%S",
+    ]
+    for f in fmts:
+        try:
+            return _dt.datetime.datetime.strptime(s, f)
+        except Exception:
+            pass
+    return None
+def _safe_float(x, default=0.0):
+    try:
+        if x is None:
+            return default
+        # allow strings like "$1,234.56" or "+0.12"
+        if isinstance(x, str):
+            s = x.strip().replace(",", "").replace("$", "")
+            if s == "":
+                return default
+            return float(s)
+        return float(x)
+    except Exception:
+        return default
+
+def _extract_triggers(cell):
+    if not cell:
+        return []
+    s = str(cell).strip()
+    if not s:
+        return []
+    # Accept either "A|B|C", "A,B,C", or a single string
+    if "|" in s:
+        parts = [p.strip() for p in s.split("|")]
+    elif "," in s:
+        parts = [p.strip() for p in s.split(",")]
+    else:
+        parts = [s.strip()]
+    return [p for p in parts if p]
+
+def _winloss_from_logs(max_rows=250):
+    """
+    Build a trade list from the SELL log rows (closed trades),
+    then attach BUY triggers by matching symbol and nearest prior BUY row.
+    This avoids DB schema guessing and uses the same CSV truth as Analytics.
+    """
+    ymd, buy_path, sell_path = _today_log_paths()
+
+    buy_rows = _read_csv_rows(buy_path) if _Path(buy_path).exists() else []
+    sell_rows = _read_csv_rows(sell_path) if _Path(sell_path).exists() else []
+
+    # Heuristic field names (handles slight column name drift)
+    def pick(row, *keys):
+        for k in keys:
+            if k in row and row.get(k) not in (None, ""):
+                return row.get(k)
+        return ""
+
+    # Index BUY rows by symbol -> list of (dt, triggers[])
+    buy_idx = {}
+    for r in buy_rows:
+        sym = str(pick(r, "symbol", "Symbol", "SYM", "ticker", "Ticker")).strip().upper()
+        if not sym:
+            continue
+        dt = _parse_dt_fuzzy(pick(r, "time", "Time", "timestamp", "Timestamp", "created_at", "Created"))
+        tr = _extract_triggers(pick(r, "triggers", "Triggers", "buy_triggers", "BuyTriggers", "reason", "Reason"))
+        buy_idx.setdefault(sym, []).append((dt, tr))
+
+    for sym in list(buy_idx.keys()):
+        buy_idx[sym].sort(key=lambda x: x[0] or _dt.datetime.min)
+
+    wins = []
+    losses = []
+
+    common_buy_win = _Counter()
+    common_sell_win = _Counter()
+    common_buy_loss = _Counter()
+    common_sell_loss = _Counter()
+
+    # Build from SELL rows (closed trades)
+    # We only take the most recent N to keep page snappy
+    for r in (sell_rows[-max_rows:] if len(sell_rows) > max_rows else sell_rows):
+        sym = str(pick(r, "symbol", "Symbol", "SYM", "ticker", "Ticker")).strip().upper()
+        if not sym:
+            continue
+
+        sell_dt = _parse_dt_fuzzy(pick(r, "time", "Time", "timestamp", "Timestamp", "created_at", "Created"))
+        sell_tr = _extract_triggers(pick(r, "triggers", "Triggers", "sell_triggers", "SellTriggers", "reason", "Reason"))
+
+        # Profit/Loss: look for percent first, else dollars
+        pl_pct = _safe_float(pick(r, "pl_pct", "PL_PCT", "pnl_pct", "PnLPct", "gain_pct", "GainPct", "percent", "Percent"))
+        pl_usd = _safe_float(pick(r, "pl_usd", "PL_USD", "pnl", "PnL", "gain", "Gain", "gain_usd", "GainUsd", "dollars", "Dollars"))
+
+        # Determine win/loss from whichever value exists
+        metric = pl_pct if pl_pct is not None else pl_usd
+        if metric is None:
+            continue
+
+        # Find nearest prior BUY for same symbol
+        buy_dt = None
+        buy_tr = []
+        if sym in buy_idx and sell_dt:
+            candidates = [bt for bt in buy_idx[sym] if bt[0] and bt[0] <= sell_dt]
+            if candidates:
+                buy_dt, buy_tr = candidates[-1]
+
+        held = None
+        if sell_dt and buy_dt:
+            held = sell_dt - buy_dt
+
+        held_text = ""
+        if held:
+            mins = int(held.total_seconds() // 60)
+            held_text = f"{mins}m"
+        else:
+            held_text = "?"
+
+        pl_text = ""
+        if pl_pct is not None:
+            pl_text = f"{pl_pct:+.2f}%"
+            if pl_usd is not None:
+                pl_text += f"  ${pl_usd:+.2f}"
+        else:
+            pl_text = f"${pl_usd:+.2f}"
+
+        item = dict(
+            symbol=sym,
+            sell_time=(sell_dt.strftime("%Y-%m-%d %H:%M:%S") if sell_dt else "?"),
+            held_text=held_text,
+            pl_text=pl_text,
+            buy_triggers=(buy_tr or ["?"]),
+            sell_triggers=(sell_tr or ["?"]),
+        )
+
+        is_win = metric > 0
+        if is_win:
+            wins.append(item)
+            for t in (buy_tr or []):
+                common_buy_win[t] += 1
+            for t in (sell_tr or []):
+                common_sell_win[t] += 1
+        else:
+            losses.append(item)
+            for t in (buy_tr or []):
+                common_buy_loss[t] += 1
+            for t in (sell_tr or []):
+                common_sell_loss[t] += 1
+
+    # Show most recent first
+    wins = wins[::-1]
+    losses = losses[::-1]
+
+    def fmt_common(counter, topn=5):
+        if not counter:
+            return "?"
+        parts = []
+        total = sum(counter.values()) or 1
+        for k, v in counter.most_common(topn):
+            pct = int(round((v / total) * 100))
+            parts.append(f"{k}({pct}%)")
+        return ", ".join(parts) if parts else "?"
+
+    return dict(
+        wins=wins,
+        losses=losses,
+        wins_common_buy=fmt_common(common_buy_win),
+        wins_common_sell=fmt_common(common_sell_win),
+        losses_common_buy=fmt_common(common_buy_loss),
+        losses_common_sell=fmt_common(common_sell_loss),
+    )
+
+@app.route("/analytics/wins-losses")
+def wins_losses_page():
+    d = _winloss_from_logs(max_rows=250)
+    return render_template("wins_losses.html", **d)
+
+# =========================
+# End Wins vs Losses
+
 # =========================
 # Trade Review (RESTORED)
 # source: dashboard.py.bak_trade_review_restore_clean_20260128_205005
@@ -3567,7 +3761,7 @@ def _tr__safe_json_loads(s):
 def _tr__parse_iso(s):
     # returns aware datetime or None
     try:
-        from datetime import datetime
+import datetime
         if not s:
             return None
         ss = str(s).strip()
@@ -3970,7 +4164,8 @@ def trade_review():
                     return redirect(url_for("trade_review", trade_id=r["trade_id"]))
             except Exception:
                 pass
-        return render_template("trade_review.html", error="missing trade_id")
+        abort(400, "missing trade_id")
+
     conn = sqlite3.connect(LIVE_DB)
     conn.row_factory = sqlite3.Row
     trade = conn.execute(
@@ -4000,7 +4195,7 @@ def trade_review():
         # expected: 'YYYY-MM-DD HH:MM:SS'
         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
             try:
-                return datetime.strptime(s[:19], fmt)
+                return datetime.datetime.strptime(s[:19], fmt)
             except Exception:
                 pass
         return None
@@ -4163,7 +4358,7 @@ def trade_review_chart():
     """
     from flask import request, send_file, make_response
     from io import BytesIO
-    from datetime import datetime
+import datetime
     import traceback
 
     def _parse_dt(s):
@@ -4265,6 +4460,39 @@ def trade_review_chart():
 
         ax.plot(close.index, close.values, linewidth=2)
 
+        # ---- BUY/SELL markers (Trade Review) ----
+import datetime
+        import re
+
+        def _parse_dt(s):
+            if not s:
+                return None
+            s = str(s).strip()
+            # common formats we?ve seen: "YYYY-MM-DD HH:MM:SS" or ISO
+            try:
+                return datetime.fromisoformat(s.replace("Z","").replace("T"," "))
+            except Exception:
+                pass
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+                try:
+                    return datetime.datetime.strptime(s, fmt)
+                except Exception:
+                    continue
+            return None
+
+        buy_dt  = _parse_dt(request.args.get("buy_ts")  or request.args.get("buy")  or request.args.get("b"))
+        sell_dt = _parse_dt(request.args.get("sell_ts") or request.args.get("sell") or request.args.get("s"))
+
+        # If the page only has ?ts=..., we still leave room for markers when you wire them later
+        if buy_dt:
+            ax.axvline(buy_dt,  linewidth=2.2, alpha=0.95, color="#00ff66")
+        if sell_dt:
+            ax.axvline(sell_dt, linewidth=2.2, alpha=0.95, color="#ff3355")
+
+        # Optional ?time at risk? shading (only when both exist)
+        if buy_dt and sell_dt:
+            ax.axvspan(buy_dt, sell_dt, alpha=0.12, color="#00ff66")
+
         # Shade held period if buy_ts and sell_ts exist (best effort)
         def _to_index_tz(dt):
             if dt is None:
@@ -4349,37 +4577,19 @@ def trade_review_chart():
             return make_response("Chart exception", 500)
 
 
-# =========================
-# FORCE ROUTES (stability)
-# =========================
-# inserted: 2026-01-31 00:06:59
-@app.route("/__fingerprint")
-def __fingerprint():
-    return "DASHBOARD_FINGERPRINT 2026-01-31 00:06:59", 200, {"Content-Type":"text/plain"}
-
-@app.route("/analytics/data")
-def analytics_data():
-    # compat: analytics page JS expects /analytics/data
-    try:
-        return api_analytics_today()
-    except Exception as e:
-        from flask import jsonify
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-
-
 
 
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
 # --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
-def normalize_positions_payload_dup7(raw):
-    # FIX: break accidental recursion (duplicate helper)
-    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+def normalize_positions_payload(raw):
+    return normalize_positions_payload(raw)
+
+
+# --- Fix: compute realized P/L for SELLs from price_paid when available ---
 
 try:
 
@@ -4484,14 +4694,14 @@ except Exception:
 
     pass
 
-# @app.route("/analytics/data")
+@app.route("/analytics/data")
 def analytics_data():
     from services.analytics_service import compute_analytics_charts
     logs_dir = r"C:\TradeAlerts\logs"
     return compute_analytics_charts(log_dir=logs_dir)
 
-@app.route("/api/trade_review", endpoint="api_trade_review_2")
-def api_trade_review_dup4():
+@app.route("/api/trade_review")
+def api_trade_review():
     import os
     try:
         limit = int(_tr_req.args.get("limit", "5"))
@@ -4668,7 +4878,7 @@ def api_trade_review_dup4():
     return jsonify({"ok": True, "buy_log": buy_path, "sell_log": sell_path, "buys": buys_out, "sells": sells_out}), 200
 
 @app.route("/trade_review")
-def trade_review_dup4():
+def trade_review():
     """
     Single-trade review page.
     Source of truth = local DB (realized_trades).
@@ -4793,7 +5003,7 @@ def trade_review_dup4():
         # expected: 'YYYY-MM-DD HH:MM:SS'
         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
             try:
-                return datetime.strptime(s[:19], fmt)
+                return datetime.datetime.strptime(s[:19], fmt)
             except Exception:
                 pass
         return None
@@ -4908,7 +5118,7 @@ def _trade_review_error_png(msg: str):
     plt.close(fig)
     return Response(buf.getvalue(), mimetype="image/png")
 @app.route("/chart/<symbol>")
-def chart_view_dup4(symbol):
+def chart_view(symbol):
     # Minimal context so trade_review_single.html doesn't crash.
     # If ts is provided, we treat it as the buy timestamp anchor for charting.
     from flask import request, render_template
@@ -4945,12 +5155,14 @@ def chart_view_dup4(symbol):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
 # --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
-def normalize_positions_payload_dup6(raw):
-    # FIX: break accidental recursion (duplicate helper)
-    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+def normalize_positions_payload(raw):
+    return normalize_positions_payload(raw)
+
+
+# --- Fix: compute realized P/L for SELLs from price_paid when available ---
 
 try:
 
@@ -5055,19 +5267,21 @@ except Exception:
 
     pass
 
-# @app.route("/analytics/data")
-def analytics_data_dup6():
+@app.route("/analytics/data")
+def analytics_data():
     from services.analytics_service import compute_analytics_charts
     logs_dir = r"C:\TradeAlerts\logs"
     return compute_analytics_charts(log_dir=logs_dir)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
 # --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
-def normalize_positions_payload_dup5(raw):
-    # FIX: break accidental recursion (duplicate helper)
-    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+def normalize_positions_payload(raw):
+    return normalize_positions_payload(raw)
+
+
+# --- Fix: compute realized P/L for SELLs from price_paid when available ---
 
 try:
 
@@ -5172,8 +5386,8 @@ except Exception:
 
     pass
 
-# @app.route("/analytics/data")
-def analytics_data_dup5():
+@app.route("/analytics/data")
+def analytics_data():
     from services.analytics_service import compute_analytics_charts
     logs_dir = r"C:\TradeAlerts\logs"
     return compute_analytics_charts(log_dir=logs_dir)
@@ -5279,16 +5493,16 @@ def _ax_parse_date_arg(arg: str | None) -> str:
     """
     try:
         if arg:
-            dt = datetime.strptime(arg.strip(), "%Y-%m-%d")
+            dt = datetime.datetime.strptime(arg.strip(), "%Y-%m-%d")
             return dt.strftime("%Y-%m-%d")
     except Exception:
         pass
     # fallback: today ET (no tz import needed; date string only)
-    return datetime.now().strftime("%Y-%m-%d")
+    return datetime.datetime.datetime.now().strftime("%Y-%m-%d")
 
 def _ax_yesterday(ymd: str) -> str:
     try:
-        dt = datetime.strptime(ymd, "%Y-%m-%d") - timedelta(days=1)
+        dt = datetime.datetime.strptime(ymd, "%Y-%m-%d") - timedelta(days=1)
         return dt.strftime("%Y-%m-%d")
     except Exception:
         return ymd
@@ -5299,8 +5513,8 @@ def _ax_log_paths_for_date(log_dir: str, ymd: str):
     return ymd, buy_path, sell_path
 
 
-# @app.route("/analytics")
-def analytics_page_dup2():
+@app.route("/analytics")
+def analytics_page():
     # --- analytics date override ---
     date_arg = (request.args.get('date') if 'request' in globals() else None)
     ymd = _ax_parse_date_arg(date_arg)
@@ -5340,7 +5554,7 @@ def _tr__safe_json_loads(s):
 def _tr__parse_iso(s):
     # returns aware datetime or None
     try:
-        from datetime import datetime
+import datetime
         if not s:
             return None
         ss = str(s).strip()
@@ -5471,8 +5685,8 @@ def _tr__yahoo_intraday_series(symbol, interval="5m"):
     except Exception:
         return []
 
-@app.route("/api/trade_review", endpoint="api_trade_review_3")
-def api_trade_review_dup3():
+@app.route("/api/trade_review")
+def api_trade_review():
     import os
     try:
         limit = int(request.args.get("limit", "5"))
@@ -5649,7 +5863,7 @@ def api_trade_review_dup3():
     return jsonify({"ok": True, "buy_log": buy_path, "sell_log": sell_path, "buys": buys_out, "sells": sells_out}), 200
 
 @app.route("/trade_review")
-def trade_review_dup3():
+def trade_review():
     """
     Single-trade review page.
     Source of truth = local DB (realized_trades).
@@ -5774,7 +5988,7 @@ def trade_review_dup3():
         # expected: 'YYYY-MM-DD HH:MM:SS'
         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
             try:
-                return datetime.strptime(s[:19], fmt)
+                return datetime.datetime.strptime(s[:19], fmt)
             except Exception:
                 pass
         return None
@@ -5889,7 +6103,7 @@ def _trade_review_error_png(msg: str):
     plt.close(fig)
     return Response(buf.getvalue(), mimetype="image/png")
 @app.route("/chart/<symbol>")
-def chart_view_dup3(symbol):
+def chart_view(symbol):
     # Minimal context so trade_review_single.html doesn't crash.
     # If ts is provided, we treat it as the buy timestamp anchor for charting.
     from flask import request, render_template
@@ -5926,12 +6140,14 @@ def chart_view_dup3(symbol):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
 # --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
-def normalize_positions_payload_dup4(raw):
-    # FIX: break accidental recursion (duplicate helper)
-    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+def normalize_positions_payload(raw):
+    return normalize_positions_payload(raw)
+
+
+# --- Fix: compute realized P/L for SELLs from price_paid when available ---
 
 try:
 
@@ -6036,14 +6252,14 @@ except Exception:
 
     pass
 
-# @app.route("/analytics/data")
-def analytics_data_dup4():
+@app.route("/analytics/data")
+def analytics_data():
     from services.analytics_service import compute_analytics_charts
     logs_dir = r"C:\TradeAlerts\logs"
     return compute_analytics_charts(log_dir=logs_dir)
 
-@app.route("/api/trade_review", endpoint="api_trade_review_4")
-def api_trade_review_dup2():
+@app.route("/api/trade_review")
+def api_trade_review():
     import os
     try:
         limit = int(_tr_req.args.get("limit", "5"))
@@ -6220,7 +6436,7 @@ def api_trade_review_dup2():
     return jsonify({"ok": True, "buy_log": buy_path, "sell_log": sell_path, "buys": buys_out, "sells": sells_out}), 200
 
 @app.route("/trade_review")
-def trade_review_dup2():
+def trade_review():
     """
     Single-trade review page.
     Source of truth = local DB (realized_trades).
@@ -6345,7 +6561,7 @@ def trade_review_dup2():
         # expected: 'YYYY-MM-DD HH:MM:SS'
         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
             try:
-                return datetime.strptime(s[:19], fmt)
+                return datetime.datetime.strptime(s[:19], fmt)
             except Exception:
                 pass
         return None
@@ -6438,7 +6654,7 @@ def _tz_naive_dt(x):
 
 
 @app.route("/chart/<symbol>")
-def chart_view_dup2(symbol):
+def chart_view(symbol):
     # Minimal context so trade_review_single.html doesn't crash.
     # If ts is provided, we treat it as the buy timestamp anchor for charting.
     from flask import request, render_template
@@ -6475,12 +6691,14 @@ def chart_view_dup2(symbol):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
 # --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
-def normalize_positions_payload_dup3(raw):
-    # FIX: break accidental recursion (duplicate helper)
-    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+def normalize_positions_payload(raw):
+    return normalize_positions_payload(raw)
+
+
+# --- Fix: compute realized P/L for SELLs from price_paid when available ---
 
 try:
 
@@ -6585,19 +6803,21 @@ except Exception:
 
     pass
 
-# @app.route("/analytics/data")
-def analytics_data_dup3():
+@app.route("/analytics/data")
+def analytics_data():
     from services.analytics_service import compute_analytics_charts
     logs_dir = r"C:\TradeAlerts\logs"
     return compute_analytics_charts(log_dir=logs_dir)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
 # --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
-def normalize_positions_payload_dup2(raw):
-    # FIX: break accidental recursion (duplicate helper)
-    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+def normalize_positions_payload(raw):
+    return normalize_positions_payload(raw)
+
+
+# --- Fix: compute realized P/L for SELLs from price_paid when available ---
 
 try:
 
@@ -6702,16 +6922,10 @@ except Exception:
 
     pass
 
-# @app.route("/analytics/data")
-def analytics_data_dup2():
+@app.route("/analytics/data")
+def analytics_data():
     from services.analytics_service import compute_analytics_charts
     logs_dir = r"C:\TradeAlerts\logs"
     return compute_analytics_charts(log_dir=logs_dir)
 
 
-
-
-# --- debug: fingerprint to ensure the running server matches this file
-# @app.route("/__fingerprint")
-def __fingerprint():
-    return "DASHBOARD_FINGERPRINT 2026-01-30 23:39:19", 200, {"Content-Type":"text/plain"}

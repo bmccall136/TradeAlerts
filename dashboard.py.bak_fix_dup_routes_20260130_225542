@@ -203,8 +203,6 @@ def _ax_rows_to_trades(rows: list[dict], side: str) -> list[dict]:
 
 app = Flask(__name__)
 
-DASHBOARD_PORT = 5001
-
 LOG = logging.getLogger("dashboard")
 LOG.setLevel(logging.INFO)
 if not LOG.handlers:
@@ -3970,7 +3968,8 @@ def trade_review():
                     return redirect(url_for("trade_review", trade_id=r["trade_id"]))
             except Exception:
                 pass
-        return render_template("trade_review.html", error="missing trade_id")
+        abort(400, "missing trade_id")
+
     conn = sqlite3.connect(LIVE_DB)
     conn.row_factory = sqlite3.Row
     trade = conn.execute(
@@ -4349,37 +4348,19 @@ def trade_review_chart():
             return make_response("Chart exception", 500)
 
 
-# =========================
-# FORCE ROUTES (stability)
-# =========================
-# inserted: 2026-01-31 00:06:59
-@app.route("/__fingerprint")
-def __fingerprint():
-    return "DASHBOARD_FINGERPRINT 2026-01-31 00:06:59", 200, {"Content-Type":"text/plain"}
-
-@app.route("/analytics/data")
-def analytics_data():
-    # compat: analytics page JS expects /analytics/data
-    try:
-        return api_analytics_today()
-    except Exception as e:
-        from flask import jsonify
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-
-
 
 
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
 # --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
-def normalize_positions_payload_dup7(raw):
-    # FIX: break accidental recursion (duplicate helper)
-    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+def normalize_positions_payload(raw):
+    return normalize_positions_payload(raw)
+
+
+# --- Fix: compute realized P/L for SELLs from price_paid when available ---
 
 try:
 
@@ -4484,14 +4465,14 @@ except Exception:
 
     pass
 
-# @app.route("/analytics/data")
+@app.route("/analytics/data")
 def analytics_data():
     from services.analytics_service import compute_analytics_charts
     logs_dir = r"C:\TradeAlerts\logs"
     return compute_analytics_charts(log_dir=logs_dir)
 
 @app.route("/api/trade_review", endpoint="api_trade_review_2")
-def api_trade_review_dup4():
+def api_trade_review():
     import os
     try:
         limit = int(_tr_req.args.get("limit", "5"))
@@ -4668,7 +4649,7 @@ def api_trade_review_dup4():
     return jsonify({"ok": True, "buy_log": buy_path, "sell_log": sell_path, "buys": buys_out, "sells": sells_out}), 200
 
 @app.route("/trade_review")
-def trade_review_dup4():
+def trade_review():
     """
     Single-trade review page.
     Source of truth = local DB (realized_trades).
@@ -4908,7 +4889,7 @@ def _trade_review_error_png(msg: str):
     plt.close(fig)
     return Response(buf.getvalue(), mimetype="image/png")
 @app.route("/chart/<symbol>")
-def chart_view_dup4(symbol):
+def chart_view(symbol):
     # Minimal context so trade_review_single.html doesn't crash.
     # If ts is provided, we treat it as the buy timestamp anchor for charting.
     from flask import request, render_template
@@ -4945,12 +4926,14 @@ def chart_view_dup4(symbol):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
 # --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
-def normalize_positions_payload_dup6(raw):
-    # FIX: break accidental recursion (duplicate helper)
-    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+def normalize_positions_payload(raw):
+    return normalize_positions_payload(raw)
+
+
+# --- Fix: compute realized P/L for SELLs from price_paid when available ---
 
 try:
 
@@ -5055,19 +5038,21 @@ except Exception:
 
     pass
 
-# @app.route("/analytics/data")
-def analytics_data_dup6():
+@app.route("/analytics/data")
+def analytics_data():
     from services.analytics_service import compute_analytics_charts
     logs_dir = r"C:\TradeAlerts\logs"
     return compute_analytics_charts(log_dir=logs_dir)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
 # --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
-def normalize_positions_payload_dup5(raw):
-    # FIX: break accidental recursion (duplicate helper)
-    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+def normalize_positions_payload(raw):
+    return normalize_positions_payload(raw)
+
+
+# --- Fix: compute realized P/L for SELLs from price_paid when available ---
 
 try:
 
@@ -5172,8 +5157,8 @@ except Exception:
 
     pass
 
-# @app.route("/analytics/data")
-def analytics_data_dup5():
+@app.route("/analytics/data")
+def analytics_data():
     from services.analytics_service import compute_analytics_charts
     logs_dir = r"C:\TradeAlerts\logs"
     return compute_analytics_charts(log_dir=logs_dir)
@@ -5299,8 +5284,8 @@ def _ax_log_paths_for_date(log_dir: str, ymd: str):
     return ymd, buy_path, sell_path
 
 
-# @app.route("/analytics")
-def analytics_page_dup2():
+@app.route("/analytics")
+def analytics_page():
     # --- analytics date override ---
     date_arg = (request.args.get('date') if 'request' in globals() else None)
     ymd = _ax_parse_date_arg(date_arg)
@@ -5472,7 +5457,7 @@ def _tr__yahoo_intraday_series(symbol, interval="5m"):
         return []
 
 @app.route("/api/trade_review", endpoint="api_trade_review_3")
-def api_trade_review_dup3():
+def api_trade_review():
     import os
     try:
         limit = int(request.args.get("limit", "5"))
@@ -5649,7 +5634,7 @@ def api_trade_review_dup3():
     return jsonify({"ok": True, "buy_log": buy_path, "sell_log": sell_path, "buys": buys_out, "sells": sells_out}), 200
 
 @app.route("/trade_review")
-def trade_review_dup3():
+def trade_review():
     """
     Single-trade review page.
     Source of truth = local DB (realized_trades).
@@ -5889,7 +5874,7 @@ def _trade_review_error_png(msg: str):
     plt.close(fig)
     return Response(buf.getvalue(), mimetype="image/png")
 @app.route("/chart/<symbol>")
-def chart_view_dup3(symbol):
+def chart_view(symbol):
     # Minimal context so trade_review_single.html doesn't crash.
     # If ts is provided, we treat it as the buy timestamp anchor for charting.
     from flask import request, render_template
@@ -5926,12 +5911,14 @@ def chart_view_dup3(symbol):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
 # --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
-def normalize_positions_payload_dup4(raw):
-    # FIX: break accidental recursion (duplicate helper)
-    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+def normalize_positions_payload(raw):
+    return normalize_positions_payload(raw)
+
+
+# --- Fix: compute realized P/L for SELLs from price_paid when available ---
 
 try:
 
@@ -6036,14 +6023,14 @@ except Exception:
 
     pass
 
-# @app.route("/analytics/data")
-def analytics_data_dup4():
+@app.route("/analytics/data")
+def analytics_data():
     from services.analytics_service import compute_analytics_charts
     logs_dir = r"C:\TradeAlerts\logs"
     return compute_analytics_charts(log_dir=logs_dir)
 
 @app.route("/api/trade_review", endpoint="api_trade_review_4")
-def api_trade_review_dup2():
+def api_trade_review():
     import os
     try:
         limit = int(_tr_req.args.get("limit", "5"))
@@ -6220,7 +6207,7 @@ def api_trade_review_dup2():
     return jsonify({"ok": True, "buy_log": buy_path, "sell_log": sell_path, "buys": buys_out, "sells": sells_out}), 200
 
 @app.route("/trade_review")
-def trade_review_dup2():
+def trade_review():
     """
     Single-trade review page.
     Source of truth = local DB (realized_trades).
@@ -6438,7 +6425,7 @@ def _tz_naive_dt(x):
 
 
 @app.route("/chart/<symbol>")
-def chart_view_dup2(symbol):
+def chart_view(symbol):
     # Minimal context so trade_review_single.html doesn't crash.
     # If ts is provided, we treat it as the buy timestamp anchor for charting.
     from flask import request, render_template
@@ -6475,12 +6462,14 @@ def chart_view_dup2(symbol):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
 # --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
-def normalize_positions_payload_dup3(raw):
-    # FIX: break accidental recursion (duplicate helper)
-    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+def normalize_positions_payload(raw):
+    return normalize_positions_payload(raw)
+
+
+# --- Fix: compute realized P/L for SELLs from price_paid when available ---
 
 try:
 
@@ -6585,19 +6574,21 @@ except Exception:
 
     pass
 
-# @app.route("/analytics/data")
-def analytics_data_dup3():
+@app.route("/analytics/data")
+def analytics_data():
     from services.analytics_service import compute_analytics_charts
     logs_dir = r"C:\TradeAlerts\logs"
     return compute_analytics_charts(log_dir=logs_dir)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
 # --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
-def normalize_positions_payload_dup2(raw):
-    # FIX: break accidental recursion (duplicate helper)
-    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+def normalize_positions_payload(raw):
+    return normalize_positions_payload(raw)
+
+
+# --- Fix: compute realized P/L for SELLs from price_paid when available ---
 
 try:
 
@@ -6702,16 +6693,10 @@ except Exception:
 
     pass
 
-# @app.route("/analytics/data")
-def analytics_data_dup2():
+@app.route("/analytics/data")
+def analytics_data():
     from services.analytics_service import compute_analytics_charts
     logs_dir = r"C:\TradeAlerts\logs"
     return compute_analytics_charts(log_dir=logs_dir)
 
 
-
-
-# --- debug: fingerprint to ensure the running server matches this file
-# @app.route("/__fingerprint")
-def __fingerprint():
-    return "DASHBOARD_FINGERPRINT 2026-01-30 23:39:19", 200, {"Content-Type":"text/plain"}

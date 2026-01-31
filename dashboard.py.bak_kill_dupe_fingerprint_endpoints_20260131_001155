@@ -6712,6 +6712,6 @@ def analytics_data_dup2():
 
 
 # --- debug: fingerprint to ensure the running server matches this file
-# @app.route("/__fingerprint")
+@app.route("/__fingerprint")
 def __fingerprint():
     return "DASHBOARD_FINGERPRINT 2026-01-30 23:39:19", 200, {"Content-Type":"text/plain"}

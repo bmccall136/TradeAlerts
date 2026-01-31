@@ -203,8 +203,6 @@ def _ax_rows_to_trades(rows: list[dict], side: str) -> list[dict]:
 
 app = Flask(__name__)
 
-DASHBOARD_PORT = 5001
-
 LOG = logging.getLogger("dashboard")
 LOG.setLevel(logging.INFO)
 if not LOG.handlers:
@@ -3875,197 +3873,159 @@ def api_trade_review():
 
     return jsonify({"ok": True, "buy_log": buy_path, "sell_log": sell_path, "buys": buys_out, "sells": sells_out}), 200
 
-@app.route("/trade_review")
-def trade_review():
+@app.route("/trade_review/<symbol>")
+def trade_review(symbol):
     """
-    Single-trade review page.
-    Source of truth = local DB (realized_trades).
-    Logs are used ONLY for trigger explanations.
+    Trade Review page.
+    Supports SELL-only trades explicitly (no BUY logged):
+      - BUY fields show n/a
+      - SELL fields show from realized_trades
+      - No fake 0.00 values
     """
-    from flask import request, abort
-    import sqlite3
-    from datetime import datetime, timedelta
-    from pathlib import Path
-    import csv
+    import os, sqlite3
+    from datetime import datetime
+    from flask import render_template
 
-    trade_id = request.args.get("trade_id")
+    sym = (symbol or "").upper().strip()
 
-    # analytics links may call /trade_review?symbol=XXX&ts=... (no trade_id)
-    sym = (request.args.get("symbol") or "").strip().upper()
-    ts  = (request.args.get("ts") or "").strip()
-
-    # If no trade_id but we have symbol+ts, send to chart view (open trades / pseudo-buys)
-    if (not trade_id) and sym and ts:
-        return redirect(f"/chart/{(request.args.get('symbol') or '').strip().upper()}?ts={(request.args.get('ts') or '').strip()}")
-
-    # --- fallback: allow /trade_review?symbol=XYZ&ts_et=... (resolve to a realized trade_id) ---
-    if not trade_id:
-        symbol = (request.args.get("symbol") or "").strip().upper()
-        ts_et = (request.args.get("ts_et") or request.args.get("sell_ts_et") or "").strip()
-        if symbol:
-            try:
-                import sqlite3
-                db = LIVE_DB if "LIVE_DB" in globals() else "live.db"
-                conn = sqlite3.connect(db)
-                conn.row_factory = sqlite3.Row
-    
-                target = ts_et.replace("Z","") if ts_et else None
-    
-                if target:
-                    row = conn.execute(
-                        "SELECT id, close_date FROM realized_trades "
-                        "WHERE symbol=? AND close_date IS NOT NULL "
-                        "ORDER BY ABS(strftime('%s', close_date) - strftime('%s', ?)) ASC "
-                        "LIMIT 1",
-                        (symbol, target)
-                    ).fetchone()
-                else:
-                    row = conn.execute(
-                        "SELECT id, close_date FROM realized_trades "
-                        "WHERE symbol=? AND close_date IS NOT NULL "
-                        "ORDER BY close_date DESC "
-                        "LIMIT 1",
-                        (symbol,)
-                    ).fetchone()
-    
-                conn.close()
-    
-                if row:
-                    return redirect(url_for("trade_review", trade_id=row["id"]))
-                return redirect(f"/chart/{(request.args.get('symbol') or '').strip().upper()}?ts={(request.args.get('ts') or '').strip()}")
-            except Exception as e:
-                return (f"Bad Request\ntrade_id missing and resolve failed: {e}\n", 400)
-
-    chart_name = (request.args.get("name") or "").strip() or None
-    # --- fallback: allow /trade_review?symbol=XXX&ts=... (analytics links) ---
-    if not trade_id:
-        sym = (request.args.get("symbol") or "").strip().upper()
-        ts  = (request.args.get("ts") or "").strip()
-        if sym and ts:
-            # Best-effort lookup:
-            # 1) realized_trades: close_date startswith(ts) (handles your ISO timestamps)
-            # 2) if not found, try exact match after normalizing ":" encoding
-            try:
-                con = sqlite3.connect(LIVE_DB)
-                con.row_factory = sqlite3.Row
-                cur = con.cursor()
-
-                # try startswith match
-                cur.execute(
-                    "SELECT trade_id FROM realized_trades WHERE symbol=? AND close_date LIKE ? ORDER BY close_date DESC LIMIT 1",
-                    (sym, ts + "%")
-                )
-                r = cur.fetchone()
-                if not r:
-                    # some callers might pass url-decoded vs stored string formats
-                    cur.execute(
-                        "SELECT trade_id FROM realized_trades WHERE symbol=? ORDER BY close_date DESC LIMIT 1",
-                        (sym,)
-                    )
-                    r = cur.fetchone()
-
-                con.close()
-
-                if r and r["trade_id"]:
-                    return redirect(url_for("trade_review", trade_id=r["trade_id"]))
-            except Exception:
-                pass
-        return render_template("trade_review.html", error="missing trade_id")
-    conn = sqlite3.connect(LIVE_DB)
-    conn.row_factory = sqlite3.Row
-    trade = conn.execute(
-        "SELECT * FROM realized_trades WHERE id = ?",
-        (trade_id,)
-    ).fetchone()
-    conn.close()
-
-    if not trade:
-        abort(404, "trade not found")
-
-    symbol = (trade["symbol"] or "").strip().upper()
-
-    # --- company name (best-effort, no placeholders) ---
-    name = None  # company name
+    # Prefer LIVE_DB if defined; else default to live.db
+    LIVE_DB_CANDIDATES = []
     try:
-        import yfinance as yf
-        info = yf.Ticker(symbol).info or {}
-        name = (info.get("shortName") or info.get("longName") or "").strip() or None
+        LIVE_DB_CANDIDATES.append(LIVE_DB)  # type: ignore
     except Exception:
-        name = None
+        pass
+    LIVE_DB_CANDIDATES += [
+        os.path.join(os.path.dirname(__file__), "live.db"),
+        os.path.join(os.getcwd(), "live.db"),
+        "live.db",
+    ]
+    live_db = next((p for p in LIVE_DB_CANDIDATES if p and os.path.exists(p)), LIVE_DB_CANDIDATES[-1])
 
-    buy_time_s = (trade["open_date"] or "").strip()
-    sell_time_s = (trade["close_date"] or "").strip()
+    def _cols(con, table):
+        cur = con.execute(f"PRAGMA table_info({table})")
+        return [r[1] for r in cur.fetchall()]
 
-    def _parse_dt(s):
-        # expected: 'YYYY-MM-DD HH:MM:SS'
-        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-            try:
-                return datetime.strptime(s[:19], fmt)
-            except Exception:
-                pass
-        return None
+    def _fetch_latest_realized(sym):
+        if not os.path.exists(live_db):
+            return None, "LIVE DB not found"
+        con = sqlite3.connect(live_db)
+        con.row_factory = sqlite3.Row
+        try:
+            row = con.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='realized_trades'"
+            ).fetchone()
+            if not row:
+                return None, "realized_trades table not found"
 
-    buy_dt = _parse_dt(buy_time_s)
-    sell_dt = _parse_dt(sell_time_s)
+            cols = _cols(con, "realized_trades")
 
-    # Determine win/loss from gain
-    gain = trade["gain"]
+            # defensive column mapping
+            c_symbol  = "symbol" if "symbol" in cols else None
+            c_close   = "close_date" if "close_date" in cols else ("closed_at" if "closed_at" in cols else None)
+            c_gain    = "gain" if "gain" in cols else ("pnl" if "pnl" in cols else ("pl" if "pl" in cols else None))
+            c_qty     = "qty" if "qty" in cols else ("quantity" if "quantity" in cols else None)
+            c_openpx  = "open_price" if "open_price" in cols else ("entry_price" if "entry_price" in cols else None)
+            c_closepx = "close_price" if "close_price" in cols else ("exit_price" if "exit_price" in cols else None)
+            c_opendt  = "open_date" if "open_date" in cols else ("opened_at" if "opened_at" in cols else None)
+
+            sel = []
+            def add(alias, col):
+                if col:
+                    sel.append(f"{col} AS {alias}")
+            add("symbol", c_symbol)
+            add("close_date", c_close)
+            add("gain", c_gain)
+            add("qty", c_qty)
+            add("open_price", c_openpx)
+            add("close_price", c_closepx)
+            add("open_date", c_opendt)
+
+            if not sel:
+                return None, "realized_trades has no recognizable columns"
+
+            if c_symbol:
+                q = f"SELECT {', '.join(sel)} FROM realized_trades WHERE {c_symbol}=? ORDER BY {c_close or 'rowid'} DESC LIMIT 1"
+                r = con.execute(q, (sym,)).fetchone()
+            else:
+                q = f"SELECT {', '.join(sel)} FROM realized_trades ORDER BY {c_close or 'rowid'} DESC LIMIT 1"
+                r = con.execute(q).fetchone()
+
+            if not r:
+                return None, "no realized row found for symbol"
+            return dict(r), None
+        finally:
+            con.close()
+
+    realized, realized_err = _fetch_latest_realized(sym)
+
+    sell_only = False
+    buy_price = None
+    buy_time  = None
+    sell_price= None
+    sell_time = None
+    qty       = None
+    gain      = None
+
+    if realized:
+        qty = realized.get("qty")
+        gain = realized.get("gain")
+        buy_price = realized.get("open_price")
+        sell_price = realized.get("close_price")
+        buy_time = realized.get("open_date")
+        sell_time = realized.get("close_date")
+
+        if (sell_time or sell_price or gain is not None) and (buy_time is None and buy_price is None):
+            sell_only = True
+
+    def _fmt_dt(x):
+        if not x:
+            return None
+        if isinstance(x, str):
+            return x
+        try:
+            return datetime.fromtimestamp(float(x)).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return str(x)
+
+    buy_time_s  = _fmt_dt(buy_time)
+    sell_time_s = _fmt_dt(sell_time)
+
+    anchor_label = sell_time_s or buy_time_s or ""
+
+    # If you later wire trigger lookups, these are ready
+    buy_triggers = []
+    sell_triggers = []
+
+    pnl = None
+    if gain is not None:
+        try: pnl = float(gain)
+        except Exception: pnl = None
+
+    pnl_pct = None
     try:
-        gain_f = float(gain)
+        if pnl is not None and buy_price and qty:
+            cost = float(buy_price) * float(qty)
+            if cost != 0:
+                pnl_pct = (pnl / cost) * 100.0
     except Exception:
-        gain_f = 0.0
-    is_win = gain_f >= 0.0
-
-    log_dir = Path(__file__).resolve().parent / "logs"
-
-    def _file_for_day(prefix, dt):
-        if not dt:
-            return None
-        fname = f"{prefix}{dt.strftime('%Y-%m-%d')}.csv"
-        f = log_dir / fname
-        return f if f.exists() else None
-
-    buy_file = _file_for_day("triggers_", buy_dt) or (max(log_dir.glob("triggers_*.csv"), default=None) if log_dir.exists() else None)
-    sell_file = _file_for_day("sell_triggers_", sell_dt) or (max(log_dir.glob("sell_triggers_*.csv"), default=None) if log_dir.exists() else None)
-
-    def _row_time_dt(row):
-        t = (row.get("time_et") or row.get("timestamp") or row.get("time") or "").strip()
-        if not t:
-            return None
-        return _parse_dt(t)
-
-    def _load_matches(path, target_dt, window_sec=120):
-        if not path or not path.exists() or not target_dt:
-            return []
-        rows = []
-        with path.open("r", encoding="utf-8", newline="") as f:
-            r = csv.DictReader(f)
-            for row in r:
-                if (row.get("symbol") or "").strip().upper() != symbol:
-                    continue
-                rt = _row_time_dt(row)
-                if not rt:
-                    continue
-                if abs((rt - target_dt).total_seconds()) <= window_sec:
-                    rows.append(row)
-        return rows
-
-    buy_triggers = _load_matches(buy_file, buy_dt, 180)
-    sell_triggers = _load_matches(sell_file, sell_dt, 180)
+        pnl_pct = None
 
     return render_template(
-        "trade_review_single.html",
-        trade=trade,
+        "trade_review.html",
+        symbol=sym,
+        sell_only=sell_only,
+        buy_price=buy_price,
+        sell_price=sell_price,
+        buy_time=buy_time_s,
+        sell_time=sell_time_s,
+        qty=qty,
+        pnl=pnl,
+        pnl_pct=pnl_pct,
         buy_triggers=buy_triggers,
         sell_triggers=sell_triggers,
-        buy_file=str(buy_file) if buy_file else None,
-        sell_file=str(sell_file) if sell_file else None,
-        is_win=is_win,
-        name=name,
+        anchor_label=anchor_label,
+        realized_err=realized_err,
     )
-
-
-
 # --- tz-safe datetime helper (Trade Review) ---
 def _tz_naive_dt(x):
     """
@@ -4349,37 +4309,19 @@ def trade_review_chart():
             return make_response("Chart exception", 500)
 
 
-# =========================
-# FORCE ROUTES (stability)
-# =========================
-# inserted: 2026-01-31 00:06:59
-@app.route("/__fingerprint")
-def __fingerprint():
-    return "DASHBOARD_FINGERPRINT 2026-01-31 00:06:59", 200, {"Content-Type":"text/plain"}
-
-@app.route("/analytics/data")
-def analytics_data():
-    # compat: analytics page JS expects /analytics/data
-    try:
-        return api_analytics_today()
-    except Exception as e:
-        from flask import jsonify
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-
-
 
 
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
 # --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
-def normalize_positions_payload_dup7(raw):
-    # FIX: break accidental recursion (duplicate helper)
-    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+def normalize_positions_payload(raw):
+    return normalize_positions_payload(raw)
+
+
+# --- Fix: compute realized P/L for SELLs from price_paid when available ---
 
 try:
 
@@ -4484,14 +4426,14 @@ except Exception:
 
     pass
 
-# @app.route("/analytics/data")
+@app.route("/analytics/data")
 def analytics_data():
     from services.analytics_service import compute_analytics_charts
     logs_dir = r"C:\TradeAlerts\logs"
     return compute_analytics_charts(log_dir=logs_dir)
 
-@app.route("/api/trade_review", endpoint="api_trade_review_2")
-def api_trade_review_dup4():
+@app.route("/api/trade_review")
+def api_trade_review():
     import os
     try:
         limit = int(_tr_req.args.get("limit", "5"))
@@ -4668,7 +4610,7 @@ def api_trade_review_dup4():
     return jsonify({"ok": True, "buy_log": buy_path, "sell_log": sell_path, "buys": buys_out, "sells": sells_out}), 200
 
 @app.route("/trade_review")
-def trade_review_dup4():
+def trade_review():
     """
     Single-trade review page.
     Source of truth = local DB (realized_trades).
@@ -4908,7 +4850,7 @@ def _trade_review_error_png(msg: str):
     plt.close(fig)
     return Response(buf.getvalue(), mimetype="image/png")
 @app.route("/chart/<symbol>")
-def chart_view_dup4(symbol):
+def chart_view(symbol):
     # Minimal context so trade_review_single.html doesn't crash.
     # If ts is provided, we treat it as the buy timestamp anchor for charting.
     from flask import request, render_template
@@ -4945,12 +4887,14 @@ def chart_view_dup4(symbol):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
 # --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
-def normalize_positions_payload_dup6(raw):
-    # FIX: break accidental recursion (duplicate helper)
-    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+def normalize_positions_payload(raw):
+    return normalize_positions_payload(raw)
+
+
+# --- Fix: compute realized P/L for SELLs from price_paid when available ---
 
 try:
 
@@ -5055,19 +4999,21 @@ except Exception:
 
     pass
 
-# @app.route("/analytics/data")
-def analytics_data_dup6():
+@app.route("/analytics/data")
+def analytics_data():
     from services.analytics_service import compute_analytics_charts
     logs_dir = r"C:\TradeAlerts\logs"
     return compute_analytics_charts(log_dir=logs_dir)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
 # --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
-def normalize_positions_payload_dup5(raw):
-    # FIX: break accidental recursion (duplicate helper)
-    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+def normalize_positions_payload(raw):
+    return normalize_positions_payload(raw)
+
+
+# --- Fix: compute realized P/L for SELLs from price_paid when available ---
 
 try:
 
@@ -5172,8 +5118,8 @@ except Exception:
 
     pass
 
-# @app.route("/analytics/data")
-def analytics_data_dup5():
+@app.route("/analytics/data")
+def analytics_data():
     from services.analytics_service import compute_analytics_charts
     logs_dir = r"C:\TradeAlerts\logs"
     return compute_analytics_charts(log_dir=logs_dir)
@@ -5299,8 +5245,8 @@ def _ax_log_paths_for_date(log_dir: str, ymd: str):
     return ymd, buy_path, sell_path
 
 
-# @app.route("/analytics")
-def analytics_page_dup2():
+@app.route("/analytics")
+def analytics_page():
     # --- analytics date override ---
     date_arg = (request.args.get('date') if 'request' in globals() else None)
     ymd = _ax_parse_date_arg(date_arg)
@@ -5471,8 +5417,8 @@ def _tr__yahoo_intraday_series(symbol, interval="5m"):
     except Exception:
         return []
 
-@app.route("/api/trade_review", endpoint="api_trade_review_3")
-def api_trade_review_dup3():
+@app.route("/api/trade_review")
+def api_trade_review():
     import os
     try:
         limit = int(request.args.get("limit", "5"))
@@ -5649,7 +5595,7 @@ def api_trade_review_dup3():
     return jsonify({"ok": True, "buy_log": buy_path, "sell_log": sell_path, "buys": buys_out, "sells": sells_out}), 200
 
 @app.route("/trade_review")
-def trade_review_dup3():
+def trade_review():
     """
     Single-trade review page.
     Source of truth = local DB (realized_trades).
@@ -5889,7 +5835,7 @@ def _trade_review_error_png(msg: str):
     plt.close(fig)
     return Response(buf.getvalue(), mimetype="image/png")
 @app.route("/chart/<symbol>")
-def chart_view_dup3(symbol):
+def chart_view(symbol):
     # Minimal context so trade_review_single.html doesn't crash.
     # If ts is provided, we treat it as the buy timestamp anchor for charting.
     from flask import request, render_template
@@ -5926,12 +5872,14 @@ def chart_view_dup3(symbol):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
 # --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
-def normalize_positions_payload_dup4(raw):
-    # FIX: break accidental recursion (duplicate helper)
-    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+def normalize_positions_payload(raw):
+    return normalize_positions_payload(raw)
+
+
+# --- Fix: compute realized P/L for SELLs from price_paid when available ---
 
 try:
 
@@ -6036,14 +5984,14 @@ except Exception:
 
     pass
 
-# @app.route("/analytics/data")
-def analytics_data_dup4():
+@app.route("/analytics/data")
+def analytics_data():
     from services.analytics_service import compute_analytics_charts
     logs_dir = r"C:\TradeAlerts\logs"
     return compute_analytics_charts(log_dir=logs_dir)
 
-@app.route("/api/trade_review", endpoint="api_trade_review_4")
-def api_trade_review_dup2():
+@app.route("/api/trade_review")
+def api_trade_review():
     import os
     try:
         limit = int(_tr_req.args.get("limit", "5"))
@@ -6220,7 +6168,7 @@ def api_trade_review_dup2():
     return jsonify({"ok": True, "buy_log": buy_path, "sell_log": sell_path, "buys": buys_out, "sells": sells_out}), 200
 
 @app.route("/trade_review")
-def trade_review_dup2():
+def trade_review():
     """
     Single-trade review page.
     Source of truth = local DB (realized_trades).
@@ -6438,7 +6386,7 @@ def _tz_naive_dt(x):
 
 
 @app.route("/chart/<symbol>")
-def chart_view_dup2(symbol):
+def chart_view(symbol):
     # Minimal context so trade_review_single.html doesn't crash.
     # If ts is provided, we treat it as the buy timestamp anchor for charting.
     from flask import request, render_template
@@ -6475,12 +6423,14 @@ def chart_view_dup2(symbol):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
 # --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
-def normalize_positions_payload_dup3(raw):
-    # FIX: break accidental recursion (duplicate helper)
-    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+def normalize_positions_payload(raw):
+    return normalize_positions_payload(raw)
+
+
+# --- Fix: compute realized P/L for SELLs from price_paid when available ---
 
 try:
 
@@ -6585,19 +6535,21 @@ except Exception:
 
     pass
 
-# @app.route("/analytics/data")
-def analytics_data_dup3():
+@app.route("/analytics/data")
+def analytics_data():
     from services.analytics_service import compute_analytics_charts
     logs_dir = r"C:\TradeAlerts\logs"
     return compute_analytics_charts(log_dir=logs_dir)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
 
 # --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
-def normalize_positions_payload_dup2(raw):
-    # FIX: break accidental recursion (duplicate helper)
-    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+def normalize_positions_payload(raw):
+    return normalize_positions_payload(raw)
+
+
+# --- Fix: compute realized P/L for SELLs from price_paid when available ---
 
 try:
 
@@ -6702,16 +6654,10 @@ except Exception:
 
     pass
 
-# @app.route("/analytics/data")
-def analytics_data_dup2():
+@app.route("/analytics/data")
+def analytics_data():
     from services.analytics_service import compute_analytics_charts
     logs_dir = r"C:\TradeAlerts\logs"
     return compute_analytics_charts(log_dir=logs_dir)
 
 
-
-
-# --- debug: fingerprint to ensure the running server matches this file
-# @app.route("/__fingerprint")
-def __fingerprint():
-    return "DASHBOARD_FINGERPRINT 2026-01-30 23:39:19", 200, {"Content-Type":"text/plain"}

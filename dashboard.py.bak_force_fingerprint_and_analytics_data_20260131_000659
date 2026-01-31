@@ -4349,26 +4349,6 @@ def trade_review_chart():
             return make_response("Chart exception", 500)
 
 
-# =========================
-# FORCE ROUTES (stability)
-# =========================
-# inserted: 2026-01-31 00:06:59
-@app.route("/__fingerprint")
-def __fingerprint():
-    return "DASHBOARD_FINGERPRINT 2026-01-31 00:06:59", 200, {"Content-Type":"text/plain"}
-
-@app.route("/analytics/data")
-def analytics_data():
-    # compat: analytics page JS expects /analytics/data
-    try:
-        return api_analytics_today()
-    except Exception as e:
-        from flask import jsonify
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-
-
 
 
 
@@ -4484,7 +4464,7 @@ except Exception:
 
     pass
 
-# @app.route("/analytics/data")
+@app.route("/analytics/data")
 def analytics_data():
     from services.analytics_service import compute_analytics_charts
     logs_dir = r"C:\TradeAlerts\logs"
@@ -6712,6 +6692,6 @@ def analytics_data_dup2():
 
 
 # --- debug: fingerprint to ensure the running server matches this file
-# @app.route("/__fingerprint")
+@app.route("/__fingerprint")
 def __fingerprint():
     return "DASHBOARD_FINGERPRINT 2026-01-30 23:39:19", 200, {"Content-Type":"text/plain"}

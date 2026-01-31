@@ -1683,7 +1683,7 @@ def main() -> None:
                 _txt = str(e)
             except Exception:
                 _txt = str(e)
-            if '"code": 1028' in _txt or '"code": 1049' in _txt or "duplicate order" in _txt.lower() or "processing your previous request" in _txt.lower():
+            if \'"code": 1028\' in _txt or \'"code": 1049\' in _txt or "duplicate order" in _txt.lower() or "processing your previous request" in _txt.lower():
                 _sg_mark_inflight(sym, 180, LOG.warning, "[SELL_INFLIGHT] %s broker duplicate/processing; backing off 180s" % sym)
             # Robust logging that cannot crash
             try:

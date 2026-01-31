@@ -4,8 +4,6 @@
     "use_entries": false,
     "use_exits": false
   },
-  "enable_timeout_exits": true,
-  "max_hold_minutes": 60.0,
   "sell_guard": {
     "allow_intraday_stoploss": true,
     "avoid_daytrades": false,
@@ -43,9 +41,5 @@
     "trail_arm_gain_pct": 1.5,
     "trail_backoff_pct": 1.0,
     "use_extended_hours": true
-  },
-  "target_gain_pct": 1.0,
-  "timeout_exit_pct": -0.3,
-  "trail_arm_gain_pct": 1.5,
-  "trail_backoff_pct": 1.0
+  }
 }

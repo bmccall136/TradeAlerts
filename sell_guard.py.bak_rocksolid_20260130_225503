@@ -34,24 +34,22 @@ def _live_db_path() -> str:
 def _db_connect():
     return sqlite3.connect(_live_db_path())
 
-def _ensure_sell_inflight_table(con):
-    """
-    Ensure sell_inflight exists.
-    Supports BOTH schemas:
-      - New (your live.db): symbol TEXT PK, ts_utc INTEGER, reason TEXT
-      - Old: symbol TEXT PK, last_attempt_epoch INTEGER, inflight_seconds INTEGER, reason TEXT
-    """
-    cur = con.cursor()
-    # Create the NEW schema (safe even if table exists)
-    cur.execute(
-        "CREATE TABLE IF NOT EXISTS sell_inflight ("
-        " symbol TEXT PRIMARY KEY,"
-        " ts_utc INTEGER,"
-        " reason TEXT"
-        ")"
-    )
-    con.commit()
-
+def _ensure_sell_inflight_table():
+    try:
+        with _db_connect() as con:
+            cur = con.cursor()
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS sell_inflight (
+                    symbol TEXT PRIMARY KEY,
+                    last_attempt_epoch REAL,
+                    last_reason TEXT,
+                    last_error TEXT
+                )
+            """)
+            con.commit()
+    except Exception:
+        # never break sell guard if DB init fails
+        pass
 
 def _sell_inflight_last(sym: str):
     try:
@@ -78,6 +76,7 @@ def _sell_inflight_set(sym: str, reason: str | None = None, err: str | None = No
             con.commit()
     except Exception:
         pass
+
 def _sell_inflight_clear(sym: str):
     try:
         with _db_connect() as con:
@@ -86,6 +85,7 @@ def _sell_inflight_clear(sym: str):
             con.commit()
     except Exception:
         pass
+
 def _opened_dt_from_position_opened(sym: str):
     """
     Source of truth for hold time: live.db.position_opened.opened_epoch (seconds).
@@ -166,14 +166,15 @@ def _scalar_float(x) -> float:
         if isinstance(x, pd.Series):
             x = x.iloc[0]
     except Exception:
-    # numpy scalar -> python scalar
         pass
+
     # numpy scalar -> python scalar
     if hasattr(x, "item"):
         try:
             x = x.item()
         except Exception:
             pass
+
     return float(x)
 
 from datetime import datetime
@@ -915,6 +916,7 @@ def place_with_adaptive_variants(
             con.close()
         except Exception:
             pass
+
     def _inflight_clear(sym2: str) -> None:
         try:
             con = sqlite3.connect(_db_path)
@@ -924,6 +926,7 @@ def place_with_adaptive_variants(
             con.close()
         except Exception:
             pass
+
     now = int(time.time())
     prev_ts = _inflight_get_ts(sym)
 
@@ -990,8 +993,6 @@ def place_with_adaptive_variants(
                     },
                 )
             except Exception:
-            # ---------------------------------------------------------
-
                 pass
             # ---------------------------------------------------------
 
@@ -1112,8 +1113,8 @@ def main() -> None:
                                 details={"note": "position no longer returned by positions; likely sell filled"},
                             )
                         except Exception:
-                # OPTIONAL: partial reduction
                             pass
+
                 # OPTIONAL: partial reduction
                 for _sym, _prev_qty in (prev_positions or {}).items():
                     _sym_u = (_sym or "").upper().strip()
@@ -1138,14 +1139,12 @@ def main() -> None:
                             )
                         except Exception:
                             pass
+
                 prev_positions = dict(cur_positions)
 
             except Exception:
                 # never let logging break the guard loop
-            # ------------------------------------------------------------------------------
-
                 pass
-                # never let logging break the guard loop
             # ------------------------------------------------------------------------------
 
             if not positions:
@@ -1196,7 +1195,6 @@ def main() -> None:
                         try:
                             dt = datetime.fromisoformat(s)
                         except Exception:
-                            # maybe it's actually epoch ms in a string
                             # maybe it's actually epoch ms in a string
                             if s.isdigit():
                                 val = int(s)
@@ -1492,7 +1490,7 @@ def main() -> None:
                     continue
 
                                 # TIMEOUT guardrail: never TIMEOUT without DB-backed opened time
-                if getattr(cfg, "enable_timeout_exits", True) and (not opened_is_db):
+                if getattr(cfg, "enable_timeout_exits", False) and (not opened_is_db):
                     LOG.info("[TIMEOUT] SKIP %s: no position_opened.opened_epoch (guarded)", s)
 
                 # Intraday stop-loss (hard floor, AI cannot veto)
@@ -1561,6 +1559,7 @@ def main() -> None:
                                 )
                             except Exception:
                                 pass
+
                         else:
                             LOG.info(
                                 "[TRAIL_EXIT] %s pl=%.2f%% <= trail_floor=%.2f%% ? exit",
@@ -1585,6 +1584,7 @@ def main() -> None:
                                 )
                             except Exception:
                                 pass
+
                             if has_open_sell:
                                 LOG.info("[OPEN_SELL] %s already has a pending SELL; skip exit order this loop", s)
                                 try:
@@ -1599,6 +1599,7 @@ def main() -> None:
                                     )
                                 except Exception:
                                     pass
+
                             else:
                                 place_with_adaptive_variants(
                                 acct_key,
@@ -1631,6 +1632,7 @@ def main() -> None:
                             )
                         except Exception:
                             pass
+
                     else:
                         LOG.info(
                             "[TARGET_EXIT] %s pl=%.2f%% >= target_gain_pct=%.2f%% ? exit",
@@ -1656,6 +1658,7 @@ def main() -> None:
                             )
                         except Exception:
                             pass
+
                         place_with_adaptive_variants(
                             acct_key,
                             s,
@@ -1678,12 +1681,13 @@ def main() -> None:
             break
         except Exception as e:
             # If broker says duplicate/processing, back off this symbol for a bit
-            # If broker says duplicate/processing, back off this symbol for a bit
             try:
                 _txt = str(e)
+                if ("code": 1028) or ("code": 1049):
+                    pass
             except Exception:
                 _txt = str(e)
-            if '"code": 1028' in _txt or '"code": 1049' in _txt or "duplicate order" in _txt.lower() or "processing your previous request" in _txt.lower():
+            if ("code": 1028) in _txt or ("code": 1049) in _txt or "duplicate order" in _txt.lower() or "processing your previous request" in _txt.lower():
                 _sg_mark_inflight(sym, 180, LOG.warning, "[SELL_INFLIGHT] %s broker duplicate/processing; backing off 180s" % sym)
             # Robust logging that cannot crash
             try:
@@ -1702,7 +1706,6 @@ def main() -> None:
                     LOG.error("Unexpected error in main loop (no positions_raw yet): %s", e)
 
             except Exception as log_err:
-                # Last-ditch logging so logging itself never crashes
                 # Last-ditch logging so logging itself never crashes
                 LOG.error(
                     "Unexpected error in main loop AND while logging (%s): %s",

@@ -1,0 +1,182 @@
+(() => {
+  "use strict";
+
+  // ---------- tiny helpers ----------
+  const $  = (sel) => document.querySelector(sel);
+  const qs = (k) => (new URLSearchParams(window.location.search).get(k) || "").trim();
+
+  function setHtml(id, html) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = html;
+  }
+
+  function ensureGainStyles() {
+    // Add minimal styles in case style.css doesn't define these
+    if (document.getElementById("ax-gain-styles")) return;
+    const st = document.createElement("style");
+    st.id = "ax-gain-styles";
+    st.textContent = `
+      .ax-pos { color: #33ff33 !important; font-weight: 700; }
+      .ax-neg { color: #ff4040 !important; font-weight: 700; }
+      .ax-table { width: 100%; border-collapse: collapse; }
+      .ax-table th, .ax-table td { padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+      .ax-time a, .ax-sym a { color: inherit; text-decoration: none; }
+      .ax-time a:hover, .ax-sym a:hover { text-decoration: underline; }
+      .ax-num { text-align: right; white-space: nowrap; }
+      .ax-sym { font-weight: 700; }
+      .ax-time { white-space: nowrap; }
+    `;
+    document.head.appendChild(st);
+  }
+
+  function fmt(n) {
+    if (n == null || n === "") return "";
+    const x = Number(n);
+    if (!Number.isFinite(x)) return "";
+    return x.toFixed(2);
+  }
+
+  function etTodayISO() {
+    // YYYY-MM-DD in America/New_York
+    const d = new Date();
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(d);
+    const get = (t) => parts.find(p => p.type === t)?.value || "";
+    return `${get("year")}-${get("month")}-${get("day")}`;
+  }
+
+  function tradeReviewUrl(symbol, tsEt) {
+    // Your Trade Review page lives at /chart/<SYMBOL>?ts=...
+    const sym = encodeURIComponent(symbol || "");
+    const ts  = encodeURIComponent(tsEt || "");
+    return `/chart/${sym}?ts=${ts}`;
+  }
+
+  function renderTable(rows, kind) {
+    rows = Array.isArray(rows) ? rows : [];
+    if (!rows.length) {
+      return `<div class="muted">No ${kind.toLowerCase()}s found.</div>`;
+    }
+
+    // We normalize expected fields:
+    // symbol, ts_et, price, gain
+    let out = `<table class="ax-table"><thead><tr>
+      <th>Time (ET)</th><th>Symbol</th><th>Price</th><th>Gain</th>
+    </tr></thead><tbody>`;
+
+    for (const r of rows) {
+      const sym = (r && r.symbol) ? String(r.symbol) : "";
+      const ts  = (r && (r.ts_et || r.time_et || r.ts || r.time)) ? String(r.ts_et || r.time_et || r.ts || r.time) : "";
+      const url = tradeReviewUrl(sym, ts);
+
+      const price = (r && r.price != null) ? fmt(r.price) : "";
+      const gainV = (r && r.gain  != null) ? Number(r.gain) : null;
+      const gain  = (gainV == null || !Number.isFinite(gainV)) ? "" : fmt(gainV);
+
+      const gainCls = (gainV == null || !Number.isFinite(gainV)) ? "" : (gainV >= 0 ? "ax-pos" : "ax-neg");
+
+      out += `<tr>
+        <td class="ax-time"><a href="${url}">${ts}</a></td>
+        <td class="ax-sym"><a href="${url}">${sym}</a></td>
+        <td class="ax-num">${price}</td>
+        <td class="ax-num ${gainCls}">${gain}</td>
+      </tr>`;
+    }
+
+    out += `</tbody></table>`;
+    return out;
+  }
+
+  async function loadDay(dateISO) {
+    ensureGainStyles();
+
+    setHtml("ax-buys",  `<div class="muted">loading?</div>`);
+    setHtml("ax-sells", `<div class="muted">loading?</div>`);
+
+    // cache-bust
+    const u = new URL("/api/analytics/today", window.location.origin);
+    if (dateISO) u.searchParams.set("date", dateISO);
+    u.searchParams.set("cb", String(Date.now()));
+
+    const res = await fetch(u.toString(), { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status} from ${u.pathname}`);
+
+    const data = await res.json();
+
+    const buys  = data.buys  || data.buy_rows  || [];
+    const sells = data.sells || data.sell_rows || [];
+
+    setHtml("ax-buys",  renderTable(buys,  "Buy"));
+    setHtml("ax-sells", renderTable(sells, "Sell"));
+
+    // If you show "Loading?" somewhere, clear it
+    const loadingEl = document.getElementById("ax-loading");
+    if (loadingEl) loadingEl.textContent = "";
+  }
+
+  function hookButtons() {
+    // Optional buttons (safe if missing)
+    const btnY = document.getElementById("btn-yesterday");
+    if (btnY) {
+      btnY.addEventListener("click", () => {
+        // Go to yesterday in ET
+        const d = new Date();
+        const parts = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "America/New_York",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).formatToParts(d);
+        const get = (t) => parts.find(p => p.type === t)?.value || "";
+        const iso = `${get("year")}-${get("month")}-${get("day")}`;
+
+        // subtract one day using Date in UTC then reformat in ET
+        const dt = new Date(iso + "T12:00:00Z");
+        dt.setUTCDate(dt.getUTCDate() - 1);
+
+        const parts2 = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "America/New_York",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).formatToParts(dt);
+        const iso2 = `${parts2.find(p=>p.type==="year").value}-${parts2.find(p=>p.type==="month").value}-${parts2.find(p=>p.type==="day").value}`;
+
+        const u = new URL(window.location.href);
+        u.searchParams.set("date", iso2);
+        u.searchParams.set("cb", String(Date.now()));
+        window.location.href = u.toString();
+      });
+    }
+
+    const btnLive = document.getElementById("btn-live");
+    if (btnLive) {
+      btnLive.addEventListener("click", () => {
+        const u = new URL(window.location.href);
+        u.searchParams.delete("date");
+        u.searchParams.set("cb", String(Date.now()));
+        window.location.href = u.toString();
+      });
+    }
+  }
+
+  async function boot() {
+    hookButtons();
+    const dateISO = (qs("date") || "") || etTodayISO();
+
+    try {
+      await loadDay(dateISO);
+    } catch (e) {
+      console.error("[AX] load failed:", e);
+      setHtml("ax-errors", `<div>Analytics load failed: ${String(e)}</div>`);
+      const box = document.getElementById("ax-errors-box");
+      if (box) box.style.display = "block";
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", boot, { once: true });
+})();

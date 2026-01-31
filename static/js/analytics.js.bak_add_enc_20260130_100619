@@ -1,0 +1,218 @@
+(() => {
+  "use strict";
+
+  // ---------- tiny helpers ----------
+  const $  = (sel) => document.querySelector(sel);
+  const qs = (k) => (new URLSearchParams(window.location.search).get(k) || "").trim();
+
+  function setHtml(id, html) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = html;
+  }
+
+  function ensureGainStyles() {
+    // Add minimal styles in case style.css doesn't define these
+    if (document.getElementById("ax-gain-styles")) return;
+    const st = document.createElement("style");
+    st.id = "ax-gain-styles";
+    st.textContent = `
+      .ax-pos { color: #33ff33 !important; font-weight: 700; }
+      .ax-neg { color: #ff4040 !important; font-weight: 700; }
+      .ax-table { width: 100%; border-collapse: collapse; }
+      .ax-table th, .ax-table td { padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+      .ax-time a, .ax-sym a { color: inherit; text-decoration: none; }
+      .ax-time a:hover, .ax-sym a:hover { text-decoration: underline; }
+      .ax-num { text-align: right; white-space: nowrap; }
+      .ax-sym { font-weight: 700; }
+      .ax-time { white-space: nowrap; }
+    `;
+    document.head.appendChild(st);
+  }
+
+  function fmt(n) {
+    if (n == null || n === "") return "";
+    const x = Number(n);
+    if (!Number.isFinite(x)) return "";
+    return x.toFixed(2);
+  }
+
+  function etTodayISO() {
+    // YYYY-MM-DD in America/New_York
+    const d = new Date();
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(d);
+    const get = (t) => parts.find(p => p.type === t)?.value || "";
+    return `${get("year")}-${get("month")}-${get("day")}`;
+  }
+
+  function tradeReviewUrl(symbol, tsEt) {
+    // Your Trade Review page lives at /chart/<SYMBOL>?ts=...
+    const sym = encodeURIComponent(symbol || "");
+    const ts  = encodeURIComponent(tsEt || "");
+    return `/chart/${sym}?ts=${ts}`;
+  }
+
+  function renderTable(rows, kind) {
+    rows = Array.isArray(rows) ? rows : [];
+    if (!rows.length) {
+      return `<div class="muted">No ${kind.toLowerCase()}s found.</div>`;
+    }
+
+    // We normalize expected fields:
+    // symbol, ts_et, price, gain
+    let out = `<table class="ax-table"><thead><tr>
+      <th>Time (ET)</th><th>Symbol</th><th>Price</th><th>Gain</th>
+    </tr></thead><tbody>`;
+
+    for (const r of rows) {
+      const sym = (r && r.symbol) ? String(r.symbol) : "";
+      const ts  = (r && (r.ts_et || r.time_et || r.ts || r.time)) ? String(r.ts_et || r.time_et || r.ts || r.time) : "";
+      const url = tradeReviewUrl(sym, ts);
+
+      const price = (r && r.price != null) ? fmt(r.price) : "";
+      const gainV = (r && r.gain  != null) ? Number(r.gain) : null;
+      const gain  = (gainV == null || !Number.isFinite(gainV)) ? "" : fmt(gainV);
+
+      const gainCls = (gainV == null || !Number.isFinite(gainV)) ? "" : (gainV >= 0 ? "ax-pos" : "ax-neg");
+
+      out += `<tr>
+        <td class="ax-time"><a href="${url}">${ts}</a></td>
+        <td class="ax-sym"><a href="${url}">${sym}</a></td>
+        <td class="ax-num">${price}</td>
+        <td class="ax-num ${gainCls}">${gain}</td>
+      </tr>`;
+    }
+
+    out += `</tbody></table>`;
+    return out;
+  }
+  async function loadDay(dateISO) {
+    // Try both historical endpoint names; normalize payload keys for safety.
+    const urls = [
+      `/api/analytics/today?date=${enc(dateISO)}&cb=${Date.now()}`,
+      `/api/analytics/day?date=${enc(dateISO)}&cb=${Date.now()}`
+    ];
+
+    let d = null;
+    let lastErr = null;
+
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) {
+          lastErr = `HTTP ${res.status} ${res.statusText}`;
+          continue;
+        }
+        d = await res.json();
+        if (d && typeof d === "object") d._source_url = url;
+        break;
+      } catch (e) {
+        lastErr = String(e);
+      }
+    }
+
+    if (!d) {
+      throw new Error(`Analytics API failed. ${lastErr || ""}`.trim());
+    }
+
+    // banner/errors (support string or array)
+    let errs = [];
+    if (Array.isArray(d.errors)) errs = d.errors;
+    else if (typeof d.errors === "string" && d.errors.trim()) errs = [d.errors.trim()];
+    else if (typeof d.error === "string" && d.error.trim()) errs = [d.error.trim()];
+    errs = errs.filter(Boolean);
+
+    if (errs.length) {
+      setHtml("ax-errors", errs.map(e => `<div>${e}</div>`).join(""));
+      const box = document.getElementById("ax-errors-box");
+      if (box) box.style.display = "block";
+    } else {
+      setHtml("ax-errors", "");
+      const box = document.getElementById("ax-errors-box");
+      if (box) box.style.display = "none";
+    }
+
+    setText("ax-date", d.date_et || d.date || dateISO);
+
+    // Normalize buys/sells keys
+    const buys  = d.buys  || d.buy_rows  || d.buy  || [];
+    const sells = d.sells || d.sell_rows || d.sell || [];
+
+    setText("ax-buy-count", Array.isArray(buys) ? buys.length : 0);
+    setText("ax-sell-count", Array.isArray(sells) ? sells.length : 0);
+
+    // render into columns if present, else fallback IDs
+    const buyCol = document.getElementById("ax-buy-col") || document.getElementById("buy-col");
+    const sellCol = document.getElementById("ax-sell-col") || document.getElementById("sell-col");
+
+    if (buyCol) buyCol.innerHTML = makeTable(Array.isArray(buys) ? buys : [], "BUY");
+    if (sellCol) sellCol.innerHTML = makeTable(Array.isArray(sells) ? sells : [], "SELL");
+
+    // source footer if present
+    setText("ax-source", d.source || d._source_url || "");
+  }
+  function hookButtons() {
+    // Optional buttons (safe if missing)
+    const btnY = document.getElementById("btn-yesterday");
+    if (btnY) {
+      btnY.addEventListener("click", () => {
+        // Go to yesterday in ET
+        const d = new Date();
+        const parts = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "America/New_York",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).formatToParts(d);
+        const get = (t) => parts.find(p => p.type === t)?.value || "";
+        const iso = `${get("year")}-${get("month")}-${get("day")}`;
+
+        // subtract one day using Date in UTC then reformat in ET
+        const dt = new Date(iso + "T12:00:00Z");
+        dt.setUTCDate(dt.getUTCDate() - 1);
+
+        const parts2 = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "America/New_York",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).formatToParts(dt);
+        const iso2 = `${parts2.find(p=>p.type==="year").value}-${parts2.find(p=>p.type==="month").value}-${parts2.find(p=>p.type==="day").value}`;
+
+        const u = new URL(window.location.href);
+        u.searchParams.set("date", iso2);
+        u.searchParams.set("cb", String(Date.now()));
+        window.location.href = u.toString();
+      });
+    }
+
+    const btnLive = document.getElementById("btn-live");
+    if (btnLive) {
+      btnLive.addEventListener("click", () => {
+        const u = new URL(window.location.href);
+        u.searchParams.delete("date");
+        u.searchParams.set("cb", String(Date.now()));
+        window.location.href = u.toString();
+      });
+    }
+  }
+
+  async function boot() {
+    hookButtons();
+    const dateISO = (qs("date") || "") || etTodayISO();
+
+    try {
+      await loadDay(dateISO);
+    } catch (e) {
+      console.error("[AX] load failed:", e);
+      setHtml("ax-errors", `<div>Analytics load failed: ${String(e)}</div>`);
+      const box = document.getElementById("ax-errors-box");
+      if (box) box.style.display = "block";
+    }
+  }
+  document.addEventListener("DOMContentLoaded", boot, { once: true });
+})();

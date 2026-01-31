@@ -6,9 +6,12 @@ import os
 import sys
 import time
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Dict, Iterable, List, Tuple, Optional
+
+
+timeout_skip_logged = set()  # de-spam TIMEOUT missing-opened-time logs
 # sell_guard.py (top-ish)
 from ai_advisor import get_ai_recommendation
 from services.news_service import news_headlines_for_symbol, has_fresh_bad_news
@@ -34,24 +37,22 @@ def _live_db_path() -> str:
 def _db_connect():
     return sqlite3.connect(_live_db_path())
 
-def _ensure_sell_inflight_table(con):
-    """
-    Ensure sell_inflight exists.
-    Supports BOTH schemas:
-      - New (your live.db): symbol TEXT PK, ts_utc INTEGER, reason TEXT
-      - Old: symbol TEXT PK, last_attempt_epoch INTEGER, inflight_seconds INTEGER, reason TEXT
-    """
-    cur = con.cursor()
-    # Create the NEW schema (safe even if table exists)
-    cur.execute(
-        "CREATE TABLE IF NOT EXISTS sell_inflight ("
-        " symbol TEXT PRIMARY KEY,"
-        " ts_utc INTEGER,"
-        " reason TEXT"
-        ")"
-    )
-    con.commit()
-
+def _ensure_sell_inflight_table():
+    try:
+        with _db_connect() as con:
+            cur = con.cursor()
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS sell_inflight (
+                    symbol TEXT PRIMARY KEY,
+                    last_attempt_epoch REAL,
+                    last_reason TEXT,
+                    last_error TEXT
+                )
+            """)
+            con.commit()
+    except Exception:
+        # never break sell guard if DB init fails
+        pass
 
 def _sell_inflight_last(sym: str):
     try:
@@ -78,6 +79,7 @@ def _sell_inflight_set(sym: str, reason: str | None = None, err: str | None = No
             con.commit()
     except Exception:
         pass
+
 def _sell_inflight_clear(sym: str):
     try:
         with _db_connect() as con:
@@ -86,79 +88,47 @@ def _sell_inflight_clear(sym: str):
             con.commit()
     except Exception:
         pass
-def _opened_dt_from_position_opened(sym: str):
+
+def _opened_dt_from_position_opened(sym: str, pos=None):
     """
-    Source of truth for hold time: live.db.position_opened.opened_epoch (seconds).
+    Source of truth for hold time:
+      1) live.db.position_opened.opened_epoch (seconds)  [preferred]
+      2) fallback: E*TRADE position dateAcquired (epoch ms), if provided via pos
     Returns aware UTC datetime or None.
     """
+    opened_epoch = None
+
+    # 1) preferred: DB opened_epoch (seconds)
     try:
         with _db_connect() as con:
             cur = con.cursor()
             cur.execute("SELECT opened_epoch FROM position_opened WHERE symbol=?", (sym,))
-            r = cur.fetchone()
-            if not r or r[0] is None:
-                return None
-            ep = int(r[0])
-            return datetime.fromtimestamp(ep, tz=UTC)
+            row = cur.fetchone()
+            if row and row[0]:
+                try:
+                    opened_epoch = float(row[0])
+                except Exception:
+                    opened_epoch = None
     except Exception:
-        return None
+        opened_epoch = None
 
+    if opened_epoch:
+        try:
+            return _dt.datetime.fromtimestamp(opened_epoch, tz=_dt.timezone.utc)
+        except Exception:
+            pass
 
+    # 2) fallback: E*TRADE position dateAcquired (epoch ms)
+    if isinstance(pos, dict):
+        da = pos.get("dateAcquired")
+        if da:
+            try:
+                da_ms = int(da)
+                return _dt.datetime.fromtimestamp(da_ms / 1000.0, tz=_dt.timezone.utc)
+            except Exception:
+                pass
 
-LOG = logging.getLogger("sell-guard")
-LOG.setLevel(logging.INFO)
-for h in list(LOG.handlers):
-    LOG.removeHandler(h)
-
-_sh = logging.StreamHandler(sys.stdout)
-_sh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s sell-guard: %(message)s"))
-LOG.addHandler(_sh)
-
-from logging.handlers import RotatingFileHandler
-
-try:
-    log_dir = os.path.join(os.path.dirname(__file__), "logs")
-    os.makedirs(log_dir, exist_ok=True)
-    sg_log_path = os.path.join(log_dir, "sell_guard.log")
-except Exception:
-    sg_log_path = "sell_guard.log"
-
-_sg_fh = RotatingFileHandler(sg_log_path, maxBytes=5_000_000, backupCount=5, encoding="utf-8")
-_sg_fh.setFormatter(_sh.formatter)
-LOG.addHandler(_sg_fh)
-
-
-# Backwards-compat alias used deeper in the file
-_lg = LOG
-
-try:
-    import services.etrade_service as et
-except Exception as exc:  # pragma: no cover
-    LOG.error("FATAL: cannot import services.etrade_service: %s", exc)
-    raise SystemExit(1)
-
-# === AI Advisor JSON log ==========================================
-AI_LOG = logging.getLogger("ai-advisor")
-
-if not AI_LOG.handlers:
-    AI_LOG.setLevel(logging.INFO)
-    try:
-        log_dir = os.path.join(os.path.dirname(__file__), "logs")
-        os.makedirs(log_dir, exist_ok=True)
-        log_path = os.path.join(log_dir, "ai_advisor.log")
-    except Exception:
-        log_path = "ai_advisor.log"
-
-    ai_fh = RotatingFileHandler(
-        log_path,
-        maxBytes=5_000_000,
-        backupCount=5,
-        encoding="utf-8",
-    )
-    ai_fh.setFormatter(logging.Formatter("%(message)s"))
-    AI_LOG.addHandler(ai_fh)
-    AI_LOG.propagate = False
-
+    return None
 def _scalar_float(x) -> float:
     # pandas Series -> first element
     try:
@@ -166,14 +136,15 @@ def _scalar_float(x) -> float:
         if isinstance(x, pd.Series):
             x = x.iloc[0]
     except Exception:
-    # numpy scalar -> python scalar
         pass
+
     # numpy scalar -> python scalar
     if hasattr(x, "item"):
         try:
             x = x.item()
         except Exception:
             pass
+
     return float(x)
 
 from datetime import datetime
@@ -428,14 +399,15 @@ SETTINGS_FILE = _resolve_settings_file()
 
 @dataclass
 class SellGuardConfig:
-    mode: str
-    interval_sec: int
-    market_open: str
-    market_close: str
-    timezone: str
-    blocklist: List[str]
-    only_allow_symbol: str | None
-    min_hold_minutes: float
+    enable_timeout_exits: bool = False
+    mode: str = "LIVE"
+    interval_sec: int = 30
+    market_open: str = "09:30"
+    market_close: str = "16:00"
+    timezone: str = "America/New_York"
+    blocklist: List[str] = field(default_factory=list)
+    only_allow_symbol: str | None = None
+    min_hold_minutes: float = 0
     max_hold_minutes: float
     min_gain_pct: float
     target_gain_pct: float
@@ -915,6 +887,7 @@ def place_with_adaptive_variants(
             con.close()
         except Exception:
             pass
+
     def _inflight_clear(sym2: str) -> None:
         try:
             con = sqlite3.connect(_db_path)
@@ -924,6 +897,7 @@ def place_with_adaptive_variants(
             con.close()
         except Exception:
             pass
+
     now = int(time.time())
     prev_ts = _inflight_get_ts(sym)
 
@@ -990,8 +964,6 @@ def place_with_adaptive_variants(
                     },
                 )
             except Exception:
-            # ---------------------------------------------------------
-
                 pass
             # ---------------------------------------------------------
 
@@ -1112,8 +1084,8 @@ def main() -> None:
                                 details={"note": "position no longer returned by positions; likely sell filled"},
                             )
                         except Exception:
-                # OPTIONAL: partial reduction
                             pass
+
                 # OPTIONAL: partial reduction
                 for _sym, _prev_qty in (prev_positions or {}).items():
                     _sym_u = (_sym or "").upper().strip()
@@ -1138,14 +1110,12 @@ def main() -> None:
                             )
                         except Exception:
                             pass
+
                 prev_positions = dict(cur_positions)
 
             except Exception:
                 # never let logging break the guard loop
-            # ------------------------------------------------------------------------------
-
                 pass
-                # never let logging break the guard loop
             # ------------------------------------------------------------------------------
 
             if not positions:
@@ -1196,7 +1166,6 @@ def main() -> None:
                         try:
                             dt = datetime.fromisoformat(s)
                         except Exception:
-                            # maybe it's actually epoch ms in a string
                             # maybe it's actually epoch ms in a string
                             if s.isdigit():
                                 val = int(s)
@@ -1406,14 +1375,6 @@ def main() -> None:
                                     pass
                                 continue
 
-                            # [SELL_INFLIGHT_SKIP] do not re-place sells while broker is processing/duplicate
-
-                            if _sg_inflight(sym):
-
-                                _sg_mark_inflight(sym, 90, LOG.info, "[SELL_INFLIGHT] %s still backing off" % sym)
-
-                                continue
-
                             place_with_adaptive_variants(
                                 acct_key,
                                 s,
@@ -1451,82 +1412,52 @@ def main() -> None:
                 #   - max_hold_minutes > 0 (timeout enabled)
                 #   - position is older than max_hold_minutes
                 #   - AND P/L is worse than timeout_exit_pct (e.g. <= -1.0%)
-                if (
-                    False  # TIMEOUT disabled until opened_epoch-based hold_min is reliable
-                    and is_prior_day
-                    and hold_min > cfg.max_hold_minutes
-                    and pl_pct <= cfg.intraday_stoploss_pct
-                ):
-                    if ai_enabled and ai_use_exits and ai_action == "HOLD":
-                        LOG.info(
-                            "[TIMEOUT_VETO_AI] %s hold_min=%.1f > max_hold=%.1f, pl=%.2f%% but AI says HOLD ? skip timeout",
-                            s,
-                            hold_min,
-                            cfg.max_hold_minutes,
-                            pl_pct,
-                        )
-                    else:
-                        LOG.info(
-                            "[TIMEOUT] %s hold_min=%.1f > max_hold=%.1f, pl=%.2f%% ? exit",
-                            s,
-                            hold_min,
-                            cfg.max_hold_minutes,
-                            pl_pct,
-                        )
-                        try:
-                            emit_sell_event(event="TIMEOUT_DECISION", action="SELL", symbol=s, qty=qty, pl_pct=pl_pct, hold_min=hold_min, reason="TIMEOUT")
-                        except Exception:
-                            pass
-                        pt, lim = compute_order_params(s, cfg, kind="TIMEOUT")
-                        if has_open_sell:
-                            LOG.info("[OPEN_SELL] %s already has a pending SELL; skip TIMEOUT order this loop", s)
-                        else:
-                            place_with_adaptive_variants(
-                            acct_key,
-                            s,
-                            qty,
-                            pt,
-                            lim if pt == "LIMIT" else None,
-                            cfg.max_place_attempts,
-                        )
-                    continue
-
-                                # TIMEOUT guardrail: never TIMEOUT without DB-backed opened time
-                if getattr(cfg, "enable_timeout_exits", True) and (not opened_is_db):
-                    LOG.info("[TIMEOUT] SKIP %s: no position_opened.opened_epoch (guarded)", s)
-
-                # Intraday stop-loss (hard floor, AI cannot veto)
-                if cfg.allow_intraday_stoploss and (not is_prior_day) and pl_pct <= cfg.timeout_exit_pct:
-                    LOG.info(
-                        "[STOPLOSS] %s pl=%.2f%% <= timeout_exit_pct=%.2f%% ? exit",
-                        s,
-                        pl_pct,
-                        cfg.timeout_exit_pct,
-                    )
-                    try:
-                        emit_sell_event(event="STOPLOSS_DECISION", action="SELL", symbol=s, qty=qty, pl_pct=pl_pct, hold_min=hold_min, reason="STOPLOSS")
-                    except Exception:
-                        pass
-                    pt, lim = compute_order_params(s, cfg, kind="SELL_STOP")
-                    if has_open_sell:
-                        LOG.info("[OPEN_SELL] %s already has a pending SELL; skip STOPLOSS order this loop", s)
-                    else:
-                        place_with_adaptive_variants(
-                        acct_key,
-                        s,
+            if (
+                bool(getattr(cfg, "enable_timeout_exits", True))
+                and cfg.max_hold_minutes > 0
+                and hold_min > cfg.max_hold_minutes
+                and pl_pct <= cfg.timeout_exit_pct
+            ):
+                # Timeout exit (max hold exceeded AND losing beyond timeout_exit_pct)
+                if ai_veto:
+                    LOG.info(f"[TIMEOUT] AI veto {sym} hold={hold_min:.1f}m pl={pl_pct:+.2f}%")
+                else:
+                    LOG.info(f"[TIMEOUT] SELL {sym} hold={hold_min:.1f}m pl={pl_pct:+.2f}% <= {cfg.timeout_exit_pct:+.2f}%")
+                    place_with_adaptive_variants(
+                        sym,
                         qty,
-                        pt,
-                        lim if pt == "LIMIT" else None,
-                        cfg.max_place_attempts,
+                        trigger="TIMEOUT",
+                        cfg=cfg,
+                        quote=quote,
+                        account_id_key=account_id_key,
+                        enforce_inflight=True,
                     )
-                    continue
+                continue
+
+
+            # Intraday stop-loss (DAY only)
+            if cfg.allow_intraday_stoploss and (not is_prior_day) and pl_pct <= cfg.intraday_stoploss_pct:
+                if ai_veto:
+                    LOG.info(f"[STOPLOSS] AI veto {sym} pl={pl_pct:+.2f}%")
+                else:
+                    LOG.info(f"[STOPLOSS] SELL {sym} pl={pl_pct:+.2f}% <= {cfg.intraday_stoploss_pct:+.2f}%")
+                    place_with_adaptive_variants(
+                        sym,
+                        qty,
+                        trigger="STOPLOSS",
+                        cfg=cfg,
+                        quote=quote,
+                        account_id_key=account_id_key,
+                        enforce_inflight=True,
+                    )
+                continue
 
 
                 if pl_pct >= cfg.trail_arm_gain_pct:
-                    prev = armed_trail.get(s)
+                    prev = armed_trail.get(sym)
                     new_floor = pl_pct - cfg.trail_backoff_pct
                     if prev is None or new_floor > prev:
-                        armed_trail[s] = new_floor
+                        armed_trail[sym] = new_floor
                         LOG.info(
                             "[TRAIL_ARM] %s pl=%.2f%% arm_floor=%.2f%% (prev=%s)",
                             s,
@@ -1535,12 +1466,12 @@ def main() -> None:
                             f"{prev:.2f}%" if prev is not None else "None",
                         )
                 else:
-                    if s in armed_trail:
+                    if sym in armed_trail:
                         LOG.info("[TRAIL_RESET] %s pl=%.2f%% < arm gain ? disarm", s, pl_pct)
                         armed_trail.pop(s, None)
 
-                if s in armed_trail:
-                    floor = armed_trail[s]
+                if sym in armed_trail:
+                    floor = armed_trail[sym]
                     if pl_pct <= floor:
                         if ai_veto_profit_exits:
                             LOG.info(
@@ -1561,6 +1492,7 @@ def main() -> None:
                                 )
                             except Exception:
                                 pass
+
                         else:
                             LOG.info(
                                 "[TRAIL_EXIT] %s pl=%.2f%% <= trail_floor=%.2f%% ? exit",
@@ -1585,6 +1517,7 @@ def main() -> None:
                                 )
                             except Exception:
                                 pass
+
                             if has_open_sell:
                                 LOG.info("[OPEN_SELL] %s already has a pending SELL; skip exit order this loop", s)
                                 try:
@@ -1599,6 +1532,7 @@ def main() -> None:
                                     )
                                 except Exception:
                                     pass
+
                             else:
                                 place_with_adaptive_variants(
                                 acct_key,
@@ -1631,6 +1565,7 @@ def main() -> None:
                             )
                         except Exception:
                             pass
+
                     else:
                         LOG.info(
                             "[TARGET_EXIT] %s pl=%.2f%% >= target_gain_pct=%.2f%% ? exit",
@@ -1656,6 +1591,7 @@ def main() -> None:
                             )
                         except Exception:
                             pass
+
                         place_with_adaptive_variants(
                             acct_key,
                             s,
@@ -1677,14 +1613,6 @@ def main() -> None:
             LOG.info("KeyboardInterrupt ? exiting")
             break
         except Exception as e:
-            # If broker says duplicate/processing, back off this symbol for a bit
-            # If broker says duplicate/processing, back off this symbol for a bit
-            try:
-                _txt = str(e)
-            except Exception:
-                _txt = str(e)
-            if '"code": 1028' in _txt or '"code": 1049' in _txt or "duplicate order" in _txt.lower() or "processing your previous request" in _txt.lower():
-                _sg_mark_inflight(sym, 180, LOG.warning, "[SELL_INFLIGHT] %s broker duplicate/processing; backing off 180s" % sym)
             # Robust logging that cannot crash
             try:
                 glimpse = None
@@ -1702,7 +1630,6 @@ def main() -> None:
                     LOG.error("Unexpected error in main loop (no positions_raw yet): %s", e)
 
             except Exception as log_err:
-                # Last-ditch logging so logging itself never crashes
                 # Last-ditch logging so logging itself never crashes
                 LOG.error(
                     "Unexpected error in main loop AND while logging (%s): %s",
