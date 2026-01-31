@@ -29,20 +29,29 @@
   <nav class="navbar navbar-expand-lg navbar-dark bg-black py-2 position-relative">
     <div class="container-fluid">
 
-      <!-- Left: primary nav -->
-      <div class="d-flex align-items-center mb-3">
-        <div id="live-mode-toggle" class="btn-group btn-group-sm" role="group" aria-label="Trade mode">
-          <button type="button" class="btn btn-outline-warning" data-mode="DAY">Day Trader</button>
-          <button type="button" class="btn btn-outline-secondary" data-mode="SWING">Swing Trader</button>
-        </div>
-      </div>
-	<div class="ai-toggle ms-3">
-	  <label class="ai-toggle-label d-flex align-items-center">
-		<input type="checkbox" id="ai-enabled-toggle" class="me-2">
-		<span class="me-1">AI Advisor</span>
-		<span class="ai-emoji">🤖</span>
-	  </label>
+	<!-- Left: primary nav -->
+	<div class="d-flex align-items-center mb-3 gap-3">
+
+	  <div id="live-mode-toggle" class="btn-group btn-group-sm" role="group" aria-label="Trade mode">
+		<button type="button" class="btn btn-outline-warning" data-mode="DAY">Day Trader</button>
+		<button type="button" class="btn btn-outline-secondary" data-mode="SWING">Swing Trader</button>
+	  </div>
+
+	  <div class="ai-toggle">
+		<label class="ai-toggle-label d-flex align-items-center mb-0">
+		  <input type="checkbox" id="ai-enabled-toggle" class="me-2">
+		  <span class="me-1">AI Advisor</span>
+		  <span class="ai-emoji">🤖</span>
+		</label>
+	  </div>
+
+	  <a class="btn btn-sm btn-outline-warning btn-fixed"
+		 href="/settings/buy" title="Settings">
+		📟 Settings
+	  </a>
+
 	</div>
+
 	<div class="trade-alerts-title position-absolute top-50 start-50 translate-middle text-center">
 	  <b>$$Machine</b>
 	  <img id="maxInsideBadge" class="ms-2 mm-gear"

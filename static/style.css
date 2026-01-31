@@ -857,6 +857,10 @@ h2 {
 .table thead th:nth-child(11) { width: 7rem; }   /* Value */
 .table thead th:nth-child(12) { width: 5rem; }   /* News */
 
+/* Analytics gain coloring */
+td.ax-num.ax-pos, .ax-pos { color: #16a34a !important; font-weight: 700; }
+td.ax-num.ax-neg, .ax-neg { color: #dc2626 !important; font-weight: 700; }
+td.ax-num.ax-zero, .ax-zero { color: #a3a3a3 !important; font-weight: 700; }
 
 
 /* === TRADE_REVIEW_CHART_FIT_OVERRIDE === */

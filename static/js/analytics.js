@@ -56,29 +56,47 @@
       return out;
     }
 
-    // SELL rows: symbol | time ET | price | gain
-    let out = `<table class="ax-table"><thead><tr>
-      <th>Time (ET)</th><th>Symbol</th><th>Price</th><th>Gain</th>
-    </tr></thead><tbody>`;
-    for (const r of rows) {
-      const sym = r.symbol || "";
-      const ts  = r.ts_et || "";
-      const url = tradeReviewUrl(sym, ts);
-      const price = (r.price == null) ? "" : fmt(r.price);
-      const gain  = (r.gain  == null) ? "" : fmt(r.gain);
-      const gainCls = (typeof r.gain === "number")
-        ? (r.gain >= 0 ? "ax-pos" : "ax-neg")
-        : "";
-      out += `<tr>
-        <td class="ax-time"><a href="${url}">${ts}</a></td>
-        <td class="ax-sym"><a href="${url}">${sym}</a></td>
-        <td class="ax-num">${price}</td>
-        <td class="ax-num ${gainCls}">${gain}</td>
-      </tr>`;
-    }
-    out += `</tbody></table>`;
-    return out;
-  }
+	  // SELL rows: symbol | time ET | price | gain
+	  let out = `<table class="ax-table"><thead><tr>
+		<th>Time (ET)</th><th>Symbol</th><th>Price</th><th>Gain</th>
+	  </tr></thead><tbody>`;
+
+	  for (const r of rows) {
+		const sym = r.symbol || "";
+		const ts  = r.ts_et || "";
+		const url = tradeReviewUrl(sym, ts);
+
+		const price = (r.price == null) ? "" : fmt(r.price);
+
+		const gainRaw = r.gain;
+
+		const gainNum = (gainRaw == null || gainRaw === "")
+		  ? null
+		  : (typeof gainRaw === "number")
+			? gainRaw
+			: (() => {
+				const s = String(gainRaw).trim();
+				const neg = s.includes("(") && s.includes(")");
+				const n = Number(s.replace(/[$,%\s]/g, "").replace(/[()]/g, ""));
+				return (neg ? -n : n);
+			  })();
+
+		const gain = (gainRaw == null) ? "" : (typeof gainRaw === "number" ? fmt(gainRaw) : String(gainRaw));
+		const gainCls = (typeof gainNum === "number" && isFinite(gainNum))
+		  ? (gainNum > 0 ? "ax-pos" : (gainNum < 0 ? "ax-neg" : "ax-zero"))
+		  : "";
+
+		out += `<tr>
+		  <td class="ax-time"><a href="${url}">${ts}</a></td>
+		  <td class="ax-sym"><a href="${url}">${sym}</a></td>
+		  <td class="ax-num">${price}</td>
+		  <td class="ax-num ${gainCls}">${gain}</td>
+		</tr>`;
+	  }
+
+	  out += `</tbody></table>`;
+	  return out;
+	} // ✅ CLOSE makeTable
 
   function etTodayISO() {
     // Use Intl TZ conversion if supported
