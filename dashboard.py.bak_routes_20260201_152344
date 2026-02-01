@@ -4355,24 +4355,7 @@ def trade_review_chart():
 # inserted: 2026-01-31 00:06:59
 @app.route("/__fingerprint")
 def __fingerprint():
-    from flask import jsonify
-    import os, time
-    try:
-        routes = sorted([str(r) for r in app.url_map.iter_rules()])
-    except Exception as e:
-        routes = [f"ERROR reading url_map: {e}"]
-
-    fp = "DASHBOARD_FINGERPRINT 2026-02-01 patched"
-    return jsonify({
-        "fingerprint": fp,
-        "file": __file__,
-        "cwd": os.getcwd(),
-        "mtime": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(os.path.getmtime(__file__))),
-        "has_scoreboard_route": ("/api/settings/scoreboard" in routes),
-        "has_whereami_route": ("/__whereami" in routes),
-        "route_count": len(routes),
-    }), 200
-
+    return "DASHBOARD_FINGERPRINT 2026-01-31 00:06:59", 200, {"Content-Type":"text/plain"}
 
 @app.route("/analytics/data")
 def analytics_data():
@@ -4496,48 +4479,6 @@ def api_settings_save():
 
 
 
-
-
-@app.route("/api/settings/scoreboard")
-def api_settings_scoreboard():
-    """
-    Read-only counts from live.db.signal_fires.
-    Buckets: today / 7d / 30d / all
-    Uses ts_utc (UTC text) for bucket math.
-    """
-    import sqlite3
-    from pathlib import Path
-    from flask import jsonify, request
-
-    bucket = (request.args.get("bucket") or "today").strip().lower()
-
-    LIVE_DB = Path(r"C:\TradeAlerts\live.db")
-    if not LIVE_DB.exists():
-        return jsonify({"ok": False, "bucket": bucket, "error": f"missing live.db at {LIVE_DB}", "counts": {}, "total": 0}), 200
-
-    if bucket in ("today", "tod"):
-        where = "WHERE date(ts_utc) = date('now')"
-        bucket = "today"
-    elif bucket in ("7d", "7", "week"):
-        where = "WHERE ts_utc >= datetime('now','-7 days')"
-        bucket = "7d"
-    elif bucket in ("30d", "30", "month"):
-        where = "WHERE ts_utc >= datetime('now','-30 days')"
-        bucket = "30d"
-    else:
-        where = ""
-        bucket = "all"
-
-    con = sqlite3.connect(str(LIVE_DB))
-    cur = con.cursor()
-    cur.execute(f"SELECT indicator, COUNT(*) FROM signal_fires {where} GROUP BY indicator ORDER BY COUNT(*) DESC")
-    rows = cur.fetchall()
-    con.close()
-
-    counts = {str(ind): int(cnt) for (ind, cnt) in rows if ind is not None}
-    total = sum(counts.values())
-    return jsonify({"ok": True, "bucket": bucket, "counts": counts, "total": total}), 200
-
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
 
@@ -4657,6 +4598,51 @@ def analytics_data():
 
 
 
+@app.route("/api/settings/scoreboard")
+def api_settings_scoreboard():
+    """
+    Returns counts from live.db.signal_fires.
+    Buckets: today / 7d / 30d / all
+    Uses ts_utc (UTC) for bucket math (simple + deterministic).
+    """
+    import sqlite3
+    from pathlib import Path
+    from flask import jsonify, request
+
+    bucket = (request.args.get("bucket") or "today").strip().lower()
+
+    # Canonical LIVE DB path
+    LIVE_DB = Path(r"C:\TradeAlerts\live.db")
+    if not LIVE_DB.exists():
+        return jsonify({"ok": False, "error": f"missing live.db at {LIVE_DB}"}), 200
+
+    where = ""
+    params = []
+    if bucket in ("today", "tod"):
+        where = "WHERE date(ts_utc) = date('now')"
+    elif bucket in ("7d", "7", "week"):
+        where = "WHERE ts_utc >= datetime('now','-7 days')"
+    elif bucket in ("30d", "30", "month"):
+        where = "WHERE ts_utc >= datetime('now','-30 days')"
+    else:
+        bucket = "all"
+        where = ""
+
+    con = sqlite3.connect(str(LIVE_DB))
+    cur = con.cursor()
+    cur.execute(f"SELECT indicator, COUNT(*) FROM signal_fires {where} GROUP BY indicator ORDER BY COUNT(*) DESC")
+    rows = cur.fetchall()
+    con.close()
+
+    counts = {str(ind): int(cnt) for (ind, cnt) in rows}
+    total = sum(counts.values())
+
+    return jsonify({
+        "ok": True,
+        "bucket": bucket,
+        "total": total,
+        "counts": counts
+    }), 200
 @app.route("/api/trade_review", endpoint="api_trade_review_2")
 def api_trade_review_dup4():
     import os
@@ -6882,34 +6868,3 @@ def analytics_data_dup2():
 # @app.route("/__fingerprint")
 def __fingerprint():
     return "DASHBOARD_FINGERPRINT 2026-01-30 23:39:19", 200, {"Content-Type":"text/plain"}
-
-
-
-@app.route("/__routes")
-def __routes():
-    # Debug helper: list routes registered on the running Flask app
-    try:
-        rules = []
-        for r in sorted(app.url_map.iter_rules(), key=lambda x: str(x)):
-            rules.append({"rule": str(r), "endpoint": r.endpoint, "methods": sorted(list(r.methods or []))})
-        from flask import jsonify
-        return jsonify({"ok": True, "count": len(rules), "routes": rules}), 200
-    except Exception as e:
-        from flask import jsonify
-        return jsonify({"ok": False, "error": str(e)}), 200
-
-
-
-
-@app.route("/__whereami")
-def __whereami():
-    from flask import jsonify
-    import os
-    return jsonify({
-        "ok": True,
-        "file": __file__,
-        "cwd": os.getcwd(),
-    }), 200
-
-# ___whereami_20260201
-

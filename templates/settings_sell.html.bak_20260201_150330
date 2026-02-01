@@ -1,0 +1,44 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="ax-settings">
+  <h1>SELL Settings</h1>
+
+  <input type="hidden" id="ax-kind" value="sell"/>
+
+  <div class="ax-topbar">
+    <label>Mode:</label>
+    <select id="ax-mode" class="ax-select">
+      <option value="DAY">DAY</option>
+      <option value="SWING">SWING</option>
+    </select>
+
+    <label>JSON:</label>
+    <select id="ax-file" class="ax-select"></select>
+
+    <div class="ax-spacer"></div>
+
+    <button id="ax-reload" class="ax-btn">Reload</button>
+    <button id="ax-save" class="ax-btn">Save</button>
+  </div>
+
+  <div id="ax-msg" class="ax-msg"></div>
+
+  <div class="ax-grid">
+    <div class="ax-card">
+      <h3>Controls</h3>
+      <div id="ax-form"></div>
+      <div class="ax-note" style="margin-top:10px;">
+        Complex fields (lists/objects) are edited in Raw JSON.
+      </div>
+    </div>
+
+    <div class="ax-card">
+      <h3>Raw JSON</h3>
+      <textarea id="ax-raw" class="ax-raw" spellcheck="false"></textarea>
+    </div>
+  </div>
+</div>
+
+<link rel="stylesheet" href="/static/css/settings.css">
+<script src="/static/settings.js"></script>
+{% endblock %}

@@ -1,0 +1,448 @@
+﻿
+(function () {
+  "use strict";
+
+  function $(id){ return document.getElementById(id); }
+  function enc(x){ return encodeURIComponent(String(x||"")); }
+
+  function liveModeFromDom() {
+    const el = $("ax-mode");
+    return el ? (el.value || "DAY") : "DAY";
+  }
+
+  function kindFromDom(){
+    const el = $("ax-kind");
+    return el ? (el.value || "buy") : "buy";
+  }
+
+  async function apiLoad(kind, mode, file) {
+    const url = `/api/settings/load?kind=${enc(kind)}&mode=${enc(mode)}${file ? `&file=${enc(file)}` : ""}&cb=${Date.now()}`;
+    const resp = await fetch(url, { cache:"no-store" });
+    let res = resp;
+    // normalize /api/settings/load payload
+    res = (res && typeof res === 'object') ? (res.__unwrapped || res.data || res) : res;
+
+    const __j = await res.json();
+    // Unwrap ONLY /api/settings/load responses: {ok,group,profile,path,data}
+    // Keep list responses intact.
+    if (__j && typeof __j === "object" && __j.data && typeof __j.data === "object" &&
+        ("group" in __j) && ("profile" in __j) && ("path" in __j)) {
+      __j.__unwrapped = __j.data;
+    }
+    return __j;
+  }
+
+  async function apiSave(payload) {
+    const resp = await fetch("/api/settings/save", {
+      method: "POST",
+      headers: { "Content-Type":"application/json" },
+      body: JSON.stringify(payload)
+    });
+    const d = await resp.json().catch(()=>({ok:false,error:"Bad JSON response"}));
+    
+    // FORCE normalize load payload (wrapped vs raw)
+    try { if (d && typeof d === 'object') d = (d.data || d.__unwrapped || d); } catch (e) {}
+if (!resp.ok && d && d.error) throw new Error(d.error);
+    return d;
+}
+
+  function showMsg(txt, ok=true){
+    const box = $("ax-msg");
+    if (!box) return;
+    box.textContent = txt || "";
+    box.className = ok ? "ax-msg ax-ok" : "ax-msg ax-bad";
+    box.style.display = txt ? "block" : "none";
+  }
+
+  function setRaw(raw){
+    const ta = $("ax-raw");
+    if (ta) ta.value = raw || "";
+  }
+
+  function buildForm(data){
+    const host = $("ax-form");
+    if (!host) return;
+    host.innerHTML = "";
+
+    const keys = Object.keys(data || {}).sort((a,b)=>a.localeCompare(b));
+    if (!keys.length){
+      host.innerHTML = `<div class="ax-empty">No keys found in this JSON (empty object).</div>`;
+      return;
+    }
+
+    for (const k of keys){
+      const v = data[k];
+
+      const row = document.createElement("div");
+      row.className = "ax-row";
+
+      const lab = document.createElement("label");
+      lab.className = "ax-lab";
+      lab.textContent = k;
+
+      const ctlWrap = document.createElement("div");
+      ctlWrap.className = "ax-ctl";
+
+      // bool => toggle
+      if (typeof v === "boolean"){
+        const inp = document.createElement("input");
+        inp.type = "checkbox";
+        inp.checked = !!v;
+        inp.dataset.key = k;
+        inp.dataset.kind = "bool";
+        inp.className = "ax-toggle";
+        ctlWrap.appendChild(inp);
+      }
+      // number => number input
+      else if (typeof v === "number"){
+        const inp = document.createElement("input");
+        inp.type = "number";
+        inp.step = "any";
+        inp.value = String(v);
+        inp.dataset.key = k;
+        inp.dataset.kind = "num";
+        inp.className = "ax-input";
+        ctlWrap.appendChild(inp);
+      }
+      // string => text input
+      else if (typeof v === "string"){
+        const inp = document.createElement("input");
+        inp.type = "text";
+        inp.value = v;
+        inp.dataset.key = k;
+        inp.dataset.kind = "str";
+        inp.className = "ax-input";
+        ctlWrap.appendChild(inp);
+      }
+      // other => readonly hint (edit via raw JSON)
+      else {
+        const pre = document.createElement("div");
+        pre.className = "ax-note";
+        pre.textContent = "Complex value (edit in Raw JSON below)";
+        ctlWrap.appendChild(pre);
+      }
+
+      row.appendChild(lab);
+      row.appendChild(ctlWrap);
+      host.appendChild(row);
+    }
+  }
+
+  function readFormInto(data){
+    const host = $("ax-form");
+    if (!host) return data || {};
+    const out = Object.assign({}, data || {});
+    const inputs = host.querySelectorAll("[data-key]");
+    for (const inp of inputs){
+      const k = inp.dataset.key;
+      const t = inp.dataset.kind;
+      if (t === "bool") out[k] = !!inp.checked;
+      else if (t === "num") {
+        const n = Number(inp.value);
+        out[k] = (Number.isFinite(n) ? n : 0);
+      }
+      else if (t === "str") out[k] = String(inp.value ?? "");
+    }
+    return out;
+  }
+
+  let CURRENT = { kind:"buy", mode:"DAY", file:"", data:{} };
+
+  async function load(fileOverride){
+    showMsg("");
+    const kind = kindFromDom();
+    const mode = liveModeFromDom();
+    const file = fileOverride || ($("ax-file") ? $("ax-file").value : "");
+    const d = await apiLoad(kind, mode, file);
+
+    if (!d.ok) throw new Error(d.error || "Load failed");
+
+    CURRENT.kind = d.kind;
+    CURRENT.mode = d.mode;
+
+    const modeSel = $("ax-mode");
+    if (modeSel && d.mode) modeSel.value = d.mode;
+
+    CURRENT.file = d.file;
+    CURRENT.data = d.data || {};
+
+    // files dropdown
+    const sel = $("ax-file");
+    if (sel && Array.isArray(d.files)){
+      sel.innerHTML = "";
+      for (const name of d.files){
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        if (name === d.file) opt.selected = true;
+        sel.appendChild(opt);
+      }
+    }
+
+    setRaw(d.raw || "{}");
+    buildForm(CURRENT.data);
+  }
+
+  async function save(){
+    showMsg("");
+    const sel = $("ax-file");
+    const ta  = $("ax-raw");
+
+    // prefer form edits -> regenerate JSON -> write to raw box (so user sees truth)
+    const merged = readFormInto(CURRENT.data);
+    const pretty = JSON.stringify(merged, null, 2);
+    if (ta) ta.value = pretty;
+
+    const payload = {
+      kind: CURRENT.kind,
+      mode: CURRENT.mode,
+      file: sel ? sel.value : CURRENT.file,
+      raw: ta ? ta.value : pretty
+    };
+
+    const r = await apiSave(payload);
+    if (!r.ok) throw new Error(r.error || "Save failed");
+
+    showMsg(`Saved ${r.file}` + (r.backup ? ` (backup: ${r.backup})` : ""), true);
+    await load(r.file);
+  }
+
+  function hook(){
+    const reloadBtn = $("ax-reload");
+    const saveBtn   = $("ax-save");
+    const fileSel   = $("ax-file");
+    const modeSel   = $("ax-mode");
+
+    if (reloadBtn) reloadBtn.addEventListener("click", (e)=>{ e.preventDefault(); load(); });
+    if (saveBtn)   saveBtn.addEventListener("click", (e)=>{ e.preventDefault(); save(); });
+
+    if (fileSel) fileSel.addEventListener("change", ()=> load(fileSel.value));
+    if (modeSel) modeSel.addEventListener("change", ()=> load());
+  }
+
+  document.addEventListener("DOMContentLoaded", async ()=>{
+    try {
+      hook();
+      await load();
+    } catch (e) {
+      console.error("[settings] boot error", e);
+      showMsg(String(e), false);
+    }
+  }, { once:true });
+
+})();
+/* === Settings SAVE wiring (inserted 20260131_145227) === */
+(function () {
+  "use strict";
+
+  function $(id) { return document.getElementById(id); }
+
+  function setStatus(msg, ok) {
+    const el = $("mm-settings-status");
+    if (!el) return;
+    el.textContent = msg || "";
+    el.style.color = ok ? "#ffe900" : "#ff5c5c";
+  }
+
+  function getGroup() {
+    const bar = $("mm-settings-toolbar");
+    return bar ? (bar.getAttribute("data-group") || "").toLowerCase() : "";
+  }
+
+  function getProfileFromUrl() {
+    try {
+      const u = new URL(window.location.href);
+      const p = (u.searchParams.get("profile") || "").toLowerCase();
+      return (p === "swing") ? "swing" : "day";
+    } catch {
+      return "day";
+    }
+  }
+
+  async function loadProfile(profile) {
+    const group = getGroup();
+    if (!group) return;
+
+    setStatus("Loading?", true);
+
+    const url = `/api/settings/load?group=${encodeURIComponent(group)}&profile=${encodeURIComponent(profile)}&cb=${Date.now()}`;
+    const resp = await fetch(url, { cache: "no-store" });
+    let res = resp;
+    const data = await res.json();
+
+    if (!data || data.ok === false) {
+      setStatus("Load failed", false);
+      return;
+    }
+
+    // Your existing renderer should populate controls from loaded JSON.
+    // Keep compatibility: stash it globally for the existing UI builder.
+    window.__MM_SETTINGS = data;
+
+    // If your page already has a render/init function, call it if present.
+    if (typeof window.renderSettingsFromJson === "function") {
+      window.renderSettingsFromJson(data);
+    }
+    if (typeof window.initSettings === "function") {
+      window.initSettings(data);
+    }
+
+    setStatus(`Loaded ${group.toUpperCase()}/${profile.toUpperCase()}`, true);
+  }
+
+  function collectCurrentSettings() {
+    // Prefer an existing collector if you built one earlier.
+    if (typeof window.collectSettingsToJson === "function") {
+      return window.collectSettingsToJson();
+    }
+    // Fallback: if you still have the last-loaded JSON, write that (no-op).
+    const d = (window.__MM_SETTINGS && window.__MM_SETTINGS.data) ? window.__MM_SETTINGS.data : null;
+    return (d && typeof d === "object") ? d : {};
+  }
+
+  async function saveProfile() {
+    const group = getGroup();
+    const profile = ($("mm-settings-profile")?.value || "day").toLowerCase();
+    const data = collectCurrentSettings();
+
+    setStatus("Saving?", true);
+
+    const resp = await fetch("/api/settings/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ group, profile, data })
+    });
+
+    const out = await resp.json().catch(() => ({}));
+    if (resp.ok && out && out.ok) {
+      setStatus("Saved ?", true);
+    } else {
+      setStatus("Save failed", false);
+      console.error("[SETTINGS SAVE] failed:", out);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    const sel = $("mm-settings-profile");
+    const btn = $("mm-settings-save");
+
+    if (sel) {
+      const p = getProfileFromUrl();
+      sel.value = p;
+      sel.addEventListener("change", () => {
+        const u = new URL(window.location.href);
+        u.searchParams.set("profile", sel.value);
+        window.location.href = u.toString();
+      });
+      // initial load
+      loadProfile(sel.value).catch(e => {
+        console.error(e);
+        setStatus("Load error", false);
+      });
+    }
+
+    if (btn) {
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        saveProfile().catch(e => {
+          console.error(e);
+          setStatus("Save error", false);
+        });
+      });
+    }
+  }, { once: true });
+})();
+
+/* === AX_ADV_RAW: Controls full-width by default; Advanced toggles split-view with Raw on right === */
+(function () {
+  "use strict";
+
+  function byId(x){ return document.getElementById(x); }
+
+  function findControlsPanel(){
+    // Preferred wrappers (add more fallbacks so we never miss)
+    return byId("ax-form-wrap") ||
+           byId("ax-controls-wrap") ||
+           byId("ax-controls") ||
+           (byId("ax-form") ? (byId("ax-form").closest(".ax-panel") || byId("ax-form").parentElement) : null);
+  }
+
+  function findRawPanel(){
+    return byId("ax-raw-wrap") ||
+           byId("settings-raw-wrap") ||
+           (byId("ax-raw") ? (byId("ax-raw").closest(".ax-panel") || byId("ax-raw").parentElement) : null);
+  }
+
+  function findHost(){
+    // If you have a container, great; otherwise we’ll just do inline widths
+    return byId("ax-panels") ||
+           byId("mm-settings-panels") ||
+           (findControlsPanel() ? findControlsPanel().parentElement : null);
+  }
+
+  function show(el){ if (el) el.style.display = ""; }
+  function hide(el){ if (el) el.style.display = "none"; }
+
+  function setSplit(on){
+    var c = findControlsPanel();
+    var r = findRawPanel();
+    var host = findHost();
+
+    if (!c) return;
+
+    if (on) {
+      // Split view: controls left, raw right
+      show(c);
+      if (r) show(r);
+
+      if (host) {
+        host.style.display = "flex";
+        host.style.gap = "18px";
+        host.style.alignItems = "stretch";
+      }
+
+      c.style.flex = "0 0 46%";
+      c.style.maxWidth = "46%";
+      c.style.width = "46%";
+
+      if (r) {
+        r.style.flex = "1 1 auto";
+        r.style.maxWidth = "54%";
+        r.style.width = "54%";
+      }
+    } else {
+      // Controls-only: full width, raw hidden
+      show(c);
+      if (r) hide(r);
+
+      if (host) {
+        host.style.display = "block";
+      }
+
+      c.style.flex = "1 1 100%";
+      c.style.maxWidth = "100%";
+      c.style.width = "100%";
+    }
+  }
+
+  function boot(){
+    var btn = byId("ax-adv-toggle") || byId("mm-settings-advanced") || null;
+
+    // Always start in Controls-only mode
+    setSplit(false);
+
+    if (!btn) return;
+
+    // Single click handler; capture-phase; kill anything else
+    btn.addEventListener("click", function(ev){
+      try { ev.preventDefault(); ev.stopPropagation(); ev.stopImmediatePropagation(); } catch(e) {}
+      var raw = findRawPanel();
+      var isHidden = (!raw || raw.style.display === "none");
+      setSplit(isHidden); // if hidden -> turn split on; else -> controls only
+    }, true);
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once:true });
+  else boot();
+})();
+

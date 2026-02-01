@@ -4355,24 +4355,7 @@ def trade_review_chart():
 # inserted: 2026-01-31 00:06:59
 @app.route("/__fingerprint")
 def __fingerprint():
-    from flask import jsonify
-    import os, time
-    try:
-        routes = sorted([str(r) for r in app.url_map.iter_rules()])
-    except Exception as e:
-        routes = [f"ERROR reading url_map: {e}"]
-
-    fp = "DASHBOARD_FINGERPRINT 2026-02-01 patched"
-    return jsonify({
-        "fingerprint": fp,
-        "file": __file__,
-        "cwd": os.getcwd(),
-        "mtime": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(os.path.getmtime(__file__))),
-        "has_scoreboard_route": ("/api/settings/scoreboard" in routes),
-        "has_whereami_route": ("/__whereami" in routes),
-        "route_count": len(routes),
-    }), 200
-
+    return "DASHBOARD_FINGERPRINT 2026-01-31 00:06:59", 200, {"Content-Type":"text/plain"}
 
 @app.route("/analytics/data")
 def analytics_data():
@@ -4469,75 +4452,102 @@ def api_settings_load():
 
 @app.route("/api/settings/save", methods=["POST"])
 def api_settings_save():
-    group, profile = _settings_key()
-    path = _settings_path(group, profile)
-    if not path:
-        return jsonify({"ok": False, "error": f"Unknown group/profile: {group}/{profile}"}), 400
-
-    payload = request.get_json(silent=True) or {}
-
-    # allow either raw object or {data: {...}}
-    data = payload.get("data") if isinstance(payload, dict) and "data" in payload else payload
-    if not isinstance(data, dict):
-        return jsonify({"ok": False, "error": "Body must be a JSON object (or {data: object})"}), 400
-
-    ok, err = _write_json(path, data)
-    if not ok:
-        return jsonify({"ok": False, "error": f"Write failed: {err}", "path": path}), 500
-
-    return jsonify({"ok": True, "group": group, "profile": profile, "path": path})
-
-
-
-
-
-
-
-
-
-
-
-
-@app.route("/api/settings/scoreboard")
-def api_settings_scoreboard():
     """
-    Read-only counts from live.db.signal_fires.
-    Buckets: today / 7d / 30d / all
-    Uses ts_utc (UTC text) for bucket math.
+    Save settings JSON safely.
+    Accepts:
+      - { "group": "buy|sell", "profile": "day|swing", "raw": "<json string>" }
+      - { "group": "...", "profile": "...", "data": {...} }
+      - legacy: payload itself is the dict to save
+    Prevents writing wrapper objects like {file:"", raw:"...json..."} into the actual settings file.
     """
-    import sqlite3
-    from pathlib import Path
-    from flask import jsonify, request
+    from flask import request, jsonify
+    import json
+    import os
 
-    bucket = (request.args.get("bucket") or "today").strip().lower()
+    try:
+        payload = request.get_json(silent=True) or {}
+        group = (payload.get("group") or "").strip().lower()
+        profile = (payload.get("profile") or "").strip().lower()
 
-    LIVE_DB = Path(r"C:\TradeAlerts\live.db")
-    if not LIVE_DB.exists():
-        return jsonify({"ok": False, "bucket": bucket, "error": f"missing live.db at {LIVE_DB}", "counts": {}, "total": 0}), 200
+        if group not in ("buy", "sell") or profile not in ("day", "swing"):
+            return jsonify({"ok": False, "error": "Invalid group/profile"}), 400
 
-    if bucket in ("today", "tod"):
-        where = "WHERE date(ts_utc) = date('now')"
-        bucket = "today"
-    elif bucket in ("7d", "7", "week"):
-        where = "WHERE ts_utc >= datetime('now','-7 days')"
-        bucket = "7d"
-    elif bucket in ("30d", "30", "month"):
-        where = "WHERE ts_utc >= datetime('now','-30 days')"
-        bucket = "30d"
-    else:
-        where = ""
-        bucket = "all"
+        # --- Unwrap helpers ---
+        def _loads_maybe(x):
+            if isinstance(x, str):
+                x = x.strip()
+                if not x:
+                    return x
+                try:
+                    return json.loads(x)
+                except Exception:
+                    return x
+            return x
 
-    con = sqlite3.connect(str(LIVE_DB))
-    cur = con.cursor()
-    cur.execute(f"SELECT indicator, COUNT(*) FROM signal_fires {where} GROUP BY indicator ORDER BY COUNT(*) DESC")
-    rows = cur.fetchall()
-    con.close()
+        def _unwrap(obj):
+            cur = obj
+            for _ in range(6):
+                if isinstance(cur, dict) and "raw" in cur and isinstance(cur.get("raw"), str):
+                    cur = _loads_maybe(cur.get("raw"))
+                    continue
+                if isinstance(cur, str):
+                    cur = _loads_maybe(cur)
+                    continue
+                break
+            return cur
 
-    counts = {str(ind): int(cnt) for (ind, cnt) in rows if ind is not None}
-    total = sum(counts.values())
-    return jsonify({"ok": True, "bucket": bucket, "counts": counts, "total": total}), 200
+        # Determine settings dict to write
+        data = None
+        if isinstance(payload, dict) and isinstance(payload.get("raw"), str):
+            data = _unwrap(payload)
+        elif isinstance(payload, dict) and isinstance(payload.get("data"), dict):
+            data = payload.get("data")
+        else:
+            data = payload
 
+        # If the dict itself is a wrapper, unwrap again
+        if isinstance(data, dict) and "raw" in data and "file" in data and isinstance(data.get("raw"), str):
+            data2 = _unwrap(data)
+            if isinstance(data2, dict):
+                data = data2
+
+        if not isinstance(data, dict):
+            return jsonify({"ok": False, "error": "Invalid settings payload (not an object)"}), 400
+
+        # IMPORTANT: never persist UI-only keys if present
+        data.pop("file", None)
+        data.pop("raw", None)
+
+        # Resolve target path using your existing resolver (must exist in your routes)
+        # We look for a function named settings_path(group, profile) or _settings_path(group, profile).
+        path = None
+        if "settings_path" in globals():
+            path = settings_path(group, profile)
+        elif "_settings_path" in globals():
+            path = _settings_path(group, profile)
+        elif "SETTINGS_FILES" in globals():
+            path = (SETTINGS_FILES.get(group) or {}).get(profile)
+        elif "SETTINGS_MAP" in globals():
+            path = (SETTINGS_MAP.get(group) or {}).get(profile)
+
+        if not path:
+            return jsonify({"ok": False, "error": "Could not resolve settings file path"}), 500
+
+        # Safety: only allow writes inside C:\TradeAlerts
+        base = os.path.abspath(r"C:\TradeAlerts")
+        target = os.path.abspath(path)
+        if not target.lower().startswith(base.lower() + os.sep):
+            return jsonify({"ok": False, "error": "Refusing to write outside C:\\TradeAlerts"}), 400
+
+        # Write JSON
+        with open(target, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, sort_keys=True)
+            f.write("\n")
+
+        return jsonify({"ok": True, "path": target}), 200
+
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
 
@@ -4654,8 +4664,6 @@ def analytics_data():
     from services.analytics_service import compute_analytics_charts
     logs_dir = r"C:\TradeAlerts\logs"
     return compute_analytics_charts(log_dir=logs_dir)
-
-
 
 @app.route("/api/trade_review", endpoint="api_trade_review_2")
 def api_trade_review_dup4():
@@ -6882,34 +6890,3 @@ def analytics_data_dup2():
 # @app.route("/__fingerprint")
 def __fingerprint():
     return "DASHBOARD_FINGERPRINT 2026-01-30 23:39:19", 200, {"Content-Type":"text/plain"}
-
-
-
-@app.route("/__routes")
-def __routes():
-    # Debug helper: list routes registered on the running Flask app
-    try:
-        rules = []
-        for r in sorted(app.url_map.iter_rules(), key=lambda x: str(x)):
-            rules.append({"rule": str(r), "endpoint": r.endpoint, "methods": sorted(list(r.methods or []))})
-        from flask import jsonify
-        return jsonify({"ok": True, "count": len(rules), "routes": rules}), 200
-    except Exception as e:
-        from flask import jsonify
-        return jsonify({"ok": False, "error": str(e)}), 200
-
-
-
-
-@app.route("/__whereami")
-def __whereami():
-    from flask import jsonify
-    import os
-    return jsonify({
-        "ok": True,
-        "file": __file__,
-        "cwd": os.getcwd(),
-    }), 200
-
-# ___whereami_20260201
-

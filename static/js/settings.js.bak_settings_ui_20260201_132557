@@ -1,0 +1,358 @@
+(function () {
+  "use strict";
+
+  function $(id){ return document.getElementById(id); }
+  function enc(x){ return encodeURIComponent(String(x ?? "")); }
+
+  function liveModeFromDom(){
+    const el = $("ax-mode");
+    return el ? (el.value || "DAY") : "DAY";
+  }
+
+  function kindFromDom(){
+    const el = $("ax-kind");
+    return el ? (el.value || "buy") : "buy";
+  }
+
+  async function fetchJson(url, opts){
+    const resp = await fetch(url, Object.assign({ cache:"no-store" }, opts || {}));
+    const text = await resp.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch(e) {}
+
+    if (!resp.ok){
+      const msg = (data && (data.error || data.message)) ? (data.error || data.message) : ("HTTP " + resp.status);
+      throw new Error(msg);
+    }
+    return data;
+  }
+
+  async function apiLoad(kind, mode, file){
+    const url = `/api/settings/load?kind=${enc(kind)}&mode=${enc(mode)}${file ? `&file=${enc(file)}` : ""}&cb=${Date.now()}`;
+    return await fetchJson(url);
+  }
+
+  async function apiSave(payload){
+    return await fetchJson("/api/settings/save", {
+      method: "POST",
+      headers: { "Content-Type":"application/json" },
+      body: JSON.stringify(payload)
+    });
+  }
+
+  function showMsg(txt, ok=true){
+    const box = $("ax-msg");
+    if (!box) return;
+    box.textContent = txt || "";
+    box.className = ok ? "ax-msg ax-ok" : "ax-msg ax-bad";
+    box.style.display = txt ? "block" : "none";
+  }
+
+  // ------------ grouping ------------
+  const REQUIRED_KEYS = new Set(["min_signals","strict_buy_signals","required_filters","require_sma20"]);
+  const INDICATOR_ON_KEYS = new Set([
+    "adx_on","atr_on","atr_pct_on","bb_on","bb_breakout_on","gap_on","macd_on","macd_hist_on",
+    "price_sma_on","range_on","rsi_on","rsi_slope_on","sma_on","super_on","vol_on","vwap_on"
+  ]);
+
+  // Allowed required_filters (matches current run_live_loop logic)
+  const REQUIRED_FILTER_CHOICES = ["macd","vwap","adx","vol"];
+
+  function titleCase(s){
+    s = String(s||"");
+    return s ? (s[0].toUpperCase() + s.slice(1)) : s;
+  }
+
+  function mkSection(host, title){
+    const wrap = document.createElement("div");
+    wrap.className = "mm-sec";
+
+    const h = document.createElement("div");
+    h.className = "mm-sec-title";
+    h.textContent = title;
+
+    const body = document.createElement("div");
+    body.className = "mm-sec-body";
+
+    wrap.appendChild(h);
+    wrap.appendChild(body);
+    host.appendChild(wrap);
+    return body;
+  }
+
+  function mkRow(key, labelText){
+    const row = document.createElement("div");
+    row.className = "ax-row";
+
+    const lab = document.createElement("label");
+    lab.className = "ax-lab";
+    lab.textContent = labelText;
+
+    const ctl = document.createElement("div");
+    ctl.className = "ax-ctl";
+
+    row.appendChild(lab);
+    row.appendChild(ctl);
+    return { row, ctl };
+  }
+
+  function buildControl(key, value){
+    // boolean toggle
+    if (typeof value === "boolean"){
+      const inp = document.createElement("input");
+      inp.type = "checkbox";
+      inp.checked = !!value;
+      inp.dataset.key = key;
+      inp.dataset.kind = "bool";
+      inp.className = "ax-toggle";
+      return inp;
+    }
+
+    // number
+    if (typeof value === "number"){
+      const inp = document.createElement("input");
+      inp.type = "number";
+      inp.step = "any";
+      inp.value = String(value);
+      inp.dataset.key = key;
+      inp.dataset.kind = "num";
+      inp.className = "ax-input";
+      return inp;
+    }
+
+    // string
+    if (typeof value === "string"){
+      const inp = document.createElement("input");
+      inp.type = "text";
+      inp.value = value;
+      inp.dataset.key = key;
+      inp.dataset.kind = "str";
+      inp.className = "ax-input";
+      return inp;
+    }
+
+    // arrays/objects: readonly note (we're staying human-first here)
+    const note = document.createElement("div");
+    note.className = "ax-note";
+    note.textContent = "Complex setting (not editable here)";
+    return note;
+  }
+
+  function renderRequiredFilters(container, currentArr){
+    const cur = new Set(Array.isArray(currentArr) ? currentArr.map(x=>String(x).toLowerCase()) : []);
+    const box = document.createElement("div");
+    box.className = "mm-reqfilters";
+
+    for (const f of REQUIRED_FILTER_CHOICES){
+      const lab = document.createElement("label");
+      lab.className = "mm-check";
+
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = cur.has(f);
+      cb.dataset.key = "required_filters";
+      cb.dataset.kind = "reqfilters";
+      cb.dataset.filter = f;
+
+      const span = document.createElement("span");
+      span.textContent = titleCase(f);
+
+      lab.appendChild(cb);
+      lab.appendChild(span);
+      box.appendChild(lab);
+    }
+    container.appendChild(box);
+  }
+
+  function readFormInto(base){
+    const host = $("ax-form");
+    const out = Object.assign({}, (base && typeof base === "object") ? base : {});
+    if (!host) return out;
+
+    const inputs = host.querySelectorAll("[data-key]");
+    // handle required_filters specially
+    const rf = [];
+    inputs.forEach(inp => {
+      const k = inp.dataset.key;
+      const t = inp.dataset.kind;
+
+      if (t === "reqfilters"){
+        if (inp.checked) rf.push(String(inp.dataset.filter || "").toLowerCase());
+        return;
+      }
+      if (t === "bool") out[k] = !!inp.checked;
+      else if (t === "num") {
+        const n = Number(inp.value);
+        out[k] = Number.isFinite(n) ? n : 0;
+      }
+      else if (t === "str") out[k] = String(inp.value ?? "");
+    });
+
+    if (inputs.length){
+      // only set if we rendered it
+      const hasRF = Array.from(inputs).some(x => x.dataset.kind === "reqfilters");
+      if (hasRF) out["required_filters"] = rf;
+    }
+    return out;
+  }
+
+  function prettyLabel(key){
+    // show "days" beside sell_after_days
+    if (key === "sell_after_days") return "sell_after_days (days)";
+    return key;
+  }
+
+  function buildForm(data){
+    const host = $("ax-form");
+    if (!host) return;
+    host.innerHTML = "";
+
+    const d = (data && typeof data === "object") ? data : {};
+    const keys = Object.keys(d);
+
+    if (!keys.length){
+      host.innerHTML = `<div class="ax-empty">No settings found.</div>`;
+      return;
+    }
+
+    // Group keys
+    const indicatorKeys = [];
+    const requiredKeys  = [];
+    const simpleKeys    = [];
+
+    for (const k of keys){
+      if (REQUIRED_KEYS.has(k)) requiredKeys.push(k);
+      else if (INDICATOR_ON_KEYS.has(k) || k.endsWith("_on")) indicatorKeys.push(k);
+      else simpleKeys.push(k);
+    }
+
+    // Sort stable
+    indicatorKeys.sort((a,b)=>a.localeCompare(b));
+    requiredKeys.sort((a,b)=>a.localeCompare(b));
+    simpleKeys.sort((a,b)=>a.localeCompare(b));
+
+    const secIndicators = mkSection(host, "Triggers / Indicators");
+    const secRequired   = mkSection(host, "Required Total");
+    const secSimple     = mkSection(host, "Simple Settings");
+
+    // Indicators
+    for (const k of indicatorKeys){
+      const { row, ctl } = mkRow(k, prettyLabel(k));
+      ctl.appendChild(buildControl(k, d[k]));
+      secIndicators.appendChild(row);
+    }
+
+    // Required Total (with special UI for required_filters)
+    for (const k of requiredKeys){
+      if (k === "required_filters"){
+        const { row, ctl } = mkRow(k, "required_filters (must include)");
+        renderRequiredFilters(ctl, d[k]);
+        secRequired.appendChild(row);
+        continue;
+      }
+      const { row, ctl } = mkRow(k, prettyLabel(k));
+      ctl.appendChild(buildControl(k, d[k]));
+      secRequired.appendChild(row);
+    }
+
+    // Simple settings
+    for (const k of simpleKeys){
+      // hide big nested objects like ai/trail_tiers etc
+      const v = d[k];
+      const isComplex = (v && typeof v === "object");
+      if (isComplex){
+        // still show a note row so you remember it exists
+        const { row, ctl } = mkRow(k, prettyLabel(k));
+        const note = document.createElement("div");
+        note.className = "ax-note";
+        note.textContent = "Complex setting (not editable here)";
+        ctl.appendChild(note);
+        secSimple.appendChild(row);
+        continue;
+      }
+
+      const { row, ctl } = mkRow(k, prettyLabel(k));
+      ctl.appendChild(buildControl(k, v));
+      secSimple.appendChild(row);
+    }
+  }
+
+  let CURRENT = { kind:"buy", mode:"DAY", file:"", data:{} };
+
+  async function load(fileOverride){
+    showMsg("");
+    const kind = kindFromDom();
+    const mode = liveModeFromDom();
+    const file = fileOverride || ($("ax-file") ? $("ax-file").value : "");
+    const d = await apiLoad(kind, mode, file);
+
+    if (!d || d.ok === false) throw new Error((d && d.error) ? d.error : "Load failed");
+
+    CURRENT.kind = d.kind || kind;
+    CURRENT.mode = d.mode || mode;
+    CURRENT.file = d.file || file || "";
+    CURRENT.data = (d.data && typeof d.data === "object") ? d.data : {};
+
+    // files dropdown if present
+    const sel = $("ax-file");
+    if (sel && Array.isArray(d.files)){
+      sel.innerHTML = "";
+      for (const name of d.files){
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        if (name === d.file) opt.selected = true;
+        sel.appendChild(opt);
+      }
+    }
+
+    buildForm(CURRENT.data);
+    showMsg(`Loaded ${CURRENT.kind.toUpperCase()} / ${CURRENT.mode.toUpperCase()}`, true);
+  }
+
+  async function save(){
+    showMsg("");
+    const sel = $("ax-file");
+
+    const merged = readFormInto(CURRENT.data);
+    const payload = {
+      kind: CURRENT.kind,
+      mode: CURRENT.mode,
+      file: sel ? sel.value : CURRENT.file,
+      // backend supports raw; but we stay human-first: send structured data
+      data: merged
+    };
+
+    const r = await apiSave(payload);
+    if (!r || r.ok === false) throw new Error((r && r.error) ? r.error : "Save failed");
+
+    showMsg(`Saved ${r.file || payload.file || ""}` + (r.backup ? ` (backup: ${r.backup})` : ""), true);
+    await load(r.file || payload.file);
+  }
+
+  function hook(){
+    const reloadBtn = $("ax-reload");
+    const saveBtn   = $("ax-save");
+    const fileSel   = $("ax-file");
+    const modeSel   = $("ax-mode");
+    const kindSel   = $("ax-kind");
+
+    if (reloadBtn) reloadBtn.addEventListener("click", (e)=>{ e.preventDefault(); load(); });
+    if (saveBtn)   saveBtn.addEventListener("click", (e)=>{ e.preventDefault(); save(); });
+
+    if (fileSel) fileSel.addEventListener("change", ()=> load(fileSel.value));
+    if (modeSel) modeSel.addEventListener("change", ()=> load());
+    if (kindSel) kindSel.addEventListener("change", ()=> load());
+  }
+
+  document.addEventListener("DOMContentLoaded", async ()=>{
+    try {
+      hook();
+      await load();
+    } catch (e) {
+      console.error("[settings] boot error", e);
+      showMsg(String(e && e.message ? e.message : e), false);
+    }
+  }, { once:true });
+
+})();
