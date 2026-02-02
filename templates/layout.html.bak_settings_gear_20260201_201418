@@ -46,7 +46,8 @@
 	  </div>
 
 	  <a class="btn btn-sm btn-outline-warning btn-fixed"
-		 href="/settings/buy" title="Settings"><i class="bi bi-gear-fill"></i> Settings
+		 href="/settings/buy" title="Settings">
+		📟 Settings
 	  </a>
 
 	</div>

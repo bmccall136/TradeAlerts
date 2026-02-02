@@ -1,12 +1,12 @@
-{% extends "layout.html" %}
+﻿{% extends "layout.html" %}
 {% block content %}
-<div id="settings-page" class="container-fluid">
+<div class="container-fluid" style="max-width:1200px;margin:0 auto;">
   <div class="d-flex align-items-center justify-content-between" style="margin:18px 0 10px 0;">
     <div style="font-size:22px;font-weight:700;">Settings</div>
     <div class="d-flex align-items-center" style="gap:10px;">
       <div class="btn-group" role="group" aria-label="settings tabs">
-        <a class="btn btn-sm btn-dark" href="/settings/buy">BUY</a>
-        <a class="btn btn-sm btn-warning" href="/settings/sell">SELL</a>
+        <a class="btn btn-sm btn-warning" href="/settings/buy">BUY</a>
+        <a class="btn btn-sm btn-dark" href="/settings/sell">SELL</a>
       </div>
       <div class="d-flex align-items-center" style="gap:8px;">
         <div style="opacity:.85;">Profile</div>
@@ -18,7 +18,7 @@
     </div>
   </div>
 
-  <div class="card mm-card mb-3">
+  <div class="card" style="background:rgba(10,18,35,.65);border:1px solid rgba(255,255,255,.08);border-radius:14px;margin-bottom:12px;">
     <div class="card-body">
       <div style="font-size:18px;font-weight:700;">Signal Scoreboard</div>
       <div style="opacity:.9;margin:2px 0 10px 0;">Counts increment even if disabled. Toggles affect eligibility only.</div>
@@ -51,7 +51,7 @@
     </div>
   </div>
 
-  <div id="gateCard" class="card mm-card mb-3">
+  <div id="gateCard" class="card" style="background:rgba(10,18,35,.65);border:1px solid rgba(255,255,255,.08);border-radius:14px;margin-bottom:12px;">
     <div class="card-body">
       <div style="font-size:18px;font-weight:700;">Required Signals Gate</div>
       <div style="opacity:.9;margin:2px 0 10px 0;">Minimum number of ON signals that must fire before we consider a trade.</div>
@@ -64,7 +64,7 @@
     </div>
   </div>
 
-  <div class="card mm-card mb-4">
+  <div class="card" style="background:rgba(10,18,35,.65);border:1px solid rgba(255,255,255,.08);border-radius:14px;margin-bottom:18px;">
     <div class="card-body">
       <div style="font-size:18px;font-weight:700;">Settings</div>
       <div style="opacity:.9;margin:2px 0 10px 0;">Grouped. No raw JSON.</div>
@@ -83,13 +83,18 @@
 <script>
   // page indicator model
   window.__INDICATORS__ = [
-  { label: "TIMEOUT EXITS", enable_key: "enable_timeout_exits" }
+  { label: "MACD", enable_key: "macd_on" },
+  { label: "RSI",  enable_key: "rsi_on" },
+  { label: "VWAP", enable_key: "vwap_on" },
+  { label: "BB",   enable_key: "bb_on" },
+  { label: "ADX",  enable_key: "adx_on" },
+  { label: "VOL",  enable_key: "vol_on" }
 ];
 </script>
 
 <script>
 (() => {
-  const GROUP = "sell"; // dashboard.py passes group=buy/sell into template
+  const GROUP = "buy"; // dashboard.py passes group=buy/sell into template
   const byId = (id) => document.getElementById(id);
 
   // Page-specific indicator model injected by each page
@@ -200,7 +205,7 @@
     const chunks = [];
 
     for (const g of groups){
-      chunks.push(`<div class="card mm-subcard">
+      chunks.push(`<div class="card" style="background:rgba(0,0,0,.15);border:1px solid rgba(255,255,255,.06);border-radius:12px;margin:10px 0;">
         <div class="card-body">
           <div style="font-weight:700;margin-bottom:8px;opacity:.95;">${g.title}</div>
           <div class="table-responsive">
