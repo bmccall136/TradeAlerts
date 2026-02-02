@@ -35,6 +35,21 @@
         <div id="scoreErr" style="display:none;color:#ff6b6b;font-weight:600;"></div>
       </div>
 
+  <div id="gateCard" class="card mm-card mb-3">
+    <div class="card-body">
+      <div style="font-size:18px;font-weight:700;">Required Signals Gate</div>
+      <div style="opacity:.9;margin:2px 0 10px 0;">Minimum number of ON signals that must fire before we consider a trade.</div>
+
+      <div class="d-flex align-items-center" style="gap:10px;">
+        <div style="min-width:130px;opacity:.85;">Minimum required</div>
+        <select id="minReqSel" class="form-select form-select-sm" style="width:140px;"></select>
+        <div id="gateHint" style="opacity:.75;"></div>
+      </div>
+    </div>
+  </div>
+
+
+
       <div id="indicatorCards"></div>
 
       <div class="d-flex align-items-center mm-savebar" style="gap:10px;margin-top:14px;">
@@ -45,20 +60,7 @@
     </div>
   </div>
 
-  <div id="gateCard" class="card mm-card mb-3">
-    <div class="card-body">
-      <div style="font-size:18px;font-weight:700;">Required Signals Gate</div>
-      <div style="opacity:.9;margin:2px 0 10px 0;">Minimum number of ON signals that must fire before we consider a trade.</div>
-
-      <div class="d-flex align-items-center" style="gap:10px;">
-        <div style="min-width:130px;opacity:.85;">Minimum required</div>
-        <select id="minReqSel" class="form-select form-select-sm" style="width:140px;"></select>
-        <div id="gateHint" style="opacity:.75;"></div>
-        <div id="gateLegend" class="muted small mt-1"></div>
-
-      </div>
-    </div>
-  </div>
+  
   </div>
 </div>
 
@@ -131,12 +133,21 @@
     return j;
   }
 
-    const GATEABLE_KEYS = new Set(['macd','rsi','vwap','bb','adx','vol']);
-  const isGateable = (k) => GATEABLE_KEYS.has(String(k||'').toLowerCase());
-
-function enabledIndicators(settings){
+  function enabledIndicators(settings){
     const out = [];
-    for (const it of INDICATORS){
+    
+    // Order: enabled (gate-eligible) first, then disabled; within each group sort by count desc then label
+    const IND_ORDER = [...INDICATORS].sort((a,b) => {
+      const ae = settings && settings[a.enable_key] ? 1 : 0;
+      const be = settings && settings[b.enable_key] ? 1 : 0;
+      if (be !== ae) return be - ae;
+      const ac = (counts && counts[a.label] !== undefined) ? counts[a.label] : 0;
+      const bc = (counts && counts[b.label] !== undefined) ? counts[b.label] : 0;
+      if (bc !== ac) return bc - ac;
+      return String(a.label).localeCompare(String(b.label));
+    });
+
+    for (const it of IND_ORDER){
       const on = !!settings[it.enable_key];
       if (on) out.push(it);
     }
@@ -164,27 +175,12 @@ function enabledIndicators(settings){
     minReqSel.value = String(cur);
     setGateVal(settings, cur);
 
-        if (gateHint){
-      if (!enabled.length) {
-        gateHint.textContent = "No indicators enabled.";
-      } else {
-        const gateable = enabled.filter(x => isGateable(x.key));
-        const nongate  = enabled.filter(x => !isGateable(x.key));
-        const a = gateable.length ? (gateable.length + " gateable: " + gateable.map(x => x.label).join(", ")) : "0 gateable";
-        const b = nongate.length ? (" | " + nongate.length + " counts-only: " + nongate.map(x => x.label).join(", ")) : "";
-        gateHint.textContent = a + b;
-      }
+    if (gateHint){
+      if (!enabled.length) gateHint.textContent = "No indicators enabled.";
+      else gateHint.textContent = enabled.length + " enabled: " + enabled.map(x => x.label).join(", ");
     }
 
-    const gateLegend = byId("gateLegend");
-    if (gateLegend){
-      const gateableEnabled = enabled.filter(x => isGateable(x.key)).map(x => x.label);
-      const nongateEnabled  = enabled.filter(x => !isGateable(x.key)).map(x => x.label);
-      const left  = gateableEnabled.length ? ("Gateable enabled: " + gateableEnabled.join(", ")) : "Gateable enabled: (none)";
-      const right = nongateEnabled.length  ? ("Counts-only enabled: " + nongateEnabled.join(", ")) : "Counts-only enabled: (none)";
-      gateLegend.textContent = left + "   ?   " + right;
-    }
-minReqSel.onchange = () => {
+    minReqSel.onchange = () => {
       const v = parseInt(minReqSel.value, 10) || 1;
       setGateVal(settings, v);
     };

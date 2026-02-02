@@ -54,6 +54,8 @@
         <div style="min-width:130px;opacity:.85;">Minimum required</div>
         <select id="minReqSel" class="form-select form-select-sm" style="width:140px;"></select>
         <div id="gateHint" style="opacity:.75;"></div>
+        <div id="gateLegend" class="muted small mt-1"></div>
+
       </div>
     </div>
   </div>
@@ -124,7 +126,10 @@
     return j;
   }
 
-  function enabledIndicators(settings){
+    const GATEABLE_KEYS = new Set(['macd','rsi','vwap','bb','adx','vol']);
+  const isGateable = (k) => GATEABLE_KEYS.has(String(k||'').toLowerCase());
+
+function enabledIndicators(settings){
     const out = [];
     for (const it of INDICATORS){
       const on = !!settings[it.enable_key];
@@ -154,12 +159,27 @@
     minReqSel.value = String(cur);
     setGateVal(settings, cur);
 
-    if (gateHint){
-      if (!enabled.length) gateHint.textContent = "No indicators enabled.";
-      else gateHint.textContent = enabled.length + " enabled: " + enabled.map(x => x.label).join(", ");
+        if (gateHint){
+      if (!enabled.length) {
+        gateHint.textContent = "No indicators enabled.";
+      } else {
+        const gateable = enabled.filter(x => isGateable(x.key));
+        const nongate  = enabled.filter(x => !isGateable(x.key));
+        const a = gateable.length ? (gateable.length + " gateable: " + gateable.map(x => x.label).join(", ")) : "0 gateable";
+        const b = nongate.length ? (" | " + nongate.length + " counts-only: " + nongate.map(x => x.label).join(", ")) : "";
+        gateHint.textContent = a + b;
+      }
     }
 
-    minReqSel.onchange = () => {
+    const gateLegend = byId("gateLegend");
+    if (gateLegend){
+      const gateableEnabled = enabled.filter(x => isGateable(x.key)).map(x => x.label);
+      const nongateEnabled  = enabled.filter(x => !isGateable(x.key)).map(x => x.label);
+      const left  = gateableEnabled.length ? ("Gateable enabled: " + gateableEnabled.join(", ")) : "Gateable enabled: (none)";
+      const right = nongateEnabled.length  ? ("Counts-only enabled: " + nongateEnabled.join(", ")) : "Counts-only enabled: (none)";
+      gateLegend.textContent = left + "   ?   " + right;
+    }
+minReqSel.onchange = () => {
       const v = parseInt(minReqSel.value, 10) || 1;
       setGateVal(settings, v);
     };
