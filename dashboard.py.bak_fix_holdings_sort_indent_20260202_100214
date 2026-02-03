@@ -508,6 +508,37 @@ def compute_true_about(nav: float, start_cash: float, net_contrib: float, start_
     }
 
 # --- NEW: Fetch realized P&L from E*TRADE (surgical add) ---
+def etrade_realized_pnl(start_date, end_date):
+    """
+    Returns total realized gain (float) between start_date and end_date.
+    start_date, end_date are datetime.date
+    """
+    from services import etrade_service as et
+    import datetime
+
+    try:
+        acct = et.get_account_id_key()
+    except Exception:
+        return 0.0
+
+    # Convert to E*TRADE expected string YYYY-MM-DD
+    sd = start_date.strftime("%Y-%m-%d")
+    ed = end_date.strftime("%Y-%m-%d")
+
+    try:
+        tx = et.list_transactions(acct, sd, ed)
+    except Exception:
+        return 0.0
+
+    total = 0.0
+    for t in tx or []:
+        if t.get("transactionType") == "SELL":
+            gain = float(t.get("gain", 0) or 0)
+            total += gain
+
+    return round(total, 2)
+
+import sqlite3  # if not already imported at top
 
 def get_recent_news_for_symbol(symbol: str, limit: int = 5) -> list[dict]:
     """
@@ -1577,6 +1608,20 @@ def _build_holdings_from_positions(rows: list[dict]) -> tuple[list[dict], float]
     return holdings, float(round(positions_value, 2))
 
 # -----------------------------------------------------------------------------#
+from datetime import datetime
+
+def _parse_opened_et(v):
+    if not v:
+        return datetime.min
+    try:
+        return datetime.strptime(v, "%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return datetime.min
+
+holdings.sort(
+    key=lambda h: _parse_opened_et(h.get("opened_et")),
+    reverse=True
+)
 
 
 def _etrade_log_wrap() -> None:
@@ -1838,39 +1883,38 @@ def live_view():
         log.exception("live_view error: %s", e)
         account, holdings = {}, []
 
-    # --- SORT HOLDINGS: Opened (newest first) ---
-    from datetime import datetime as _dt
+# --- SORT HOLDINGS: Opened (newest first) ---
+from datetime import datetime as _dt
 
-    def _parse_opened_any(_h):
-        """
-        Prefer opened_et (what we display) so all rows sort consistently.
-        Fall back to opened_utc ISO8601 if needed.
-        Blanks/unparseable => bottom.
-        """
-        v = (_h or {}).get("opened_et") or ""
-        if v:
-            try:
-                return _dt.strptime(v, "%Y-%m-%d %H:%M")
-            except Exception:
-                try:
-                    return _dt.strptime(v, "%Y-%m-%d %H:%M:%S")
-                except Exception:
-                    pass
+def _parse_opened_any(_h):
+    """
+    Prefer opened_utc (ISO 8601 w/ timezone) if present, else opened_et.
+    Return datetime.min if missing/unparseable so blanks fall to bottom.
+    """
+    v = (_h or {}).get("opened_utc") or ""
+    if v:
+        try:
+            # Python 3.11: fromisoformat handles 'YYYY-MM-DDTHH:MM:SS.sss+00:00'
+            return _dt.fromisoformat(v.replace("Z", "+00:00"))
+        except Exception:
+            pass
 
-        v = (_h or {}).get("opened_utc") or ""
-        if v:
-            try:
-                return _dt.fromisoformat(v.replace("Z", "+00:00"))
-            except Exception:
-                pass
+    v = (_h or {}).get("opened_et") or ""
+    if v:
+        try:
+            return _dt.strptime(v, "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            pass
 
-        return _dt.min
+    return _dt.min
 
-    try:
-        holdings.sort(key=_parse_opened_any, reverse=True)
-    except Exception:
-        pass
-    # --- END SORT HOLDINGS ---
+try:
+    holdings.sort(key=_parse_opened_any, reverse=True)
+except Exception:
+    pass
+# --- END SORT HOLDINGS ---
+
+
     return render_template("live.html", account=account, holdings=holdings)
 
 def compute_since_start_summary(
@@ -4490,182 +4534,2428 @@ def api_settings_save():
     return jsonify({"ok": True, "group": group, "profile": profile, "path": path})
 
 
-# =========================
 
 
 
-# =========================
-# Settings Scoreboard
-# =========================
+
+
+
+
+
+
+
 @app.route("/api/settings/scoreboard")
 def api_settings_scoreboard():
     """
-    Returns trigger-scoreboard counts for UI.
+    Read-only counts from live.db.signal_fires.
     Buckets: today / 7d / 30d / all
-    Reads live.db table: signal_fires(ts_utc TEXT, symbol TEXT, indicator TEXT, detail TEXT)
+    Uses ts_utc (UTC text) for bucket math.
     """
-    import os
     import sqlite3
-    from datetime import datetime, timezone
+    from pathlib import Path
+    from flask import jsonify, request
 
     bucket = (request.args.get("bucket") or "today").strip().lower()
-    if bucket not in ("today","7d","30d","all"):
+
+    LIVE_DB = Path(r"C:\TradeAlerts\live.db")
+    if not LIVE_DB.exists():
+        return jsonify({"ok": False, "bucket": bucket, "error": f"missing live.db at {LIVE_DB}", "counts": {}, "total": 0}), 200
+
+    if bucket in ("today", "tod"):
+        where = "WHERE date(ts_utc) = date('now')"
         bucket = "today"
-
-    # DB path: use constant if present, else default to C:\TradeAlerts\live.db
-    db_path = globals().get("LIVE_DB") or globals().get("DB_PATH") or os.path.join(os.path.dirname(__file__), "live.db")
-
-    def _norm_ind(x: str) -> str:
-        s = (x or "").strip().lower()
-        if not s:
-            return ""
-        # normalize common variants
-        if "macd" in s: return "macd"
-        if "rsi" in s:  return "rsi"
-        if "vwap" in s: return "vwap"
-        if "adx" in s:  return "adx"
-        if "bb" in s or "boll" in s: return "bb"
-        if "sma" in s or "ma" == s or "moving" in s: return "sma"
-        if "vol" in s or "volume" in s: return "vol"
-        return s
-
-    # Build cutoff (UTC). Use SQLite julianday comparisons (ts_utc stored ISO8601 with timezone)
-    now_utc = datetime.now(timezone.utc)
-
-    cutoff_sql = None
-    cutoff_iso = None
-    if bucket == "today":
-        # start of UTC day
-        cutoff = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-        cutoff_iso = cutoff.isoformat()
-        cutoff_sql = "julianday(ts_utc) >= julianday(?)"
-    elif bucket == "7d":
-        cutoff = now_utc - __import__("datetime").timedelta(days=7)
-        cutoff_iso = cutoff.isoformat()
-        cutoff_sql = "julianday(ts_utc) >= julianday(?)"
-    elif bucket == "30d":
-        cutoff = now_utc - __import__("datetime").timedelta(days=30)
-        cutoff_iso = cutoff.isoformat()
-        cutoff_sql = "julianday(ts_utc) >= julianday(?)"
+    elif bucket in ("7d", "7", "week"):
+        where = "WHERE ts_utc >= datetime('now','-7 days')"
+        bucket = "7d"
+    elif bucket in ("30d", "30", "month"):
+        where = "WHERE ts_utc >= datetime('now','-30 days')"
+        bucket = "30d"
     else:
-        cutoff_sql = None
+        where = ""
+        bucket = "all"
 
-    counts = {}
-    debug_total = 0
-    debug_after = 0
-    debug_min = None
-    debug_max = None
+    con = sqlite3.connect(str(LIVE_DB))
+    cur = con.cursor()
+    cur.execute(f"SELECT indicator, COUNT(*) FROM signal_fires {where} GROUP BY indicator ORDER BY COUNT(*) DESC")
+    rows = cur.fetchall()
+    con.close()
 
+    counts = {str(ind): int(cnt) for (ind, cnt) in rows if ind is not None}
+    total = sum(counts.values())
+    return jsonify({"ok": True, "bucket": bucket, "counts": counts, "total": total}), 200
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+
+# --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
+def normalize_positions_payload_dup7(raw):
+    # FIX: break accidental recursion (duplicate helper)
+    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+
+try:
+
+    for t in trades or []:
+
+        if not isinstance(t, dict):
+
+            continue
+
+        if str(t.get("action","")).upper() != "SELL":
+
+            continue
+
+        qty = t.get("qty")
+
+        price = t.get("price")
+
+        paid = t.get("price_paid")
+
+        if qty in (None,"") or price in (None,"") or paid in (None,""):
+
+            continue
+
+        qty = float(qty)
+
+        price = float(price)
+
+        paid = float(paid)
+
+        if qty <= 0:
+
+            continue
+
+        pl = (price - paid) * qty
+
+        t["pl"] = pl
+
+        denom = (paid * qty)
+
+        t["pl_pct"] = (pl / denom * 100.0) if denom else None
+
+except Exception:
+
+    pass
+
+
+# --- Realized P/L hygiene: recompute SELL pl from (price - price_paid)*qty; poison SELLs get pl=None ---
+
+try:
+
+    for t in trades or []:
+
+        if not isinstance(t, dict):
+
+            continue
+
+        if str(t.get("action","")).upper() != "SELL":
+
+            continue
+
+        qty = t.get("qty")
+
+        price = t.get("price")
+
+        paid = t.get("price_paid")
+
+        # If we don't have a valid cost basis, do NOT allow this SELL to contribute to realized math.
+
+        if paid in (None,"") or float(paid) <= 0.0001:
+
+            t["_poison"] = True
+
+            t["pl"] = None
+
+            t["pl_pct"] = None
+
+            continue
+
+        if qty in (None,"") or price in (None,""):
+
+            continue
+
+        qty = float(qty)
+
+        price = float(price)
+
+        paid = float(paid)
+
+        if qty <= 0:
+
+            continue
+
+        pl = (price - paid) * qty
+
+        t["pl"] = pl
+
+        denom = (paid * qty)
+
+        t["pl_pct"] = (pl / denom * 100.0) if deoldingsnom else None
+
+except Exception:
+
+    pass
+
+# @app.route("/analytics/data")
+def analytics_data():
+    from services.analytics_service import compute_analytics_charts
+    logs_dir = r"C:\TradeAlerts\logs"
+    return compute_analytics_charts(log_dir=logs_dir)
+
+
+
+@app.route("/api/trade_review", endpoint="api_trade_review_2")
+def api_trade_review_dup4():
+    import os
     try:
-        con = sqlite3.connect(db_path)
-        cur = con.cursor()
-
-        # total rows
-        cur.execute("SELECT COUNT(*) FROM signal_fires")
-        debug_total = int(cur.fetchone()[0] or 0)
-
-        if cutoff_sql:
-            cur.execute(f"SELECT COUNT(*) FROM signal_fires WHERE {cutoff_sql}", (cutoff_iso,))
-            debug_after = int(cur.fetchone()[0] or 0)
-
-            cur.execute(f"SELECT MIN(ts_utc), MAX(ts_utc) FROM signal_fires WHERE {cutoff_sql}", (cutoff_iso,))
-            row = cur.fetchone() or (None, None)
-            debug_min, debug_max = row[0], row[1]
-
-            cur.execute(f"SELECT indicator, COUNT(*) FROM signal_fires WHERE {cutoff_sql} GROUP BY indicator", (cutoff_iso,))
-        else:
-            cur.execute("SELECT MIN(ts_utc), MAX(ts_utc) FROM signal_fires")
-            row = cur.fetchone() or (None, None)
-            debug_min, debug_max = row[0], row[1]
-
-            cur.execute("SELECT indicator, COUNT(*) FROM signal_fires GROUP BY indicator")
-
-        for ind, c in cur.fetchall():
-            key = _norm_ind(ind)
-            if not key:
-                continue
-            counts[key] = counts.get(key, 0) + int(c or 0)
-
-        con.close()
+        limit = int(_tr_req.args.get("limit", "5"))
     except Exception:
-        # keep API alive even if DB blips
+        limit = 5
+    interval = (_tr_req.args.get("interval") or "5m").strip()
+
+    buy_path = _tr__latest_log_path("triggers")
+    sell_path = _tr__latest_log_path("sell_triggers")
+
+    if not buy_path and not sell_path:
+        return jsonify({"ok": False, "error": "No logs found under .\\logs (triggers_*.csv / sell_triggers_*.csv)."}), 200
+
+    buy_rows = _tr__read_csv_rows(buy_path) if buy_path else []
+    sell_rows = _tr__read_csv_rows(sell_path) if sell_path else []
+
+    # pick events
+    recent_buys = _tr__pick_last_events(buy_rows, want_action="BUY", want_event="ORDER_PLACED", limit=limit)
+
+    # If trigger logs don't include BUY ORDER_PLACED events, fall back to position_opened (today)
+    if not recent_buys:
+        try:
+            from datetime import datetime as _dt
+            from zoneinfo import ZoneInfo as _ZI
+            _ET = _ZI("America/New_York")
+            _con = sqlite3.connect(LIVE_DB)
+            _con.row_factory = sqlite3.Row
+            _cur = _con.cursor()
+            _rows = _cur.execute(
+                "SELECT symbol, opened_at_et, opened_epoch FROM position_opened "
+                "WHERE opened_at_et IS NOT NULL AND date(opened_at_et)=date('now','localtime') "
+                "ORDER BY opened_epoch DESC LIMIT ?",
+                (limit,)
+            ).fetchall()
+            _con.close()
+    
+            # Build pseudo trigger-like rows so build_buy_item() can render cards
+            _pseudo = []
+            for r in _rows:
+                sym = (r["symbol"] or "").strip().upper()
+                oat = (r["opened_at_et"] or "").strip()
+                ts_et = None
+                if oat:
+                    try:
+                        d = _dt.strptime(oat, "%Y-%m-%d %H:%M:%S").replace(tzinfo=_ET)
+                        ts_et = d.isoformat()
+                    except Exception:
+                        ts_et = oat.replace(" ", "T")
+                _pseudo.append({
+                    "symbol": sym,
+                    "ts_et": ts_et,
+                    "action": "BUY",
+                    "event": "OPENED_DB",
+                    "qty": "",
+                    "reason": "position_opened",
+                    "entry_price": "",
+                    "last_price": ""
+                })
+    
+            recent_buys = _pseudo
+        except Exception:
+            pass
+
+
+    # for sells: prefer POSITION_CLOSED, fallback ORDER_PLACED if none
+    recent_sells = _tr__pick_last_events(sell_rows, want_action="SELL", want_event="POSITION_CLOSED", limit=limit)
+    if not recent_sells:
+        recent_sells = _tr__pick_last_events(sell_rows, want_action="SELL", want_event="ORDER_PLACED", limit=limit)
+
+    # Combine all rows for details panel search
+    all_rows = []
+    # keep roughly time order by concatenating (they're different files; we filter by ts anyway)
+    all_rows.extend(buy_rows)
+    all_rows.extend(sell_rows)
+
+    def build_buy_item(row):
+        sym = (row.get("symbol") or "").upper().strip()
+        ts_et = row.get("ts_et")
+        qty = row.get("qty") or ""
+        reason = row.get("reason") or ""
+        entry = row.get("entry_price") or ""
+        lastp = row.get("last_price") or ""
+
+        buy_dt = _tr__parse_iso(ts_et)
+        detail_rows = _tr__rows_in_window(all_rows, sym, buy_dt, None)
+
+        series = _tr__yahoo_intraday_series(sym, interval=interval)
+
+        title = f"Entry: {entry}  Last: {lastp}".strip()
+        shade = {"from": ts_et, "to": (series[-1]["t"] if series else ts_et), "color": "rgba(33,208,122,0.16)"}
+
+        return {
+            "symbol": sym,
+            "ts_et": ts_et,
+            "qty": qty,
+            "reason": reason,
+            "title_line": title,
+            "pnl_pct": None,
+            "buy_ts_et": ts_et,
+            "sell_ts_et": None,
+            "series": series,
+            "shade": shade,
+            "detail_rows": detail_rows[-40:] if len(detail_rows) > 40 else detail_rows,
+        }
+
+    def build_sell_item(row):
+        sym = (row.get("symbol") or "").upper().strip()
+        sell_ts = row.get("ts_et")
+        qty = row.get("qty") or ""
+        reason = row.get("reason") or ""
+
+        sell_dt = _tr__parse_iso(sell_ts)
+
+        buy_row, buy_dt = _tr__find_last_buy_for_symbol(buy_rows, sym, sell_dt)
+
+        buy_ts = buy_row.get("ts_et") if buy_row else None
+
+        # compute pnl from prices if available
+        def f(x):
+            try:
+                return float(x)
+            except Exception:
+                return None
+
+        entry_px = f(buy_row.get("entry_price")) if buy_row else None
+        # sell log may have last_price; else try last_price in row
+        exit_px = f(row.get("last_price")) or f(row.get("limit_price")) or None
+
+        pnl_pct = None
+        if entry_px and exit_px:
+            try:
+                pnl_pct = ((exit_px - entry_px) / entry_px) * 100.0
+            except Exception:
+                pnl_pct = None
+
+        # details rows window buy->sell if buy exists; else last 60 mins worth around sell
+        if buy_dt:
+            start_dt = buy_dt
+        else:
+            from datetime import timedelta
+            start_dt = sell_dt - timedelta(minutes=90) if sell_dt else None
+
+        detail_rows = _tr__rows_in_window(all_rows, sym, start_dt, sell_dt)
+
+        series = _tr__yahoo_intraday_series(sym, interval=interval)
+
+        # shade buy->sell if known; else sell->sell
+        shade_color = "rgba(33,208,122,0.16)" if (pnl_pct is not None and pnl_pct >= 0) else "rgba(255,92,92,0.16)"
+        shade = None
+        if buy_ts and sell_ts:
+            shade = {"from": buy_ts, "to": sell_ts, "color": shade_color}
+
+        title = ""
+        if entry_px and exit_px:
+            title = f"Buy: {entry_px:.2f}  Sell: {exit_px:.2f}"
+
+        return {
+            "symbol": sym,
+            "ts_et": sell_ts,
+            "qty": qty,
+            "reason": reason,
+            "title_line": title,
+            "pnl_pct": pnl_pct,
+            "buy_ts_et": buy_ts,
+            "sell_ts_et": sell_ts,
+            "series": series,
+            "shade": shade,
+            "detail_rows": detail_rows[-40:] if len(detail_rows) > 40 else detail_rows,
+        }
+
+    buys_out = [build_buy_item(r) for r in recent_buys]
+    sells_out = [build_sell_item(r) for r in recent_sells]
+
+    return jsonify({"ok": True, "buy_log": buy_path, "sell_log": sell_path, "buys": buys_out, "sells": sells_out}), 200
+
+@app.route("/trade_review")
+def trade_review_dup4():
+    """
+    Single-trade review page.
+    Source of truth = local DB (realized_trades).
+    Logs are used ONLY for trigger explanations.
+    """
+    from flask import request, abort
+    import sqlite3
+    from datetime import datetime, timedelta
+    from pathlib import Path
+    import csv
+
+    trade_id = request.args.get("trade_id")
+
+    # analytics links may call /trade_review?symbol=XXX&ts=... (no trade_id)
+    sym = (request.args.get("symbol") or "").strip().upper()
+    ts  = (request.args.get("ts") or "").strip()
+
+    # If no trade_id but we have symbol+ts, send to chart view (open trades / pseudo-buys)
+    if (not trade_id) and sym and ts:
+        return redirect(f"/chart/{(request.args.get('symbol') or '').strip().upper()}?ts={(request.args.get('ts') or '').strip()}")
+
+    # --- fallback: allow /trade_review?symbol=XYZ&ts_et=... (resolve to a realized trade_id) ---
+    if not trade_id:
+        symbol = (request.args.get("symbol") or "").strip().upper()
+        ts_et = (request.args.get("ts_et") or request.args.get("sell_ts_et") or "").strip()
+        if symbol:
+            try:
+                import sqlite3
+                db = LIVE_DB if "LIVE_DB" in globals() else "live.db"
+                conn = sqlite3.connect(db)
+                conn.row_factory = sqlite3.Row
+    
+                target = ts_et.replace("Z","") if ts_et else None
+    
+                if target:
+                    row = conn.execute(
+                        "SELECT id, close_date FROM realized_trades "
+                        "WHERE symbol=? AND close_date IS NOT NULL "
+                        "ORDER BY ABS(strftime('%s', close_date) - strftime('%s', ?)) ASC "
+                        "LIMIT 1",
+                        (symbol, target)
+                    ).fetchone()
+                else:
+                    row = conn.execute(
+                        "SELECT id, close_date FROM realized_trades "
+                        "WHERE symbol=? AND close_date IS NOT NULL "
+                        "ORDER BY close_date DESC "
+                        "LIMIT 1",
+                        (symbol,)
+                    ).fetchone()
+    
+                conn.close()
+    
+                if row:
+                    return redirect(url_for("trade_review", trade_id=row["id"]))
+                return redirect(f"/chart/{(request.args.get('symbol') or '').strip().upper()}?ts={(request.args.get('ts') or '').strip()}")
+            except Exception as e:
+                return (f"Bad Request\ntrade_id missing and resolve failed: {e}\n", 400)
+
+    chart_name = (request.args.get("name") or "").strip() or None
+    # --- fallback: allow /trade_review?symbol=XXX&ts=... (analytics links) ---
+    if not trade_id:
+        sym = (request.args.get("symbol") or "").strip().upper()
+        ts  = (request.args.get("ts") or "").strip()
+        if sym and ts:
+            # Best-effort lookup:
+            # 1) realized_trades: close_date startswith(ts) (handles your ISO timestamps)
+            # 2) if not found, try exact match after normalizing ":" encoding
+            try:
+                con = sqlite3.connect(LIVE_DB)
+                con.row_factory = sqlite3.Row
+                cur = con.cursor()
+
+                # try startswith match
+                cur.execute(
+                    "SELECT trade_id FROM realized_trades WHERE symbol=? AND close_date LIKE ? ORDER BY close_date DESC LIMIT 1",
+                    (sym, ts + "%")
+                )
+                r = cur.fetchone()
+                if not r:
+                    # some callers might pass url-decoded vs stored string formats
+                    cur.execute(
+                        "SELECT trade_id FROM realized_trades WHERE symbol=? ORDER BY close_date DESC LIMIT 1",
+                        (sym,)
+                    )
+                    r = cur.fetchone()
+
+                con.close()
+
+                if r and r["trade_id"]:
+                    return redirect(url_for("trade_review", trade_id=r["trade_id"]))
+            except Exception:
+                pass
+        abort(400, "missing trade_id")
+
+    conn = sqlite3.connect(LIVE_DB)
+    conn.row_factory = sqlite3.Row
+    trade = conn.execute(
+        "SELECT * FROM realized_trades WHERE id = ?",
+        (trade_id,)
+    ).fetchone()
+    conn.close()
+
+    if not trade:
+        abort(404, "trade not found")
+
+    symbol = (trade["symbol"] or "").strip().upper()
+
+    # --- company name (best-effort, no placeholders) ---
+    name = None  # company name
+    try:
+        import yfinance as yf
+        info = yf.Ticker(symbol).info or {}
+        name = (info.get("shortName") or info.get("longName") or "").strip() or None
+    except Exception:
+        name = None
+
+    buy_time_s = (trade["open_date"] or "").strip()
+    sell_time_s = (trade["close_date"] or "").strip()
+
+    def _parse_dt(s):
+        # expected: 'YYYY-MM-DD HH:MM:SS'
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+            try:
+                return datetime.strptime(s[:19], fmt)
+            except Exception:
+                pass
+        return None
+
+    buy_dt = _parse_dt(buy_time_s)
+    sell_dt = _parse_dt(sell_time_s)
+
+    # Determine win/loss from gain
+    gain = trade["gain"]
+    try:
+        gain_f = float(gain)
+    except Exception:
+        gain_f = 0.0
+    is_win = gain_f >= 0.0
+
+    log_dir = Path(__file__).resolve().parent / "logs"
+
+    def _file_for_day(prefix, dt):
+        if not dt:
+            return None
+        fname = f"{prefix}{dt.strftime('%Y-%m-%d')}.csv"
+        f = log_dir / fname
+        return f if f.exists() else None
+
+    buy_file = _file_for_day("triggers_", buy_dt) or (max(log_dir.glob("triggers_*.csv"), default=None) if log_dir.exists() else None)
+    sell_file = _file_for_day("sell_triggers_", sell_dt) or (max(log_dir.glob("sell_triggers_*.csv"), default=None) if log_dir.exists() else None)
+
+    def _row_time_dt(row):
+        t = (row.get("time_et") or row.get("timestamp") or row.get("time") or "").strip()
+        if not t:
+            return None
+        return _parse_dt(t)
+
+    def _load_matches(path, target_dt, window_sec=120):
+        if not path or not path.exists() or not target_dt:
+            return []
+        rows = []
+        with path.open("r", encoding="utf-8", newline="") as f:
+            r = csv.DictReader(f)
+            for row in r:
+                if (row.get("symbol") or "").strip().upper() != symbol:
+                    continue
+                rt = _row_time_dt(row)
+                if not rt:
+                    continue
+                if abs((rt - target_dt).total_seconds()) <= window_sec:
+                    rows.append(row)
+        return rows
+
+    buy_triggers = _load_matches(buy_file, buy_dt, 180)
+    sell_triggers = _load_matches(sell_file, sell_dt, 180)
+
+    return render_template(
+        "trade_review_single.html",
+        trade=trade,
+        buy_triggers=buy_triggers,
+        sell_triggers=sell_triggers,
+        buy_file=str(buy_file) if buy_file else None,
+        sell_file=str(sell_file) if sell_file else None,
+        is_win=is_win,
+        name=name,
+    )
+
+
+
+# --- tz-safe datetime helper (Trade Review) ---
+def _tz_naive_dt(x):
+    """
+    Convert x to pandas datetime and strip timezone if present.
+    Works for tz-aware Series/Index and tz-naive inputs.
+    """
+    try:
+        import pandas as pd
+        x = pd.to_datetime(x, errors="coerce")
+    except Exception:
+        return x
+    # Series dt accessor (Series)
+    try:
+        if hasattr(x, "dt") and getattr(x.dt, "tz", None) is not None:
+            x = x.dt.tz_localize(None)
+    except Exception:
         pass
-
-    # ---- ALIASES for UI key names (keep both forms) ----
-    # Primary keys: macd,rsi,vwap,sma,bb,adx,vol
-    counts_out = dict(counts or {})
-
-    # lower->pretty and upper variants
-    if "vol" in counts_out:
-        counts_out.setdefault("volume", counts_out["vol"])
-        counts_out.setdefault("VOL", counts_out["vol"])
-        counts_out.setdefault("VOLUME", counts_out.get("volume", counts_out["vol"]))
-    if "bb" in counts_out:
-        counts_out.setdefault("bollinger", counts_out["bb"])
-        counts_out.setdefault("bollinger_bands", counts_out["bb"])
-        counts_out.setdefault("BB", counts_out["bb"])
-    if "sma" in counts_out:
-        counts_out.setdefault("moving_average", counts_out["sma"])
-        counts_out.setdefault("SMA", counts_out["sma"])
-    if "vwap" in counts_out:
-        counts_out.setdefault("VWAP", counts_out["vwap"])
-    if "rsi" in counts_out:
-        counts_out.setdefault("RSI", counts_out["rsi"])
-    if "macd" in counts_out:
-        counts_out.setdefault("MACD", counts_out["macd"])
-    if "adx" in counts_out:
-        counts_out.setdefault("ADX", counts_out["adx"])
-    # ---- END ALIASES ----
-
-    return jsonify({
-        "ok": True,
-        "bucket": bucket,
-        "counts": counts_out,
-        "debug_db_path": db_path,
-        "debug_total_rows": debug_total,
-        "debug_rows_after_cutoff": debug_after,
-        "debug_min_ts": debug_min,
-        "debug_max_ts": debug_max,
-        "generated_at": datetime.utcnow().isoformat() + "Z",
-    })
-# =========================
-# End Settings Scoreboard
-# =========================
+    # DatetimeIndex (Index)
+    try:
+        if getattr(x, "tz", None) is not None:
+            x = x.tz_localize(None)
+    except Exception:
+        pass
+    return x
 
 
-# Settings Scoreboard + Health
-# =========================
+def _trade_review_error_png(msg: str):
+    from flask import Response
+    import io
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception:
+        return Response(b"", mimetype="image/png")
 
+    fig = plt.figure(figsize=(12.5, 3.4), dpi=150)
+    ax = fig.add_subplot(111)
+    fig.patch.set_facecolor("#0b0b0b")
+    ax.set_facecolor("#0b0b0b")
+    ax.text(0.5, 0.55, "Trade Review chart error", ha="center", va="center", color="white", fontsize=12)
+    ax.text(0.5, 0.40, msg, ha="center", va="center", color="#cfcfcf", fontsize=10)
+    ax.set_axis_off()
 
-# =========================
-# Settings Scoreboard
-# =========================
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight")
+    plt.close(fig)
+    return Response(buf.getvalue(), mimetype="image/png")
+@app.route("/chart/<symbol>")
+def chart_view_dup4(symbol):
+    # Minimal context so trade_review_single.html doesn't crash.
+    # If ts is provided, we treat it as the buy timestamp anchor for charting.
+    from flask import request, render_template
 
+    ts = request.args.get("ts")
 
-# (removed duplicate scoreboard block)
+    # `trade_review_single.html` expects `trade` to exist.
+    # We provide a minimal dict; missing fields will render blank instead of crashing.
+    trade = {
+        "symbol": str(symbol).upper(),
+        "name": str(symbol).upper(),
+        "buy_time": ts,
+        "sell_time": None,
+        "buy_price": None,
+        "sell_price": None,
+        "pnl": None,
+        "pnl_pct": None,
+        "qty": None,
+    }
 
-@app.route("/healthz")
-def healthz():
-    return jsonify({"ok": True})
-# =========================
-# End Settings Scoreboard + Health
-# =========================
+    return render_template(
+        "trade_review_single.html",
+        trade=trade,
+        symbol=str(symbol).upper(),
+        ts=ts,
+        # Some versions of the template reference these names too:
+        buy_ts=ts,
+        sell_ts=None,
+        buy_log=None,
+        sell_log=None,
+        buy_triggers=[],
+        sell_triggers=[],
+    )
 
 
 if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+
+# --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
+def normalize_positions_payload_dup6(raw):
+    # FIX: break accidental recursion (duplicate helper)
+    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+
+try:
+
+    for t in trades or []:
+
+        if not isinstance(t, dict):
+
+            continue
+
+        if str(t.get("action","")).upper() != "SELL":
+
+            continue
+
+        qty = t.get("qty")
+
+        price = t.get("price")
+
+        paid = t.get("price_paid")
+
+        if qty in (None,"") or price in (None,"") or paid in (None,""):
+
+            continue
+
+        qty = float(qty)
+
+        price = float(price)
+
+        paid = float(paid)
+
+        if qty <= 0:
+
+            continue
+
+        pl = (price - paid) * qty
+
+        t["pl"] = pl
+
+        denom = (paid * qty)
+
+        t["pl_pct"] = (pl / denom * 100.0) if denom else None
+
+except Exception:
+
+    pass
+
+
+# --- Realized P/L hygiene: recompute SELL pl from (price - price_paid)*qty; poison SELLs get pl=None ---
+
+try:
+
+    for t in trades or []:
+
+        if not isinstance(t, dict):
+
+            continue
+
+        if str(t.get("action","")).upper() != "SELL":
+
+            continue
+
+        qty = t.get("qty")
+
+        price = t.get("price")
+
+        paid = t.get("price_paid")
+
+        # If we don't have a valid cost basis, do NOT allow this SELL to contribute to realized math.
+
+        if paid in (None,"") or float(paid) <= 0.0001:
+
+            t["_poison"] = True
+
+            t["pl"] = None
+
+            t["pl_pct"] = None
+
+            continue
+
+        if qty in (None,"") or price in (None,""):
+
+            continue
+
+        qty = float(qty)
+
+        price = float(price)
+
+        paid = float(paid)
+
+        if qty <= 0:
+
+            continue
+
+        pl = (price - paid) * qty
+
+        t["pl"] = pl
+
+        denom = (paid * qty)
+
+        t["pl_pct"] = (pl / denom * 100.0) if denom else None
+
+except Exception:
+
+    pass
+
+# @app.route("/analytics/data")
+def analytics_data_dup6():
+    from services.analytics_service import compute_analytics_charts
+    logs_dir = r"C:\TradeAlerts\logs"
+    return compute_analytics_charts(log_dir=logs_dir)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+
+# --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
+def normalize_positions_payload_dup5(raw):
+    # FIX: break accidental recursion (duplicate helper)
+    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+
+try:
+
+    for t in trades or []:
+
+        if not isinstance(t, dict):
+
+            continue
+
+        if str(t.get("action","")).upper() != "SELL":
+
+            continue
+
+        qty = t.get("qty")
+
+        price = t.get("price")
+
+        paid = t.get("price_paid")
+
+        if qty in (None,"") or price in (None,"") or paid in (None,""):
+
+            continue
+
+        qty = float(qty)
+
+        price = float(price)
+
+        paid = float(paid)
+
+        if qty <= 0:
+
+            continue
+
+        pl = (price - paid) * qty
+
+        t["pl"] = pl
+
+        denom = (paid * qty)
+
+        t["pl_pct"] = (pl / denom * 100.0) if denom else None
+
+except Exception:
+
+    pass
+
+
+# --- Realized P/L hygiene: recompute SELL pl from (price - price_paid)*qty; poison SELLs get pl=None ---
+
+try:
+
+    for t in trades or []:
+
+        if not isinstance(t, dict):
+
+            continue
+
+        if str(t.get("action","")).upper() != "SELL":
+
+            continue
+
+        qty = t.get("qty")
+
+        price = t.get("price")
+
+        paid = t.get("price_paid")
+
+        # If we don't have a valid cost basis, do NOT allow this SELL to contribute to realized math.
+
+        if paid in (None,"") or float(paid) <= 0.0001:
+
+            t["_poison"] = True
+
+            t["pl"] = None
+
+            t["pl_pct"] = None
+
+            continue
+
+        if qty in (None,"") or price in (None,""):
+
+            continue
+
+        qty = float(qty)
+
+        price = float(price)
+
+        paid = float(paid)
+
+        if qty <= 0:
+
+            continue
+
+        pl = (price - paid) * qty
+
+        t["pl"] = pl
+
+        denom = (paid * qty)
+
+        t["pl_pct"] = (pl / denom * 100.0) if denom else None
+
+except Exception:
+
+    pass
+
+# @app.route("/analytics/data")
+def analytics_data_dup5():
+    from services.analytics_service import compute_analytics_charts
+    logs_dir = r"C:\TradeAlerts\logs"
+    return compute_analytics_charts(log_dir=logs_dir)
+
+def api_analytics_today():
+    """
+    Daily Analytics JSON for today (ET).
+      - date_et, buy_file, sell_file, errors
+      - buy (summary), sell (summary)
+      - buys (rows), sells (rows filtered to true SELL actions)
+    """
+    errors = []
+    buys_rows = []
+    sell_rows_all = []
+
+    try:
+        ymd, buy_path, sell_path = _today_log_paths()
+    except Exception as e:
+        return jsonify(
+            date_et="",
+            buy_file=None,
+            sell_file=None,
+            errors=[f"_today_log_paths failed: {e!r}"],
+            buy={},
+            sell={},
+            buys=[],
+            sells=[],
+        )
+
+    # Read BUY log (triggers_YYYY-MM-DD.csv)
+    try:
+        if buy_path and _Path(buy_path).exists():
+            buys_rows = _read_csv_rows(buy_path) or []
+        else:
+            errors.append(f"Missing buy log: {buy_path}")
+            buys_rows = []
+    except Exception as e:
+        errors.append(f"Error reading buy log {buy_path}: {e!r}")
+        buys_rows = []
+
+    # Read SELL log (sell_triggers_YYYY-MM-DD.csv)
+    try:
+        if sell_path and _Path(sell_path).exists():
+            sell_rows_all = _read_csv_rows(sell_path) or []
+        else:
+            errors.append(f"Missing sell log: {sell_path}")
+            sell_rows_all = []
+    except Exception as e:
+        errors.append(f"Error reading sell log {sell_path}: {e!r}")
+        sell_rows_all = []
+
+    # Normalize rows lightly (keep keys analytics.js expects)
+    def _norm_buy(r):
+        return {
+            "ts_et": r.get("ts_et") or r.get("time_et") or r.get("time") or "",
+            "symbol": r.get("symbol") or "",
+            "price": r.get("price") or r.get("last_price") or "",
+            "trigger": r.get("trigger") or r.get("family") or r.get("reason") or "",
+            "extra_json": r.get("extra_json") or "",
+        }
+
+    def _norm_sell(r):
+        return {
+            "ts_et": r.get("ts_et") or r.get("time_et") or r.get("time") or "",
+            "symbol": r.get("symbol") or "",
+            "qty": r.get("qty") or "",
+            "action": r.get("action") or "",
+            "reason": r.get("reason") or "",
+            "pl_pct": r.get("pl_pct") or "",
+            "hold_min": r.get("hold_min") or "",
+            "entry_price": r.get("entry_price") or "",
+            "last_price": r.get("last_price") or "",
+            "order_type": r.get("order_type") or "",
+            "limit_price": r.get("limit_price") or "",
+            "source": r.get("source") or "",
+            "extra_json": r.get("extra_json") or "",
+        }
+
+    buys_out = [_norm_buy(r) for r in (buys_rows or []) if isinstance(r, dict)]
+
+    # IMPORTANT:
+    # - sell summary uses ALL sell_guard rows (HOLD + SELL) so the charts reflect evaluations
+    # - sells list is ONLY the true SELL actions so your "Today's Trades" right column is real sells
+    sell_summary = _compute_sell_analytics([_norm_sell(r) for r in (sell_rows_all or []) if isinstance(r, dict)])
+    sell_trades = [_norm_sell(r) for r in (sell_rows_all or []) if isinstance(r, dict) and str((r.get("action") or "")).upper() == "SELL"]
+
+    buy_summary = _compute_buy_analytics(buys_out)
+
+    return jsonify(
+        date_et=ymd,
+        buy_file=buy_path if _Path(buy_path).exists() else None,
+        sell_file=sell_path if _Path(sell_path).exists() else None,
+        errors=errors,
+        buy=buy_summary,
+        sell=sell_summary,
+        buys=buys_out,
+        sells=sell_trades,
+    )
+def _ax_parse_date_arg(arg: str | None) -> str:
+    """
+    Returns YYYY-MM-DD in America/New_York.
+    If arg is invalid/None, returns today's ET date.
+    """
+    try:
+        if arg:
+            dt = datetime.strptime(arg.strip(), "%Y-%m-%d")
+            return dt.strftime("%Y-%m-%d")
+    except Exception:
+        pass
+    # fallback: today ET (no tz import needed; date string only)
+    return datetime.now().strftime("%Y-%m-%d")
+
+def _ax_yesterday(ymd: str) -> str:
+    try:
+        dt = datetime.strptime(ymd, "%Y-%m-%d") - timedelta(days=1)
+        return dt.strftime("%Y-%m-%d")
+    except Exception:
+        return ymd
+
+def _ax_log_paths_for_date(log_dir: str, ymd: str):
+    buy_path  = str(Path(log_dir) / f"triggers_{ymd}.csv")
+    sell_path = str(Path(log_dir) / f"sell_triggers_{ymd}.csv")
+    return ymd, buy_path, sell_path
+
+
+# @app.route("/analytics")
+def analytics_page_dup2():
+    # --- analytics date override ---
+    date_arg = (request.args.get('date') if 'request' in globals() else None)
+    ymd = _ax_parse_date_arg(date_arg)
+    yesterday_ymd = _ax_yesterday(ymd)
+    from services.analytics_service import compute_daily_analytics
+    logs_dir = r"C:\TradeAlerts\logs"
+    a = compute_daily_analytics(log_dir=logs_dir)
+    import time
+
+    # If a date was requested, override the displayed date
+    if ymd:
+        date_et = ymd
+    
+    return render_template(
+    
+        "analytics.html",
+    
+        cache_bust=int(time.time()),
+    
+        date_et=(ymd or date_et),
+    
+        a=a,
+    
+    )
+# =========================
+# Trade Review (RESTORED)
+# source: dashboard.py.bak_trade_review_restore_clean_20260128_205005
+# =========================
+
+def _tr__safe_json_loads(s):
+    try:
+        import json
+        return json.loads(s) if s else {}
+    except Exception:
+        return {}
+
+def _tr__parse_iso(s):
+    # returns aware datetime or None
+    try:
+        from datetime import datetime
+        if not s:
+            return None
+        ss = str(s).strip()
+        if not ss:
+            return None
+        # normalize Z
+        ss = ss.replace("Z", "+00:00")
+        return datetime.fromisoformat(ss)
+    except Exception:
+        return None
+
+def _tr__read_csv_rows(path):
+    try:
+        import csv
+        rows = []
+        with open(path, "r", encoding="utf-8", errors="replace", newline="") as f:
+            r = csv.DictReader(f)
+            for row in r:
+                rows.append({k: (v if v is not None else "") for k,v in row.items()})
+        return rows
+    except Exception:
+        return []
+
+def _tr__latest_log_path(prefix):
     import os
-    port = int(os.environ.get("PORT", "5001"))
-    # IMPORTANT: disable reloader to avoid zombie/duplicate listeners on Windows
-    app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)
+    from glob import glob
+    base = os.path.join(os.path.dirname(__file__), "logs")
+    pat = os.path.join(base, f"{prefix}_*.csv")
+    cand = glob(pat)
+    if not cand:
+        return None
+    cand.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+    return cand[0]
+
+def _tr__pick_last_events(rows, want_action, want_event, limit):
+    # want_event is checked inside extra_json['event'] if present
+    out = []
+    for row in reversed(rows):  # newest->oldest if file is time-ascending; reverse makes newest-first
+        try:
+            act = (row.get("action") or "").strip().upper()
+            if act != want_action:
+                continue
+            ex = _tr__safe_json_loads(row.get("extra_json") or "")
+            ev = (ex.get("event") or row.get("event") or "").strip().upper()
+            if want_event and ev != want_event:
+                continue
+            # need ts_et + symbol at minimum
+            if not (row.get("symbol") or "").strip():
+                continue
+            if not (row.get("ts_et") or "").strip():
+                continue
+            out.append(row)
+            if len(out) >= limit:
+                break
+        except Exception:
+            continue
+    return out
+
+def _tr__find_last_buy_for_symbol(buy_rows, sym, sell_dt):
+    sym = (sym or "").upper().strip()
+    best = None
+    best_dt = None
+    for row in buy_rows:
+        try:
+            if (row.get("symbol") or "").upper().strip() != sym:
+                continue
+            ex = _tr__safe_json_loads(row.get("extra_json") or "")
+            ev = (ex.get("event") or row.get("event") or "").strip().upper()
+            if ev and ev != "ORDER_PLACED":
+                continue
+            dt = _tr__parse_iso(row.get("ts_et"))
+            if not dt:
+                continue
+            if sell_dt and dt > sell_dt:
+                continue
+            if (best_dt is None) or (dt > best_dt):
+                best = row
+                best_dt = dt
+        except Exception:
+            continue
+    return best, best_dt
+
+def _tr__rows_in_window(all_rows, sym, start_dt, end_dt):
+    sym = (sym or "").upper().strip()
+    out = []
+    for row in all_rows:
+        try:
+            if (row.get("symbol") or "").upper().strip() != sym:
+                continue
+            dt = _tr__parse_iso(row.get("ts_et"))
+            if not dt:
+                continue
+            if start_dt and dt < start_dt:
+                continue
+            if end_dt and dt > end_dt:
+                continue
+            out.append(row)
+        except Exception:
+            continue
+    # keep as-is (time ascending if file was)
+    return out
+
+def _tr__yahoo_intraday_series(symbol, interval="5m"):
+    # Yahoo intraday only (allowed)
+    try:
+        import yfinance as yf
+        import pandas as pd
+        sym = (symbol or "").upper().strip()
+        if not sym:
+            return []
+        t = yf.Ticker(sym)
+        hist = t.history(period="1d", interval=interval, prepost=True, auto_adjust=False)
+        if hist is None or hist.empty:
+            # fallback
+            hist = t.history(period="1d", interval="1m", prepost=True, auto_adjust=False)
+        if hist is None or hist.empty:
+            return []
+        # normalize to list
+        out = []
+        for idx, row in hist.iterrows():
+            try:
+                ts = idx.to_pydatetime().isoformat()
+                c = float(row.get("Close"))
+                out.append({"t": ts, "c": c})
+            except Exception:
+                continue
+        return out
+    except Exception:
+        return []
+
+@app.route("/api/trade_review", endpoint="api_trade_review_3")
+def api_trade_review_dup3():
+    import os
+    try:
+        limit = int(request.args.get("limit", "5"))
+    except Exception:
+        limit = 5
+    interval = (request.args.get("interval") or "5m").strip()
+
+    buy_path = _tr__latest_log_path("triggers")
+    sell_path = _tr__latest_log_path("sell_triggers")
+
+    if not buy_path and not sell_path:
+        return jsonify({"ok": False, "error": "No logs found under .\\logs (triggers_*.csv / sell_triggers_*.csv)."}), 200
+
+    buy_rows = _tr__read_csv_rows(buy_path) if buy_path else []
+    sell_rows = _tr__read_csv_rows(sell_path) if sell_path else []
+
+    # pick events
+    recent_buys = _tr__pick_last_events(buy_rows, want_action="BUY", want_event="ORDER_PLACED", limit=limit)
+
+    # If trigger logs don't include BUY ORDER_PLACED events, fall back to position_opened (today)
+    if not recent_buys:
+        try:
+            from datetime import datetime as _dt
+            from zoneinfo import ZoneInfo as _ZI
+            _ET = _ZI("America/New_York")
+            _con = sqlite3.connect(LIVE_DB)
+            _con.row_factory = sqlite3.Row
+            _cur = _con.cursor()
+            _rows = _cur.execute(
+                "SELECT symbol, opened_at_et, opened_epoch FROM position_opened "
+                "WHERE opened_at_et IS NOT NULL AND date(opened_at_et)=date('now','localtime') "
+                "ORDER BY opened_epoch DESC LIMIT ?",
+                (limit,)
+            ).fetchall()
+            _con.close()
+    
+            # Build pseudo trigger-like rows so build_buy_item() can render cards
+            _pseudo = []
+            for r in _rows:
+                sym = (r["symbol"] or "").strip().upper()
+                oat = (r["opened_at_et"] or "").strip()
+                ts_et = None
+                if oat:
+                    try:
+                        d = _dt.strptime(oat, "%Y-%m-%d %H:%M:%S").replace(tzinfo=_ET)
+                        ts_et = d.isoformat()
+                    except Exception:
+                        ts_et = oat.replace(" ", "T")
+                _pseudo.append({
+                    "symbol": sym,
+                    "ts_et": ts_et,
+                    "action": "BUY",
+                    "event": "OPENED_DB",
+                    "qty": "",
+                    "reason": "position_opened",
+                    "entry_price": "",
+                    "last_price": ""
+                })
+    
+            recent_buys = _pseudo
+        except Exception:
+            pass
 
 
-# =========================
-# Settings Scoreboard + Health
-# =========================
+    # for sells: prefer POSITION_CLOSED, fallback ORDER_PLACED if none
+    recent_sells = _tr__pick_last_events(sell_rows, want_action="SELL", want_event="POSITION_CLOSED", limit=limit)
+    if not recent_sells:
+        recent_sells = _tr__pick_last_events(sell_rows, want_action="SELL", want_event="ORDER_PLACED", limit=limit)
+
+    # Combine all rows for details panel search
+    all_rows = []
+    # keep roughly time order by concatenating (they're different files; we filter by ts anyway)
+    all_rows.extend(buy_rows)
+    all_rows.extend(sell_rows)
+
+    def build_buy_item(row):
+        sym = (row.get("symbol") or "").upper().strip()
+        ts_et = row.get("ts_et")
+        qty = row.get("qty") or ""
+        reason = row.get("reason") or ""
+        entry = row.get("entry_price") or ""
+        lastp = row.get("last_price") or ""
+
+        buy_dt = _tr__parse_iso(ts_et)
+        detail_rows = _tr__rows_in_window(all_rows, sym, buy_dt, None)
+
+        series = _tr__yahoo_intraday_series(sym, interval=interval)
+
+        title = f"Entry: {entry}  Last: {lastp}".strip()
+        shade = {"from": ts_et, "to": (series[-1]["t"] if series else ts_et), "color": "rgba(33,208,122,0.16)"}
+
+        return {
+            "symbol": sym,
+            "ts_et": ts_et,
+            "qty": qty,
+            "reason": reason,
+            "title_line": title,
+            "pnl_pct": None,
+            "buy_ts_et": ts_et,
+            "sell_ts_et": None,
+            "series": series,
+            "shade": shade,
+            "detail_rows": detail_rows[-40:] if len(detail_rows) > 40 else detail_rows,
+        }
+
+    def build_sell_item(row):
+        sym = (row.get("symbol") or "").upper().strip()
+        sell_ts = row.get("ts_et")
+        qty = row.get("qty") or ""
+        reason = row.get("reason") or ""
+
+        sell_dt = _tr__parse_iso(sell_ts)
+
+        buy_row, buy_dt = _tr__find_last_buy_for_symbol(buy_rows, sym, sell_dt)
+
+        buy_ts = buy_row.get("ts_et") if buy_row else None
+
+        # compute pnl from prices if available
+        def f(x):
+            try:
+                return float(x)
+            except Exception:
+                return None
+
+        entry_px = f(buy_row.get("entry_price")) if buy_row else None
+        # sell log may have last_price; else try last_price in row
+        exit_px = f(row.get("last_price")) or f(row.get("limit_price")) or None
+
+        pnl_pct = None
+        if entry_px and exit_px:
+            try:
+                pnl_pct = ((exit_px - entry_px) / entry_px) * 100.0
+            except Exception:
+                pnl_pct = None
+
+        # details rows window buy->sell if buy exists; else last 60 mins worth around sell
+        if buy_dt:
+            start_dt = buy_dt
+        else:
+            from datetime import timedelta
+            start_dt = sell_dt - timedelta(minutes=90) if sell_dt else None
+
+        detail_rows = _tr__rows_in_window(all_rows, sym, start_dt, sell_dt)
+
+        series = _tr__yahoo_intraday_series(sym, interval=interval)
+
+        # shade buy->sell if known; else sell->sell
+        shade_color = "rgba(33,208,122,0.16)" if (pnl_pct is not None and pnl_pct >= 0) else "rgba(255,92,92,0.16)"
+        shade = None
+        if buy_ts and sell_ts:
+            shade = {"from": buy_ts, "to": sell_ts, "color": shade_color}
+
+        title = ""
+        if entry_px and exit_px:
+            title = f"Buy: {entry_px:.2f}  Sell: {exit_px:.2f}"
+
+        return {
+            "symbol": sym,
+            "ts_et": sell_ts,
+            "qty": qty,
+            "reason": reason,
+            "title_line": title,
+            "pnl_pct": pnl_pct,
+            "buy_ts_et": buy_ts,
+            "sell_ts_et": sell_ts,
+            "series": series,
+            "shade": shade,
+            "detail_rows": detail_rows[-40:] if len(detail_rows) > 40 else detail_rows,
+        }
+
+    buys_out = [build_buy_item(r) for r in recent_buys]
+    sells_out = [build_sell_item(r) for r in recent_sells]
+
+    return jsonify({"ok": True, "buy_log": buy_path, "sell_log": sell_path, "buys": buys_out, "sells": sells_out}), 200
+
+@app.route("/trade_review")
+def trade_review_dup3():
+    """
+    Single-trade review page.
+    Source of truth = local DB (realized_trades).
+    Logs are used ONLY for trigger explanations.
+    """
+    from flask import request, abort
+    import sqlite3
+    from datetime import datetime, timedelta
+    from pathlib import Path
+    import csv
+
+    trade_id = request.args.get("trade_id")
+
+    # analytics links may call /trade_review?symbol=XXX&ts=... (no trade_id)
+    sym = (request.args.get("symbol") or "").strip().upper()
+    ts  = (request.args.get("ts") or "").strip()
+
+    # If no trade_id but we have symbol+ts, send to chart view (open trades / pseudo-buys)
+    if (not trade_id) and sym and ts:
+        return redirect(f"/chart/{(request.args.get('symbol') or '').strip().upper()}?ts={(request.args.get('ts') or '').strip()}")
+
+    # --- fallback: allow /trade_review?symbol=XYZ&ts_et=... (resolve to a realized trade_id) ---
+    if not trade_id:
+        symbol = (request.args.get("symbol") or "").strip().upper()
+        ts_et = (request.args.get("ts_et") or request.args.get("sell_ts_et") or "").strip()
+        if symbol:
+            try:
+                import sqlite3
+                db = LIVE_DB if "LIVE_DB" in globals() else "live.db"
+                conn = sqlite3.connect(db)
+                conn.row_factory = sqlite3.Row
+    
+                target = ts_et.replace("Z","") if ts_et else None
+    
+                if target:
+                    row = conn.execute(
+                        "SELECT id, close_date FROM realized_trades "
+                        "WHERE symbol=? AND close_date IS NOT NULL "
+                        "ORDER BY ABS(strftime('%s', close_date) - strftime('%s', ?)) ASC "
+                        "LIMIT 1",
+                        (symbol, target)
+                    ).fetchone()
+                else:
+                    row = conn.execute(
+                        "SELECT id, close_date FROM realized_trades "
+                        "WHERE symbol=? AND close_date IS NOT NULL "
+                        "ORDER BY close_date DESC "
+                        "LIMIT 1",
+                        (symbol,)
+                    ).fetchone()
+    
+                conn.close()
+    
+                if row:
+                    return redirect(url_for("trade_review", trade_id=row["id"]))
+                return redirect(f"/chart/{(request.args.get('symbol') or '').strip().upper()}?ts={(request.args.get('ts') or '').strip()}")
+            except Exception as e:
+                return (f"Bad Request\ntrade_id missing and resolve failed: {e}\n", 400)
+
+    chart_name = (request.args.get("name") or "").strip() or None
+    # --- fallback: allow /trade_review?symbol=XXX&ts=... (analytics links) ---
+    if not trade_id:
+        sym = (request.args.get("symbol") or "").strip().upper()
+        ts  = (request.args.get("ts") or "").strip()
+        if sym and ts:
+            # Best-effort lookup:
+            # 1) realized_trades: close_date startswith(ts) (handles your ISO timestamps)
+            # 2) if not found, try exact match after normalizing ":" encoding
+            try:
+                con = sqlite3.connect(LIVE_DB)
+                con.row_factory = sqlite3.Row
+                cur = con.cursor()
+
+                # try startswith match
+                cur.execute(
+                    "SELECT trade_id FROM realized_trades WHERE symbol=? AND close_date LIKE ? ORDER BY close_date DESC LIMIT 1",
+                    (sym, ts + "%")
+                )
+                r = cur.fetchone()
+                if not r:
+                    # some callers might pass url-decoded vs stored string formats
+                    cur.execute(
+                        "SELECT trade_id FROM realized_trades WHERE symbol=? ORDER BY close_date DESC LIMIT 1",
+                        (sym,)
+                    )
+                    r = cur.fetchone()
+
+                con.close()
+
+                if r and r["trade_id"]:
+                    return redirect(url_for("trade_review", trade_id=r["trade_id"]))
+            except Exception:
+                pass
+        abort(400, "missing trade_id")
+
+    conn = sqlite3.connect(LIVE_DB)
+    conn.row_factory = sqlite3.Row
+    trade = conn.execute(
+        "SELECT * FROM realized_trades WHERE id = ?",
+        (trade_id,)
+    ).fetchone()
+    conn.close()
+
+    if not trade:
+        abort(404, "trade not found")
+
+    symbol = (trade["symbol"] or "").strip().upper()
+
+    # --- company name (best-effort, no placeholders) ---
+    name = None  # company name
+    try:
+        import yfinance as yf
+        info = yf.Ticker(symbol).info or {}
+        name = (info.get("shortName") or info.get("longName") or "").strip() or None
+    except Exception:
+        name = None
+
+    buy_time_s = (trade["open_date"] or "").strip()
+    sell_time_s = (trade["close_date"] or "").strip()
+
+    def _parse_dt(s):
+        # expected: 'YYYY-MM-DD HH:MM:SS'
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+            try:
+                return datetime.strptime(s[:19], fmt)
+            except Exception:
+                pass
+        return None
+
+    buy_dt = _parse_dt(buy_time_s)
+    sell_dt = _parse_dt(sell_time_s)
+
+    # Determine win/loss from gain
+    gain = trade["gain"]
+    try:
+        gain_f = float(gain)
+    except Exception:
+        gain_f = 0.0
+    is_win = gain_f >= 0.0
+
+    log_dir = Path(__file__).resolve().parent / "logs"
+
+    def _file_for_day(prefix, dt):
+        if not dt:
+            return None
+        fname = f"{prefix}{dt.strftime('%Y-%m-%d')}.csv"
+        f = log_dir / fname
+        return f if f.exists() else None
+
+    buy_file = _file_for_day("triggers_", buy_dt) or (max(log_dir.glob("triggers_*.csv"), default=None) if log_dir.exists() else None)
+    sell_file = _file_for_day("sell_triggers_", sell_dt) or (max(log_dir.glob("sell_triggers_*.csv"), default=None) if log_dir.exists() else None)
+
+    def _row_time_dt(row):
+        t = (row.get("time_et") or row.get("timestamp") or row.get("time") or "").strip()
+        if not t:
+            return None
+        return _parse_dt(t)
+
+    def _load_matches(path, target_dt, window_sec=120):
+        if not path or not path.exists() or not target_dt:
+            return []
+        rows = []
+        with path.open("r", encoding="utf-8", newline="") as f:
+            r = csv.DictReader(f)
+            for row in r:
+                if (row.get("symbol") or "").strip().upper() != symbol:
+                    continue
+                rt = _row_time_dt(row)
+                if not rt:
+                    continue
+                if abs((rt - target_dt).total_seconds()) <= window_sec:
+                    rows.append(row)
+        return rows
+
+    buy_triggers = _load_matches(buy_file, buy_dt, 180)
+    sell_triggers = _load_matches(sell_file, sell_dt, 180)
+
+    return render_template(
+        "trade_review_single.html",
+        trade=trade,
+        buy_triggers=buy_triggers,
+        sell_triggers=sell_triggers,
+        buy_file=str(buy_file) if buy_file else None,
+        sell_file=str(sell_file) if sell_file else None,
+        is_win=is_win,
+        name=name,
+    )
 
 
-# (deduped duplicate api_settings_scoreboard)
+
+# --- tz-safe datetime helper (Trade Review) ---
+def _tz_naive_dt(x):
+    """
+    Convert x to pandas datetime and strip timezone if present.
+    Works for tz-aware Series/Index and tz-naive inputs.
+    """
+    try:
+        import pandas as pd
+        x = pd.to_datetime(x, errors="coerce")
+    except Exception:
+        return x
+    # Series dt accessor (Series)
+    try:
+        if hasattr(x, "dt") and getattr(x.dt, "tz", None) is not None:
+            x = x.dt.tz_localize(None)
+    except Exception:
+        pass
+    # DatetimeIndex (Index)
+    try:
+        if getattr(x, "tz", None) is not None:
+            x = x.tz_localize(None)
+    except Exception:
+        pass
+    return x
 
 
-# (deduped duplicate healthz)
+def _trade_review_error_png(msg: str):
+    from flask import Response
+    import io
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception:
+        return Response(b"", mimetype="image/png")
+
+    fig = plt.figure(figsize=(12.5, 3.4), dpi=150)
+    ax = fig.add_subplot(111)
+    fig.patch.set_facecolor("#0b0b0b")
+    ax.set_facecolor("#0b0b0b")
+    ax.text(0.5, 0.55, "Trade Review chart error", ha="center", va="center", color="white", fontsize=12)
+    ax.text(0.5, 0.40, msg, ha="center", va="center", color="#cfcfcf", fontsize=10)
+    ax.set_axis_off()
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight")
+    plt.close(fig)
+    return Response(buf.getvalue(), mimetype="image/png")
+@app.route("/chart/<symbol>")
+def chart_view_dup3(symbol):
+    # Minimal context so trade_review_single.html doesn't crash.
+    # If ts is provided, we treat it as the buy timestamp anchor for charting.
+    from flask import request, render_template
+
+    ts = request.args.get("ts")
+
+    # `trade_review_single.html` expects `trade` to exist.
+    # We provide a minimal dict; missing fields will render blank instead of crashing.
+    trade = {
+        "symbol": str(symbol).upper(),
+        "name": str(symbol).upper(),
+        "buy_time": ts,
+        "sell_time": None,
+        "buy_price": None,
+        "sell_price": None,
+        "pnl": None,
+        "pnl_pct": None,
+        "qty": None,
+    }
+
+    return render_template(
+        "trade_review_single.html",
+        trade=trade,
+        symbol=str(symbol).upper(),
+        ts=ts,
+        # Some versions of the template reference these names too:
+        buy_ts=ts,
+        sell_ts=None,
+        buy_log=None,
+        sell_log=None,
+        buy_triggers=[],
+        sell_triggers=[],
+    )
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+
+# --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
+def normalize_positions_payload_dup4(raw):
+    # FIX: break accidental recursion (duplicate helper)
+    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+
+try:
+
+    for t in trades or []:
+
+        if not isinstance(t, dict):
+
+            continue
+
+        if str(t.get("action","")).upper() != "SELL":
+
+            continue
+
+        qty = t.get("qty")
+
+        price = t.get("price")
+
+        paid = t.get("price_paid")
+
+        if qty in (None,"") or price in (None,"") or paid in (None,""):
+
+            continue
+
+        qty = float(qty)
+
+        price = float(price)
+
+        paid = float(paid)
+
+        if qty <= 0:
+
+            continue
+
+        pl = (price - paid) * qty
+
+        t["pl"] = pl
+
+        denom = (paid * qty)
+
+        t["pl_pct"] = (pl / denom * 100.0) if denom else None
+
+except Exception:
+
+    pass
+
+
+# --- Realized P/L hygiene: recompute SELL pl from (price - price_paid)*qty; poison SELLs get pl=None ---
+
+try:
+
+    for t in trades or []:
+
+        if not isinstance(t, dict):
+
+            continue
+
+        if str(t.get("action","")).upper() != "SELL":
+
+            continue
+
+        qty = t.get("qty")
+
+        price = t.get("price")
+
+        paid = t.get("price_paid")
+
+        # If we don't have a valid cost basis, do NOT allow this SELL to contribute to realized math.
+
+        if paid in (None,"") or float(paid) <= 0.0001:
+
+            t["_poison"] = True
+
+            t["pl"] = None
+
+            t["pl_pct"] = None
+
+            continue
+
+        if qty in (None,"") or price in (None,""):
+
+            continue
+
+        qty = float(qty)
+
+        price = float(price)
+
+        paid = float(paid)
+
+        if qty <= 0:
+
+            continue
+
+        pl = (price - paid) * qty
+
+        t["pl"] = pl
+
+        denom = (paid * qty)
+
+        t["pl_pct"] = (pl / denom * 100.0) if denom else None
+
+except Exception:
+
+    pass
+
+# @app.route("/analytics/data")
+def analytics_data_dup4():
+    from services.analytics_service import compute_analytics_charts
+    logs_dir = r"C:\TradeAlerts\logs"
+    return compute_analytics_charts(log_dir=logs_dir)
+
+@app.route("/api/trade_review", endpoint="api_trade_review_4")
+def api_trade_review_dup2():
+    import os
+    try:
+        limit = int(_tr_req.args.get("limit", "5"))
+    except Exception:
+        limit = 5
+    interval = (_tr_req.args.get("interval") or "5m").strip()
+
+    buy_path = _tr__latest_log_path("triggers")
+    sell_path = _tr__latest_log_path("sell_triggers")
+
+    if not buy_path and not sell_path:
+        return jsonify({"ok": False, "error": "No logs found under .\\logs (triggers_*.csv / sell_triggers_*.csv)."}), 200
+
+    buy_rows = _tr__read_csv_rows(buy_path) if buy_path else []
+    sell_rows = _tr__read_csv_rows(sell_path) if sell_path else []
+
+    # pick events
+    recent_buys = _tr__pick_last_events(buy_rows, want_action="BUY", want_event="ORDER_PLACED", limit=limit)
+
+    # If trigger logs don't include BUY ORDER_PLACED events, fall back to position_opened (today)
+    if not recent_buys:
+        try:
+            from datetime import datetime as _dt
+            from zoneinfo import ZoneInfo as _ZI
+            _ET = _ZI("America/New_York")
+            _con = sqlite3.connect(LIVE_DB)
+            _con.row_factory = sqlite3.Row
+            _cur = _con.cursor()
+            _rows = _cur.execute(
+                "SELECT symbol, opened_at_et, opened_epoch FROM position_opened "
+                "WHERE opened_at_et IS NOT NULL AND date(opened_at_et)=date('now','localtime') "
+                "ORDER BY opened_epoch DESC LIMIT ?",
+                (limit,)
+            ).fetchall()
+            _con.close()
+    
+            # Build pseudo trigger-like rows so build_buy_item() can render cards
+            _pseudo = []
+            for r in _rows:
+                sym = (r["symbol"] or "").strip().upper()
+                oat = (r["opened_at_et"] or "").strip()
+                ts_et = None
+                if oat:
+                    try:
+                        d = _dt.strptime(oat, "%Y-%m-%d %H:%M:%S").replace(tzinfo=_ET)
+                        ts_et = d.isoformat()
+                    except Exception:
+                        ts_et = oat.replace(" ", "T")
+                _pseudo.append({
+                    "symbol": sym,
+                    "ts_et": ts_et,
+                    "action": "BUY",
+                    "event": "OPENED_DB",
+                    "qty": "",
+                    "reason": "position_opened",
+                    "entry_price": "",
+                    "last_price": ""
+                })
+    
+            recent_buys = _pseudo
+        except Exception:
+            pass
+
+
+    # for sells: prefer POSITION_CLOSED, fallback ORDER_PLACED if none
+    recent_sells = _tr__pick_last_events(sell_rows, want_action="SELL", want_event="POSITION_CLOSED", limit=limit)
+    if not recent_sells:
+        recent_sells = _tr__pick_last_events(sell_rows, want_action="SELL", want_event="ORDER_PLACED", limit=limit)
+
+    # Combine all rows for details panel search
+    all_rows = []
+    # keep roughly time order by concatenating (they're different files; we filter by ts anyway)
+    all_rows.extend(buy_rows)
+    all_rows.extend(sell_rows)
+
+    def build_buy_item(row):
+        sym = (row.get("symbol") or "").upper().strip()
+        ts_et = row.get("ts_et")
+        qty = row.get("qty") or ""
+        reason = row.get("reason") or ""
+        entry = row.get("entry_price") or ""
+        lastp = row.get("last_price") or ""
+
+        buy_dt = _tr__parse_iso(ts_et)
+        detail_rows = _tr__rows_in_window(all_rows, sym, buy_dt, None)
+
+        series = _tr__yahoo_intraday_series(sym, interval=interval)
+
+        title = f"Entry: {entry}  Last: {lastp}".strip()
+        shade = {"from": ts_et, "to": (series[-1]["t"] if series else ts_et), "color": "rgba(33,208,122,0.16)"}
+
+        return {
+            "symbol": sym,
+            "ts_et": ts_et,
+            "qty": qty,
+            "reason": reason,
+            "title_line": title,
+            "pnl_pct": None,
+            "buy_ts_et": ts_et,
+            "sell_ts_et": None,
+            "series": series,
+            "shade": shade,
+            "detail_rows": detail_rows[-40:] if len(detail_rows) > 40 else detail_rows,
+        }
+
+    def build_sell_item(row):
+        sym = (row.get("symbol") or "").upper().strip()
+        sell_ts = row.get("ts_et")
+        qty = row.get("qty") or ""
+        reason = row.get("reason") or ""
+
+        sell_dt = _tr__parse_iso(sell_ts)
+
+        buy_row, buy_dt = _tr__find_last_buy_for_symbol(buy_rows, sym, sell_dt)
+
+        buy_ts = buy_row.get("ts_et") if buy_row else None
+
+        # compute pnl from prices if available
+        def f(x):
+            try:
+                return float(x)
+            except Exception:
+                return None
+
+        entry_px = f(buy_row.get("entry_price")) if buy_row else None
+        # sell log may have last_price; else try last_price in row
+        exit_px = f(row.get("last_price")) or f(row.get("limit_price")) or None
+
+        pnl_pct = None
+        if entry_px and exit_px:
+            try:
+                pnl_pct = ((exit_px - entry_px) / entry_px) * 100.0
+            except Exception:
+                pnl_pct = None
+
+        # details rows window buy->sell if buy exists; else last 60 mins worth around sell
+        if buy_dt:
+            start_dt = buy_dt
+        else:
+            from datetime import timedelta
+            start_dt = sell_dt - timedelta(minutes=90) if sell_dt else None
+
+        detail_rows = _tr__rows_in_window(all_rows, sym, start_dt, sell_dt)
+
+        series = _tr__yahoo_intraday_series(sym, interval=interval)
+
+        # shade buy->sell if known; else sell->sell
+        shade_color = "rgba(33,208,122,0.16)" if (pnl_pct is not None and pnl_pct >= 0) else "rgba(255,92,92,0.16)"
+        shade = None
+        if buy_ts and sell_ts:
+            shade = {"from": buy_ts, "to": sell_ts, "color": shade_color}
+
+        title = ""
+        if entry_px and exit_px:
+            title = f"Buy: {entry_px:.2f}  Sell: {exit_px:.2f}"
+
+        return {
+            "symbol": sym,
+            "ts_et": sell_ts,
+            "qty": qty,
+            "reason": reason,
+            "title_line": title,
+            "pnl_pct": pnl_pct,
+            "buy_ts_et": buy_ts,
+            "sell_ts_et": sell_ts,
+            "series": series,
+            "shade": shade,
+            "detail_rows": detail_rows[-40:] if len(detail_rows) > 40 else detail_rows,
+        }
+
+    buys_out = [build_buy_item(r) for r in recent_buys]
+    sells_out = [build_sell_item(r) for r in recent_sells]
+
+    return jsonify({"ok": True, "buy_log": buy_path, "sell_log": sell_path, "buys": buys_out, "sells": sells_out}), 200
+
+@app.route("/trade_review")
+def trade_review_dup2():
+    """
+    Single-trade review page.
+    Source of truth = local DB (realized_trades).
+    Logs are used ONLY for trigger explanations.
+    """
+    from flask import request, abort
+    import sqlite3
+    from datetime import datetime, timedelta
+    from pathlib import Path
+    import csv
+
+    trade_id = request.args.get("trade_id")
+
+    # analytics links may call /trade_review?symbol=XXX&ts=... (no trade_id)
+    sym = (request.args.get("symbol") or "").strip().upper()
+    ts  = (request.args.get("ts") or "").strip()
+
+    # If no trade_id but we have symbol+ts, send to chart view (open trades / pseudo-buys)
+    if (not trade_id) and sym and ts:
+        return redirect(f"/chart/{(request.args.get('symbol') or '').strip().upper()}?ts={(request.args.get('ts') or '').strip()}")
+
+    # --- fallback: allow /trade_review?symbol=XYZ&ts_et=... (resolve to a realized trade_id) ---
+    if not trade_id:
+        symbol = (request.args.get("symbol") or "").strip().upper()
+        ts_et = (request.args.get("ts_et") or request.args.get("sell_ts_et") or "").strip()
+        if symbol:
+            try:
+                import sqlite3
+                db = LIVE_DB if "LIVE_DB" in globals() else "live.db"
+                conn = sqlite3.connect(db)
+                conn.row_factory = sqlite3.Row
+    
+                target = ts_et.replace("Z","") if ts_et else None
+    
+                if target:
+                    row = conn.execute(
+                        "SELECT id, close_date FROM realized_trades "
+                        "WHERE symbol=? AND close_date IS NOT NULL "
+                        "ORDER BY ABS(strftime('%s', close_date) - strftime('%s', ?)) ASC "
+                        "LIMIT 1",
+                        (symbol, target)
+                    ).fetchone()
+                else:
+                    row = conn.execute(
+                        "SELECT id, close_date FROM realized_trades "
+                        "WHERE symbol=? AND close_date IS NOT NULL "
+                        "ORDER BY close_date DESC "
+                        "LIMIT 1",
+                        (symbol,)
+                    ).fetchone()
+    
+                conn.close()
+    
+                if row:
+                    return redirect(url_for("trade_review", trade_id=row["id"]))
+                return redirect(f"/chart/{(request.args.get('symbol') or '').strip().upper()}?ts={(request.args.get('ts') or '').strip()}")
+            except Exception as e:
+                return (f"Bad Request\ntrade_id missing and resolve failed: {e}\n", 400)
+
+    chart_name = (request.args.get("name") or "").strip() or None
+    # --- fallback: allow /trade_review?symbol=XXX&ts=... (analytics links) ---
+    if not trade_id:
+        sym = (request.args.get("symbol") or "").strip().upper()
+        ts  = (request.args.get("ts") or "").strip()
+        if sym and ts:
+            # Best-effort lookup:
+            # 1) realized_trades: close_date startswith(ts) (handles your ISO timestamps)
+            # 2) if not found, try exact match after normalizing ":" encoding
+            try:
+                con = sqlite3.connect(LIVE_DB)
+                con.row_factory = sqlite3.Row
+                cur = con.cursor()
+
+                # try startswith match
+                cur.execute(
+                    "SELECT trade_id FROM realized_trades WHERE symbol=? AND close_date LIKE ? ORDER BY close_date DESC LIMIT 1",
+                    (sym, ts + "%")
+                )
+                r = cur.fetchone()
+                if not r:
+                    # some callers might pass url-decoded vs stored string formats
+                    cur.execute(
+                        "SELECT trade_id FROM realized_trades WHERE symbol=? ORDER BY close_date DESC LIMIT 1",
+                        (sym,)
+                    )
+                    r = cur.fetchone()
+
+                con.close()
+
+                if r and r["trade_id"]:
+                    return redirect(url_for("trade_review", trade_id=r["trade_id"]))
+            except Exception:
+                pass
+        abort(400, "missing trade_id")
+
+    conn = sqlite3.connect(LIVE_DB)
+    conn.row_factory = sqlite3.Row
+    trade = conn.execute(
+        "SELECT * FROM realized_trades WHERE id = ?",
+        (trade_id,)
+    ).fetchone()
+    conn.close()
+
+    if not trade:
+        abort(404, "trade not found")
+
+    symbol = (trade["symbol"] or "").strip().upper()
+
+    # --- company name (best-effort, no placeholders) ---
+    name = None  # company name
+    try:
+        import yfinance as yf
+        info = yf.Ticker(symbol).info or {}
+        name = (info.get("shortName") or info.get("longName") or "").strip() or None
+    except Exception:
+        name = None
+
+    buy_time_s = (trade["open_date"] or "").strip()
+    sell_time_s = (trade["close_date"] or "").strip()
+
+    def _parse_dt(s):
+        # expected: 'YYYY-MM-DD HH:MM:SS'
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+            try:
+                return datetime.strptime(s[:19], fmt)
+            except Exception:
+                pass
+        return None
+
+    buy_dt = _parse_dt(buy_time_s)
+    sell_dt = _parse_dt(sell_time_s)
+
+    # Determine win/loss from gain
+    gain = trade["gain"]
+    try:
+        gain_f = float(gain)
+    except Exception:
+        gain_f = 0.0
+    is_win = gain_f >= 0.0
+
+    log_dir = Path(__file__).resolve().parent / "logs"
+
+    def _file_for_day(prefix, dt):
+        if not dt:
+            return None
+        fname = f"{prefix}{dt.strftime('%Y-%m-%d')}.csv"
+        f = log_dir / fname
+        return f if f.exists() else None
+
+    buy_file = _file_for_day("triggers_", buy_dt) or (max(log_dir.glob("triggers_*.csv"), default=None) if log_dir.exists() else None)
+    sell_file = _file_for_day("sell_triggers_", sell_dt) or (max(log_dir.glob("sell_triggers_*.csv"), default=None) if log_dir.exists() else None)
+
+    def _row_time_dt(row):
+        t = (row.get("time_et") or row.get("timestamp") or row.get("time") or "").strip()
+        if not t:
+            return None
+        return _parse_dt(t)
+
+    def _load_matches(path, target_dt, window_sec=120):
+        if not path or not path.exists() or not target_dt:
+            return []
+        rows = []
+        with path.open("r", encoding="utf-8", newline="") as f:
+            r = csv.DictReader(f)
+            for row in r:
+                if (row.get("symbol") or "").strip().upper() != symbol:
+                    continue
+                rt = _row_time_dt(row)
+                if not rt:
+                    continue
+                if abs((rt - target_dt).total_seconds()) <= window_sec:
+                    rows.append(row)
+        return rows
+
+    buy_triggers = _load_matches(buy_file, buy_dt, 180)
+    sell_triggers = _load_matches(sell_file, sell_dt, 180)
+
+    return render_template(
+        "trade_review_single.html",
+        trade=trade,
+        buy_triggers=buy_triggers,
+        sell_triggers=sell_triggers,
+        buy_file=str(buy_file) if buy_file else None,
+        sell_file=str(sell_file) if sell_file else None,
+        is_win=is_win,
+        name=name,
+    )
+
+
+
+# --- tz-safe datetime helper (Trade Review) ---
+def _tz_naive_dt(x):
+    """
+    Convert x to pandas datetime and strip timezone if present.
+    Works for tz-aware Series/Index and tz-naive inputs.
+    """
+    try:
+        import pandas as pd
+        x = pd.to_datetime(x, errors="coerce")
+    except Exception:
+        return x
+    # Series dt accessor (Series)
+    try:
+        if hasattr(x, "dt") and getattr(x.dt, "tz", None) is not None:
+            x = x.dt.tz_localize(None)
+    except Exception:
+        pass
+    # DatetimeIndex (Index)
+    try:
+        if getattr(x, "tz", None) is not None:
+            x = x.tz_localize(None)
+    except Exception:
+        pass
+    return x
+
+
+@app.route("/chart/<symbol>")
+def chart_view_dup2(symbol):
+    # Minimal context so trade_review_single.html doesn't crash.
+    # If ts is provided, we treat it as the buy timestamp anchor for charting.
+    from flask import request, render_template
+
+    ts = request.args.get("ts")
+
+    # `trade_review_single.html` expects `trade` to exist.
+    # We provide a minimal dict; missing fields will render blank instead of crashing.
+    trade = {
+        "symbol": str(symbol).upper(),
+        "name": str(symbol).upper(),
+        "buy_time": ts,
+        "sell_time": None,
+        "buy_price": None,
+        "sell_price": None,
+        "pnl": None,
+        "pnl_pct": None,
+        "qty": None,
+    }
+
+    return render_template(
+        "trade_review_single.html",
+        trade=trade,
+        symbol=str(symbol).upper(),
+        ts=ts,
+        # Some versions of the template reference these names too:
+        buy_ts=ts,
+        sell_ts=None,
+        buy_log=None,
+        sell_log=None,
+        buy_triggers=[],
+        sell_triggers=[],
+    )
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+
+# --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
+def normalize_positions_payload_dup3(raw):
+    # FIX: break accidental recursion (duplicate helper)
+    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+
+try:
+
+    for t in trades or []:
+
+        if not isinstance(t, dict):
+
+            continue
+
+        if str(t.get("action","")).upper() != "SELL":
+
+            continue
+
+        qty = t.get("qty")
+
+        price = t.get("price")
+
+        paid = t.get("price_paid")
+
+        if qty in (None,"") or price in (None,"") or paid in (None,""):
+
+            continue
+
+        qty = float(qty)
+
+        price = float(price)
+
+        paid = float(paid)
+
+        if qty <= 0:
+
+            continue
+
+        pl = (price - paid) * qty
+
+        t["pl"] = pl
+
+        denom = (paid * qty)
+
+        t["pl_pct"] = (pl / denom * 100.0) if denom else None
+
+except Exception:
+
+    pass
+
+
+# --- Realized P/L hygiene: recompute SELL pl from (price - price_paid)*qty; poison SELLs get pl=None ---
+
+try:
+
+    for t in trades or []:
+
+        if not isinstance(t, dict):
+
+            continue
+
+        if str(t.get("action","")).upper() != "SELL":
+
+            continue
+
+        qty = t.get("qty")
+
+        price = t.get("price")
+
+        paid = t.get("price_paid")
+
+        # If we don't have a valid cost basis, do NOT allow this SELL to contribute to realized math.
+
+        if paid in (None,"") or float(paid) <= 0.0001:
+
+            t["_poison"] = True
+
+            t["pl"] = None
+
+            t["pl_pct"] = None
+
+            continue
+
+        if qty in (None,"") or price in (None,""):
+
+            continue
+
+        qty = float(qty)
+
+        price = float(price)
+
+        paid = float(paid)
+
+        if qty <= 0:
+
+            continue
+
+        pl = (price - paid) * qty
+
+        t["pl"] = pl
+
+        denom = (paid * qty)
+
+        t["pl_pct"] = (pl / denom * 100.0) if denom else None
+
+except Exception:
+
+    pass
+
+# @app.route("/analytics/data")
+def analytics_data_dup3():
+    from services.analytics_service import compute_analytics_charts
+    logs_dir = r"C:\TradeAlerts\logs"
+    return compute_analytics_charts(log_dir=logs_dir)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True)
+
+# --- HOLDINGS FIX: compat alias (some code calls underscored name) ---
+def normalize_positions_payload_dup2(raw):
+    # FIX: break accidental recursion (duplicate helper)
+    return []# --- Fix: compute realized P/L for SELLs from price_paid when available ---
+
+try:
+
+    for t in trades or []:
+
+        if not isinstance(t, dict):
+
+            continue
+
+        if str(t.get("action","")).upper() != "SELL":
+
+            continue
+
+        qty = t.get("qty")
+
+        price = t.get("price")
+
+        paid = t.get("price_paid")
+
+        if qty in (None,"") or price in (None,"") or paid in (None,""):
+
+            continue
+
+        qty = float(qty)
+
+        price = float(price)
+
+        paid = float(paid)
+
+        if qty <= 0:
+
+            continue
+
+        pl = (price - paid) * qty
+
+        t["pl"] = pl
+
+        denom = (paid * qty)
+
+        t["pl_pct"] = (pl / denom * 100.0) if denom else None
+
+except Exception:
+
+    pass
+
+
+# --- Realized P/L hygiene: recompute SELL pl from (price - price_paid)*qty; poison SELLs get pl=None ---
+
+try:
+
+    for t in trades or []:
+
+        if not isinstance(t, dict):
+
+            continue
+
+        if str(t.get("action","")).upper() != "SELL":
+
+            continue
+
+        qty = t.get("qty")
+
+        price = t.get("price")
+
+        paid = t.get("price_paid")
+
+        # If we don't have a valid cost basis, do NOT allow this SELL to contribute to realized math.
+
+        if paid in (None,"") or float(paid) <= 0.0001:
+
+            t["_poison"] = True
+
+            t["pl"] = None
+
+            t["pl_pct"] = None
+
+            continue
+
+        if qty in (None,"") or price in (None,""):
+
+            continue
+
+        qty = float(qty)
+
+        price = float(price)
+
+        paid = float(paid)
+
+        if qty <= 0:
+
+            continue
+
+        pl = (price - paid) * qty
+
+        t["pl"] = pl
+
+        denom = (paid * qty)
+
+        t["pl_pct"] = (pl / denom * 100.0) if denom else None
+
+except Exception:
+
+    pass
+
+# @app.route("/analytics/data")
+def analytics_data_dup2():
+    from services.analytics_service import compute_analytics_charts
+    logs_dir = r"C:\TradeAlerts\logs"
+    return compute_analytics_charts(log_dir=logs_dir)
+
+
+
+
+# --- debug: fingerprint to ensure the running server matches this file
+# @app.route("/__fingerprint")
+def __fingerprint():
+    return "DASHBOARD_FINGERPRINT 2026-01-30 23:39:19", 200, {"Content-Type":"text/plain"}
+
+
+
+@app.route("/__routes")
+def __routes():
+    # Debug helper: list routes registered on the running Flask app
+    try:
+        rules = []
+        for r in sorted(app.url_map.iter_rules(), key=lambda x: str(x)):
+            rules.append({"rule": str(r), "endpoint": r.endpoint, "methods": sorted(list(r.methods or []))})
+        from flask import jsonify
+        return jsonify({"ok": True, "count": len(rules), "routes": rules}), 200
+    except Exception as e:
+        from flask import jsonify
+        return jsonify({"ok": False, "error": str(e)}), 200
+
+
+
+
+@app.route("/__whereami")
+def __whereami():
+    from flask import jsonify
+    import os
+    return jsonify({
+        "ok": True,
+        "file": __file__,
+        "cwd": os.getcwd(),
+    }), 200
+
+# ___whereami_20260201
 

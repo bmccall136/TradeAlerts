@@ -77,8 +77,7 @@
 
 <script>
 (() => {
-  let __SCORE_COUNTS__ = {};
-const GROUP = "buy"; // dashboard.py passes group=buy/sell into template
+  const GROUP = "buy"; // dashboard.py passes group=buy/sell into template
   const byId = (id) => document.getElementById(id);
 
   const INDICATORS = window.__INDICATORS__ || [];
@@ -144,33 +143,7 @@ function enabledIndicators(settings){
     return out;
   }
 
-  
-    function __groupKey(k){
-    k = String(k||"").toLowerCase().replace(/\s+/g,"");
-    if (k.startsWith("macd")) return "macd";
-    if (k.startsWith("rsi")) return "rsi";
-    if (k.startsWith("vwap")) return "vwap";
-    if (k.startsWith("bb")) return "bb";
-    if (k.startsWith("adx")) return "adx";
-    if (k.startsWith("vol") || k.startsWith("volume")) return "vol";
-    if (k.startsWith("sma") || k.startsWith("price_sma") || k.includes("price>sma")) return "sma";
-    if (k.startsWith("super")) return "super";
-    if (k.startsWith("atr")) return "atr";
-    if (k.startsWith("gap")) return "gap";
-    if (k.startsWith("range")) return "range";
-    if (k.includes("macd_hist") || k.includes("macdhist") || k.startsWith("hist")) return "macd_hist";
-    return k;
-  }
-
-  function __getCount(k){
-    try{
-      const g = __groupKey(k);
-      return Number((__SCORE_COUNTS__||{})[g] || 0) || 0;
-    }catch(e){
-      return 0;
-    }
-  }
-function renderGate(settings){
+  function renderGate(settings){
     const minReqSel = byId("minReqSel");
     const gateHint  = byId("gateHint");
     if (!minReqSel) return;
@@ -195,7 +168,7 @@ function renderGate(settings){
       if (!enabled.length) {
         gateHint.textContent = "No indicators enabled.";
       } else {
-        const gateable = enabled.filter(x => isGateable(__groupKey(x.key)));
+        const gateable = enabled.filter(x => isGateable(x.key));
         const nongate  = enabled.filter(x => !isGateable(x.key));
         const a = gateable.length ? (gateable.length + " gateable: " + gateable.map(x => x.label).join(", ")) : "0 gateable";
         const b = nongate.length ? (" | " + nongate.length + " counts-only: " + nongate.map(x => x.label).join(", ")) : "";
@@ -302,7 +275,7 @@ minReqSel.onchange = () => {
       const onKey = it.enable_key;
       const on = !!settings[onKey];
 
-      const cnt = (counts && typeof counts === "object" && (counts[((label) || "").toString().toLowerCase()] ?? counts[label]) !== undefined) ? (counts[((label) || "").toString().toLowerCase()] ?? counts[label]) : 0;
+      const cnt = (counts && typeof counts === "object" && counts[label] !== undefined) ? counts[label] : 0;
 
       const paramKeys = allKeys
         .filter(k => isIndicatorKey(label, k))
@@ -421,9 +394,7 @@ minReqSel.onchange = () => {
     let sc = null;
     try{
       sc = await apiScoreboard(bucket);
-    
-      __SCORE_COUNTS__ = (sc && typeof sc === 'object' && sc.counts && typeof sc.counts === 'object') ? sc.counts : {};
-} catch(e){
+    } catch(e){
       if (scoreErr){
         scoreErr.style.display="block";
         scoreErr.textContent = "Scoreboard error: " + (e && e.message ? e.message : String(e));

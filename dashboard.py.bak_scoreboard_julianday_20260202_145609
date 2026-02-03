@@ -4491,158 +4491,100 @@ def api_settings_save():
 
 
 # =========================
-
-
-
-# =========================
-# Settings Scoreboard
-# =========================
-@app.route("/api/settings/scoreboard")
-def api_settings_scoreboard():
-    """
-    Returns trigger-scoreboard counts for UI.
-    Buckets: today / 7d / 30d / all
-    Reads live.db table: signal_fires(ts_utc TEXT, symbol TEXT, indicator TEXT, detail TEXT)
-    """
-    import os
-    import sqlite3
-    from datetime import datetime, timezone
-
-    bucket = (request.args.get("bucket") or "today").strip().lower()
-    if bucket not in ("today","7d","30d","all"):
-        bucket = "today"
-
-    # DB path: use constant if present, else default to C:\TradeAlerts\live.db
-    db_path = globals().get("LIVE_DB") or globals().get("DB_PATH") or os.path.join(os.path.dirname(__file__), "live.db")
-
-    def _norm_ind(x: str) -> str:
-        s = (x or "").strip().lower()
-        if not s:
-            return ""
-        # normalize common variants
-        if "macd" in s: return "macd"
-        if "rsi" in s:  return "rsi"
-        if "vwap" in s: return "vwap"
-        if "adx" in s:  return "adx"
-        if "bb" in s or "boll" in s: return "bb"
-        if "sma" in s or "ma" == s or "moving" in s: return "sma"
-        if "vol" in s or "volume" in s: return "vol"
-        return s
-
-    # Build cutoff (UTC). Use SQLite julianday comparisons (ts_utc stored ISO8601 with timezone)
-    now_utc = datetime.now(timezone.utc)
-
-    cutoff_sql = None
-    cutoff_iso = None
-    if bucket == "today":
-        # start of UTC day
-        cutoff = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-        cutoff_iso = cutoff.isoformat()
-        cutoff_sql = "julianday(ts_utc) >= julianday(?)"
-    elif bucket == "7d":
-        cutoff = now_utc - __import__("datetime").timedelta(days=7)
-        cutoff_iso = cutoff.isoformat()
-        cutoff_sql = "julianday(ts_utc) >= julianday(?)"
-    elif bucket == "30d":
-        cutoff = now_utc - __import__("datetime").timedelta(days=30)
-        cutoff_iso = cutoff.isoformat()
-        cutoff_sql = "julianday(ts_utc) >= julianday(?)"
-    else:
-        cutoff_sql = None
-
-    counts = {}
-    debug_total = 0
-    debug_after = 0
-    debug_min = None
-    debug_max = None
-
-    try:
-        con = sqlite3.connect(db_path)
-        cur = con.cursor()
-
-        # total rows
-        cur.execute("SELECT COUNT(*) FROM signal_fires")
-        debug_total = int(cur.fetchone()[0] or 0)
-
-        if cutoff_sql:
-            cur.execute(f"SELECT COUNT(*) FROM signal_fires WHERE {cutoff_sql}", (cutoff_iso,))
-            debug_after = int(cur.fetchone()[0] or 0)
-
-            cur.execute(f"SELECT MIN(ts_utc), MAX(ts_utc) FROM signal_fires WHERE {cutoff_sql}", (cutoff_iso,))
-            row = cur.fetchone() or (None, None)
-            debug_min, debug_max = row[0], row[1]
-
-            cur.execute(f"SELECT indicator, COUNT(*) FROM signal_fires WHERE {cutoff_sql} GROUP BY indicator", (cutoff_iso,))
-        else:
-            cur.execute("SELECT MIN(ts_utc), MAX(ts_utc) FROM signal_fires")
-            row = cur.fetchone() or (None, None)
-            debug_min, debug_max = row[0], row[1]
-
-            cur.execute("SELECT indicator, COUNT(*) FROM signal_fires GROUP BY indicator")
-
-        for ind, c in cur.fetchall():
-            key = _norm_ind(ind)
-            if not key:
-                continue
-            counts[key] = counts.get(key, 0) + int(c or 0)
-
-        con.close()
-    except Exception:
-        # keep API alive even if DB blips
-        pass
-
-    # ---- ALIASES for UI key names (keep both forms) ----
-    # Primary keys: macd,rsi,vwap,sma,bb,adx,vol
-    counts_out = dict(counts or {})
-
-    # lower->pretty and upper variants
-    if "vol" in counts_out:
-        counts_out.setdefault("volume", counts_out["vol"])
-        counts_out.setdefault("VOL", counts_out["vol"])
-        counts_out.setdefault("VOLUME", counts_out.get("volume", counts_out["vol"]))
-    if "bb" in counts_out:
-        counts_out.setdefault("bollinger", counts_out["bb"])
-        counts_out.setdefault("bollinger_bands", counts_out["bb"])
-        counts_out.setdefault("BB", counts_out["bb"])
-    if "sma" in counts_out:
-        counts_out.setdefault("moving_average", counts_out["sma"])
-        counts_out.setdefault("SMA", counts_out["sma"])
-    if "vwap" in counts_out:
-        counts_out.setdefault("VWAP", counts_out["vwap"])
-    if "rsi" in counts_out:
-        counts_out.setdefault("RSI", counts_out["rsi"])
-    if "macd" in counts_out:
-        counts_out.setdefault("MACD", counts_out["macd"])
-    if "adx" in counts_out:
-        counts_out.setdefault("ADX", counts_out["adx"])
-    # ---- END ALIASES ----
-
-    return jsonify({
-        "ok": True,
-        "bucket": bucket,
-        "counts": counts_out,
-        "debug_db_path": db_path,
-        "debug_total_rows": debug_total,
-        "debug_rows_after_cutoff": debug_after,
-        "debug_min_ts": debug_min,
-        "debug_max_ts": debug_max,
-        "generated_at": datetime.utcnow().isoformat() + "Z",
-    })
-# =========================
-# End Settings Scoreboard
-# =========================
-
-
 # Settings Scoreboard + Health
 # =========================
 
 
-# =========================
-# Settings Scoreboard
-# =========================
+@app.route("/api/settings/scoreboard")
+def api_settings_scoreboard():
+    """
+    Trigger scoreboard counts from live.db (signal_fires).
+    Buckets: today / 7d / 30d / all
+    NOTE: counts are pre-gates (raw signal fires) as logged by live loop.
+    """
+    import sqlite3
+    from datetime import datetime, timedelta, timezone
+    from zoneinfo import ZoneInfo
 
+    bucket = (request.args.get("bucket") or "today").strip().lower()
+    if bucket not in ("today", "7d", "30d", "all"):
+        bucket = "today"
 
-# (removed duplicate scoreboard block)
+    # Use LIVE_DB if present; fallback to ./live.db
+    db_path = None
+    try:
+        db_path = str(LIVE_DB)
+    except Exception:
+        db_path = None
+    if not db_path:
+        db_path = os.path.join(os.getcwd(), "live.db")
+
+    now_utc = datetime.now(timezone.utc)
+    cutoff_utc = None
+
+    if bucket == "today":
+        # Today in ET (midnight -> now), converted to UTC for comparison
+        now_et = now_utc.astimezone(ZoneInfo("America/New_York"))
+        start_et = now_et.replace(hour=0, minute=0, second=0, microsecond=0)
+        cutoff_utc = start_et.astimezone(timezone.utc)
+    elif bucket == "7d":
+        cutoff_utc = now_utc - timedelta(days=7)
+    elif bucket == "30d":
+        cutoff_utc = now_utc - timedelta(days=30)
+    else:
+        cutoff_utc = None  # all-time
+
+    # signal_fires.ts_utc is ISO8601 text with timezone offset, e.g. 2026-02-02T14:30:05.542132+00:00
+    counts = {}
+    try:
+        con = sqlite3.connect(db_path)
+        cur = con.cursor()
+
+        # sanity: table exists
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='signal_fires'")
+        if not cur.fetchone():
+            return jsonify({
+                "ok": True,
+                "bucket": bucket,
+                "counts": {},
+                "generated_at": datetime.utcnow().isoformat() + "Z",
+                "note": "signal_fires table not found"
+            }), 200
+
+        if cutoff_utc is None:
+            cur.execute("SELECT indicator, COUNT(*) FROM signal_fires GROUP BY indicator")
+        else:
+            cur.execute(
+                "SELECT indicator, COUNT(*) FROM signal_fires WHERE ts_utc >= ? GROUP BY indicator",
+                (cutoff_utc.isoformat(),)
+            )
+
+        for ind, n in cur.fetchall():
+            if ind is None:
+                continue
+            counts[str(ind).strip().lower()] = int(n)
+
+    except Exception as e:
+        return jsonify({
+            "ok": False,
+            "bucket": bucket,
+            "counts": {},
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "error": f"{type(e).__name__}: {e}"
+        }), 200
+    finally:
+        try:
+            con.close()
+        except Exception:
+            pass
+
+    return jsonify({
+        "ok": True,
+        "bucket": bucket,
+        "counts": counts,
+        "generated_at": datetime.utcnow().isoformat() + "Z"
+    }), 200
+
 
 @app.route("/healthz")
 def healthz():

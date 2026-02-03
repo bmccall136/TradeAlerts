@@ -47,6 +47,7 @@
   "required_filters": [
     "macd",
     "vwap",
+    "adx",
     "vol"
   ],
   "required_signals_min": 2,

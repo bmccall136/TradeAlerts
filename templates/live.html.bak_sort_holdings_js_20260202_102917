@@ -312,10 +312,6 @@
       return;
     }
 
-    // Force Holdings newest-opened first (Opened ET is YYYY-MM-DD HH:MM so string compare is chronological)
-    holdings = (holdings || []).slice().sort((a,b) => ((b.opened_et || '') + '').localeCompare(((a.opened_et || '') + '')));
-
-
     for (const h of holdings) {
       const sym  = (h.symbol || '').toUpperCase();
       const name = ((h.name || h.full_name || h.company_name || '') + '').trim();

@@ -5,8 +5,8 @@
     <div style="font-size:22px;font-weight:700;">Settings</div>
     <div class="d-flex align-items-center" style="gap:10px;">
       <div class="btn-group" role="group" aria-label="settings tabs">
-        <a class="btn btn-sm btn-warning" href="/settings/buy">BUY</a>
-        <a class="btn btn-sm btn-dark" href="/settings/sell">SELL</a>
+        <a class="btn btn-sm btn-dark" href="/settings/buy">BUY</a>
+        <a class="btn btn-sm btn-warning" href="/settings/sell">SELL</a>
       </div>
       <div class="d-flex align-items-center" style="gap:8px;">
         <div style="opacity:.85;">Profile</div>
@@ -66,12 +66,7 @@
 <script>
   // page indicator model
   window.__INDICATORS__ = [
-  { label: "MACD", enable_key: "macd_on" },
-  { label: "RSI",  enable_key: "rsi_on" },
-  { label: "VWAP", enable_key: "vwap_on" },
-  { label: "BB",   enable_key: "bb_on" },
-  { label: "ADX",  enable_key: "adx_on" },
-  { label: "VOL",  enable_key: "vol_on" }
+  { label: "TIMEOUT EXITS", enable_key: "enable_timeout_exits" }
 ];
 </script>
 
@@ -302,7 +297,7 @@ minReqSel.onchange = () => {
       const onKey = it.enable_key;
       const on = !!settings[onKey];
 
-      const cnt = (counts && typeof counts === "object" && (counts[((label) || "").toString().toLowerCase()] ?? counts[label]) !== undefined) ? (counts[((label) || "").toString().toLowerCase()] ?? counts[label]) : 0;
+      const cnt = (counts && typeof counts === "object" && counts[label] !== undefined) ? counts[label] : 0;
 
       const paramKeys = allKeys
         .filter(k => isIndicatorKey(label, k))
@@ -465,7 +460,6 @@ minReqSel.onchange = () => {
 })();
 </script>
 {% endblock %}
-
 
 
 

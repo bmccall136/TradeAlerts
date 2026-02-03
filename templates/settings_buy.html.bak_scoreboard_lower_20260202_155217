@@ -302,7 +302,7 @@ minReqSel.onchange = () => {
       const onKey = it.enable_key;
       const on = !!settings[onKey];
 
-      const cnt = (counts && typeof counts === "object" && (counts[((label) || "").toString().toLowerCase()] ?? counts[label]) !== undefined) ? (counts[((label) || "").toString().toLowerCase()] ?? counts[label]) : 0;
+      const cnt = (counts && typeof counts === "object" && counts[label] !== undefined) ? counts[label] : 0;
 
       const paramKeys = allKeys
         .filter(k => isIndicatorKey(label, k))

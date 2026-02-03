@@ -895,6 +895,13 @@ td.ax-num.ax-zero, .ax-zero { color: #a3a3a3 !important; font-weight: 700; }
    Make Settings match $$Machine UI
    ================================ */
 
+#settings-page {
+  /* full width like Dashboard */
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
 /* Cards/panels */
 #settings-page .card {
   background: rgba(255,255,255,0.10) !important;
@@ -1141,6 +1148,14 @@ html body option {
 
 
 /* === -RawMachine Settings UI overrides === */
+#settings-page {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
 /* Match /* === $$Machine Settings UI overrides === */Machine look (not the super-dark Bootstrap card defaults) */
 #settings-page .mm-card {
   background: rgba(255,255,255,0.06) !important;
@@ -1251,14 +1266,4 @@ html body option {
 #settings-page select:focus {
   border-color: rgba(255,233,0,0.65) !important;
   box-shadow: 0 0 0 .15rem rgba(255,233,0,0.18) !important;
-}
-
-
-/* === SETTINGS: readability width (centered, less eye travel) === */
-#settings-page{
-  width: 100%;
-  max-width: 1180px;   /* adjust if you want tighter (e.g. 1040px) */
-  margin: 0 auto;
-  padding-left: 12px;
-  padding-right: 12px;
 }
