@@ -17,7 +17,7 @@
     "blocklist": [],
     "circuit_fail_threshold": 2,
     "circuit_open_seconds": 480,
-    "enable_timeout_exits": false,
+    "enable_timeout_exits": true,
     "force_symbols": [],
     "force_without_entry": false,
     "intraday_stoploss_pct": -0.6,

@@ -5,8 +5,8 @@
   "adx_on": false,
   "adx_threshold": 30,
   "ai": {
-    "enabled": false,
-    "use_entries": false,
+    "enabled": true,
+    "use_entries": true,
     "use_exits": false
   },
   "atr_on": true,

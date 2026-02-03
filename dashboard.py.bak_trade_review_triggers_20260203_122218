@@ -83,7 +83,6 @@ ETZ = ZoneInfo("America/New_York")
 # -----------------------------------------------------------------------------#
 
 # DB paths
-LOG_DIR = Path(__file__).resolve().parent / "logs"
 LIVE_DB = os.environ.get("LIVE_DB", os.path.join(ROOT, "live.db"))
 
 # Project baseline
@@ -3222,8 +3221,8 @@ def _compute_sell_analytics(sell_rows):
 def _today_log_paths():
     ymd = _today_et_ymd()
     log_dir = _Path(r"C:\TradeAlerts\logs")
-    buy = log_dir / str(LOG_DIR / f"triggers_{ymd}.csv")
-    sell = log_dir / str(LOG_DIR / f"sell_triggers_{ymd}.csv")
+    buy = log_dir / f"triggers_{ymd}.csv"
+    sell = log_dir / f"sell_triggers_{ymd}.csv"
     return ymd, str(buy), str(sell)
 
 @app.route("/api/analytics/day")
@@ -3524,8 +3523,8 @@ def _ax_yesterday(ymd: str) -> str:
         return ymd
 
 def _ax_log_paths_for_date(log_dir: str, ymd: str):
-    buy_path  = str(Path(log_dir) / str(LOG_DIR / f"triggers_{ymd}.csv"))
-    sell_path = str(Path(log_dir) / str(LOG_DIR / f"sell_triggers_{ymd}.csv"))
+    buy_path  = str(Path(log_dir) / f"triggers_{ymd}.csv")
+    sell_path = str(Path(log_dir) / f"sell_triggers_{ymd}.csv")
     return ymd, buy_path, sell_path
 
 
@@ -3878,6 +3877,245 @@ def api_trade_review():
 
     return jsonify({"ok": True, "buy_log": buy_path, "sell_log": sell_path, "buys": buys_out, "sells": sells_out}), 200
 
+@app.route("/trade_review")
+def trade_review():
+    """
+    Single-trade review page.
+    Source of truth = local DB (realized_trades).
+    Logs are used ONLY for trigger explanations.
+    """
+    from flask import request, abort
+    import sqlite3
+    from datetime import datetime, timedelta
+    from pathlib import Path
+    import csv
+
+    trade_id = request.args.get("trade_id")
+
+    # analytics links may call /trade_review?symbol=XXX&ts=... (no trade_id)
+    sym = (request.args.get("symbol") or "").strip().upper()
+    ts  = (request.args.get("ts") or "").strip()
+
+    # If no trade_id but we have symbol+ts, send to chart view (open trades / pseudo-buys)
+    if (not trade_id) and sym and ts:
+        return redirect(f"/chart/{(request.args.get('symbol') or '').strip().upper()}?ts={(request.args.get('ts') or '').strip()}")
+
+    # --- fallback: allow /trade_review?symbol=XYZ&ts_et=... (resolve to a realized trade_id) ---
+    if not trade_id:
+        symbol = (request.args.get("symbol") or "").strip().upper()
+        ts_et = (request.args.get("ts_et") or request.args.get("sell_ts_et") or "").strip()
+        if symbol:
+            try:
+                import sqlite3
+                db = LIVE_DB if "LIVE_DB" in globals() else "live.db"
+                conn = sqlite3.connect(db)
+                conn.row_factory = sqlite3.Row
+    
+                target = ts_et.replace("Z","") if ts_et else None
+    
+                if target:
+                    row = conn.execute(
+                        "SELECT id, close_date FROM realized_trades "
+                        "WHERE symbol=? AND close_date IS NOT NULL "
+                        "ORDER BY ABS(strftime('%s', close_date) - strftime('%s', ?)) ASC "
+                        "LIMIT 1",
+                        (symbol, target)
+                    ).fetchone()
+                else:
+                    row = conn.execute(
+                        "SELECT id, close_date FROM realized_trades "
+                        "WHERE symbol=? AND close_date IS NOT NULL "
+                        "ORDER BY close_date DESC "
+                        "LIMIT 1",
+                        (symbol,)
+                    ).fetchone()
+    
+                conn.close()
+    
+                if row:
+                    return redirect(url_for("trade_review", trade_id=row["id"]))
+                return redirect(f"/chart/{(request.args.get('symbol') or '').strip().upper()}?ts={(request.args.get('ts') or '').strip()}")
+            except Exception as e:
+                return (f"Bad Request\ntrade_id missing and resolve failed: {e}\n", 400)
+
+    chart_name = (request.args.get("name") or "").strip() or None
+    # --- fallback: allow /trade_review?symbol=XXX&ts=... (analytics links) ---
+    if not trade_id:
+        sym = (request.args.get("symbol") or "").strip().upper()
+        ts  = (request.args.get("ts") or "").strip()
+        if sym and ts:
+            # Best-effort lookup:
+            # 1) realized_trades: close_date startswith(ts) (handles your ISO timestamps)
+            # 2) if not found, try exact match after normalizing ":" encoding
+            try:
+                con = sqlite3.connect(LIVE_DB)
+                con.row_factory = sqlite3.Row
+                cur = con.cursor()
+
+                # try startswith match
+                cur.execute(
+                    "SELECT trade_id FROM realized_trades WHERE symbol=? AND close_date LIKE ? ORDER BY close_date DESC LIMIT 1",
+                    (sym, ts + "%")
+                )
+                r = cur.fetchone()
+                if not r:
+                    # some callers might pass url-decoded vs stored string formats
+                    cur.execute(
+                        "SELECT trade_id FROM realized_trades WHERE symbol=? ORDER BY close_date DESC LIMIT 1",
+                        (sym,)
+                    )
+                    r = cur.fetchone()
+
+                con.close()
+
+                if r and r["trade_id"]:
+                    return redirect(url_for("trade_review", trade_id=r["trade_id"]))
+            except Exception:
+                pass
+        return render_template("trade_review.html", error="missing trade_id")
+    conn = sqlite3.connect(LIVE_DB)
+    conn.row_factory = sqlite3.Row
+    trade = conn.execute(
+        "SELECT * FROM realized_trades WHERE id = ?",
+        (trade_id,)
+    ).fetchone()
+    conn.close()
+
+    if not trade:
+        abort(404, "trade not found")
+
+    symbol = (trade["symbol"] or "").strip().upper()
+
+    # --- company name (best-effort, no placeholders) ---
+    name = None  # company name
+    try:
+        import yfinance as yf
+        info = yf.Ticker(symbol).info or {}
+        name = (info.get("shortName") or info.get("longName") or "").strip() or None
+    except Exception:
+        name = None
+
+    buy_time_s = (trade["open_date"] or "").strip()
+    sell_time_s = (trade["close_date"] or "").strip()
+
+    def _parse_dt(s):
+        # expected: 'YYYY-MM-DD HH:MM:SS'
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+            try:
+                return datetime.strptime(s[:19], fmt)
+            except Exception:
+                pass
+        return None
+
+    buy_dt = _parse_dt(buy_time_s)
+    sell_dt = _parse_dt(sell_time_s)
+
+    # Determine win/loss from gain
+    gain = trade["gain"]
+    try:
+        gain_f = float(gain)
+    except Exception:
+        gain_f = 0.0
+    is_win = gain_f >= 0.0
+
+    log_dir = Path(__file__).resolve().parent / "logs"
+
+    def _file_for_day(prefix, dt):
+        if not dt:
+            return None
+        fname = f"{prefix}{dt.strftime('%Y-%m-%d')}.csv"
+        f = log_dir / fname
+        return f if f.exists() else None
+
+    buy_file = _file_for_day("triggers_", buy_dt) or (max(log_dir.glob("triggers_*.csv"), default=None) if log_dir.exists() else None)
+    sell_file = _file_for_day("sell_triggers_", sell_dt) or (max(log_dir.glob("sell_triggers_*.csv"), default=None) if log_dir.exists() else None)
+
+    def _row_time_dt(row):
+        t = (row.get("time_et") or row.get("ts_et") or row.get("ts_utc") or row.get("timestamp") or row.get("time") or "").strip()
+        if not t:
+            return None
+        return _parse_dt(t)
+
+    def _load_matches(path, target_dt, window_sec=120):
+        if not path or not path.exists() or not target_dt:
+            return []
+        rows = []
+        with path.open("r", encoding="utf-8", newline="") as f:
+            r = csv.DictReader(f)
+            for row in r:
+                if (row.get("symbol") or "").strip().upper() != symbol:
+                    continue
+                rt = _row_time_dt(row)
+                if not rt:
+                    continue
+                if abs((rt - target_dt).total_seconds()) <= window_sec:
+                    rows.append(row)
+        return rows
+
+    buy_triggers = _load_matches(buy_file, buy_dt, 180)
+    sell_triggers = _load_matches(sell_file, sell_dt, 180)
+
+    return render_template(
+        "trade_review_single.html",
+        trade=trade,
+        buy_triggers=buy_triggers,
+        sell_triggers=sell_triggers,
+        buy_file=str(buy_file) if buy_file else None,
+        sell_file=str(sell_file) if sell_file else None,
+        is_win=is_win,
+        name=name,
+    )
+
+
+
+# --- tz-safe datetime helper (Trade Review) ---
+def _tz_naive_dt(x):
+    """
+    Convert x to pandas datetime and strip timezone if present.
+    Works for tz-aware Series/Index and tz-naive inputs.
+    """
+    try:
+        import pandas as pd
+        x = pd.to_datetime(x, errors="coerce")
+    except Exception:
+        return x
+    # Series dt accessor (Series)
+    try:
+        if hasattr(x, "dt") and getattr(x.dt, "tz", None) is not None:
+            x = x.dt.tz_localize(None)
+    except Exception:
+        pass
+    # DatetimeIndex (Index)
+    try:
+        if getattr(x, "tz", None) is not None:
+            x = x.tz_localize(None)
+    except Exception:
+        pass
+    return x
+
+
+def _trade_review_error_png(msg: str):
+    from flask import Response
+    import io
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception:
+        return Response(b"", mimetype="image/png")
+
+    fig = plt.figure(figsize=(12.5, 3.4), dpi=150)
+    ax = fig.add_subplot(111)
+    fig.patch.set_facecolor("#0b0b0b")
+    ax.set_facecolor("#0b0b0b")
+    ax.text(0.5, 0.55, "Trade Review chart error", ha="center", va="center", color="white", fontsize=12)
+    ax.text(0.5, 0.40, msg, ha="center", va="center", color="#cfcfcf", fontsize=10)
+    ax.set_axis_off()
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight")
+    plt.close(fig)
+    return Response(buf.getvalue(), mimetype="image/png")
 @app.route("/chart/<symbol>")
 def chart_view(symbol):
     # Minimal context so trade_review_single.html doesn't crash.
@@ -3914,6 +4152,209 @@ def chart_view(symbol):
         sell_triggers=[],
     )
 
+@app.route("/trade_review/chart")
+def trade_review_chart():
+    """
+    Returns a PNG chart for Trade Review.
+
+    Query params supported:
+      symbol=HPQ          (preferred; if missing, we try to infer from Referer /chart/HPQ)
+      ts=YYYY-mm-dd HH:MM:SS   (optional "focus" timestamp; also draws a yellow marker if provided)
+      buy_ts=...          (optional; draws green marker)
+      sell_ts=...         (optional; draws red marker)
+    """
+    from flask import request, send_file, make_response
+    from io import BytesIO
+    from datetime import datetime
+    import traceback
+
+    def _parse_dt(s):
+        s = (s or "").strip()
+        if not s:
+            return None
+        # tolerate "2026-01-29 14:01:09" or URL-encoded
+        try:
+            return datetime.fromisoformat(s.replace("T"," ").split(".")[0])
+        except Exception:
+            return None
+
+    def _infer_symbol_from_referrer():
+        import re
+        ref = request.headers.get("Referer") or ""
+        # expects .../chart/HPQ or .../chart/HPQ?ts=...
+        m = re.search(r"/chart/([A-Za-z\.\-_]{1,12})", ref)
+        return (m.group(1).upper() if m else "")
+
+    symbol = (request.args.get("symbol") or "").strip().upper()
+    if not symbol:
+        symbol = _infer_symbol_from_referrer()
+
+    ts      = _parse_dt(request.args.get("ts"))
+    buy_ts  = _parse_dt(request.args.get("buy_ts"))
+    sell_ts = _parse_dt(request.args.get("sell_ts"))
+
+    # If still missing, return a small error PNG (do NOT hard-crash the page)
+    if not symbol:
+        try:
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+
+            fig = plt.figure(figsize=(10, 2.2), dpi=150)
+            fig.patch.set_facecolor("#0b0b0b")
+            ax = fig.add_subplot(111)
+            ax.set_facecolor("#0b0b0b")
+            ax.axis("off")
+            ax.text(0.5, 0.62, "Trade Review chart error", ha="center", va="center", color="white", fontsize=14)
+            ax.text(0.5, 0.35, "Missing symbol (expected ?symbol=XYZ or referrer /chart/XYZ)", ha="center", va="center", color="#bbbbbb", fontsize=11)
+            buf = BytesIO()
+            fig.savefig(buf, format="png", bbox_inches="tight")
+            plt.close(fig)
+            buf.seek(0)
+            return send_file(buf, mimetype="image/png", max_age=0)
+        except Exception:
+            return make_response("Missing symbol", 400)
+
+    try:
+        import pandas as pd
+        import yfinance as yf
+        import pytz
+
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        # Pull 1d 1m bars (Yahoo intraday is allowed)
+        df = yf.download(symbol, period="1d", interval="1m", progress=False, auto_adjust=True)
+        if df is None or df.empty:
+            raise RuntimeError("No intraday bars returned")
+
+        # Normalize index to US/Eastern if possible
+        try:
+            et = pytz.timezone("America/New_York")
+            if df.index.tz is None:
+                # yfinance often gives naive index; treat as UTC then convert
+                df.index = pd.to_datetime(df.index).tz_localize("UTC").tz_convert(et)
+            else:
+                df.index = df.index.tz_convert(et)
+        except Exception:
+            # fallback: keep as-is
+            pass
+
+        # Focus window: around ts if provided (?60 minutes), else full day
+        if ts:
+            # interpret ts as ET naive -> localize ET if df index is tz-aware
+            try:
+                et = pytz.timezone("America/New_York")
+                ts_et = et.localize(ts) if df.index.tz is not None and ts.tzinfo is None else ts
+                lo = ts_et - pd.Timedelta(minutes=60)
+                hi = ts_et + pd.Timedelta(minutes=60)
+                dfw = df.loc[(df.index >= lo) & (df.index <= hi)].copy()
+                if dfw.empty:
+                    dfw = df.copy()
+            except Exception:
+                dfw = df.copy()
+        else:
+            dfw = df.copy()
+
+        close = dfw["Close"]
+
+        # Build chart
+        fig = plt.figure(figsize=(12, 3.2), dpi=140)
+        fig.patch.set_facecolor("#0b0b0b")
+        ax = fig.add_subplot(111)
+        ax.set_facecolor("#0b0b0b")
+
+        ax.plot(close.index, close.values, linewidth=2)
+
+        # Shade held period if buy_ts and sell_ts exist (best effort)
+        def _to_index_tz(dt):
+            if dt is None:
+                return None
+            try:
+                import pandas as pd
+                if hasattr(close.index, "tz") and close.index.tz is not None and getattr(dt, "tzinfo", None) is None:
+                    import pytz
+                    et = pytz.timezone("America/New_York")
+                    return et.localize(dt)
+            except Exception:
+                pass
+            return dt
+
+        buy_t  = _to_index_tz(buy_ts)
+        sell_t = _to_index_tz(sell_ts)
+
+        if buy_t and sell_t:
+            # green for win, red for loss (based on closest bar prices)
+            try:
+                import numpy as np
+                # find nearest bar values
+                b_idx = close.index.get_indexer([buy_t], method="nearest")[0]
+                s_idx = close.index.get_indexer([sell_t], method="nearest")[0]
+                b_px = float(close.iloc[b_idx])
+                s_px = float(close.iloc[s_idx])
+                win = (s_px >= b_px)
+            except Exception:
+                win = True
+            ax.axvspan(buy_t, sell_t, alpha=0.18 if win else 0.22)
+
+        # BUY/SELL vertical markers
+        if buy_t:
+            ax.axvline(buy_t, linewidth=2)
+            ax.text(buy_t, close.min(), " BUY", va="bottom", ha="left", fontsize=10)
+        if sell_t:
+            ax.axvline(sell_t, linewidth=2)
+            ax.text(sell_t, close.min(), " SELL", va="bottom", ha="left", fontsize=10)
+
+        # Optional "ts" marker (yellow-ish label); does NOT break anything if absent
+        if ts:
+            t = _to_index_tz(ts)
+            if t:
+                ax.axvline(t, linewidth=2, alpha=0.8)
+                ax.text(t, close.max(), " ALERT", va="top", ha="left", fontsize=10)
+
+        # Styling
+        ax.tick_params(colors="#bbbbbb")
+        for spine in ax.spines.values():
+            spine.set_color("#333333")
+        ax.grid(True, alpha=0.12)
+        ax.set_title(symbol, color="#dddddd", fontsize=14)
+
+        buf = BytesIO()
+        fig.savefig(buf, format="png", bbox_inches="tight")
+        plt.close(fig)
+        buf.seek(0)
+        return send_file(buf, mimetype="image/png", max_age=0)
+
+    except Exception:
+        # Return a readable PNG error (and log traceback to console)
+        traceback.print_exc()
+        try:
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+            from io import BytesIO
+
+            fig = plt.figure(figsize=(10, 2.2), dpi=150)
+            fig.patch.set_facecolor("#0b0b0b")
+            ax = fig.add_subplot(111)
+            ax.set_facecolor("#0b0b0b")
+            ax.axis("off")
+            ax.text(0.5, 0.62, f"{symbol}", ha="center", va="center", color="white", fontsize=16)
+            ax.text(0.5, 0.35, "Exception building chart (see console logs)", ha="center", va="center", color="#bbbbbb", fontsize=11)
+            buf = BytesIO()
+            fig.savefig(buf, format="png", bbox_inches="tight")
+            plt.close(fig)
+            buf.seek(0)
+            return send_file(buf, mimetype="image/png", max_age=0)
+        except Exception:
+            return make_response("Chart exception", 500)
+
+
+# =========================
+# FORCE ROUTES (stability)
+# =========================
+# inserted: 2026-01-31 00:06:59
 @app.route("/__fingerprint")
 def __fingerprint():
     from flask import jsonify
@@ -4210,639 +4651,6 @@ def healthz():
 # End Settings Scoreboard + Health
 # =========================
 
-
-
-
-# =========================
-# Trade Review Routes (moved to bottom)
-# =========================
-
-@app.route("/trade_review")
-def trade_review():
-    """
-    Single-trade review page.
-    Source of truth = local DB (realized_trades).
-    Logs are used ONLY for trigger explanations.
-    """
-    def _dt_from_any(v):
-        try:
-            if v is None: return None
-            s = str(v).strip()
-            if not s: return None
-            from datetime import datetime
-            try:
-                return datetime.fromisoformat(s.replace('Z','+00:00'))
-            except Exception:
-                pass
-            for fmt in ('%Y-%m-%d %H:%M:%S','%Y-%m-%d %H:%M'):
-                try: return datetime.strptime(s, fmt)
-                except Exception: pass
-            return None
-        except Exception:
-            return None
-
-    def _best_buy_anchor_from_logs(sym, ymd, sell_anchor_dt, logs_dir):
-        try:
-            import csv
-            fp = Path(logs_dir) / ('triggers_' + str(ymd) + '.csv')
-            if not fp.exists(): return None
-            dts = []
-            with fp.open('r', encoding='utf-8', newline='') as f:
-                r = csv.DictReader(f)
-                for row in r:
-                    if (row.get('symbol','') or '').strip().upper() != sym: continue
-                    t = (row.get('time_et') or row.get('ts_et') or row.get('ts_utc') or '').strip()
-                    dt = _dt_from_any(t)
-                    if dt is not None: dts.append(dt)
-            if not dts: return None
-            if sell_anchor_dt is None: return max(dts)
-            le = [d for d in dts if d <= sell_anchor_dt]
-            if le: return max(le)
-            return min(dts, key=lambda d: abs((d - sell_anchor_dt).total_seconds()))
-        except Exception:
-            return None
-
-    # ---- BUY / SELL trigger anchor helpers ----
-    def _dt_from_any(s):
-        if not s:
-            return None
-        s = str(s).strip()
-        if not s or s.lower() == "none":
-            return None
-        try:
-            return datetime.fromisoformat(s)
-        except Exception:
-            pass
-        try:
-            return datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
-        except Exception:
-            return None
-
-    def _trade_buy_anchor_et(tr):
-        if not isinstance(tr, dict):
-            return None
-        for k in (
-            "opened_et","open_et","buy_time_et","entry_time_et",
-            "open_time_et","opened","open_date","entry_time"
-        ):
-            dt = _dt_from_any(tr.get(k))
-            if dt:
-                return dt
-        for k in (
-            "opened_utc","open_utc","buy_time_utc","entry_time_utc",
-            "open_time_utc","open_date_utc"
-        ):
-            dt = _dt_from_any(tr.get(k))
-            if dt:
-                return dt
-        return None
-    # ---- end helpers ----
-
-    from flask import request, abort
-    import sqlite3
-    from datetime import datetime, timedelta
-    from pathlib import Path
-    LOG_DIR = Path(r"C:\\TradeAlerts\\logs")
-    import csv
-
-
-
-    def _dt_from_any(s: str):
-        if not s:
-            return None
-        s = str(s).strip()
-        if not s or s.lower() == "none":
-            return None
-        # Try ISO first (handles 2026-02-03T09:32:37-05:00)
-        try:
-            return datetime.fromisoformat(s)
-        except Exception:
-            pass
-        # Try common "time_et" format (handles 2026-02-03 09:32:37)
-        try:
-            return datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
-        except Exception:
-            return None
-
-    def _pick_ts(row: dict) -> str:
-        for k in ("ts_et", "time_et", "ts_utc"):
-            v = (row.get(k) or "").strip()
-            if v and v.lower() != "none":
-                return v
-        return ""
-
-    def _trade_buy_anchor_et(tr: dict):
-        """
-        Best-effort BUY anchor:
-        prefer explicit opened/entry timestamps from trade dict, else None.
-        """
-        if not isinstance(tr, dict):
-            return None
-        for k in ("opened_et","open_et","buy_time_et","entry_time_et","open_time_et","opened","open_date","entry_time"):
-            dt = _dt_from_any(tr.get(k))
-            if dt:
-                return dt
-        # sometimes we only have UTC; still better than nothing
-        for k in ("opened_utc","open_utc","buy_time_utc","entry_time_utc","open_time_utc","open_date_utc"):
-            dt = _dt_from_any(tr.get(k))
-            if dt:
-                return dt
-        return None
-
-    def _pick_ts(row: dict) -> str:
-        """
-        Prefer ts_et (ISO), else time_et (space format), else ts_utc.
-        Returns '' if none present.
-        """
-        for k in ("ts_et", "time_et", "ts_utc"):
-            v = (row.get(k) or "").strip()
-            if v and v.lower() != "none":
-                return v
-        return ""
-
-    trade_id = request.args.get("trade_id")
-
-    # analytics links may call /trade_review?symbol=XXX&ts=... (no trade_id)
-    sym = (request.args.get("symbol") or "").strip().upper()
-    ts  = (request.args.get("ts") or "").strip()
-
-    # If no trade_id but we have symbol+ts, send to chart view (open trades / pseudo-buys)
-    if (not trade_id) and sym and ts:
-        return redirect(f"/chart/{(request.args.get('symbol') or '').strip().upper()}?ts={(request.args.get('ts') or '').strip()}")
-
-    # --- fallback: allow /trade_review?symbol=XYZ&ts_et=... (resolve to a realized trade_id) ---
-    if not trade_id:
-        symbol = (request.args.get("symbol") or "").strip().upper()
-        ts_et = (request.args.get("ts_et") or request.args.get("sell_ts_et") or "").strip()
-        if symbol:
-            try:
-                import sqlite3
-                db = LIVE_DB if "LIVE_DB" in globals() else "live.db"
-                conn = sqlite3.connect(db)
-                conn.row_factory = sqlite3.Row
-    
-                target = ts_et.replace("Z","") if ts_et else None
-    
-                if target:
-                    row = conn.execute(
-                        "SELECT id, close_date FROM realized_trades "
-                        "WHERE symbol=? AND close_date IS NOT NULL "
-                        "ORDER BY ABS(strftime('%s', close_date) - strftime('%s', ?)) ASC "
-                        "LIMIT 1",
-                        (symbol, target)
-                    ).fetchone()
-                else:
-                    row = conn.execute(
-                        "SELECT id, close_date FROM realized_trades "
-                        "WHERE symbol=? AND close_date IS NOT NULL "
-                        "ORDER BY close_date DESC "
-                        "LIMIT 1",
-                        (symbol,)
-                    ).fetchone()
-    
-                conn.close()
-    
-                if row:
-                    return redirect(url_for("trade_review", trade_id=row["id"]))
-                return redirect(f"/chart/{(request.args.get('symbol') or '').strip().upper()}?ts={(request.args.get('ts') or '').strip()}")
-            except Exception as e:
-                return (f"Bad Request\ntrade_id missing and resolve failed: {e}\n", 400)
-
-    chart_name = (request.args.get("name") or "").strip() or None
-    # --- fallback: allow /trade_review?symbol=XXX&ts=... (analytics links) ---
-    if not trade_id:
-        sym = (request.args.get("symbol") or "").strip().upper()
-        ts  = (request.args.get("ts") or "").strip()
-        if sym and ts:
-            # Best-effort lookup:
-            # 1) realized_trades: close_date startswith(ts) (handles your ISO timestamps)
-            # 2) if not found, try exact match after normalizing ":" encoding
-            try:
-                con = sqlite3.connect(LIVE_DB)
-                con.row_factory = sqlite3.Row
-                cur = con.cursor()
-
-                # try startswith match
-                cur.execute(
-                    "SELECT trade_id FROM realized_trades WHERE symbol=? AND close_date LIKE ? ORDER BY close_date DESC LIMIT 1",
-                    (sym, ts + "%")
-                )
-                r = cur.fetchone()
-                if not r:
-                    # some callers might pass url-decoded vs stored string formats
-                    cur.execute(
-                        "SELECT trade_id FROM realized_trades WHERE symbol=? ORDER BY close_date DESC LIMIT 1",
-                        (sym,)
-                    )
-                    r = cur.fetchone()
-
-                con.close()
-
-                if r and r["trade_id"]:
-                    return redirect(url_for("trade_review", trade_id=r["trade_id"]))
-            except Exception:
-                pass
-        return render_template("trade_review.html", error="missing trade_id")
-    conn = sqlite3.connect(LIVE_DB)
-    conn.row_factory = sqlite3.Row
-    trade = conn.execute(
-
-        "SELECT * FROM realized_trades WHERE id = ?",
-        (trade_id,)
-    ).fetchone()
-    conn.close()
-
-
-    # --- Anchor timestamps ---
-    open_raw  = trade.get('open_date') if isinstance(trade, dict) else trade['open_date']
-    close_raw = trade.get('close_date') if isinstance(trade, dict) else trade['close_date']
-    sell_anchor_dt = _dt_from_any(close_raw)
-    buy_anchor_dt = None
-    if open_raw and close_raw and str(open_raw).strip() and str(close_raw).strip() and str(open_raw).strip() != str(close_raw).strip():
-        buy_anchor_dt = _dt_from_any(open_raw)
-    if buy_anchor_dt is None:
-        ymd_local = None
-        try:
-            if close_raw: ymd_local = str(close_raw).strip().split(' ')[0]
-        except Exception:
-            ymd_local = None
-        if not ymd_local:
-            try: ymd_local = _now_et().strftime('%Y-%m-%d')
-            except Exception:
-                from datetime import datetime
-                ymd_local = datetime.now().strftime('%Y-%m-%d')
-        buy_anchor_dt = _best_buy_anchor_from_logs(sym, ymd_local, sell_anchor_dt, LOG_DIR)
-    if buy_anchor_dt is None:
-        buy_anchor_dt = sell_anchor_dt
-    buy_anchor_str  = buy_anchor_dt.strftime('%Y-%m-%d %H:%M:%S') if buy_anchor_dt else ''
-    sell_anchor_str = sell_anchor_dt.strftime('%Y-%m-%d %H:%M:%S') if sell_anchor_dt else ''
-
-    if not trade:
-        abort(404, "trade not found")
-
-    symbol = (trade["symbol"] or "").strip().upper()
-
-    # --- company name (best-effort, no placeholders) ---
-    name = None  # company name
-    try:
-        import yfinance as yf
-        info = yf.Ticker(symbol).info or {}
-        name = (info.get("shortName") or info.get("longName") or "").strip() or None
-    except Exception:
-        name = None
-
-    buy_time_s = (trade["open_date"] or "").strip()
-    sell_time_s = (trade["close_date"] or "").strip()
-
-    def _parse_dt(s):
-        # expected: 'YYYY-MM-DD HH:MM:SS'
-        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-            try:
-                return datetime.strptime(s[:19], fmt)
-            except Exception:
-                pass
-        return None
-
-    buy_dt = _parse_dt(buy_time_s)
-    sell_dt = _parse_dt(sell_time_s)
-
-    # Determine win/loss from gain
-    gain = trade["gain"]
-    try:
-        gain_f = float(gain)
-    except Exception:
-        gain_f = 0.0
-    is_win = gain_f >= 0.0
-
-    log_dir = Path(__file__).resolve().parent / "logs"
-
-    def _file_for_day(prefix, dt):
-        if not dt:
-            return None
-        fname = f"{prefix}{dt.strftime('%Y-%m-%d')}.csv"
-        f = log_dir / fname
-        return f if f.exists() else None
-
-    buy_file = _file_for_day("triggers_", buy_dt) or (max(log_dir.glob("triggers_*.csv"), default=None) if log_dir.exists() else None)
-    sell_file = _file_for_day("sell_triggers_", sell_dt) or (max(log_dir.glob("sell_triggers_*.csv"), default=None) if log_dir.exists() else None)
-
-    def _row_time_dt(row):
-        t = ((row.get("time_et") or _pick_ts(row) or row.get("ts_utc")) or _pick_ts(row) or row.get("ts_utc") or row.get("timestamp") or row.get("time") or "").strip()
-        if not t:
-            return None
-        return _parse_dt(t)
-
-    def _load_matches(path, target_dt, window_sec=120):
-        if not path or not path.exists() or not target_dt:
-            return []
-        rows = []
-        with path.open("r", encoding="utf-8", newline="") as f:
-            r = csv.DictReader(f)
-            for row in r:
-                if (row.get("symbol") or "").strip().upper() != symbol:
-                    continue
-                rt = _row_time_dt(row)
-                if not rt:
-                    continue
-                if abs((rt - target_dt).total_seconds()) <= window_sec:
-                    rows.append(row)
-        return rows
-
-    buy_triggers = _load_matches(buy_file, buy_dt, 180)
-    sell_triggers = _load_matches(sell_file, sell_dt, 180)
-
-    return render_template(
-        "trade_review_single.html",
-        trade=trade,
-        buy_triggers=buy_triggers,
-        sell_triggers=sell_triggers,
-        buy_file=str(buy_file) if buy_file else None,
-        sell_file=str(sell_file) if sell_file else None,
-        is_win=is_win,
-        name=name,
-    )
-
-# --- tz-safe datetime helper (Trade Review) ---
-def _tz_naive_dt(x):
-    """
-    Convert x to pandas datetime and strip timezone if present.
-    Works for tz-aware Series/Index and tz-naive inputs.
-    """
-    try:
-        import pandas as pd
-        x = pd.to_datetime(x, errors="coerce")
-    except Exception:
-        return x
-    # Series dt accessor (Series)
-    try:
-        if hasattr(x, "dt") and getattr(x.dt, "tz", None) is not None:
-            x = x.dt.tz_localize(None)
-    except Exception:
-        pass
-    # DatetimeIndex (Index)
-    try:
-        if getattr(x, "tz", None) is not None:
-            x = x.tz_localize(None)
-    except Exception:
-        pass
-    return x
-
-
-def _trade_review_error_png(msg: str):
-    from flask import Response
-    import io
-    try:
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-    except Exception:
-        return Response(b"", mimetype="image/png")
-
-    fig = plt.figure(figsize=(12.5, 3.4), dpi=150)
-    ax = fig.add_subplot(111)
-    fig.patch.set_facecolor("#0b0b0b")
-    ax.set_facecolor("#0b0b0b")
-    ax.text(0.5, 0.55, "Trade Review chart error", ha="center", va="center", color="white", fontsize=12)
-    ax.text(0.5, 0.40, msg, ha="center", va="center", color="#cfcfcf", fontsize=10)
-    ax.set_axis_off()
-
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight")
-    plt.close(fig)
-    return Response(buf.getvalue(), mimetype="image/png")
-
-
-
-@app.route("/trade_review/<symbol>")
-def trade_review_symbol(symbol):
-    # Alias route so /trade_review/XYZ works (links/bookmarks)
-    sym = (symbol or "").strip().upper()
-    return redirect(f"/trade_review?symbol={sym}")
-
-@app.route("/trade_review/chart")
-def trade_review_chart():
-    """
-    Returns a PNG chart for Trade Review.
-
-    Query params supported:
-      symbol=HPQ          (preferred; if missing, we try to infer from Referer /chart/HPQ)
-      ts=YYYY-mm-dd HH:MM:SS   (optional "focus" timestamp; also draws a yellow marker if provided)
-      buy_ts=...          (optional; draws green marker)
-      sell_ts=...         (optional; draws red marker)
-    """
-    from flask import request, send_file, make_response
-    from io import BytesIO
-    from datetime import datetime
-    import traceback
-
-    def _parse_dt(s):
-        s = (s or "").strip()
-        if not s:
-            return None
-        # tolerate "2026-01-29 14:01:09" or URL-encoded
-        try:
-            return datetime.fromisoformat(s.replace("T"," ").split(".")[0])
-        except Exception:
-            return None
-
-    def _infer_symbol_from_referrer():
-        import re
-        ref = request.headers.get("Referer") or ""
-        # expects .../chart/HPQ or .../chart/HPQ?ts=...
-        m = re.search(r"/chart/([A-Za-z\.\-_]{1,12})", ref)
-        return (m.group(1).upper() if m else "")
-
-    symbol = (request.args.get("symbol") or "").strip().upper()
-    if not symbol:
-        symbol = _infer_symbol_from_referrer()
-
-    ts      = _parse_dt(request.args.get("ts"))
-    buy_ts  = _parse_dt(request.args.get("buy_ts"))
-    sell_ts = _parse_dt(request.args.get("sell_ts"))
-
-    # If still missing, return a small error PNG (do NOT hard-crash the page)
-    if not symbol:
-        try:
-            import matplotlib
-            matplotlib.use("Agg")
-            import matplotlib.pyplot as plt
-
-            fig = plt.figure(figsize=(10, 2.2), dpi=150)
-            fig.patch.set_facecolor("#0b0b0b")
-            ax = fig.add_subplot(111)
-            ax.set_facecolor("#0b0b0b")
-            ax.axis("off")
-            ax.text(0.5, 0.62, "Trade Review chart error", ha="center", va="center", color="white", fontsize=14)
-            ax.text(0.5, 0.35, "Missing symbol (expected ?symbol=XYZ or referrer /chart/XYZ)", ha="center", va="center", color="#bbbbbb", fontsize=11)
-            buf = BytesIO()
-            fig.savefig(buf, format="png", bbox_inches="tight")
-            plt.close(fig)
-            buf.seek(0)
-            return send_file(buf, mimetype="image/png", max_age=0)
-        except Exception:
-            return make_response("Missing symbol", 400)
-
-    try:
-        import pandas as pd
-        import yfinance as yf
-        import pytz
-
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-
-        # Pull 1d 1m bars (Yahoo intraday is allowed)
-        df = yf.download(symbol, period="1d", interval="1m", progress=False, auto_adjust=True)
-        if df is None or df.empty:
-            raise RuntimeError("No intraday bars returned")
-
-        # Normalize index to US/Eastern if possible
-        try:
-            et = pytz.timezone("America/New_York")
-            if df.index.tz is None:
-                # yfinance often gives naive index; treat as UTC then convert
-                df.index = pd.to_datetime(df.index).tz_localize("UTC").tz_convert(et)
-            else:
-                df.index = df.index.tz_convert(et)
-        except Exception:
-            # fallback: keep as-is
-            pass
-
-        # Focus window: around ts if provided (?60 minutes), else full day
-        if ts:
-            # interpret ts as ET naive -> localize ET if df index is tz-aware
-            try:
-                et = pytz.timezone("America/New_York")
-                ts_et = et.localize(ts) if df.index.tz is not None and ts.tzinfo is None else ts
-                lo = ts_et - pd.Timedelta(minutes=60)
-                hi = ts_et + pd.Timedelta(minutes=60)
-                dfw = df.loc[(df.index >= lo) & (df.index <= hi)].copy()
-                if dfw.empty:
-                    dfw = df.copy()
-            except Exception:
-                dfw = df.copy()
-        else:
-            dfw = df.copy()
-
-        close = dfw["Close"]
-
-        # Build chart
-        fig = plt.figure(figsize=(12, 3.2), dpi=140)
-        fig.patch.set_facecolor("#0b0b0b")
-        ax = fig.add_subplot(111)
-        ax.set_facecolor("#0b0b0b")
-
-        ax.plot(close.index, close.values, linewidth=2)
-
-        # Shade held period if buy_ts and sell_ts exist (best effort)
-        def _to_index_tz(dt):
-            if dt is None:
-                return None
-            try:
-                import pandas as pd
-                if hasattr(close.index, "tz") and close.index.tz is not None and getattr(dt, "tzinfo", None) is None:
-                    import pytz
-                    et = pytz.timezone("America/New_York")
-                    return et.localize(dt)
-            except Exception:
-                pass
-            return dt
-
-        buy_t  = _to_index_tz(buy_ts)
-        sell_t = _to_index_tz(sell_ts)
-
-        if buy_t and sell_t:
-            # green for win, red for loss (based on closest bar prices)
-            try:
-                import numpy as np
-                # find nearest bar values
-                b_idx = close.index.get_indexer([buy_t], method="nearest")[0]
-                s_idx = close.index.get_indexer([sell_t], method="nearest")[0]
-                b_px = float(close.iloc[b_idx])
-                s_px = float(close.iloc[s_idx])
-                win = (s_px >= b_px)
-            except Exception:
-                win = True
-            ax.axvspan(buy_t, sell_t, alpha=0.18 if win else 0.22)
-
-        # BUY/SELL vertical markers
-        if buy_t:
-            ax.axvline(buy_t, linewidth=2)
-            ax.text(buy_t, close.min(), " BUY", va="bottom", ha="left", fontsize=10)
-        if sell_t:
-            ax.axvline(sell_t, linewidth=2)
-            ax.text(sell_t, close.min(), " SELL", va="bottom", ha="left", fontsize=10)
-
-        # Optional "ts" marker (yellow-ish label); does NOT break anything if absent
-        if ts:
-            t = _to_index_tz(ts)
-            if t:
-                ax.axvline(t, linewidth=2, alpha=0.8)
-                ax.text(t, close.max(), " ALERT", va="top", ha="left", fontsize=10)
-
-        # Styling
-        ax.tick_params(colors="#bbbbbb")
-        for spine in ax.spines.values():
-            spine.set_color("#333333")
-        ax.grid(True, alpha=0.12)
-        ax.set_title(symbol, color="#dddddd", fontsize=14)
-
-        buf = BytesIO()
-        fig.savefig(buf, format="png", bbox_inches="tight")
-        plt.close(fig)
-        buf.seek(0)
-        return send_file(buf, mimetype="image/png", max_age=0)
-
-    except Exception:
-        # Return a readable PNG error (and log traceback to console)
-        traceback.print_exc()
-        try:
-            import matplotlib
-            matplotlib.use("Agg")
-            import matplotlib.pyplot as plt
-            from io import BytesIO
-
-            fig = plt.figure(figsize=(10, 2.2), dpi=150)
-            fig.patch.set_facecolor("#0b0b0b")
-            ax = fig.add_subplot(111)
-            ax.set_facecolor("#0b0b0b")
-            ax.axis("off")
-            ax.text(0.5, 0.62, f"{symbol}", ha="center", va="center", color="white", fontsize=16)
-            ax.text(0.5, 0.35, "Exception building chart (see console logs)", ha="center", va="center", color="#bbbbbb", fontsize=11)
-            buf = BytesIO()
-            fig.savefig(buf, format="png", bbox_inches="tight")
-            plt.close(fig)
-            buf.seek(0)
-            return send_file(buf, mimetype="image/png", max_age=0)
-        except Exception:
-            return make_response("Chart exception", 500)
-
-
-# =========================
-# FORCE ROUTES (stability)
-# =========================
-# inserted: 2026-01-31 00:06:59
-
-@app.route("/__whoami")
-def __whoami():
-    # Tiny proof route: shows which file+pid is actually serving, and what trade_review routes exist.
-    import os as _os
-    try:
-        rules = []
-        for r in app.url_map.iter_rules():
-            if "trade_review" in (r.rule or ""):
-                rules.append(r.rule)
-        rules = sorted(set(rules))
-    except Exception as e:
-        rules = [f"ERROR collecting rules: {e}"]
-
-    return {
-        "pid": _os.getpid(),
-        "file": __file__,
-        "has_trade_review_routes": any("trade_review" in (x or "") for x in rules),
-        "trade_review_rules": rules,
-        "sample_rules": sorted({r.rule for r in app.url_map.iter_rules()})[:50],
-    }
 
 if __name__ == "__main__":
     import os
