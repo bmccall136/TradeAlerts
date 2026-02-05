@@ -4527,10 +4527,6 @@ def trade_review():
             except Exception:
                 from datetime import datetime
                 ymd_local = datetime.now().strftime('%Y-%m-%d')
-        # --- safe local alias for buy-anchor helper ---
-        _best_buy_anchor_fn = locals().get('_best_buy_anchor_from_logs')
-        if not callable(_best_buy_anchor_fn):
-            _best_buy_anchor_fn = None
         buy_anchor_dt = _best_buy_anchor_fn(sym, sell_anchor_dt, LOG_DIR)
     if buy_anchor_dt is None:
         buy_anchor_dt = sell_anchor_dt

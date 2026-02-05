@@ -67,9 +67,25 @@
   .mm-section-title { font-size:18px; font-weight:800; margin-bottom:6px; }
   .mm-subtitle { margin-top:0; margin-bottom:10px; }
   .mm-divider { height:1px; background:#222531; margin: 14px 0; }
+
+  /* Other Settings: make left-column labels readable */
+  #otherCard .mm-grid label {
+    opacity: 0.95;
+    color: #d7dbe6;
+    font-weight: 700;
+  }
+  #otherCard .mm-muted { opacity: 0.9; }
+
+  /* Other Settings: match card tone + checkbox accent */
+  #otherCard { background: rgba(17,21,28,0.78); }
+  #otherCard .card-body { background: transparent; }
+  #otherCard .mm-section-title { color: #e9edf6; }
+  #otherCard input[type="checkbox"] { accent-color: #f5d400; }
+  /* Some browsers still draw blue focus ring; neutralize */
+  #otherCard input[type="checkbox"]:focus { outline: none; box-shadow: 0 0 0 2px rgba(245,212,0,0.25); }
 </style>
 
-<div id="settings-page" class="container-fluid" style="max-width:1100px;">
+<div id="settings-page" class="container-fluid" style="max-width:1100px;margin-left:auto;margin-right:auto;">
   <div class="d-flex align-items-center justify-content-between" style="margin:18px 0 10px 0;">
     <div style="font-size:22px;font-weight:800;">Settings</div>
     <div class="d-flex align-items-center" style="gap:10px;">
@@ -96,25 +112,7 @@
       </div>
     </div>
   </div>
-
-  <div class="card mm-card mb-3">
-    <div class="card-body">
-      <div class="mm-section-title">Signal Scoreboard</div>
-      <div class="mm-muted mm-subtitle">Counts increment even if disabled. Toggles affect eligibility only.</div>
-
-      <div class="d-flex align-items-center" style="gap:10px;margin-bottom:10px;">
-        <div style="min-width:60px;opacity:.85;">Bucket</div>
-        <select id="bucketSel" class="form-select form-select-sm" style="width:160px;">
-          <option value="today" selected>TODAY</option>
-          <option value="7d">7D</option>
-          <option value="30d">30D</option>
-          <option value="all">ALL</option>
-        </select>
-        <div id="bucketHint" class="mm-muted"></div>
-        <div id="scoreErr" style="display:none;color:#ff6b6b;font-weight:700;"></div>
-      </div>
-      <div id="scoreboardCards" class="mm-cards"></div>
-    </div>
+</div>
   </div>
 
 
@@ -124,20 +122,11 @@
       <div class="mm-section-title">Sell Modules</div>
       <div class="mm-muted mm-subtitle">Each section can be expanded/collapsed. Enable controls eligibility; settings live inside each card.</div>
       <div id="indicatorCards" class="mm-cards"></div>
-
-      <div class="mm-divider"></div>
-
-      <div class="mm-row">
-        <div class="mm-muted">Bottom Save (same as top)</div>
-        <div style="display:flex; align-items:center; gap:10px;">
-          <button id="saveBtn" class="btn btn-warning">Save</button>
-          <div id="saveMsg" class="mm-muted"></div>
-        </div>
-      </div>
+</div>
     </div>
   </div>
 
-  <div id="otherCard" class="card mm-card mb-3" style="display:none;">
+  <div id="otherCard" class="card mm-card mb-3" style="display:none; max-width:1100px; margin-left:auto; margin-right:auto;">
     <div class="card-body">
       <div class="mm-section-title">Other Settings</div>
       <div class="mm-muted mm-subtitle">Everything that is not an indicator lives here.</div>
@@ -515,14 +504,9 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     const profileSel = byId("profileSel");
-    const bucketSel = byId("bucketSel");
-    if (profileSel) profileSel.onchange = refreshAll;
-    if (bucketSel) bucketSel.onchange = refreshAll;
-
-    const saveBtn = byId("saveBtn");
-    const saveBtnTop = byId("saveBtnTop");
-    if (saveBtn) saveBtn.onclick = doSave;
-    if (saveBtnTop) saveBtnTop.onclick = doSave;
+if (profileSel) profileSel.onchange = refreshAll;
+const saveBtnTop = byId("saveBtnTop");
+if (saveBtnTop) saveBtnTop.onclick = doSave;
 
     refreshAll();
   });

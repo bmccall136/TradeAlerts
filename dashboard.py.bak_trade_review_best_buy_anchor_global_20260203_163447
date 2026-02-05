@@ -4241,84 +4241,28 @@ def trade_review():
         except Exception:
             return None
 
+    def _best_buy_anchor_from_logs(sym, ymd, sell_anchor_dt, logs_dir):
+        try:
+            import csv
+            fp = Path(logs_dir) / ('triggers_' + str(ymd) + '.csv')
+            if not fp.exists(): return None
+            dts = []
+            with fp.open('r', encoding='utf-8', newline='') as f:
+                r = csv.DictReader(f)
+                for row in r:
+                    if (row.get('symbol','') or '').strip().upper() != sym: continue
+                    t = (row.get('time_et') or row.get('ts_et') or row.get('ts_utc') or '').strip()
+                    dt = _dt_from_any(t)
+                    if dt is not None: dts.append(dt)
+            if not dts: return None
+            if sell_anchor_dt is None: return max(dts)
+            le = [d for d in dts if d <= sell_anchor_dt]
+            if le: return max(le)
+            return min(dts, key=lambda d: abs((d - sell_anchor_dt).total_seconds()))
+        except Exception:
+            return None
 
-        # --- guard: ensure buy-anchor helper exists at runtime ---
-        _best_buy_anchor_fn = locals().get("_best_buy_anchor_from_logs") or globals().get("_best_buy_anchor_from_logs")
-        if _best_buy_anchor_fn is None:
-            def _best_buy_anchor_fn(*args, **kwargs):
-                return None
-        # --- end guard ---
-        def _best_buy_anchor_fn(sym, sell_anchor_dt, logs_dir):
-
-            """Find best BUY anchor timestamp by scanning ALL triggers_*.csv for the symbol.
-
-            If sell_anchor_dt exists, prefer the latest <= sell time; otherwise use the latest overall.
-
-            """
-
-            try:
-
-                import csv
-
-                from pathlib import Path
-
-                files = sorted(Path(logs_dir).glob("triggers_*.csv"))
-
-                if not files:
-
-                    return None
-
-
-                dts = []
-
-                for fp in files:
-
-                    try:
-
-                        with fp.open("r", encoding="utf-8", newline="") as f:
-
-                            r = csv.DictReader(f)
-
-                            for row in r:
-
-                                if (row.get("symbol","") or "").strip().upper() != sym:
-
-                                    continue
-
-                                t = (row.get("time_et") or row.get("ts_et") or row.get("ts_utc") or "").strip()
-
-                                dt = _dt_from_any(t)
-
-                                if dt is not None:
-
-                                    dts.append(dt)
-
-                    except Exception:
-
-                        continue
-
-
-                if not dts:
-
-                    return None
-
-
-                # Prefer latest <= sell time (if present); else latest overall.
-
-                if sell_anchor_dt is not None:
-
-                    le = [d for d in dts if d <= sell_anchor_dt]
-
-                    if le:
-
-                        return max(le)
-
-
-                return max(dts)
-
-            except Exception:
-
-                return None
+    # ---- BUY / SELL trigger anchor helpers ----
     def _dt_from_any(s):
         if not s:
             return None
@@ -4527,11 +4471,7 @@ def trade_review():
             except Exception:
                 from datetime import datetime
                 ymd_local = datetime.now().strftime('%Y-%m-%d')
-        # --- safe local alias for buy-anchor helper ---
-        _best_buy_anchor_fn = locals().get('_best_buy_anchor_from_logs')
-        if not callable(_best_buy_anchor_fn):
-            _best_buy_anchor_fn = None
-        buy_anchor_dt = _best_buy_anchor_fn(sym, sell_anchor_dt, LOG_DIR)
+        buy_anchor_dt = _best_buy_anchor_from_logs(sym, ymd_local, sell_anchor_dt, LOG_DIR)
     if buy_anchor_dt is None:
         buy_anchor_dt = sell_anchor_dt
     buy_anchor_str  = buy_anchor_dt.strftime('%Y-%m-%d %H:%M:%S') if buy_anchor_dt else ''

@@ -4241,14 +4241,7 @@ def trade_review():
         except Exception:
             return None
 
-
-        # --- guard: ensure buy-anchor helper exists at runtime ---
-        _best_buy_anchor_fn = locals().get("_best_buy_anchor_from_logs") or globals().get("_best_buy_anchor_from_logs")
-        if _best_buy_anchor_fn is None:
-            def _best_buy_anchor_fn(*args, **kwargs):
-                return None
-        # --- end guard ---
-        def _best_buy_anchor_fn(sym, sell_anchor_dt, logs_dir):
+        def _best_buy_anchor_from_logs(sym, sell_anchor_dt, logs_dir):
 
             """Find best BUY anchor timestamp by scanning ALL triggers_*.csv for the symbol.
 
@@ -4527,11 +4520,7 @@ def trade_review():
             except Exception:
                 from datetime import datetime
                 ymd_local = datetime.now().strftime('%Y-%m-%d')
-        # --- safe local alias for buy-anchor helper ---
-        _best_buy_anchor_fn = locals().get('_best_buy_anchor_from_logs')
-        if not callable(_best_buy_anchor_fn):
-            _best_buy_anchor_fn = None
-        buy_anchor_dt = _best_buy_anchor_fn(sym, sell_anchor_dt, LOG_DIR)
+        buy_anchor_dt = _best_buy_anchor_from_logs(sym, sell_anchor_dt, LOG_DIR)
     if buy_anchor_dt is None:
         buy_anchor_dt = sell_anchor_dt
     buy_anchor_str  = buy_anchor_dt.strftime('%Y-%m-%d %H:%M:%S') if buy_anchor_dt else ''
