@@ -1,4 +1,3 @@
-
 {% extends "layout.html" %}
 {% block content %}
 <style>
@@ -81,11 +80,32 @@
   #otherCard .card-body { background: transparent; }
   #otherCard .mm-section-title { color: #e9edf6; }
   #otherCard input[type="checkbox"] { accent-color: #f5d400; }
-  /* Some browsers still draw blue focus ring; neutralize */
   #otherCard input[type="checkbox"]:focus { outline: none; box-shadow: 0 0 0 2px rgba(245,212,0,0.25); }
+
+  /* Checkbox accent everywhere on this page */
+  .mm-card input[type="checkbox"],
+  .mm-stickybar input[type="checkbox"],
+  .mm-ind input[type="checkbox"],
+  .mm-gate-pill input[type="checkbox"] { accent-color: #f5d400; }
+  .mm-card input[type="checkbox"]:focus,
+  .mm-stickybar input[type="checkbox"]:focus,
+  .mm-ind input[type="checkbox"]:focus,
+  .mm-gate-pill input[type="checkbox"]:focus { outline: none; box-shadow: 0 0 0 2px rgba(245,212,0,0.25); }
+
+  /* SELL: enforce same max-width + readable text as BUY */
+  #settings-page { max-width: 1100px !important; margin-left:auto !important; margin-right:auto !important; }
+  body, #settings-page { color: #e9edf6; }
+  .mm-card, details.mm-ind { color: #e9edf6; }
+  .mm-section-title { color:#e9edf6; }
+  .mm-grid label { opacity: 0.95; color: #d7dbe6; font-weight: 700; }
+  .mm-muted { opacity: 0.9; }
+  #settings-page input[type="checkbox"] { accent-color: #f5d400; }
+  #settings-page input[type="checkbox"]:focus { outline:none; box-shadow: 0 0 0 2px rgba(245,212,0,0.25); }
 </style>
 
+<!-- IMPORTANT: keep EVERYTHING inside this wrapper -->
 <div id="settings-page" class="container-fluid" style="max-width:1100px;margin-left:auto;margin-right:auto;">
+
   <div class="d-flex align-items-center justify-content-between" style="margin:18px 0 10px 0;">
     <div style="font-size:22px;font-weight:800;">Settings</div>
     <div class="d-flex align-items-center" style="gap:10px;">
@@ -112,28 +132,24 @@
       </div>
     </div>
   </div>
-</div>
-  </div>
-
-
 
   <div class="card mm-card mb-3">
     <div class="card-body">
       <div class="mm-section-title">Sell Modules</div>
       <div class="mm-muted mm-subtitle">Each section can be expanded/collapsed. Enable controls eligibility; settings live inside each card.</div>
       <div id="indicatorCards" class="mm-cards"></div>
-</div>
     </div>
   </div>
 
-  <div id="otherCard" class="card mm-card mb-3" style="display:none; max-width:1100px; margin-left:auto; margin-right:auto;">
+  <div id="otherCard" class="card mm-card mb-3" style="display:none;">
     <div class="card-body">
       <div class="mm-section-title">Other Settings</div>
       <div class="mm-muted mm-subtitle">Everything that is not an indicator lives here.</div>
       <div id="otherFields" class="mm-grid"></div>
     </div>
   </div>
-</div>
+
+</div> <!-- /#settings-page -->
 
 <script>
   window.__MM_GROUP__ = "sell";
@@ -486,27 +502,24 @@
 
   async function doSave(){
     const prof = normProfile(byId("profileSel")?.value || "day");
-    const msg1 = byId("saveMsg");
     const msg2 = byId("saveMsgTop");
-    if (msg1) msg1.textContent = "Saving...";
     if (msg2) msg2.textContent = "Saving...";
     try {
       await apiSave(prof, SETTINGS);
-      if (msg1) msg1.textContent = "Saved.";
       if (msg2) msg2.textContent = "Saved.";
-      setTimeout(() => { if (msg1) msg1.textContent = ""; if (msg2) msg2.textContent = ""; }, 1500);
+      setTimeout(() => { if (msg2) msg2.textContent = ""; }, 1500);
     } catch(e) {
       console.error(e);
-      if (msg1) msg1.textContent = "Save failed.";
       if (msg2) msg2.textContent = "Save failed.";
     }
   }
 
   document.addEventListener("DOMContentLoaded", () => {
     const profileSel = byId("profileSel");
-if (profileSel) profileSel.onchange = refreshAll;
-const saveBtnTop = byId("saveBtnTop");
-if (saveBtnTop) saveBtnTop.onclick = doSave;
+    if (profileSel) profileSel.onchange = refreshAll;
+
+    const saveBtnTop = byId("saveBtnTop");
+    if (saveBtnTop) saveBtnTop.onclick = doSave;
 
     refreshAll();
   });

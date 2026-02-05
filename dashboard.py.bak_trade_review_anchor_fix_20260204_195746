@@ -4260,33 +4260,6 @@ def trade_review():
 
                 import csv
 
-    # --- BUY anchor fix (open_date == close_date) ---
-    # If realized_trades open_date == close_date, anchor BUY triggers using latest triggers_YYYY-MM-DD.csv row for that symbol.
-    def _tr__parse_dt_loose(s):
-        try:
-            return datetime.strptime(str(s).strip(), "%Y-%m-%d %H:%M:%S")
-        except Exception:
-            return None
-
-    def _tr__best_buy_ts_from_triggers(sym, ymd, log_dir):
-        try:
-            fp = Path(log_dir) / f"triggers_{ymd}.csv"
-            if not fp.exists():
-                return None
-            best = None
-            with fp.open("r", encoding="utf-8", newline="") as f:
-                r = csv.DictReader(f)
-                for row in r:
-                    if (row.get("symbol","").strip().upper() != sym):
-                        continue
-                    ts = (row.get("time_et") or row.get("ts_et") or row.get("ts_utc") or "").strip()
-                    dtv = _tr__parse_dt_loose(ts)
-                    if dtv and (best is None or dtv > best):
-                        best = dtv
-            return best
-        except Exception:
-            return None
-
                 from pathlib import Path
 
                 files = sorted(Path(logs_dir).glob("triggers_*.csv"))
