@@ -1543,7 +1543,7 @@ def _build_holdings_from_positions(rows: list[dict]) -> tuple[list[dict], float]
             {
                 "symbol": sym,
                 "name": r.get("name") or "",
-                "opened_et": (_fmt_opened_et(r.get("opened_utc"))),
+                "opened_et": (((opened_map_et if isinstance(opened_map_et, dict) else {}).get(str(sym).upper(), "")) or _fmt_opened_et(r.get("opened_utc"))),
                 "last_price": float(round(last, 4)) if last else 0.0,
                 "qty": qty,
                 "price_paid": float(round(price_paid, 4)) if price_paid else 0.0,
