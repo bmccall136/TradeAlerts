@@ -43,11 +43,12 @@
   "range_pct": 3.5,
   "realized_since": "2025-08-22",
   "realized_tz": "America/New_York",
-  "require_sma20": false,
+  "require_sma20": true,
   "required_filters": [
     "macd",
     "vwap",
-    "vol"
+    "vol",
+    "rsi"
   ],
   "required_signals_min": 2,
   "rsi_len": 10,
@@ -72,7 +73,7 @@
   "trail_tiers": [],
   "trailing_stop_pct": 0,
   "use_trailing_stop": false,
-  "vol_multiplier": 1.5,
+  "vol_multiplier": 2,
   "vol_on": true,
   "vwap_on": true,
   "vwap_threshold": 0.1

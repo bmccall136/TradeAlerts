@@ -437,10 +437,12 @@ def _realized_summary_from_live_db(db_path):
                 # use the same cursor/connection if available
                 cur = locals().get('cur')
                 if cur is not None:
-                    cur.execute("""SELECT close_date, gain, cost_basis, total_cost, proceeds
-               FROM realized_trades
-               WHERE close_date >= ? AND source_file = 'ETRADE_GAINS_LOSSES_CSV'""",
-            (year_start.strftime("%Y-%m-%d %H:%M:%S"),))
+                    cur.execute(
+                        """SELECT close_date, gain, cost_basis, total_cost, proceeds
+                           FROM realized_trades
+                           WHERE close_date >= ?""",
+                        (year_start.strftime('%Y-%m-%d %H:%M:%S'),)
+                    )
                     year_rows = cur.fetchall()
                     _bucket = locals().get('_bucket')
                     if callable(_bucket):

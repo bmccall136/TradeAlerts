@@ -425,30 +425,7 @@ def _realized_summary_from_live_db(db_path):
                     denom += max(pr - g, 0.0)
 
             pct = (pnl / denom * 100.0) if denom > 0 else 0.0
-            out = {"pnl": round(pnl, 2), "pct": round(pct, 2)}
-            
-            # --- TRUE YTD FIX: recompute YEAR from Jan 1 (do not reuse month/week slice) ---
-            try:
-                # prefer existing now_utc if present; else define
-                now_utc = locals().get('now_utc')
-                if now_utc is None:
-                    now_utc = dt.datetime.utcnow()
-                year_start = now_utc.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-                # use the same cursor/connection if available
-                cur = locals().get('cur')
-                if cur is not None:
-                    cur.execute("""SELECT close_date, gain, cost_basis, total_cost, proceeds
-               FROM realized_trades
-               WHERE close_date >= ? AND source_file = 'ETRADE_GAINS_LOSSES_CSV'""",
-            (year_start.strftime("%Y-%m-%d %H:%M:%S"),))
-                    year_rows = cur.fetchall()
-                    _bucket = locals().get('_bucket')
-                    if callable(_bucket):
-                        out['year'] = _bucket(year_rows, year_start, now_utc)
-            except Exception:
-                pass
-            
-            return out
+            return {"pnl": round(pnl, 2), "pct": round(pct, 2)}
         con = sqlite3.connect(db_path)
         cur = con.cursor()
 
@@ -1588,18 +1565,9 @@ def _sync_realized_from_trades(trades: list, db_path: str) -> None:
                 open_date TEXT,
                 close_date TEXT,
                 gain REAL,
-                gain_pct REAL,
-                price_sold REAL,
-                cost_share REAL,
-                cost_basis REAL,
-                proceeds REAL,
-                total_cost REAL,
-                deferred_loss REAL,
-                term TEXT,
-                lot_selection TEXT,
-                source_file TEXT,
-                imported_at TEXT
-            )""")
+                price_sold REAL
+            )
+        """)
 
         cols = [r[1] for r in cur.execute("PRAGMA table_info(realized_trades)").fetchall()]
         colset = set(cols)
@@ -1607,12 +1575,10 @@ def _sync_realized_from_trades(trades: list, db_path: str) -> None:
         # Insert only columns that exist in THIS DB.
         wanted = [
             "symbol","action","qty","open_date","close_date",
-            "gain","gain_pct","price_sold",
-            # extended economics / provenance (if present)
-            "cost_share","cost_basis","proceeds","total_cost",
-            "deferred_loss","term","lot_selection","source_file","imported_at",
-            # synonym columns some older writers used (if present)
-            "price_paid","price_share"
+            "gain","price_sold",
+            # optional extended columns (if present)
+            "cost_share","proceeds","total_cost",
+            "price_paid","price_share","price_sold"
         ]
         insert_cols = [c for c in wanted if c in colset]
         if not insert_cols:
