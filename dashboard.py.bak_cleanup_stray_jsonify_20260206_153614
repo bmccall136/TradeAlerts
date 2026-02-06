@@ -962,11 +962,6 @@ def always_json(f):
             return out
         except Exception as e:
             log.exception("always_json wrapped error: %s", e)
-            return jsonify({"ok": False, "error": str(e)}), 500
-
-    return _wrap
-
-
 def _safe_float(x: Any, default: float = 0.0) -> float:
     try:
         if x is None:
@@ -1818,34 +1813,9 @@ def etrade_reconnect():
         exe = sys.executable
         script = os.path.join(ROOT, "auth_shortcut.py")
         if not os.path.exists(script):
-            return jsonify({"ok": False, "error": "auth_shortcut.py not found"}), 404
-
-        if os.name == "nt":
-            assert script.endswith("auth_shortcut.py"), "Reconnect must launch auth_shortcut.py"
-            # Windows: spawn new console running auth_shortcut.py (PIN flow)
-            subprocess.Popen(
-                ["cmd.exe", "/c", "start", "", exe, "-u", script],
-                cwd=str(ROOT),
-                creationflags=0x00000008,  # CREATE_NEW_CONSOLE
-            )
-        else:
-            # *nix: background thread
-            threading.Thread(
-                target=lambda: os.system(f"{exe} -u {script} &"),
-                daemon=True,
-            ).start()
-
-        return jsonify({"ok": True})
+            return {"ok": False, "error": "auth_shortcut.py not found"}
     except Exception as e:
-        log.exception("etrade_reconnect failed: %s", e)
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-# -----------------------------------------------------------------------------#
-# Checkpoint trigger
-# -----------------------------------------------------------------------------#
-
-
-CHECKPOINT_BAT = r"C:\TradeAlerts\checkpoint.bat"  # keep your path if it's different
+        return {"ok": False, "error": str(e)}
 
 @app.route("/checkpoint", methods=["GET"])
 @always_json
@@ -3608,41 +3578,44 @@ def api_analytics_day():
 
     # REALIZED_BUCKETS__DAY_WEEK_MONTH_YEAR
     try:
-        realized = _realized_summary_from_live_db(db_path)
+        realized = _realized_summary_from_live_db(DB_PATH if "DB_PATH" in globals() else LIVE_DB)
     except Exception:
         realized = {"day":{"pnl":0.0,"pct":0.0},"week":{"pnl":0.0,"pct":0.0},"month":{"pnl":0.0,"pct":0.0},"year":{"pnl":0.0,"pct":0.0}}
 
-    return jsonify({
-        "ok": True,
-        "date_et": date_et,
-        "buy": {
-            "rows": len(buys),
-            "items": buys,
-            "top_symbols": [],
-            "top_combos": []
-        },
-        "sell": {
-            "rows": len(sells),
-            "items": sells,
-            "top_symbols": [],
-            "top_combos": []
-        },
-        "realized": realized,
-        "errors": errors
-    })
 
+# ------------------------------------------------------------
+# Alias route: frontend expects /api/analytics?bucket=...
+# ------------------------------------------------------------
+
+    # Final safety-net: never return None
+    from flask import jsonify
+    return jsonify({
+        'buy':  {'rows': 0, 'top_symbols': [], 'top_combos': [], 'items': []},
+        'sell': {'rows': 0, 'top_symbols': [], 'top_combos': [], 'items': []},
+        'ok': True,
+    })
 @app.route("/api/analytics")
+    # Final safety-net: never return None
+    return jsonify({
+        'buy':  {'rows': 0, 'top_symbols': [], 'top_combos': [], 'items': []},
+        'sell': {'rows': 0, 'top_symbols': [], 'top_combos': [], 'items': []},
+        'ok': True,
+    })
 def api_analytics():
     bucket = (request.args.get("bucket") or "today").strip().lower()
 
+    # Normalize common names
     if bucket in ("today", "tod"):
         return api_analytics_today()
 
+    # Yesterday / day selection (let existing day handler handle date/day args)
+    # Frontend may pass bucket=yesterday; we map that to day handler.
     if bucket in ("yesterday", "day", "date"):
+        # Pass through original query string (date=YYYY-MM-DD etc.) untouched
         return api_analytics_day()
 
+    # Fallback: treat unknown bucket as today (keeps UI from hard-failing)
     return api_analytics_today()
-
 
 @app.route("/api/analytics/today")
 def api_analytics_today():
@@ -3961,57 +3934,6 @@ def api_trade_review():
     sell_path = _tr__latest_log_path("sell_triggers")
 
     if not buy_path and not sell_path:
-        return jsonify({"ok": False, "realized": (lambda r: (r if isinstance(r, dict) else {}))(
-                (lambda r: (r | {"year": r.get("year") or {"pnl": 0.0, "pct": 0.0}}) if hasattr(r, "get") else {"year": {"pnl": 0.0, "pct": 0.0}})(realized)
-            ),
-            
-            "error": "No logs found under .\\logs (triggers_*.csv / sell_triggers_*.csv)."}), 200
-
-    buy_rows = _tr__read_csv_rows(buy_path) if buy_path else []
-    sell_rows = _tr__read_csv_rows(sell_path) if sell_path else []
-
-    # pick events
-    recent_buys = _tr__pick_last_events(buy_rows, want_action="BUY", want_event="ORDER_PLACED", limit=limit)
-
-    # If trigger logs don't include BUY ORDER_PLACED events, fall back to position_opened (today)
-    if not recent_buys:
-        try:
-            from datetime import datetime as _dt
-            from zoneinfo import ZoneInfo as _ZI
-            _ET = _ZI("America/New_York")
-            _con = sqlite3.connect(LIVE_DB)
-            _con.row_factory = sqlite3.Row
-            _cur = _con.cursor()
-            _rows = _cur.execute(
-                "SELECT symbol, opened_at_et, opened_epoch FROM position_opened "
-                "WHERE opened_at_et IS NOT NULL AND date(opened_at_et)=date('now','localtime') "
-                "ORDER BY opened_epoch DESC LIMIT ?",
-                (limit,)
-            ).fetchall()
-            _con.close()
-    
-            # Build pseudo trigger-like rows so build_buy_item() can render cards
-            _pseudo = []
-            for r in _rows:
-                sym = (r["symbol"] or "").strip().upper()
-                oat = (r["opened_at_et"] or "").strip()
-                ts_et = None
-                if oat:
-                    try:
-                        d = _dt.strptime(oat, "%Y-%m-%d %H:%M:%S").replace(tzinfo=_ET)
-                        ts_et = d.isoformat()
-                    except Exception:
-                        ts_et = oat.replace(" ", "T")
-                _pseudo.append({
-                    "symbol": sym,
-                    "ts_et": ts_et,
-                    "action": "BUY",
-                    "event": "OPENED_DB",
-                    "qty": "",
-                    "reason": "position_opened",
-                    "entry_price": "",
-                    "last_price": ""
-                })
     
             recent_buys = _pseudo
         except Exception:
@@ -4127,8 +4049,6 @@ def api_trade_review():
     buys_out = [build_buy_item(r) for r in recent_buys]
     sells_out = [build_sell_item(r) for r in recent_sells]
 
-    return jsonify({"ok": True, "buy_log": buy_path, "sell_log": sell_path, "buys": buys_out, "sells": sells_out}), 200
-
 @app.route("/chart/<symbol>")
 def chart_view(symbol):
     # Minimal context so trade_review_single.html doesn't crash.
@@ -4175,17 +4095,6 @@ def __fingerprint():
         routes = [f"ERROR reading url_map: {e}"]
 
     fp = "DASHBOARD_FINGERPRINT 2026-02-01 patched"
-    return jsonify({
-        "fingerprint": fp,
-        "file": __file__,
-        "cwd": os.getcwd(),
-        "mtime": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(os.path.getmtime(__file__))),
-        "has_scoreboard_route": ("/api/settings/scoreboard" in routes),
-        "has_whereami_route": ("/__whereami" in routes),
-        "route_count": len(routes),
-    }), 200
-
-
 @app.route("/analytics/data")
 def analytics_data():
     # compat: analytics page JS expects /analytics/data
@@ -4193,24 +4102,6 @@ def analytics_data():
         return api_analytics_today()
     except Exception as e:
         from flask import jsonify
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-# =========================
-# SETTINGS ROUTES (ui -> json)
-# =========================
-# inserted: 2026-01-31 14:18:01
-
-from flask import request, jsonify, render_template
-
-# Only 4 files: BUY day/swing + SELL day/swing
-SETTINGS_FILES = {
-    ("buy",  "day"):  r"C:\TradeAlerts\live_settings_day.json",
-    ("buy",  "swing"):r"C:\TradeAlerts\live_settings_swing.json",
-    ("sell", "day"):  r"C:\TradeAlerts\sell_guard_settings_day.json",
-    ("sell", "swing"):r"C:\TradeAlerts\sell_guard_settings_swing.json",
-}
-
 def _settings_key():
     group = (request.args.get("group") or "").strip().lower()
     profile = (request.args.get("profile") or "").strip().lower()
@@ -4275,38 +4166,11 @@ def api_settings_load():
     group, profile = _settings_key()
     path = _settings_path(group, profile)
     if not path:
-        return jsonify({"ok": False, "error": f"Unknown group/profile: {group}/{profile}"}), 400
-    data, errs = _read_json(path)
-    return jsonify({"ok": True, "group": group, "profile": profile, "path": path, "data": data, "errors": errs})
-
 @app.route("/api/settings/save", methods=["POST"])
 def api_settings_save():
     group, profile = _settings_key()
     path = _settings_path(group, profile)
     if not path:
-        return jsonify({"ok": False, "error": f"Unknown group/profile: {group}/{profile}"}), 400
-
-    payload = request.get_json(silent=True) or {}
-
-    # allow either raw object or {data: {...}}
-    data = payload.get("data") if isinstance(payload, dict) and "data" in payload else payload
-    if not isinstance(data, dict):
-        return jsonify({"ok": False, "error": "Body must be a JSON object (or {data: object})"}), 400
-
-    ok, err = _write_json(path, data)
-    if not ok:
-        return jsonify({"ok": False, "error": f"Write failed: {err}", "path": path}), 500
-
-    return jsonify({"ok": True, "group": group, "profile": profile, "path": path})
-
-
-# =========================
-
-
-
-# =========================
-# Settings Scoreboard
-# =========================
 @app.route("/api/settings/scoreboard")
 def api_settings_scoreboard():
     """
@@ -4427,17 +4291,6 @@ def api_settings_scoreboard():
         counts_out.setdefault("ADX", counts_out["adx"])
     # ---- END ALIASES ----
 
-    return jsonify({
-        "ok": True,
-        "bucket": bucket,
-        "counts": counts_out,
-        "debug_db_path": db_path,
-        "debug_total_rows": debug_total,
-        "debug_rows_after_cutoff": debug_after,
-        "debug_min_ts": debug_min,
-        "debug_max_ts": debug_max,
-        "generated_at": datetime.utcnow().isoformat() + "Z",
-    })
 # =========================
 # End Settings Scoreboard
 # =========================
@@ -4456,18 +4309,6 @@ def api_settings_scoreboard():
 
 @app.route("/healthz")
 def healthz():
-    return jsonify({"ok": True})
-# =========================
-# End Settings Scoreboard + Health
-# =========================
-
-
-
-
-# =========================
-# Trade Review Routes (moved to bottom)
-# =========================
-
 @app.route("/trade_review")
 def trade_review():
     """

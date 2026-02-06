@@ -3608,41 +3608,9 @@ def api_analytics_day():
 
     # REALIZED_BUCKETS__DAY_WEEK_MONTH_YEAR
     try:
-        realized = _realized_summary_from_live_db(db_path)
+        realized = _realized_summary_from_live_db(DB_PATH if "DB_PATH" in globals() else LIVE_DB)
     except Exception:
         realized = {"day":{"pnl":0.0,"pct":0.0},"week":{"pnl":0.0,"pct":0.0},"month":{"pnl":0.0,"pct":0.0},"year":{"pnl":0.0,"pct":0.0}}
-
-    return jsonify({
-        "ok": True,
-        "date_et": date_et,
-        "buy": {
-            "rows": len(buys),
-            "items": buys,
-            "top_symbols": [],
-            "top_combos": []
-        },
-        "sell": {
-            "rows": len(sells),
-            "items": sells,
-            "top_symbols": [],
-            "top_combos": []
-        },
-        "realized": realized,
-        "errors": errors
-    })
-
-@app.route("/api/analytics")
-def api_analytics():
-    bucket = (request.args.get("bucket") or "today").strip().lower()
-
-    if bucket in ("today", "tod"):
-        return api_analytics_today()
-
-    if bucket in ("yesterday", "day", "date"):
-        return api_analytics_day()
-
-    return api_analytics_today()
-
 
 @app.route("/api/analytics/today")
 def api_analytics_today():
