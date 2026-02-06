@@ -144,10 +144,11 @@
       if (box) box.style.display = "none";
     }
 
-    setText("ax-date", d.date_et || dateISO);
+	setText("ax-date", d.date_et || dateISO);
 
-    const buys = d.buys || [];
-    const sells = d.sells || [];
+	// Accept both old + new payload shapes
+	const buys  = (d.buys  || (d.buy  && d.buy.items)  || []);
+	const sells = (d.sells || (d.sell && d.sell.items) || []);
 
     setText("ax-buy-count", buys.length);
     setText("ax-sell-count", sells.length);

@@ -4891,6 +4891,16 @@ def trade_review_symbol(symbol):
 
 @app.route("/trade_review/chart")
 def trade_review_chart():
+    # --- TRV chart deps (guarded so missing wheels never crash dashboard) ---
+    try:
+        import pandas as pd
+        import yfinance as yf
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception as e:
+        from flask import Response
+        return Response(b"", status=204)
     """
     Returns a PNG chart for Trade Review.
 
@@ -4933,9 +4943,6 @@ def trade_review_chart():
     # If still missing, return a small error PNG (do NOT hard-crash the page)
     if not symbol:
         try:
-            import matplotlib
-            matplotlib.use("Agg")
-            import matplotlib.pyplot as plt
 
             fig = plt.figure(figsize=(10, 2.2), dpi=150)
             fig.patch.set_facecolor("#0b0b0b")
@@ -4953,13 +4960,8 @@ def trade_review_chart():
             return make_response("Missing symbol", 400)
 
     try:
-        import pandas as pd
-        import yfinance as yf
-        import pytz
 
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
+        import pytz
 
         # Pull 1d 1m bars (Yahoo intraday is allowed)
         df = yf.download(symbol, period="1d", interval="1m", progress=False, auto_adjust=True)
@@ -5009,7 +5011,7 @@ def trade_review_chart():
             if dt is None:
                 return None
             try:
-                import pandas as pd
+
                 if hasattr(close.index, "tz") and close.index.tz is not None and getattr(dt, "tzinfo", None) is None:
                     import pytz
                     et = pytz.timezone("America/New_York")
@@ -5067,9 +5069,7 @@ def trade_review_chart():
         # Return a readable PNG error (and log traceback to console)
         traceback.print_exc()
         try:
-            import matplotlib
-            matplotlib.use("Agg")
-            import matplotlib.pyplot as plt
+
             from io import BytesIO
 
             fig = plt.figure(figsize=(10, 2.2), dpi=150)
