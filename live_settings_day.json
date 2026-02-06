@@ -43,12 +43,11 @@
   "range_pct": 3.5,
   "realized_since": "2025-08-22",
   "realized_tz": "America/New_York",
-  "require_sma20": true,
+  "require_sma20": false,
   "required_filters": [
     "macd",
     "vwap",
-    "vol",
-    "rsi"
+    "vol"
   ],
   "required_signals_min": 2,
   "rsi_len": 10,
