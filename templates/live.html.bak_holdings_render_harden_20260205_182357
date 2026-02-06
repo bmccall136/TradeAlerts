@@ -145,7 +145,6 @@
         <span id="kpi-r-month">$0.00</span>
         (<span id="kpi-r-month-pct">0.00%</span>)
       </div>
-      <div><strong>Year</strong>: <span id="kpi-r-year">$0.00</span> (<span id="kpi-r-year-pct">0.00%</span>)</div>
     </div>
   </div>
 </div>
@@ -302,73 +301,87 @@
     dot.classList.add(ok ? 'dot-green' : 'dot-red');
   };
 
-  
   const renderHoldings = holdings => {
     const tb = document.querySelector('#holdings-body');
     if (!tb) return;
 
-    try {
-      tb.innerHTML = '';
+    tb.innerHTML = '';
 
-      if (!holdings || !holdings.length) {
-        tb.innerHTML = `<tr><td colspan="12" class="text-muted">No holdings.</td></tr>`;
-        return;
+    if (!holdings || !holdings.length) {
+      tb.innerHTML = `<tr><td colspan="12" class="text-muted">No holdings.</td></tr>`;
+      return;
+    }
+
+    // Force Holdings newest-opened first (Opened ET is YYYY-MM-DD HH:MM so string compare is chronological)
+    holdings = (holdings || []).slice().sort((a,b) => ((b.opened_et || '') + '').localeCompare(((a.opened_et || '') + '')));
+
+
+    for (const h of holdings) {
+      const sym  = (h.symbol || '').toUpperCase();
+      const name = ((h.name || h.full_name || h.company_name || '') + '').trim();
+      if (sym && name) { HOLD_NAME_MAP[sym] = name; }
+      const open = h.opened_et || '—';
+
+      const last  = num(h.last_price);
+      const paid  = num(h.price_paid);
+      const qty   = h.qty ?? 0;
+
+      const dayPL = num(h.day_pl);
+      const dayPP = num(h.day_pl_pct);
+
+      const totPL = num(h.total_pl);
+      const totPP = num(h.total_pl_pct);
+
+      const value = num(h.value);
+
+      const hasNews =
+        (typeof h.has_news === 'boolean' && h.has_news) ||
+        (typeof h.news_count === 'number' && h.news_count > 0) ||
+        (typeof h.newsCount === 'number' && h.newsCount > 0);
+
+      const newsCell = hasNews
+        ? `<button class="btn btn-sm btn-outline-secondary btn-news"
+                   type="button"
+                   title="View news for ${sym}"
+                   onclick="window.open('/news/${sym}', '_blank')">📰</button>`
+        : `<span class="text-muted">—</span>`;
+
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${sym}</td>
+        <td class="text-center hold-name"></td>
+        <td class="text-center hold-opened">${open}</td>
+
+        <td class="text-center hold-last">${Number.isFinite(last) ? money(last) : '—'}</td>
+        <td class="text-center">${qty}</td>
+        <td class="text-center">${Number.isFinite(paid) ? money(paid) : '—'}</td>
+
+        <td class="text-center hold-day-pl">${money(dayPL)}</td>
+        <td class="text-center hold-day-pl-pct">${pct(dayPP)}</td>
+
+        <td class="text-center hold-total-pl">${money(totPL)}</td>
+        <td class="text-center hold-total-pl-pct">${pct(totPP)}</td>
+
+        <td class="text-center">${money(value)}</td>
+        <td class="text-center">${newsCell}</td>
+      `;
+
+      const nameCell = row.querySelector('.hold-name');
+      if (nameCell) {
+        nameCell.textContent = name || sym || '—';
+        nameCell.title = name || sym || '—';
       }
 
-      holdings = (holdings || []).slice().sort((a,b) =>
-        (((b && b.opened_et) ? (''+b.opened_et) : '')).localeCompare((((a && a.opened_et) ? (''+a.opened_et) : '')))
-      );
+      tb.appendChild(row);
 
-      for (const h of holdings) {
-        const sym  = ((h && h.symbol) ? (''+h.symbol) : '').toUpperCase();
-        const name = ('' + ((h && (h.name || h.full_name || h.company_name)) || '')).trim();
-        if (sym && name) { HOLD_NAME_MAP[sym] = name; }
-
-        const open = (h && h.opened_et) ? (''+h.opened_et) : '?';
-
-        const last  = num(h && h.last_price);
-        const paid  = num(h && h.price_paid);
-        const qty   = (h && (h.qty ?? h.quantity)) ?? 0;
-
-        const dayPL   = num(h && h.day_pl);
-        const dayPct  = num(h && h.day_pl_pct);
-        const totPL   = num(h && h.total_pl);
-        const totPct  = num(h && h.total_pl_pct);
-        const value   = num(h && h.value);
-
-        // Safe formatters (in case helpers were edited elsewhere)
-        const fmtUsd = (x) => (Number.isFinite(x) ? ('$' + x.toFixed(2)) : '?');
-        const fmtPct = (x) => (Number.isFinite(x) ? (x.toFixed(2) + '%') : '?');
-        const clsPL  = (x) => (!Number.isFinite(x) ? '' : (x > 0 ? 'text-pos' : (x < 0 ? 'text-neg' : 'text-zero')));
-
-        const row = `
-          <tr>
-            <td class="fw-bold">${sym || '?'}</td>
-            <td class="text-truncate" title="${name.replace(/"/g,'&quot;')}">${name || '?'}</td>
-            <td class="hold-opened">${open}</td>
-            <td class="hold-last">${fmtUsd(last)}</td>
-            <td class="text-center">${qty}</td>
-            <td>${fmtUsd(paid)}</td>
-            <td class="${clsPL(dayPL)}">${fmtUsd(dayPL)}</td>
-            <td class="${clsPL(dayPct)}">${fmtPct(dayPct)}</td>
-            <td class="${clsPL(totPL)}">${fmtUsd(totPL)}</td>
-            <td class="${clsPL(totPct)}">${fmtPct(totPct)}</td>
-            <td>${fmtUsd(value)}</td>
-            <td class="text-center">${(h && h.has_news) ? '??' : ''}</td>
-          </tr>
-        `;
-        tb.insertAdjacentHTML('beforeend', row);
-      }
-
-      console.log("[live] renderHoldings ok:", holdings.length);
-    } catch (e) {
-      console.error("[live] renderHoldings FAILED:", e);
-      try {
-        tb.innerHTML = `<tr><td colspan="12" class="text-danger">Holdings render error (see console)</td></tr>`;
-      } catch (_) {}
+      setColor(row.querySelector('.hold-day-pl'), dayPL);
+      setColor(row.querySelector('.hold-day-pl-pct'), dayPP);
+      setColor(row.querySelector('.hold-total-pl'), totPL);
+      setColor(row.querySelector('.hold-total-pl-pct'), totPP);
     }
   };
-const renderTrades = rows => {
+
+  const renderTrades = rows => {
     const tb = document.getElementById('trades-body');
     if (!tb) return;
     tb.innerHTML = '';
@@ -479,7 +492,6 @@ set('#kpi-bp',     money(bp));
     const day   = realized.day   || { pnl: 0, pct: 0 };
     const week  = realized.week  || { pnl: 0, pct: 0 };
     const month = realized.month || { pnl: 0, pct: 0 };
-    const year  = (realized.year  || {});
 
     set('#kpi-r-day', money(day.pnl));
     set('#kpi-r-day-pct', pct(day.pct));
@@ -494,13 +506,6 @@ set('#kpi-bp',     money(bp));
     setColor(document.querySelector('#kpi-r-week-pct'), week.pct);
     setColor(document.querySelector('#kpi-r-month'), month.pnl);
     setColor(document.querySelector('#kpi-r-month-pct'), month.pct);
-
-    set('#kpi-r-year', money(year.pnl));
-    set('#kpi-r-year-pct', pct(year.pct));
-
-    setColor(document.querySelector('#kpi-r-year'), year.pnl);
-    setColor(document.querySelector('#kpi-r-year-pct'), year.pct);
-
 
     const acctType = (account.account_type_display || account.account_type || '').toString();
     const acctId   = preferNumericAccountId(account).show;

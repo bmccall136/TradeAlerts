@@ -273,56 +273,7 @@ from services import etrade_service as et  # canonical E*TRADE wrapper
 # -----------------------------------------------------------------------------#
 # Opened (ET): format opened_utc -> string for UI
 def _fmt_opened_et(opened_utc):
-    """Format opened timestamp for UI (ET). Accepts ISO string or datetime-like."""
     try:
-        if opened_utc is None or opened_utc == "":
-            return ""
-        s = str(opened_utc).strip()
-        if not s:
-            return ""
-
-        # Normalize: allow 'Z' and 'T'
-        s2 = s.replace("Z", "+00:00").replace("T", " ").strip()
-
-        from datetime import datetime, timezone
-        dtv = None
-
-        # ISO first
-        try:
-            dtv = datetime.fromisoformat(s2)
-        except Exception:
-            dtv = None
-
-        # If still none, try common formats
-        if dtv is None:
-            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-                try:
-                    dtv = datetime.strptime(s2[:19], fmt)
-                    break
-                except Exception:
-                    dtv = None
-
-        if dtv is None:
-            return s[:16]
-
-        # Ensure tz-aware
-        if dtv.tzinfo is None:
-            dtv = dtv.replace(tzinfo=timezone.utc)
-
-        # Convert to ET
-        try:
-            from zoneinfo import ZoneInfo
-            et = ZoneInfo("America/New_York")
-            dtv = dtv.astimezone(et)
-        except Exception:
-            pass
-
-        return dtv.strftime("%Y-%m-%d %H:%M")
-    except Exception:
-        try:
-            return str(opened_utc)[:16]
-        except Exception:
-            return ""
 
 def _realized_summary_from_live_db(db_path):
     """
@@ -2173,7 +2124,7 @@ def live_data():
     Full JSON feed for the Live UI (holdings/trades/metrics/etc).
     This is where the big payload lives.
     """
-    payload = {}  # init so except blocks can safely add fields\n    realized = {}  # init (prevents NameError if later code throws before assignment)\n    payload: Dict[str, Any] = {"ok": True, "etrade_ok": False, "needs_reconnect": False}
+    payload: Dict[str, Any] = {"ok": True, "etrade_ok": False, "needs_reconnect": False}
 
     from flask import request, current_app
     from services import etrade_service as et
@@ -3045,17 +2996,6 @@ def live_data():
     except Exception:
         pass
 
-    # REALIZED_YEAR__INJECTED_IN_LIVE_DATA
-    # Ensure realized_obj includes a 'year' bucket (YTD) derived from realized_trades.close_date.
-    try:
-        _dbp = str(LIVE_DB) if 'LIVE_DB' in globals() else (str(DB_PATH) if 'DB_PATH' in globals() else 'live.db')
-        _src = _realized_summary_from_live_db(_dbp)
-        _year = (_src or {}).get('year') if isinstance(_src, dict) else None
-        if isinstance(realized_obj, dict) and 'year' not in realized_obj:
-            realized_obj['year'] = _year if isinstance(_year, dict) else {'pnl': 0.0, 'pct': 0.0}
-    except Exception:
-        if isinstance(realized_obj, dict) and 'year' not in realized_obj:
-            realized_obj['year'] = {'pnl': 0.0, 'pct': 0.0}
 
 
 
@@ -3549,6 +3489,14 @@ def api_analytics_day():
     except Exception:
         realized = {"day":{"pnl":0.0,"pct":0.0},"week":{"pnl":0.0,"pct":0.0},"month":{"pnl":0.0,"pct":0.0},"year":{"pnl":0.0,"pct":0.0}}
 
+
+    return jsonify({
+        "date_et": date_et,
+        "buys": buys,
+        "sells": sells,
+        "errors": errors,
+        "source": f"DB={db_path} | BUYS=buy_cooldowns(last_buy_utc) | SELLS=realized_trades(close_date)"
+    })
 @app.route("/api/analytics/today")
 def api_analytics_today():
     """
@@ -3866,7 +3814,7 @@ def api_trade_review():
     sell_path = _tr__latest_log_path("sell_triggers")
 
     if not buy_path and not sell_path:
-        return jsonify({"ok": False, "realized": (lambda r: (r if isinstance(r, dict) else {}))(
+        return jsonify({"ok": False, \1"realized": (lambda r: (r if isinstance(r, dict) else {}))(
                 (lambda r: (r | {"year": r.get("year") or {"pnl": 0.0, "pct": 0.0}}) if hasattr(r, "get") else {"year": {"pnl": 0.0, "pct": 0.0}})(realized)
             ),
             

@@ -145,7 +145,6 @@
         <span id="kpi-r-month">$0.00</span>
         (<span id="kpi-r-month-pct">0.00%</span>)
       </div>
-      <div><strong>Year</strong>: <span id="kpi-r-year">$0.00</span> (<span id="kpi-r-year-pct">0.00%</span>)</div>
     </div>
   </div>
 </div>
@@ -479,7 +478,6 @@ set('#kpi-bp',     money(bp));
     const day   = realized.day   || { pnl: 0, pct: 0 };
     const week  = realized.week  || { pnl: 0, pct: 0 };
     const month = realized.month || { pnl: 0, pct: 0 };
-    const year  = (realized.year  || {});
 
     set('#kpi-r-day', money(day.pnl));
     set('#kpi-r-day-pct', pct(day.pct));
@@ -494,13 +492,6 @@ set('#kpi-bp',     money(bp));
     setColor(document.querySelector('#kpi-r-week-pct'), week.pct);
     setColor(document.querySelector('#kpi-r-month'), month.pnl);
     setColor(document.querySelector('#kpi-r-month-pct'), month.pct);
-
-    set('#kpi-r-year', money(year.pnl));
-    set('#kpi-r-year-pct', pct(year.pct));
-
-    setColor(document.querySelector('#kpi-r-year'), year.pnl);
-    setColor(document.querySelector('#kpi-r-year-pct'), year.pct);
-
 
     const acctType = (account.account_type_display || account.account_type || '').toString();
     const acctId   = preferNumericAccountId(account).show;
