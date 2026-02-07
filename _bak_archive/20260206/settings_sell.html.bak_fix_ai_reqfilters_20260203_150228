@@ -1,0 +1,895 @@
+{% extends "layout.html" %}
+{% block content %}
+<div id="settings-page" class="container-fluid">
+  <div class="d-flex align-items-center justify-content-between" style="margin:18px 0 10px 0;">
+    <div style="font-size:22px;font-weight:700;">Settings<
+<div style="opacity:.6;font-size:12px;margin-top:6px">[UI_BUILD_STAMP ai+reqfilters @ 2026-02-03 14:49:23]</div>/div>
+    <div class="d-flex align-items-center" style="gap:10px;">
+      <div class="btn-group" role="group" aria-label="settings tabs">
+        <a class="btn btn-sm btn-dark" href="/settings/buy">BUY</a>
+        <a class="btn btn-sm btn-warning" href="/settings/sell">SELL</a>
+      </div>
+      <div class="d-flex align-items-center" style="gap:8px;">
+        <div style="opacity:.85;">Profile</div>
+        <select id="profileSel" class="form-select form-select-sm" style="width:130px;">
+          <option value="day">DAY</option>
+          <option value="swing">SWING</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mm-card mb-3">
+    <div class="card-body">
+      <div style="font-size:18px;font-weight:700;">Signal Scoreboard</div>
+      <div style="opacity:.9;margin:2px 0 10px 0;">Counts increment even if disabled. Toggles affect eligibility only.</div>
+
+      <div class="d-flex align-items-center" style="gap:10px;margin-bottom:10px;">
+        <div style="min-width:60px;opacity:.85;">Bucket</div>
+        <select id="bucketSel" class="form-select form-select-sm" style="width:160px;">
+          <option value="today" selected>TODAY</option>
+          <option value="7d">7D</option>
+          <option value="30d">30D</option>
+          <option value="all">ALL</option>
+        </select>
+        <div id="bucketHint" style="opacity:.75;"></div>
+        <div id="scoreErr" style="display:none;color:#ff6b6b;font-weight:600;"></div>
+      </div>
+
+      <div id="indicatorCards"></div>
+
+      <div class="d-flex align-items-center mm-savebar" style="gap:10px;margin-top:14px;">
+        <button id="saveBtn" class="btn btn-warning">Save</button>
+        <div id="saveMsg" style="opacity:.85;"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <div id="gateCard" class="card mm-card mb-3">
+    <div class="card-body">
+      <div style="font-size:18px;font-weight:700;">Required Signals Gate
+<div id="requiredFiltersHost" style="margin-top:10px;"></div>
+</div>
+      <div style="opacity:.9;margin:2px 0 10px 0;">Minimum number of ON signals that must fire before we consider a trade.</div>
+
+      <div class="d-flex align-items-center" style="gap:10px;">
+        <div style="min-width:130px;opacity:.85;">Minimum required</div>
+        <select id="minReqSel" class="form-select form-select-sm" style="width:140px;"></select>
+        <div id="gateHint" style="opacity:.75;"></div>
+        <div id="gateLegend" class="muted small mt-1"><div id="gate-summary-text" style="font-size:12px; opacity:0.75; margin-top:8px;"></div></div>
+
+      </div>
+<div id="req-filters" class="mt-2" style="border-top:1px solid rgba(255,255,255,0.08); padding-top:10px;">
+  <div style="font-size:12px; opacity:0.85; margin-bottom:6px;">
+    <b>Required triggers</b> (must-have families). These are <u>hard requirements</u>.
+  </div>
+  <div id="req-filters-list" style="display:flex; flex-wrap:wrap; gap:10px;"></div>
+  <div id="req-filters-hint" style="font-size:12px; opacity:0.75; margin-top:6px;"></div>
+</div>
+
+    </div>
+  </div>
+  </div>
+</div>
+
+
+<script>
+  // page indicator model
+  window.__INDICATORS__ = [
+  { label: "TIMEOUT EXITS", enable_key: "enable_timeout_exits" }
+];
+</script>
+
+<script>
+(() => {
+  let __SCORE_COUNTS__ = {};
+const GROUP = "buy"; // dashboard.py passes group=buy/sell into template
+  const byId = (id) => document.getElementById(id);
+
+  const INDICATORS = window.__INDICATORS__ || [];
+
+  // Gate key compat: PRIMARY is what engine should use
+  const GATE_KEY_PRIMARY = "min_signals";
+  const GATE_KEY_MIRROR  = "required_signals_min";
+
+  function getGateVal(settings){
+    let v = settings ? settings[GATE_KEY_PRIMARY] : undefined;
+    if (v === undefined || v === null || v === "") v = settings ? settings[GATE_KEY_MIRROR] : undefined;
+    let n = parseInt(v, 10);
+    if (!Number.isFinite(n) || n < 1) n = 1;
+    return n;
+  }
+  function setGateVal(settings, n){
+    n = parseInt(n, 10);
+    if (!Number.isFinite(n) || n < 1) n = 1;
+    settings[GATE_KEY_PRIMARY] = n;
+    settings[GATE_KEY_MIRROR]  = n; // mirror for compatibility
+  }
+
+  function normProfile(v){
+    v = String(v || "").toLowerCase();
+    if (v === "day" || v === "swing") return v;
+    return "day";
+  }
+
+  async function apiLoad(group, profile){
+    const r = await fetch(`/api/settings/load?group=${encodeURIComponent(group)}&profile=${encodeURIComponent(profile)}`, { cache: "no-store" });
+    const j = await r.json();
+    if (!j || !j.ok) throw new Error((j && j.error) ? j.error : "settings load not-ok");
+    return (j.data && typeof j.data === "object") ? j.data : {};
+  }
+
+  async function apiSave(group, profile, data){
+    const r = await fetch(`/api/settings/save?group=${encodeURIComponent(group)}&profile=${encodeURIComponent(profile)}`, {
+      method: "POST",
+      headers: { "Content-Type":"application/json" },
+      body: JSON.stringify(data || {})
+    });
+    const j = await r.json();
+    if (!j || !j.ok) throw new Error((j && j.error) ? j.error : "settings save not-ok");
+    return j;
+  }
+
+  async function apiScoreboard(bucket){
+    const r = await fetch(`/api/settings/scoreboard?bucket=${encodeURIComponent(bucket)}`, { cache:"no-store" });
+    const j = await r.json();
+    if (!j || !j.ok) throw new Error((j && j.error) ? j.error : "scoreboard not-ok");
+    return j;
+  }
+
+    const GATEABLE_KEYS = new Set(['macd','rsi','vwap','bb','adx','vol']);
+  const isGateable = (k) => GATEABLE_KEYS.has(String(k||'').toLowerCase());
+
+function enabledIndicators(settings){
+    const out = [];
+    for (const it of INDICATORS){
+      const on = !!settings[it.enable_key];
+      if (on) out.push(it);
+    }
+    return out;
+  }
+
+  
+    function __groupKey(k){
+    k = String(k||"").toLowerCase().replace(/\s+/g,"");
+    if (k.startsWith("macd")) return "macd";
+    if (k.startsWith("rsi")) return "rsi";
+    if (k.startsWith("vwap")) return "vwap";
+    if (k.startsWith("bb")) return "bb";
+    if (k.startsWith("adx")) return "adx";
+    if (k.startsWith("vol") || k.startsWith("volume")) return "vol";
+    if (k.startsWith("sma") || k.startsWith("price_sma") || k.includes("price>sma")) return "sma";
+    if (k.startsWith("super")) return "super";
+    if (k.startsWith("atr")) return "atr";
+    if (k.startsWith("gap")) return "gap";
+    if (k.startsWith("range")) return "range";
+    if (k.includes("macd_hist") || k.includes("macdhist") || k.startsWith("hist")) return "macd_hist";
+    return k;
+  }
+
+  function __getCount(k){
+    try{
+      const g = __groupKey(k);
+      return Number((__SCORE_COUNTS__||{})[g] || 0) || 0;
+    }catch(e){
+      return 0;
+    }
+  }
+function renderGate(settings){
+    const minReqSel = byId("minReqSel");
+    const gateHint  = byId("gateHint");
+    if (!minReqSel) return;
+
+    const enabled = enabledIndicators(settings);
+    const maxOpt = Math.max(1, enabled.length || 1);
+
+    minReqSel.innerHTML = "";
+    for (let i=1; i<=maxOpt; i++){
+      const opt = document.createElement("option");
+      opt.value = String(i);
+      opt.textContent = String(i);
+      minReqSel.appendChild(opt);
+    }
+
+    let cur = getGateVal(settings);
+    if (cur > maxOpt) cur = maxOpt;
+    minReqSel.value = String(cur);
+    setGateVal(settings, cur);
+
+        if (gateHint){
+      if (!enabled.length) {
+        gateHint.textContent = "No indicators enabled.";
+      } else {
+        const gateable = enabled.filter(x => isGateable(__groupKey(x.key)));
+        const nongate  = enabled.filter(x => !isGateable(x.key));
+        const a = gateable.length ? (gateable.length + " gateable: " + gateable.map(x => x.label).join(", ")) : "0 gateable";
+        const b = nongate.length ? (" | " + nongate.length + " counts-only: " + nongate.map(x => x.label).join(", ")) : "";
+        gateHint.textContent = a + b;
+      }
+    }
+
+    const gateLegend = byId("gateLegend");
+    if (gateLegend){
+      const gateableEnabled = enabled.filter(x => isGateable(x.key)).map(x => x.label);
+      const nongateEnabled  = enabled.filter(x => !isGateable(x.key)).map(x => x.label);
+      const left  = gateableEnabled.length ? ("Gateable enabled: " + gateableEnabled.join(", ")) : "Gateable enabled: (none)";
+      const right = nongateEnabled.length  ? ("Counts-only enabled: " + nongateEnabled.join(", ")) : "Counts-only enabled: (none)";
+      gateLegend.textContent = left + "   ?   " + right;
+    }
+minReqSel.onchange = () => {
+      const v = parseInt(minReqSel.value, 10) || 1;
+      setGateVal(settings, v);
+    };
+  }
+
+  function indicatorPrefixes(label){
+    const L = String(label || "").toUpperCase();
+    if (L === "MACD") return [/^macd_/i];
+    if (L === "RSI")  return [/^rsi_/i];
+    if (L === "VWAP") return [/^vwap_/i];
+    if (L === "BB")   return [/^bb_/i, /^bollinger/i];
+    if (L === "ADX")  return [/^adx_/i];
+    if (L === "VOL")  return [/^vol_/i, /^volume_/i];
+    return [];
+  }
+
+  function isIndicatorKey(label, key){
+    const ps = indicatorPrefixes(label);
+    return ps.some(rx => rx.test(key));
+  }
+
+  function esc(s){
+    return String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }
+
+  // --- Required must-have trigger families (required_filters) ---
+  const REQUIRED_FAMILY_KEYS = ["macd","rsi","vwap","bb","adx","vol"];
+
+  function getRequiredFilters(settings){
+    const rf = settings && settings.required_filters;
+    if (Array.isArray(rf)) return rf.map(x => String(x).toLowerCase()).filter(Boolean);
+    if (typeof rf === "string") {
+      return rf.split(",").map(x => x.trim().toLowerCase()).filter(Boolean);
+    }
+    return [];
+  }
+
+  function setRequiredFilters(settings, arr){
+    settings.required_filters = Array.from(new Set((arr || []).map(x => String(x).toLowerCase()))).filter(Boolean);
+  }
+
+  function renderRequiredFilters(settings){
+    const host = byId("requiredFiltersHost");
+    if (!host) return;
+
+    const cur = new Set(getRequiredFilters(settings));
+    const rows = REQUIRED_FAMILY_KEYS.map(k => {
+      const id = "req_" + k;
+      const checked = cur.has(k) ? "checked" : "";
+      const label = k.toUpperCase();
+      return `
+        <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 14px 6px 0;cursor:pointer;">
+          <input type="checkbox" id="${id}" ${checked}>
+          <span style="font-weight:700;letter-spacing:.3px;">${label}</span>
+        </label>`;
+    }).join("");
+
+    host.innerHTML = `
+      <div style="opacity:.9;margin-bottom:6px;">Select must-have families:</div>
+      <div>${rows}</div>
+      <div style="margin-top:6px;font-size:12px;opacity:.65;">
+        These are hard requirements (in addition to the minimum required count).
+      </div>
+    `;
+
+    // Keep settings in sync as user clicks
+    REQUIRED_FAMILY_KEYS.forEach(k => {
+      const cb = byId("req_" + k);
+      if (!cb) return;
+      cb.onchange = () => {
+        const selected = REQUIRED_FAMILY_KEYS.filter(x => (byId("req_" + x) || {}).checked);
+        setRequiredFilters(settings, selected);
+
+        // If there's also a text input for required_filters somewhere, keep it synced
+        const txt = byId("k_required_filters");
+        if (txt) txt.value = settings.required_filters.join(",");
+      };
+    });
+  }
+
+  // --- AI controls (ai.enabled/use_entries/use_exits) ---
+  function ensureAI(settings){
+    if (!settings.ai || typeof settings.ai !== "object") settings.ai = {};
+    if (typeof settings.ai.enabled !== "boolean") settings.ai.enabled = false;
+    if (typeof settings.ai.use_entries !== "boolean") settings.ai.use_entries = false;
+    if (typeof settings.ai.use_exits !== "boolean") settings.ai.use_exits = false;
+  }
+
+  function renderAIControls(settings){
+    ensureAI(settings);
+
+    // Replace the ugly object field if it exists
+    const aiCell = byId("k_ai");
+    if (aiCell && aiCell.tagName === "INPUT") {
+      // Hide the raw input so it can't overwrite ai object with "[object Object]"
+      aiCell.style.display = "none";
+    }
+
+    // Add controls under Trade Controls section if there is a reasonable anchor
+    // Anchor: the row that mentions "ai" key, or fallback to end of the controls table
+    let anchor = aiCell;
+    if (!anchor) anchor = document.querySelector('input[id^="k_"]') || null;
+
+    const panelId = "aiControlsPanel";
+    if (byId(panelId)) return; // don't duplicate
+
+    const panel = document.createElement("div");
+    panel.id = panelId;
+    panel.style.marginTop = "8px";
+    panel.innerHTML = `
+      <div style="margin:10px 0 6px 0;font-weight:800;">AI Advisor</div>
+      <label style="display:flex;align-items:center;gap:10px;margin:6px 0;cursor:pointer;">
+        <input type="checkbox" id="ai_enabled">
+        <span>Enabled</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;margin:6px 0;cursor:pointer;">
+        <input type="checkbox" id="ai_use_entries">
+        <span>Use for entries</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;margin:6px 0;cursor:pointer;">
+        <input type="checkbox" id="ai_use_exits">
+        <span>Use for exits</span>
+      </label>
+      <div style="font-size:12px;opacity:.65;margin-top:6px;">
+        These map to ai.enabled / ai.use_entries / ai.use_exits in the JSON.
+      </div>
+    `;
+
+    // Try to place it near the Trade Controls section (best effort)
+    const tradeControlsHeader = Array.from(document.querySelectorAll("div, h2, h3")).find(el =>
+      (el.textContent || "").trim().toLowerCase() === "trade controls"
+    );
+
+    if (tradeControlsHeader && tradeControlsHeader.parentElement) {
+      tradeControlsHeader.parentElement.appendChild(panel);
+    } else if (anchor && anchor.parentElement) {
+      anchor.parentElement.appendChild(panel);
+    } else {
+      document.body.appendChild(panel);
+    }
+
+    // Load values into checkboxes
+    byId("ai_enabled").checked     = !!settings.ai.enabled;
+    byId("ai_use_entries").checked = !!settings.ai.use_entries;
+    byId("ai_use_exits").checked   = !!settings.ai.use_exits;
+
+    // Update settings live
+    byId("ai_enabled").onchange = () => { ensureAI(settings); settings.ai.enabled = byId("ai_enabled").checked; };
+    byId("ai_use_entries").onchange = () => { ensureAI(settings); settings.ai.use_entries = byId("ai_use_entries").checked; };
+    byId("ai_use_exits").onchange = () => { ensureAI(settings); settings.ai.use_exits = byId("ai_use_exits").checked; };
+  }
+
+[c]));
+  }
+  function inputRow(key, val) {
+    const k = safeId(key);
+
+    // HTML-escape for attribute contexts
+    const esc = (x) => String(x)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+
+    // 1) AI (nested object) -> show real toggles, keep hidden JSON field in sync
+    if (key === "ai" && val && typeof val === "object") {
+      const enabled    = !!val.enabled;
+      const useEntries = !!val.use_entries;
+      const useExits   = !!val.use_exits;
+
+      const json = esc(JSON.stringify({ enabled, use_entries: useEntries, use_exits: useExits }));
+
+      return `
+        <div class="row">
+          <div class="k">AI</div>
+          <div class="v">
+            <input type="hidden" id="${k}" value="${json}" data-kind="ai">
+            <div class="ai-grid">
+              <label class="chk">
+                <input type="checkbox" id="${k}__enabled" ${enabled ? "checked" : ""}>
+                <span>Enabled</span>
+              </label>
+              <label class="chk">
+                <input type="checkbox" id="${k}__use_entries" ${useEntries ? "checked" : ""}>
+                <span>Use Entries</span>
+              </label>
+              <label class="chk">
+                <input type="checkbox" id="${k}__use_exits" ${useExits ? "checked" : ""}>
+                <span>Use Exits</span>
+              </label>
+            </div>
+            <div class="muted tiny">AI is optional; toggles control eligibility only.</div>
+          </div>
+        </div>
+      `;
+    }
+
+    // 2) required_filters (array or csv string) -> must-have checklist, keep hidden CSV in sync
+    if (key === "required_filters") {
+      const opts = [
+        ["macd", "MACD"],
+        ["rsi",  "RSI"],
+        ["vwap", "VWAP"],
+        ["vol",  "VOL"],
+        ["bb",   "BB"],
+        ["adx",  "ADX"],
+        ["sma",  "SMA"],
+      ];
+
+      let cur = [];
+      if (Array.isArray(val)) cur = val.slice();
+      else if (typeof val === "string" && val.trim()) cur = val.split(",").map(x => x.trim()).filter(Boolean);
+
+      const curSet = new Set(cur);
+
+      const checks = opts.map(([kk, label]) => {
+        const id = `${k}__${kk}`;
+        const on = curSet.has(kk);
+        return `
+          <label class="chk">
+            <input type="checkbox" id="${id}" data-rf="${kk}" ${on ? "checked" : ""}>
+            <span>${label}</span>
+          </label>
+        `;
+      }).join("");
+
+      const csv = esc(cur.join(","));
+
+      return `
+        <div class="row">
+          <div class="k">required_filters</div>
+          <div class="v">
+            <input type="hidden" id="${k}" value="${csv}" data-kind="required_filters">
+            <div class="rf-grid">
+              ${checks}
+            </div>
+            <div class="muted tiny">Must-have trigger families (hard requirements). If any are checked, they must fire.</div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Default behavior (string/number/bool)
+    if (typeof val === "boolean") {
+      return `
+        <div class="row">
+          <div class="k">${key}</div>
+          <div class="v">
+            <input type="checkbox" id="${k}" ${val ? "checked" : ""}>
+          </div>
+        </div>
+      `;
+    }
+
+    // Avoid [object Object] for unknown objects: show JSON string (readable) but keep editable text
+    if (val && typeof val === "object") {
+      const json = esc(JSON.stringify(val));
+      return `
+        <div class="row">
+          <div class="k">${key}</div>
+          <div class="v"><input type="text" id="${k}" value="${json}"></div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="row">
+        <div class="k">${key}</div>
+        <div class="v"><input type="text" id="${k}" value="${esc(val ?? "")}"></div>
+      </div>
+    `;
+  }
+  function wireInputs(keys, settings) {
+    for (const key of keys) {
+      const k = safeId(key);
+      const el = document.getElementById(k);
+      if (!el) continue;
+
+      const kind = el.getAttribute("data-kind") || "";
+
+      // AI nested object wiring
+      if (kind === "ai") {
+        const cbEnabled    = document.getElementById(`${k}__enabled`);
+        const cbUseEntries = document.getElementById(`${k}__use_entries`);
+        const cbUseExits   = document.getElementById(`${k}__use_exits`);
+
+        const syncAI = () => {
+          settings.ai = {
+            enabled: !!(cbEnabled && cbEnabled.checked),
+            use_entries: !!(cbUseEntries && cbUseEntries.checked),
+            use_exits: !!(cbUseExits && cbUseExits.checked),
+          };
+          el.value = JSON.stringify(settings.ai);
+        };
+
+        if (cbEnabled)    cbEnabled.onchange = syncAI;
+        if (cbUseEntries) cbUseEntries.onchange = syncAI;
+        if (cbUseExits)   cbUseExits.onchange = syncAI;
+
+        // initial
+        try {
+          const cur = JSON.parse(el.value || "{}");
+          if (cbEnabled)    cbEnabled.checked = !!cur.enabled;
+          if (cbUseEntries) cbUseEntries.checked = !!cur.use_entries;
+          if (cbUseExits)   cbUseExits.checked = !!cur.use_exits;
+        } catch(e) {}
+        syncAI();
+        continue;
+      }
+
+      // required_filters wiring (checkboxes -> array + csv)
+      if (kind === "required_filters") {
+        const boxIds = [
+          `${k}__macd`, `${k}__rsi`, `${k}__vwap`, `${k}__vol`,
+          `${k}__bb`, `${k}__adx`, `${k}__sma`,
+        ];
+        const boxes = boxIds.map(id => document.getElementById(id)).filter(Boolean);
+
+        const syncRF = () => {
+          const arr = [];
+          for (const b of boxes) {
+            const rf = b.getAttribute("data-rf");
+            if (b.checked && rf) arr.push(rf);
+          }
+          settings.required_filters = arr;
+          el.value = arr.join(",");
+        };
+
+        for (const b of boxes) b.onchange = syncRF;
+
+        // initial from hidden field
+        const cur = (el.value || "").split(",").map(x => x.trim()).filter(Boolean);
+        const set = new Set(cur);
+        for (const b of boxes) {
+          const rf = b.getAttribute("data-rf");
+          b.checked = rf ? set.has(rf) : false;
+        }
+        syncRF();
+        continue;
+      }
+
+      // Default wiring
+      if (el.type === "checkbox") {
+        el.onchange = () => (settings[key] = !!el.checked);
+      } else {
+        el.onchange = () => (settings[key] = el.value);
+      }
+    }
+  }
+
+function renderIndicatorCards(settings, counts, bucket){
+    const root = byId("indicatorCards");
+    const err  = byId("scoreErr");
+    const hint = byId("bucketHint");
+    if (!root) return;
+
+    if (hint) hint.textContent = bucket ? `(${bucket.toUpperCase()})` : "";
+    if (err){ err.style.display = "none"; err.textContent = ""; }
+
+    const allKeys = Object.keys(settings || {});
+    const enableKeys = new Set(INDICATORS.map(x => x.enable_key));
+    const gateKeys = new Set([GATE_KEY_PRIMARY, GATE_KEY_MIRROR]);
+
+    const chunks = [];
+
+    // per-indicator sections
+    for (const it of INDICATORS){
+      const label = it.label;
+      const onKey = it.enable_key;
+      const on = !!settings[onKey];
+
+      const cnt = (counts && typeof counts === "object" && (counts[((label) || "").toString().toLowerCase()] ?? counts[label]) !== undefined) ? (counts[((label) || "").toString().toLowerCase()] ?? counts[label]) : 0;
+
+      const paramKeys = allKeys
+        .filter(k => isIndicatorKey(label, k))
+        .filter(k => k !== onKey)           // enable is shown at top
+        .sort();
+
+      const enableId = "en_" + onKey.replace(/[^a-z0-9_]/gi, "_");
+
+      chunks.push(`
+        <div class="card mm-subcard">
+          <div class="card-body">
+            <div class="d-flex align-items-center justify-content-between" style="gap:12px;">
+              <div style="font-weight:800;font-size:16px;letter-spacing:.4px;">${esc(label)}</div>
+              <div class="d-flex align-items-center" style="gap:10px;">
+                <div style="opacity:.75;font-size:12px;">count: <b style="opacity:1;">${cnt}</b></div>
+                <label class="d-flex align-items-center" style="gap:8px;margin:0;">
+                  <span style="opacity:.85;">Enabled</span>
+                  <input type="checkbox" id="${enableId}" ${on ? "checked":""}/>
+                </label>
+              </div>
+            </div>
+
+            ${paramKeys.length ? `
+              <div class="table-responsive mt-2">
+                <table class="table table-sm table-dark align-middle mm-settings-table" style="margin:0;">
+                  <tbody>
+                    ${paramKeys.map(k => inputRow(k, settings[k])).join("")}
+                  </tbody>
+                </table>
+              </div>
+            ` : `<div class="mt-2" style="opacity:.75;font-size:12px;">No parameters found for ${esc(label)}.</div>`}
+          </div>
+        </div>
+      `);
+    }
+
+    // Trade Controls (everything not indicator params, not indicator enables, not gate keys)
+    const used = new Set();
+    for (const it of INDICATORS){
+      used.add(it.enable_key);
+      for (const k of allKeys){
+        if (isIndicatorKey(it.label, k)) used.add(k);
+      }
+    }
+    for (const k of gateKeys) used.add(k);
+
+    const controlKeys = allKeys
+      .filter(k => !used.has(k))
+      .sort();
+
+    if (controlKeys.length){
+      chunks.push(`
+        <div class="card mm-subcard">
+          <div class="card-body">
+            <div style="font-weight:800;font-size:16px;letter-spacing:.4px;">Trade Controls</div>
+            <div class="table-responsive mt-2">
+              <table class="table table-sm table-dark align-middle mm-settings-table" style="margin:0;">
+                <tbody>
+                  ${controlKeys.map(k => inputRow(k, settings[k])).join("")}
+                </tbody>
+              </table>
+            </div>
+          </div>
+<div id="ai-controls" class="mt-3" style="border-top:1px solid rgba(255,255,255,0.08); padding-top:10px;">
+  <div style="font-size:12px; opacity:0.85; margin-bottom:6px;">
+    <b>AI</b> (nested settings)
+  </div>
+  <div id="ai-controls-list"></div>
+</div>
+
+        </div>
+      `);
+    }
+
+    root.innerHTML = chunks.join("");
+
+    // wire enable toggles
+    for (const it of INDICATORS){
+      const enableId = "en_" + it.enable_key.replace(/[^a-z0-9_]/gi, "_");
+      const el = byId(enableId);
+      if (!el) continue;
+      el.onchange = () => {
+        settings[it.enable_key] = !!el.checked;
+        renderGate(settings); // gate options depend on enabled count
+      };
+    }
+
+    // wire inputs
+    for (const it of INDICATORS){
+      const keys = allKeys
+        .filter(k => isIndicatorKey(it.label, k))
+        .filter(k => k !== it.enable_key)
+        .sort();
+      wireInputs(settings, keys);
+    }
+    wireInputs(settings, controlKeys);
+  }
+
+  async function refreshAll(){
+    const profileSel = byId("profileSel");
+    const bucketSel  = byId("bucketSel");
+    const saveMsg    = byId("saveMsg");
+    const scoreErr   = byId("scoreErr");
+
+    const profile = normProfile(profileSel ? profileSel.value : "day");
+    const bucket  = (bucketSel ? bucketSel.value : "today").toLowerCase();
+
+    if (saveMsg){ saveMsg.textContent = ""; }
+
+    let settings = {};
+    try{
+      settings = await apiLoad(GROUP, profile);
+    } catch(e){
+      if (saveMsg){
+        saveMsg.style.color = "#ff6b6b";
+        saveMsg.textContent = "Load error: " + (e && e.message ? e.message : String(e));
+      }
+      return;
+    }
+
+    window.currentSettings = settings;
+
+    let sc = null;
+    try{
+      sc = await apiScoreboard(bucket);
+    
+      __SCORE_COUNTS__ = (sc && typeof sc === 'object' && sc.counts && typeof sc.counts === 'object') ? sc.counts : {};
+} catch(e){
+      if (scoreErr){
+        scoreErr.style.display="block";
+        scoreErr.textContent = "Scoreboard error: " + (e && e.message ? e.message : String(e));
+      }
+    }
+
+    renderIndicatorCards(settings, sc ? sc.counts : {}, bucket);
+    renderGate(settings);
+
+    const saveBtn = byId("saveBtn");
+    if (saveBtn){
+      saveBtn.onclick = async () => {
+        try{
+          await apiSave(GROUP, profile, window.currentSettings || settings);
+          if (saveMsg){
+            saveMsg.style.color = "#9fffa8";
+            saveMsg.textContent = "Saved.";
+          }
+          await refreshAll();
+        } catch(e){
+          if (saveMsg){
+            saveMsg.style.color = "#ff6b6b";
+            saveMsg.textContent = "Save error: " + (e && e.message ? e.message : String(e));
+          }
+        }
+      };
+    }
+  }
+
+  function init(){
+    const profileSel = byId("profileSel");
+    const bucketSel  = byId("bucketSel");
+    if (profileSel) profileSel.onchange = refreshAll;
+    if (bucketSel)  bucketSel.onchange  = refreshAll;
+    refreshAll();
+  }
+
+  document.addEventListener("DOMContentLoaded", init);
+})();
+
+/* ===== $$Machine Settings Enhancers (Required Filters + AI object) ===== */
+function _qs(sel, root){ return (root||document).querySelector(sel); }
+function _qsa(sel, root){ return Array.from((root||document).querySelectorAll(sel)); }
+function _escape(s){
+  return (s==null) ? "" : String(s)
+    .replaceAll("&","&amp;").replaceAll("<","&lt;")
+    .replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
+}
+function _isObj(v){ return v && typeof v === "object" && !Array.isArray(v); }
+
+function enhanceAiControls(settings){
+  // Replace the existing "ai" input row (which shows [object Object]) with nested toggles.
+  // We find the row whose left label text is exactly "ai".
+  const rows = _qsa(".setting-row, .row, .config-row, .kv-row"); // tolerate different class names
+  let aiRow = null;
+  for (const r of rows){
+    const lab = r.querySelector(".setting-key, .key, .label, .col-key");
+    if (lab && lab.textContent && lab.textContent.trim() === "ai"){
+      aiRow = r; break;
+    }
+  }
+  if (!aiRow) return;
+
+  const ai = (settings && settings.ai) ? settings.ai : { enabled:false, use_entries:false, use_exits:false };
+
+  // Build a compact nested control UI
+  const wrap = document.createElement("div");
+  wrap.style.display = "grid";
+  wrap.style.gridTemplateColumns = "1fr 1fr 1fr";
+  wrap.style.gap = "10px";
+  wrap.innerHTML = `
+    <label style="display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="ai_enabled" ${ai.enabled ? "checked":""}/>
+      <span>AI enabled</span>
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="ai_use_entries" ${ai.use_entries ? "checked":""}/>
+      <span>Use entries</span>
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="ai_use_exits" ${ai.use_exits ? "checked":""}/>
+      <span>Use exits</span>
+    </label>
+  `;
+
+  // Store values back into settings before save (we attach to a global if present)
+  function _apply(){
+    if (!settings.ai || !_isObj(settings.ai)) settings.ai = {};
+    settings.ai.enabled     = !!_qs("#ai_enabled")?.checked;
+    settings.ai.use_entries = !!_qs("#ai_use_entries")?.checked;
+    settings.ai.use_exits   = !!_qs("#ai_use_exits")?.checked;
+  }
+  _qsa("input", wrap).forEach(i => i.addEventListener("change", _apply));
+
+  // Replace the value/control area inside the row
+  const valCell = aiRow.querySelector(".setting-val, .val, .value, .col-val") || aiRow;
+  // Clear ONLY the existing control element(s) in the value cell
+  // (avoid nuking the label)
+  if (valCell !== aiRow){
+    valCell.innerHTML = "";
+    valCell.appendChild(wrap);
+  } else {
+    // fallback: append controls if we can't isolate value cell
+    aiRow.appendChild(wrap);
+  }
+
+  _apply();
+}
+
+function enhanceRequiredFilters(settings){
+  // Build a checklist UI driven by the gateable families on the page.
+  // Must-have families -> settings.required_filters (array of strings)
+  const host = _qs("#requiredFiltersHost");
+  if (!host) return;
+
+  // Gateable families: look for section headers like MACD/RSI/VWAP/BB/ADX/VOL
+  const families = [];
+  _qsa("h3, h4, .section-title, .card-title").forEach(h => {
+    const t = (h.textContent||"").trim().toLowerCase();
+    const map = { macd:"macd", rsi:"rsi", vwap:"vwap", bb:"bb", adx:"adx", vol:"vol", volume:"vol" };
+    if (map[t]) families.push(map[t]);
+  });
+  // de-dupe + stable order
+  const uniq = [];
+  for (const f of families){ if (!uniq.includes(f)) uniq.push(f); }
+  const gateable = uniq.length ? uniq : ["macd","rsi","vwap","bb","adx","vol"];
+
+  const req = Array.isArray(settings.required_filters) ? settings.required_filters : [];
+  host.innerHTML = `
+    <div style="margin-top:6px;margin-bottom:6px;font-size:12px;opacity:0.85;">
+      Required triggers (must-have families). These are <b>hard requirements</b>.
+    </div>
+    <div id="reqFiltersGrid" style="display:flex;flex-wrap:wrap;gap:12px;"></div>
+  `;
+  const grid = _qs("#reqFiltersGrid", host);
+
+  for (const f of gateable){
+    const id = "rf_" + f;
+    const checked = req.includes(f);
+    const item = document.createElement("label");
+    item.style.display = "flex";
+    item.style.alignItems = "center";
+    item.style.gap = "8px";
+    item.style.marginRight = "8px";
+    item.innerHTML = `<input type="checkbox" id="${_escape(id)}" ${checked ? "checked":""}/> <span>${_escape(f.toUpperCase())}</span>`;
+    grid.appendChild(item);
+  }
+
+  function _apply(){
+    const out = [];
+    for (const f of gateable){
+      const id = "#rf_" + f;
+      if (_qs(id, host)?.checked) out.push(f);
+    }
+    settings.required_filters = out;
+  }
+  _qsa("input[type=checkbox]", host).forEach(i => i.addEventListener("change", _apply));
+  _apply();
+}
+
+function _enhanceAll(settings){
+  try { enhanceRequiredFilters(settings); } catch(e){ console.error("enhanceRequiredFilters failed", e); }
+  try { enhanceAiControls(settings); } catch(e){ console.error("enhanceAiControls failed", e); }
+}
+/* ===== end enhancers ===== */
+
+</script>
+{% endblock %}
+
+
+
+
+
+
+<!-- NOTE: Could not auto-hook _enhanceAll(); add it after your render call. -->

@@ -1,0 +1,630 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="x-settings" data-group="sell">
+  <div class="x-head">
+    <div class="x-title">? Settings</div>
+
+    <div class="x-switch">
+      <a class="x-tab" href="/settings/buy">BUY</a>
+      <a class="x-tab x-tab-on" href="/settings/sell">SELL</a>
+    </div>
+
+    <div class="x-profile">
+      <div class="x-label">Profile</div>
+      <select id="profileSel" class="x-select">
+        <option value="day" selected>DAY</option>
+        <option value="swing">SWING</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- SECTION 1: Signal Scoreboard -->
+  <div class="x-box">
+    <div class="x-h">Signal Scoreboard</div>
+    <div class="x-sub">Counts increment even if disabled. Toggles affect eligibility only.</div>
+
+    <div class="x-row">
+      <div class="x-label">Bucket</div>
+      <select id="bucketSel" class="x-select">
+        <option value="today" selected>TODAY</option>
+        <option value="7d">7D</option>
+        <option value="30d">30D</option>
+        <option value="all">ALL</option>
+      </select>
+      <div id="bucketHint" class="x-hint"></div>
+    </div>
+
+    <div id="scoreErr" class="x-err" style="display:none;"></div>
+    <div id="scoreboard" class="x-mono"></div>
+  </div>
+
+  <!-- SECTION 2: Required Signals Gate -->
+  <div class="x-box">
+    <div class="x-h">Required Signals Gate</div>
+    <div class="x-sub">Minimum number of ON signals that must fire before we consider a trade.</div>
+
+    <div id="requiredList" class="x-mono"></div>
+
+    <div class="x-row">
+      <div class="x-label">Minimum required</div>
+      <select id="minReqSel" class="x-select"></select>
+    </div>
+  </div>
+
+  <!-- SECTION 3: Settings -->
+  <div class="x-box">
+    <div class="x-h">Settings</div>
+    <div class="x-sub">Grouped. No raw JSON.</div>
+
+    <div id="settingsGroups"></div>
+
+    <div class="x-actions">
+      <button id="saveBtn" class="x-btn">Save</button>
+      <span id="saveMsg" class="x-hint"></span>
+    </div>
+  </div>
+</div>
+
+<style>
+/* Namespaced ? avoids collisions with existing site CSS */
+.x-settings { max-width: 1200px; margin: 0 auto; padding: 18px; color: #eaeaea; }
+.x-head { display:flex; align-items:center; justify-content:space-between; gap: 14px; margin-bottom: 12px; }
+.x-title { font-size: 1.2rem; font-weight: 800; letter-spacing: .3px; }
+.x-switch { display:flex; gap: 8px; }
+.x-tab { display:inline-block; padding: 8px 14px; border-radius: 10px; border: 1px solid #2a2f4a; text-decoration:none; color:#eaeaea; background:#0d0f1a; }
+.x-tab-on { background:#ffe900; color:#111; border-color:#ffe900; font-weight:800; }
+.x-profile { display:flex; align-items:center; gap: 10px; }
+.x-label { min-width: 90px; opacity:.9; }
+.x-select, .x-input { background:#0d0f1a; color:#eaeaea; border:1px solid #2a2f4a; border-radius: 10px; padding: 8px 10px; outline:none; min-width: 160px; }
+.x-box { background:#121425; border:1px solid #1f2440; border-radius: 14px; padding: 16px; margin: 12px 0; }
+.x-h { font-size: 1.05rem; font-weight: 800; margin-bottom: 6px; }
+.x-sub { opacity:.85; margin-bottom: 12px; }
+.x-row { display:flex; align-items:center; gap: 12px; margin: 10px 0; flex-wrap: wrap; }
+.x-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono"; font-size: .95rem; }
+.x-sb-row { display:flex; align-items:center; justify-content:space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.08); }
+.x-left { display:flex; align-items:center; gap: 12px; }
+.x-key { width: 70px; font-weight: 800; }
+.x-pill { padding: 2px 10px; border-radius: 999px; border:1px solid #2a2f4a; font-size:.85rem; }
+.x-pill.on { color:#4dff4d; }
+.x-pill.off { color:#ff4d4d; }
+.x-fires { color:#ffe900; font-weight:800; }
+.x-hint { opacity:.8; }
+.x-err { margin: 10px 0; padding: 10px; border-radius: 10px; border:1px solid #5a2a2a; background:#1a0f10; color:#ff9b9b; }
+.x-group { border-top: 1px solid rgba(255,255,255,.10); padding-top: 12px; margin-top: 12px; }
+.x-group h4 { margin: 0 0 10px 0; font-size: 1rem; font-weight: 800; }
+.x-kv { display:grid; grid-template-columns: 320px 1fr; gap: 12px; align-items:center; margin: 8px 0; }
+.x-actions { display:flex; align-items:center; gap: 12px; margin-top: 14px; }
+.x-btn { background:#ffe900; color:#111; border:none; border-radius: 10px; padding: 10px 16px; font-weight: 900; cursor:pointer; }
+</style>
+
+<script>// Canonical indicator mapping (UI -> settings key)
+const INDICATOR_KEYS = [
+  { label: "MACD", key: "macd_on" },
+  { label: "RSI",  key: "rsi_on"  },
+  { label: "VWAP", key: "vwap_on" },
+  { label: "BB",   key: "bb_on"   },
+  { label: "ADX",  key: "adx_on"  },
+  { label: "VOL",  key: "vol_on"  },
+  { label: "SMA",  key: "sma_on"  }, // harmless if missing
+];
+
+function isOn(v) {
+  return (v === true) || (v === 1) || (String(v).toLowerCase() === "true");
+}
+
+function enabledIndicatorLabels(currentSettings) {
+  const s = currentSettings || {};
+  const enabled = [];
+  for (const it of INDICATOR_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(s, it.key) && isOn(s[it.key])) {
+      enabled.push(it.label);
+    }
+  }
+  return enabled;
+}
+
+function getEnabledIndicators(currentSettings) {
+  return enabledIndicatorLabels(currentSettings);
+}
+
+  const ignore = new Set(["macd_hist_on","rsi_slope_on","bb_breakout_on"]); // feature toggles
+  const enabled = getEnabledIndicators(currentSettings);
+for (const k of keys) {
+    if (!k.endsWith("_on")) continue;
+    if (ignore.has(k)) continue;
+    const v = settings[k];
+    const on = (v === true) || (v === 1) || (String(v).toLowerCase() === "true");
+    if (on) enabled.push(k.replace(/_on$/, "").toUpperCase());
+  }
+  enabled.sort();
+}
+
+(function(){
+  const root = document.querySelector(".x-settings");
+  const group = root.dataset.group; // buy
+  const profileSel = document.getElementById("profileSel");
+  const bucketSel = document.getElementById("bucketSel");
+  const bucketHint = document.getElementById("bucketHint");
+  const scoreErr = document.getElementById("scoreErr");
+  const scoreboardEl = document.getElementById("scoreboard");
+  const requiredListEl = document.getElementById("requiredList");
+  const minReqSel = document.getElementById("minReqSel");
+  const settingsGroupsEl = document.getElementById("settingsGroups");
+  const saveBtn = document.getElementById("saveBtn");
+  const saveMsg = document.getElementById("saveMsg");
+
+  const INDICATORS = [
+    { key: "MACD",  onKeys: ["enable_macd","macd_enabled","use_macd","has_macd"] },
+    { key: "RSI",   onKeys: ["enable_rsi","rsi_enabled","use_rsi","has_rsi"] },
+    { key: "VWAP",  onKeys: ["enable_vwap","vwap_enabled","use_vwap","has_vwap"] },
+    { key: "BB",    onKeys: ["enable_bb","bb_enabled","bollinger_enabled","use_bb","has_bb"] },
+    { key: "ADX",   onKeys: ["enable_adx","adx_enabled","use_adx","has_adx"] },
+    { key: "VOL",   onKeys: ["enable_vol","vol_enabled","volume_enabled","use_vol","has_vol","enable_volume"] }];
+
+  let currentSettings = {};
+
+  function qs(){
+    const profile = profileSel.value;
+    return `group=${encodeURIComponent(group)}&profile=${encodeURIComponent(profile)}`;
+  }
+
+  function getOnState(ind){
+    for (const k of ind.onKeys){
+      if (k in currentSettings) return !!currentSettings[k];
+    }
+    return false;
+  }
+  function setOnState(ind, val){
+    for (const k of ind.onKeys){
+      if (k in currentSettings){
+        currentSettings[k] = !!val;
+        return;
+      }
+    }
+    currentSettings[`enable_${ind.key.toLowerCase()}`] = !!val;
+  }
+
+  async function loadSettings(){
+    const r = await fetch(`/api/settings/load?${qs()}`);
+    const j = await r.json();
+    currentSettings = (j && j.data) ? j.data : (j || {});
+    if (!currentSettings || typeof currentSettings !== "object") currentSettings = {};
+    if (!("required_signals_min" in currentSettings) && ("min_required_signals" in currentSettings)){
+      currentSettings.required_signals_min = currentSettings.min_required_signals;
+    }
+    if (!("required_signals_min" in currentSettings)){
+      currentSettings.required_signals_min = 1;
+    }
+  }
+
+  async function loadScoreboard(){
+    scoreErr.style.display = "none";
+    scoreErr.textContent = "";
+
+    const bucket = bucketSel.value;
+    let j = null;
+
+    try {
+      const r = await fetch(`/api/settings/scoreboard?bucket=${encodeURIComponent(bucket)}`);
+      j = await r.json();
+      if (!j || !j.ok) throw new Error((j && j.error) ? j.error : "scoreboard api returned not-ok");
+    } catch (e){
+      scoreErr.style.display = "block";
+      scoreErr.textContent = "Scoreboard error: " + (e && e.message ? e.message : String(e));
+      scoreboardEl.innerHTML = "";
+      bucketHint.textContent = "";
+      return;
+    }
+
+    const counts = j.counts || {};
+    const total = j.total || 0;
+    bucketHint.textContent = `Total fires: ${total}`;
+
+    scoreboardEl.innerHTML = "";
+    INDICATORS.forEach(ind => {
+      const on = getOnState(ind);
+      const c = counts[ind.key] || 0;
+
+      const row = document.createElement("div");
+      row.className = "x-sb-row";
+      row.innerHTML = `
+        <div class="x-left">
+          <div class="x-key">${ind.key}</div>
+          <span class="x-pill ${on ? "on":"off"}">${on ? "ON":"OFF"}</span>
+          <label style="display:flex;align-items:center;gap:8px; cursor:pointer;">
+            <input type="checkbox" ${on ? "checked":""} data-ind="${ind.key}" />
+            <span style="opacity:.9">eligible</span>
+          </label>
+        </div>
+        <div class="x-fires">fires: ${c}</div>
+      `;
+      scoreboardEl.appendChild(row);
+    });
+
+    scoreboardEl.querySelectorAll("input[type=checkbox][data-ind]").forEach(cb => {
+      cb.addEventListener("change", (e) => {
+        const key = e.target.getAttribute("data-ind");
+        const ind = INDICATORS.find(x => x.key === key);
+        if (!ind) return;
+        setOnState(ind, e.target.checked);
+        renderRequiredGate();
+        loadScoreboard();
+      });
+    });
+  }
+
+  function renderRequiredGate(){
+    const enabled = INDICATORS.filter(ind => getOnState(ind));
+    requiredListEl.innerHTML = enabled.length
+      ? enabled.map(ind => `[\u2713] ${ind.key}`).join("<br>")
+      : "<span class='x-hint'>No indicators enabled (turn ON macd_on / rsi_on / bb_on / vwap_on, etc.).</span>";
+
+    const n = Math.max(1, enabled.length);
+    const cur = parseInt(currentSettings.required_signals_min || 1, 10) || 1;
+
+    minReqSel.innerHTML = "";
+    for (let i=1; i<=n; i++){
+      const opt = document.createElement("option");
+      opt.value = String(i);
+      opt.textContent = String(i);
+      if (i === Math.min(Math.max(cur,1), n)) opt.selected = true;
+      minReqSel.appendChild(opt);
+    }
+
+    minReqSel.onchange = () => {
+      currentSettings.required_signals_min = parseInt(minReqSel.value, 10) || 1;
+    };
+  }
+
+  function buildGroups(){
+    const keys = Object.keys(currentSettings || {});
+    const groups = [
+      {
+        title: "Indicator Parameters",
+        match: k => {
+          k = String(k || "");
+          const low = k.toLowerCase();
+          const isInd =
+            low.startsWith("rsi_") ||
+            low.startsWith("macd_") ||
+            low.startsWith("bb_") ||
+            low.startsWith("vwap_") ||
+            low.startsWith("bollinger");
+          const isToggle =
+            low.includes("enable_") ||
+            low.includes("enabled") ||
+            low.startsWith("use_");
+          return isInd && !isToggle;
+        }
+      },
+      {
+        title: "Risk / Trade Controls",
+        match: k => {
+          k = String(k || "").toLowerCase();
+          return (
+            k.includes("max_per_trade") ||
+            k.includes("single_entry") ||
+            k.includes("pyramids") ||
+            k.includes("risk") ||
+            k.includes("exposure") ||
+            k.includes("budget") ||
+            k.includes("qty")
+          );
+        }
+      },
+      {
+        title: "Timing",
+        match: k => {
+          k = String(k || "").toLowerCase();
+          return (
+            k.includes("sell_after") ||
+            k.includes("days") ||
+            k.includes("poll") ||
+            k.includes("interval") ||
+            k.includes("sleep") ||
+            k.includes("cooldown") ||
+            k.includes("timeout")
+          );
+        }
+      }
+    ];
+function esc(s){
+  s = String(s);
+  // no regex literals; less chance of parser weirdness
+  return s
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+function renderKV(k){
+      const v = currentSettings[k];
+      const id = "xk_" + k.replace(/[^a-z0-9_]/gi, "_");
+
+      if (typeof v === "boolean"){
+        return `
+          <div class="x-kv">
+            <div>${esc(k)}</div>
+            <label style="display:flex;gap:8px;align-items:center;">
+              <input type="checkbox" id="${id}" ${v ? "checked":""}/>
+              <span>${v ? "ON":"OFF"}</span>
+            </label>
+          </div>`;
+      }
+      if (typeof v === "number"){
+        return `
+          <div class="x-kv">
+            <div>${esc(k)}</div>
+            <input class="x-input" type="number" id="${id}" value="${esc(v)}" step="1"/>
+          </div>`;
+      }
+      return `
+        <div class="x-kv">
+          <div>${esc(k)}</div>
+          <input class="x-input" type="text" id="${id}" value="${esc(v ?? "")}"/>
+        </div>`;
+    }
+
+    settingsGroupsEl.innerHTML = "";
+    for (const g of groups){
+      const gKeys = keys.filter(k => g.match(k));
+      if (!gKeys.length) continue;
+
+      const wrap = document.createElement("div");
+      wrap.className = "x-group";
+      wrap.innerHTML = `<h4>${g.title}</h4>` + gKeys.map(renderKV).join("");
+      settingsGroupsEl.appendChild(wrap);
+    }
+
+    for (const k of keys){
+      const id = "xk_" + k.replace(/[^a-z0-9_]/gi, "_");
+      const el = document.getElementById(id);
+      if (!el) continue;
+
+      if (el.type === "checkbox"){
+        el.onchange = () => { currentSettings[k] = !!el.checked; };
+      } else if (el.type === "number"){
+        el.onchange = () => {
+          const n = parseFloat(el.value);
+          if (!isNaN(n)) currentSettings[k] = n;
+        };
+      } else {
+        el.onchange = () => { currentSettings[k] = el.value; };
+      }
+    }
+  }
+
+  async function save(){
+    saveMsg.textContent = "Saving...";
+    const r = await fetch(`/api/settings/save?${qs()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(currentSettings || {})
+    });
+    const j = await r.json().catch(() => ({}));
+    saveMsg.textContent = (j && j.ok) ? "Saved ?" : "Save failed ?";
+    setTimeout(() => { saveMsg.textContent = ""; }, 2500);
+  }
+
+  async function refreshAll(){
+    saveMsg.textContent = "";
+    await loadSettings();
+    renderRequiredGate();
+    await loadScoreboard();
+    buildGroups();
+  }
+
+  profileSel.onchange = refreshAll;
+  bucketSel.onchange = loadScoreboard;
+  saveBtn.onclick = save;
+
+  refreshAll();
+})();
+
+
+// ===== MAX PATCH: scoreboard + gate render hardening (2026-02-01) =====
+(function(){
+  // --- indicator model (canonical) ---
+  // We render rows even if counts are empty; counts just show 0.
+  const INDICATORS = (window.INDICATORS && Array.isArray(window.INDICATORS) && window.INDICATORS.length)
+    ? window.INDICATORS
+    : [
+        { key:"MACD", on_key:"macd_on", enable_key:"enable_macd" },
+        { key:"RSI",  on_key:"rsi_on",  enable_key:"enable_rsi"  },
+        { key:"VWAP", on_key:"vwap_on", enable_key:"enable_vwap" },
+        { key:"BB",   on_key:"bb_on",   enable_key:"enable_bb"   },
+        { key:"ADX",  on_key:"adx_on",  enable_key:"enable_adx"  },
+        { key:"VOL",  on_key:"vol_on",  enable_key:"enable_vol"  },
+      ];
+
+  // Helper: read ?ON? state from either enable_* or *_on (supports both styles)
+  function _isOn(currentSettings, ind){
+    try {
+      if (!currentSettings || typeof currentSettings !== "object") return false;
+      if (ind.enable_key in currentSettings) return !!currentSettings[ind.enable_key];
+      if (ind.on_key in currentSettings) return !!currentSettings[ind.on_key];
+      // last resort: enable_{lower}
+      const k = "enable_" + String(ind.key||"").toLowerCase();
+      if (k in currentSettings) return !!currentSettings[k];
+      return false;
+    } catch(e){
+      return false;
+    }
+  }
+
+  function _setOn(currentSettings, ind, val){
+    try {
+      if (!currentSettings || typeof currentSettings !== "object") return;
+      if (ind.enable_key in currentSettings) currentSettings[ind.enable_key] = !!val;
+      if (ind.on_key in currentSettings) currentSettings[ind.on_key] = !!val;
+      // also keep enable_{lower} in sync
+      currentSettings["enable_" + String(ind.key||"").toLowerCase()] = !!val;
+    } catch(e){}
+  }
+
+  function _getEnabledIndicators(currentSettings){
+    return INDICATORS.filter(ind => _isOn(currentSettings, ind));
+  }
+
+  // Safely find elements (don?t throw if markup moved)
+  const byId = (id) => document.getElementById(id);
+
+  function _ensureGateOptions(currentSettings){
+    const minReqSel = byId("minRequired");
+    const gateHint  = byId("gateHint");
+    if (!minReqSel) return;
+
+    const enabled = _getEnabledIndicators(currentSettings);
+    const maxOpt = Math.max(1, enabled.length);
+
+    // rebuild options 1..maxOpt
+    minReqSel.innerHTML = "";
+    for (let i=1; i<=maxOpt; i++){
+      const opt = document.createElement("option");
+      opt.value = String(i);
+      opt.textContent = String(i);
+      minReqSel.appendChild(opt);
+    }
+
+    let cur = parseInt((currentSettings && currentSettings.required_signals_min) ? currentSettings.required_signals_min : 1, 10);
+    if (!cur || cur < 1) cur = 1;
+    if (cur > maxOpt) cur = maxOpt;
+    minReqSel.value = String(cur);
+    currentSettings.required_signals_min = cur;
+
+    if (gateHint){
+      if (!enabled.length){
+        gateHint.textContent = "No indicators enabled.";
+      } else {
+        gateHint.textContent = enabled.length + " enabled: " + enabled.map(x=>x.key).join(", ");
+      }
+    }
+
+    minReqSel.onchange = () => {
+      const v = parseInt(minReqSel.value, 10) || 1;
+      currentSettings.required_signals_min = v;
+    };
+  }
+
+  async function _renderScoreboard(currentSettings){
+    const bucketSel     = byId("bucket");
+    const scoreboardEl  = byId("scoreboardRows");
+    const bucketHint    = byId("bucketHint");
+    const scoreErr      = byId("scoreErr");
+
+    if (!bucketSel || !scoreboardEl) return;
+
+    const bucket = (bucketSel.value || "today").toLowerCase();
+    let j = null;
+
+    try {
+      const r = await fetch(`/api/settings/scoreboard?bucket=${encodeURIComponent(bucket)}`, { cache: "no-store" });
+      j = await r.json();
+      if (!j || !j.ok) throw new Error((j && j.error) ? j.error : "scoreboard api returned not-ok");
+    } catch(e){
+      if (scoreErr){
+        scoreErr.style.display = "block";
+        scoreErr.textContent = "Scoreboard error: " + (e && e.message ? e.message : String(e));
+      }
+      scoreboardEl.innerHTML = "";
+      if (bucketHint) bucketHint.textContent = "";
+      return;
+    }
+
+    if (scoreErr){
+      scoreErr.style.display = "none";
+      scoreErr.textContent = "";
+    }
+
+    const counts = j.counts || {};
+    const total  = j.total  || 0;
+    if (bucketHint) bucketHint.textContent = `Total fires: ${total}`;
+
+    scoreboardEl.innerHTML = "";
+    INDICATORS.forEach(ind => {
+      const on = _isOn(currentSettings, ind);
+      const c  = (counts && (ind.key in counts)) ? (counts[ind.key] || 0) : 0;
+
+      const row = document.createElement("div");
+      row.className = "x-sb-row";
+      row.innerHTML = `
+        <div class="x-left">
+          <div class="x-key">${ind.key}</div>
+          <span class="x-pill ${on ? "on":"off"}">${on ? "ON":"OFF"}</span>
+          <label style="display:flex;align-items:center;gap:8px; cursor:pointer;">
+            <input type="checkbox" ${on ? "checked":""} data-ind="${ind.key}" />
+            <span style="opacity:.85">eligible</span>
+          </label>
+        </div>
+        <div class="x-right">fires: <span class="x-count">${c}</span></div>
+      `;
+      scoreboardEl.appendChild(row);
+
+      const cb = row.querySelector("input[type=checkbox][data-ind]");
+      if (cb){
+        cb.onchange = () => {
+          _setOn(currentSettings, ind, !!cb.checked);
+          // update pill
+          const pill = row.querySelector(".x-pill");
+          if (pill){
+            pill.classList.remove("on","off");
+            pill.classList.add(cb.checked ? "on":"off");
+            pill.textContent = cb.checked ? "ON":"OFF";
+          }
+          _ensureGateOptions(currentSettings);
+        };
+      }
+    });
+
+    // Gate options depend on enabled toggles
+    _ensureGateOptions(currentSettings);
+  }
+
+  // Hook into existing loadSettings if present; otherwise we create a tiny bootstrap
+  async function _boot(){
+    // Try to reuse existing currentSettings if defined globally in the page script
+    let cs = (typeof window.currentSettings !== "undefined") ? window.currentSettings : null;
+    if (!cs || typeof cs !== "object"){
+      cs = {};
+      window.currentSettings = cs;
+    }
+
+    // If page already has loadSettings(), use it. Otherwise, fetch settings here.
+    if (typeof window.loadSettings === "function"){
+      try { await window.loadSettings(); } catch(e) {}
+      cs = window.currentSettings || cs;
+    } else {
+      try{
+        const r = await fetch("/api/settings/load?which=buy", { cache: "no-store" });
+        const j = await r.json();
+        cs = (j && j.data) ? j.data : (j || {});
+        if (!cs || typeof cs !== "object") cs = {};
+        window.currentSettings = cs;
+      } catch(e){}
+    }
+
+    // Default required_signals_min
+    if (!("required_signals_min" in cs) && ("min_required_signals" in cs)){
+      cs.required_signals_min = cs.min_required_signals;
+    }
+    if (!("required_signals_min" in cs)){
+      cs.required_signals_min = 1;
+    }
+
+    // Render scoreboard + gate
+    await _renderScoreboard(cs);
+
+    // Re-render when bucket changes
+    const bucketSel = byId("bucket");
+    if (bucketSel){
+      bucketSel.onchange = async () => {
+        await _renderScoreboard(window.currentSettings || cs);
+      };
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", _boot);
+})();
+// ===== END MAX PATCH =====
+</script>
+{% endblock %}

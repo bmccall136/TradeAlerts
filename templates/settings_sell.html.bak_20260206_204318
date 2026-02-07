@@ -1,0 +1,536 @@
+﻿{% extends "layout.html" %}
+{% block content %}
+<!-- NOTE: This is the BUY template with __MM_GROUP__ set to sell and SELL tab highlighted. -->
+<style>
+  .mm-card { background:#0f1118; border:1px solid #222531; border-radius:10px; }
+  .mm-muted { opacity:.82; }
+  .mm-stickybar {
+    position: sticky; top: 10px; z-index: 50;
+    background: rgba(15,17,24,.95);
+    border: 1px solid #222531;
+    border-radius: 10px;
+    padding: 10px 12px;
+    backdrop-filter: blur(6px);
+  }
+  .mm-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .mm-gate-grid { display:grid; grid-template-columns: repeat(8, minmax(120px, 1fr)); gap: 8px 10px; }
+  @media (max-width: 1200px) { .mm-gate-grid { grid-template-columns: repeat(4, minmax(140px, 1fr)); } }
+  @media (max-width: 700px)  { .mm-gate-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); } }
+  .mm-gate-pill { display:flex; align-items:center; gap:8px; border:1px solid #262a38; border-radius:10px; padding:6px 8px; background:#0b0d14; }
+  .mm-gate-pill input { transform: scale(1.05); }
+  .mm-cards { display:flex; flex-direction:column; gap:10px; }
+  details.mm-ind { border:1px solid #222531; border-radius:10px; background:#0b0d14; }
+  details.mm-ind[open] { background:#0f1118; }
+  details.mm-ind > summary { list-style:none; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; }
+  details.mm-ind > summary::-webkit-details-marker { display:none; }
+  .mm-title { font-weight:800; }
+  .mm-right { display:flex; align-items:center; gap:10px; }
+  .mm-body { padding: 8px 12px 12px 12px; border-top:1px solid #222531; }
+  .mm-grid { display:grid; grid-template-columns: 1fr 220px; gap: 8px 12px; align-items:center; }
+  @media (max-width: 700px) { .mm-grid { grid-template-columns: 1fr; } }
+  .mm-grid label { opacity:.9; }
+  .mm-grid input[type="text"], .mm-grid input[type="number"], .mm-grid select { width:100%; background:#0b0d14; border:1px solid #262a38; border-radius:8px; color:#e8e8e8; padding:6px 8px; }
+  .mm-toggle { display:flex; align-items:center; gap:8px; border:1px solid #262a38; border-radius:10px; padding:6px 8px; background:#0b0d14; }
+  .mm-section-title { font-size:18px; font-weight:800; margin-bottom:6px; }
+  .mm-subtitle { margin-top:0; margin-bottom:10px; }
+  .mm-gate-row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin: 10px 0 0 0; }
+  .mm-smallfield { display:flex; align-items:center; gap:8px; border:1px solid #262a38; border-radius:10px; padding:6px 8px; background:#0b0d14; }
+  .mm-smallfield label { margin:0; opacity:.9; font-weight:700; }
+  .mm-smallfield input { width:90px; background:#0b0d14; border:1px solid #262a38; border-radius:8px; color:#e8e8e8; padding:4px 6px; }
+  #otherCard .mm-grid label { opacity: 0.95; color: #d7dbe6; font-weight: 700; }
+  #otherCard .mm-muted { opacity: 0.9; }
+  #otherCard { background: rgba(17,21,28,0.78); }
+  #otherCard .card-body { background: transparent; }
+  #otherCard .mm-section-title { color: #e9edf6; }
+  #otherCard input[type="checkbox"] { accent-color: #f5d400; }
+  #otherCard input[type="checkbox"]:focus { outline: none; box-shadow: 0 0 0 2px rgba(245,212,0,0.25); }
+</style>
+
+<div id="settings-page" class="container-fluid" style="max-width:1100px;margin-left:auto;margin-right:auto;">
+  <div class="d-flex align-items-center justify-content-between" style="margin:18px 0 10px 0;">
+    <div style="font-size:22px;font-weight:800;">Settings</div>
+    <div class="d-flex align-items-center" style="gap:10px;">
+      <div class="btn-group" role="group" aria-label="settings tabs">
+        <a class="btn btn-sm btn-dark" href="/settings/buy">BUY</a>
+        <a class="btn btn-sm btn-warning" href="/settings/sell">SELL</a>
+      </div>
+      <div class="d-flex align-items-center" style="gap:8px;">
+        <div style="opacity:.85;">Profile</div>
+        <select id="profileSel" class="form-select form-select-sm" style="width:130px;">
+          <option value="day">DAY</option>
+          <option value="swing">SWING</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="mm-stickybar mb-3">
+    <div class="mm-row">
+      <div class="mm-muted">Editing: <b id="stickyGroup">SELL</b> / <b id="stickyProfile">DAY</b></div>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <button id="saveBtnTop" class="btn btn-warning">Save</button>
+        <div id="saveMsgTop" class="mm-muted"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="gateCard" class="card mm-card mb-3">
+    <div class="card-body">
+      <div style="font-size:18px;font-weight:700;">Required Signals Gate</div>
+      <div style="opacity:.9;margin:2px 0 12px 0;">
+        Checked = required (must be present). Unchecked indicators may still be enabled and contribute to strict buy signals.
+      </div>
+      <div id="gateGrid" class="mm-gate-grid"></div>
+      <div class="mm-gate-row">
+        <div class="mm-smallfield">
+          <label for="minSignals">Min signals</label>
+          <input id="minSignals" type="number" min="1" step="1" value="2">
+        </div>
+        <div id="gateHint" class="mm-muted"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mm-card mb-3">
+    <div class="card-body">
+      <div class="mm-section-title">Indicators</div>
+      <div class="mm-muted mm-subtitle">Each section can be expanded/collapsed. Enable controls eligibility; settings live inside each card.</div>
+      <div id="indicatorCards" class="mm-cards"></div>
+    </div>
+  </div>
+
+  <div id="otherCard" class="card mm-card mb-3" style="display:block; max-width:1100px; margin-left:auto; margin-right:auto;">
+    <div class="card-body">
+      <div class="mm-section-title">Other Settings</div>
+      <div class="mm-muted mm-subtitle">Everything that is not an indicator lives here.</div>
+      <div id="otherFields" class="mm-grid"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  window.__MM_GROUP__ = "sell";
+  window.__MM_CFG__ = window.__MM_CFG__ || {};
+</script>
+
+<script>
+/* The JS logic is identical to settings_buy.html; it uses GROUP=sell and the same DEFAULT_CFG fallback. */
+<script>
+(() => {
+  const GROUP = (window.__MM_GROUP__ || "buy");
+
+  // ------------------------------------------------------------
+  // Default UI metadata (fallback when backend does not provide meta)
+  // ------------------------------------------------------------
+  const DEFAULT_CFG = {
+    gate: [
+      { key:"rsi",       label:"RSI" },
+      { key:"sma",       label:"SMA" },
+      { key:"sma20",     label:"SMA20" },
+      { key:"super",     label:"SUPER" },
+      { key:"vol",       label:"VOL" },
+      { key:"vwap",      label:"VWAP" },
+      { key:"range",     label:"RANGE" },
+      { key:"price_sma", label:"PRICE SMA" },
+      { key:"macd",      label:"MACD" },
+      { key:"macd_hist", label:"MACD HIST" },
+      { key:"gap",       label:"GAP" },
+      { key:"bb",        label:"BB" },
+      { key:"bb_break",  label:"BB BREAK" },
+      { key:"atr",       label:"ATR" },
+      { key:"atr_pct",   label:"ATR PCT" },
+      { key:"adx",       label:"ADX" }
+    ],
+    cards: [
+      { key:"rsi", label:"RSI", enable_key:"rsi_on", fields:[
+        {k:"rsi_len",label:"Length",type:"number"},
+        {k:"rsi_overbought",label:"Overbought",type:"number"},
+        {k:"rsi_oversold",label:"Oversold",type:"number"},
+        {k:"rsi_slope_on",label:"RSI Slope",type:"bool"}
+      ]},
+      { key:"sma", label:"SMA", enable_key:"sma_on", fields:[
+        {k:"sma_len",label:"Length",type:"number"}
+      ]},
+      { key:"sma20", label:"SMA20 (Require)", enable_key:"sma20_on", fields:[
+        {k:"require_sma20",label:"Require SMA20",type:"bool"}
+      ]},
+      { key:"super", label:"Supertrend", enable_key:"supertrend_on", fields:[
+        {k:"supertrend_fast",label:"Fast",type:"number"},
+        {k:"supertrend_slow",label:"Slow",type:"number"},
+        {k:"supertrend_signal",label:"Signal",type:"number"}
+      ]},
+      { key:"vol", label:"Volume", enable_key:"vol_on", fields:[
+        {k:"vol_mult",label:"Multiplier",type:"number"}
+      ]},
+      { key:"vwap", label:"VWAP", enable_key:"vwap_on", fields:[
+        {k:"vwap_threshold",label:"Threshold",type:"number"}
+      ]},
+      { key:"range", label:"Range", enable_key:"range_on", fields:[
+        {k:"range_pct",label:"Range %",type:"number"}
+      ]},
+      { key:"price_sma", label:"Price SMA", enable_key:"price_sma_on", fields:[
+        {k:"price_sma_len",label:"Length",type:"number"}
+      ]},
+      { key:"macd", label:"MACD", enable_key:"macd_on", fields:[
+        {k:"macd_fast",label:"Fast",type:"number"},
+        {k:"macd_signal",label:"Signal",type:"number"},
+        {k:"macd_slow",label:"Slow",type:"number"}
+      ]},
+      { key:"macd_hist", label:"MACD Histogram", enable_key:"macd_hist_on", fields:[
+        {k:"macd_hist_enabled",label:"Histogram Enabled",type:"bool"}
+      ]},
+      { key:"gap", label:"Gap", enable_key:"gap_on", fields:[
+        {k:"gap_pct",label:"Gap %",type:"number"}
+      ]},
+      { key:"bb", label:"Bollinger Bands", enable_key:"bb_on", fields:[
+        {k:"bb_len",label:"Length",type:"number"},
+        {k:"bb_std",label:"StdDev",type:"number"}
+      ]},
+      { key:"bb_break", label:"BB Breakout", enable_key:"bb_break_on", fields:[
+        {k:"bb_breakout_enabled",label:"Breakout Enabled",type:"bool"}
+      ]},
+      { key:"atr", label:"ATR", enable_key:"atr_on", fields:[
+        {k:"atr_threshold",label:"Threshold",type:"number"}
+      ]},
+      { key:"atr_pct", label:"ATR %", enable_key:"atr_pct_on", fields:[
+        {k:"atr_pct_enabled",label:"ATR % Enabled",type:"bool"},
+        {k:"atr_pct",label:"ATR %",type:"number"}
+      ]},
+      { key:"adx", label:"ADX", enable_key:"adx_on", fields:[
+        {k:"adx_len",label:"Length",type:"number"},
+        {k:"adx_threshold",label:"Threshold",type:"number"}
+      ]},
+      { key:"ai", label:"AI Advisor", enable_key:"ai.enabled", enable_is_field:true, fields:[
+        {k:"ai.enabled",label:"Enabled",type:"bool"},
+        {k:"ai.use_entries",label:"Use Entries",type:"bool"},
+        {k:"ai.use_exits",label:"Use Exits",type:"bool"}
+      ]}
+    ],
+    other: [
+      {k:"ui_test_toggle",label:"UI Test Toggle",type:"bool"},
+      {k:"account_type",label:"Account Type",type:"text"},
+      {k:"broker",label:"Broker",type:"text"},
+      {k:"mode",label:"Mode",type:"text"},
+      {k:"market_gate",label:"Market Gate",type:"bool"},
+      {k:"market_session",label:"Market Session",type:"text"},
+      {k:"pause_when_market_closed",label:"Pause When Market Closed",type:"bool"},
+      {k:"order_term",label:"Order Term",type:"text"},
+      {k:"prefer_quotes",label:"Prefer Quotes",type:"bool"},
+      {k:"poll_interval",label:"Poll Interval",type:"number"},
+      {k:"scan_sleep_secs",label:"Scan Sleep Secs",type:"number"},
+      {k:"max_per_trade",label:"Max Per Trade",type:"number"},
+      {k:"max_pyramids",label:"Max Pyramids",type:"number"},
+      {k:"single_entry_only",label:"Single Entry Only",type:"bool"},
+      {k:"sell_after_days",label:"Sell After Days",type:"number"},
+      {k:"stop_loss_pct",label:"Stop Loss %",type:"number"},
+      {k:"take_profit_pct",label:"Take Profit %",type:"number"},
+      {k:"use_trailing_stop",label:"Use Trailing Stop",type:"bool"},
+      {k:"trailing_stop_pct",label:"Trailing Stop %",type:"number"},
+      {k:"trail_arm_gain_pct",label:"Trail Arm Gain %",type:"number"},
+      {k:"trail_floor_to_entry",label:"Trail Floor To Entry",type:"bool"},
+      {k:"trail_tiers",label:"Trail Tiers",type:"text"},
+      {k:"news_on",label:"News On",type:"bool"},
+      {k:"nuke_db",label:"Nuke DB",type:"bool"},
+      {k:"realized_since",label:"Realized Since",type:"text"},
+      {k:"realized_tz",label:"Realized TZ",type:"text"},
+      {k:"strict_buy_signals",label:"Strict Buy Signals",type:"number"}
+    ]
+  };
+
+  const CFG = (window.__MM_CFG__ && (window.__MM_CFG__.cards || window.__MM_CFG__.gate)) ? window.__MM_CFG__ : DEFAULT_CFG;
+  const byId = (id) => document.getElementById(id);
+
+  let SETTINGS = {};
+
+  function normProfile(v){
+    v = String(v||"").toLowerCase();
+    return (v === "swing") ? "swing" : "day";
+  }
+
+  async function apiLoad(profile){
+    const r = await fetch(`/api/settings/load?group=${encodeURIComponent(GROUP)}&profile=${encodeURIComponent(profile)}`, { cache:"no-store" });
+    const j = await r.json();
+    if (!j || !j.ok) throw new Error((j && j.error) ? j.error : "load failed");
+    return (j.data && typeof j.data === "object") ? j.data : {};
+  }
+
+  async function apiSave(profile, data){
+    const r = await fetch(`/api/settings/save?group=${encodeURIComponent(GROUP)}&profile=${encodeURIComponent(profile)}`, {
+      method:"POST",
+      headers: { "Content-Type":"application/json" },
+      body: JSON.stringify(data || {})
+    });
+    const j = await r.json();
+    if (!j || !j.ok) throw new Error((j && j.error) ? j.error : "save failed");
+    return j;
+  }
+
+  function getPath(obj, path){
+    const parts = String(path||"").split(".");
+    let cur = obj;
+    for (const p of parts){
+      if (!cur || typeof cur !== "object") return undefined;
+      cur = cur[p];
+    }
+    return cur;
+  }
+
+  function setPath(obj, path, value){
+    const parts = String(path||"").split(".");
+    let cur = obj;
+    for (let i=0;i<parts.length;i++){
+      const p = parts[i];
+      if (i === parts.length-1){
+        cur[p] = value;
+      } else {
+        if (!cur[p] || typeof cur[p] !== "object") cur[p] = {};
+        cur = cur[p];
+      }
+    }
+  }
+
+  function updateGateHint(){
+    const hint = byId("gateHint");
+    if (!hint) return;
+    const req = Array.isArray(SETTINGS.required_filters) ? SETTINGS.required_filters : [];
+    const ms = Number(SETTINGS.min_signals ?? SETTINGS.required_signals_min ?? 2);
+    hint.textContent = `Required: ${req.length ? req.join(", ") : "(none)"}   •   Min signals: ${Number.isFinite(ms) ? ms : 2}`;
+  }
+
+  function renderGate(){
+    const host = byId("gateGrid");
+    if (!host) return;
+    host.innerHTML = "";
+
+    let required = SETTINGS.required_filters;
+    if (!Array.isArray(required)) required = [];
+    const reqSet = new Set(required.map(x => String(x||"").toLowerCase()));
+
+    for (const g of (CFG.gate || [])){
+      const pill = document.createElement("div");
+      pill.className = "mm-gate-pill";
+      const id = `gate_${g.key}`;
+      const checked = reqSet.has(String(g.key).toLowerCase());
+      pill.innerHTML = `
+        <input type="checkbox" id="${id}" ${checked ? "checked" : ""}>
+        <label for="${id}" style="margin:0;font-weight:800;">${g.label}</label>
+      `;
+      pill.querySelector("input").onchange = (e) => {
+        const on = !!e.target.checked;
+        const key = String(g.key).toLowerCase();
+        let arr = Array.isArray(SETTINGS.required_filters) ? SETTINGS.required_filters.slice() : [];
+        arr = arr.map(x => String(x||"").toLowerCase());
+        const s = new Set(arr);
+        if (on) s.add(key); else s.delete(key);
+        SETTINGS.required_filters = Array.from(s);
+        updateGateHint();
+      };
+      host.appendChild(pill);
+    }
+
+    const minEl = byId("minSignals");
+    if (minEl){
+      const cur = Number(SETTINGS.min_signals ?? SETTINGS.required_signals_min ?? 2);
+      minEl.value = String(Number.isFinite(cur) ? cur : 2);
+      minEl.oninput = () => {
+        const v = Math.max(1, Number(minEl.value || 1));
+        SETTINGS.min_signals = v;
+        SETTINGS.required_signals_min = v; // keep both in sync
+        updateGateHint();
+      };
+    }
+
+    updateGateHint();
+  }
+
+  function getEnable(card){
+    if (card.enable_is_field){
+      return !!getPath(SETTINGS, card.enable_key);
+    }
+    if (!card.enable_key) return true;
+    return !!SETTINGS[card.enable_key];
+  }
+
+  function setEnable(card, v){
+    if (card.enable_is_field){
+      setPath(SETTINGS, card.enable_key, !!v);
+      return;
+    }
+    if (!card.enable_key) return;
+    SETTINGS[card.enable_key] = !!v;
+  }
+
+  function renderCards(){
+    const host = byId("indicatorCards");
+    if (!host) return;
+    host.innerHTML = "";
+
+    for (const card of (CFG.cards || [])){
+      const det = document.createElement("details");
+      det.className = "mm-ind";
+      det.open = true;
+
+      const enabled = getEnable(card);
+      const sum = document.createElement("summary");
+
+      const enableHtml = card.enable_key ? `
+        <label class="mm-toggle" onclick="event.stopPropagation();">
+          <input type="checkbox" ${enabled ? "checked" : ""} style="transform:scale(1.05);">
+          <span style="font-weight:800;">Enabled</span>
+        </label>
+      ` : ``;
+
+      sum.innerHTML = `
+        <div class="mm-title">${card.label}</div>
+        <div class="mm-right">
+          ${enableHtml}
+        </div>
+      `;
+      det.appendChild(sum);
+
+      const body = document.createElement("div");
+      body.className = "mm-body";
+      const grid = document.createElement("div");
+      grid.className = "mm-grid";
+
+      for (const f of (card.fields || [])){
+        const key = f.k;
+        const label = f.label || key;
+        const type = f.type || "text";
+        const optional = !!f.optional;
+
+        const existing = key.includes(".") ? (getPath(SETTINGS, key) !== undefined) : (SETTINGS[key] !== undefined);
+        if (optional && !existing) continue;
+
+        const rowLabel = document.createElement("label");
+        rowLabel.textContent = label;
+
+        let input;
+        if (type === "bool"){
+          input = document.createElement("input");
+          input.type = "checkbox";
+          input.checked = !!(key.includes(".") ? getPath(SETTINGS, key) : SETTINGS[key]);
+          input.onchange = () => {
+            const v = !!input.checked;
+            if (key.includes(".")) setPath(SETTINGS, key, v);
+            else SETTINGS[key] = v;
+          };
+        } else {
+          input = document.createElement("input");
+          input.type = (type === "number") ? "number" : "text";
+          const v = key.includes(".") ? getPath(SETTINGS, key) : SETTINGS[key];
+          input.value = (v === undefined || v === null) ? "" : String(v);
+          input.oninput = () => {
+            const val = (type === "number") ? Number(input.value) : input.value;
+            if (key.includes(".")) setPath(SETTINGS, key, val);
+            else SETTINGS[key] = val;
+          };
+        }
+
+        const box = document.createElement("div");
+        box.appendChild(input);
+
+        grid.appendChild(rowLabel);
+        grid.appendChild(box);
+      }
+
+      body.appendChild(grid);
+      det.appendChild(body);
+      host.appendChild(det);
+
+      if (card.enable_key){
+        const chk = sum.querySelector('input[type="checkbox"]');
+        if (chk){
+          chk.onchange = () => setEnable(card, !!chk.checked);
+        }
+      }
+    }
+  }
+
+  function renderOther(){
+    const host = byId("otherFields");
+    if (!host) return;
+    host.innerHTML = "";
+
+    for (const f of (CFG.other || [])){
+      const key = f.k;
+      const label = f.label || key;
+      const type = f.type || "text";
+      const optional = !!f.optional;
+
+      const existing = SETTINGS[key] !== undefined;
+      if (optional && !existing) continue;
+
+      const rowLabel = document.createElement("label");
+      rowLabel.textContent = label;
+
+      let input;
+      if (type === "bool"){
+        input = document.createElement("input");
+        input.type = "checkbox";
+        input.checked = !!SETTINGS[key];
+        input.onchange = () => SETTINGS[key] = !!input.checked;
+      } else {
+        input = document.createElement("input");
+        input.type = (type === "number") ? "number" : "text";
+        const v = SETTINGS[key];
+        input.value = (v === undefined || v === null) ? "" : String(v);
+        input.oninput = () => SETTINGS[key] = (type === "number") ? Number(input.value) : input.value;
+      }
+
+      const box = document.createElement("div");
+      box.appendChild(input);
+
+      host.appendChild(rowLabel);
+      host.appendChild(box);
+    }
+  }
+
+  async function refreshAll(){
+    const prof = normProfile(byId("profileSel")?.value || "day");
+    byId("stickyProfile").textContent = prof.toUpperCase();
+    byId("stickyGroup").textContent = GROUP.toUpperCase();
+
+    try {
+      SETTINGS = await apiLoad(prof);
+    } catch(e) {
+      console.error(e);
+      SETTINGS = {};
+    }
+
+    if (!SETTINGS.ai || typeof SETTINGS.ai !== "object") {
+      SETTINGS.ai = { enabled:false, use_entries:false, use_exits:false };
+    }
+
+    renderGate();
+    renderCards();
+    renderOther();
+  }
+
+  async function doSave(){
+    const prof = normProfile(byId("profileSel")?.value || "day");
+    const msg2 = byId("saveMsgTop");
+    if (msg2) msg2.textContent = "Saving...";
+    try {
+      await apiSave(prof, SETTINGS);
+      if (msg2) msg2.textContent = "Saved.";
+      setTimeout(() => { if (msg2) msg2.textContent = ""; }, 1500);
+    } catch(e) {
+      console.error(e);
+      if (msg2) msg2.textContent = "Save failed.";
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const profileSel = byId("profileSel");
+    if (profileSel) profileSel.onchange = refreshAll;
+
+    const saveBtnTop = byId("saveBtnTop");
+    if (saveBtnTop) saveBtnTop.onclick = doSave;
+
+    refreshAll();
+  });
+})();
+</script>
+{% endblock %}
+

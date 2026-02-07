@@ -1,0 +1,430 @@
+{% extends "layout.html" %}
+{% block content %}
+<div id="settings-page" class="container-fluid">
+  <div class="d-flex align-items-center justify-content-between" style="margin:18px 0 10px 0;">
+    <div style="font-size:22px;font-weight:700;">Settings</div>
+    <div class="d-flex align-items-center" style="gap:10px;">
+      <div class="btn-group" role="group" aria-label="settings tabs">
+        <a class="btn btn-sm btn-dark" href="/settings/buy">BUY</a>
+        <a class="btn btn-sm btn-warning" href="/settings/sell">SELL</a>
+      </div>
+      <div class="d-flex align-items-center" style="gap:8px;">
+        <div style="opacity:.85;">Profile</div>
+        <select id="profileSel" class="form-select form-select-sm" style="width:130px;">
+          <option value="day">DAY</option>
+          <option value="swing">SWING</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mm-card mb-3">
+    <div class="card-body">
+      <div style="font-size:18px;font-weight:700;">Signal Scoreboard</div>
+      <div style="opacity:.9;margin:2px 0 10px 0;">Counts increment even if disabled. Toggles affect eligibility only.</div>
+
+      <div class="d-flex align-items-center" style="gap:10px;margin-bottom:10px;">
+        <div style="min-width:60px;opacity:.85;">Bucket</div>
+        <select id="bucketSel" class="form-select form-select-sm" style="width:160px;">
+          <option value="today" selected>TODAY</option>
+          <option value="7d">7D</option>
+          <option value="30d">30D</option>
+          <option value="all">ALL</option>
+        </select>
+        <div id="bucketHint" style="opacity:.75;"></div>
+        <div id="scoreErr" style="display:none;color:#ff6b6b;font-weight:600;"></div>
+      </div>
+
+      <div id="indicatorCards"></div>
+
+      <div class="d-flex align-items-center mm-savebar" style="gap:10px;margin-top:14px;">
+        <button id="saveBtn" class="btn btn-warning">Save</button>
+        <div id="saveMsg" style="opacity:.85;"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <div id="gateCard" class="card mm-card mb-3">
+    <div class="card-body">
+      <div style="font-size:18px;font-weight:700;">Required Signals Gate</div>
+      <div style="opacity:.9;margin:2px 0 10px 0;">Minimum number of ON signals that must fire before we consider a trade.</div>
+
+      <div class="d-flex align-items-center" style="gap:10px;">
+        <div style="min-width:130px;opacity:.85;">Minimum required</div>
+        <select id="minReqSel" class="form-select form-select-sm" style="width:140px;"></select>
+        <div id="gateHint" style="opacity:.75;"></div>
+      </div>
+    </div>
+  </div>
+  </div>
+</div>
+
+
+<script>
+  // page indicator model
+  window.__INDICATORS__ = [
+  { label: "TIMEOUT EXITS", enable_key: "enable_timeout_exits" }
+];
+</script>
+
+<script>
+(() => {
+  const GROUP = "buy"; // dashboard.py passes group=buy/sell into template
+  const byId = (id) => document.getElementById(id);
+
+  const INDICATORS = window.__INDICATORS__ || [];
+
+  // Gate key compat: PRIMARY is what engine should use
+  const GATE_KEY_PRIMARY = "min_signals";
+  const GATE_KEY_MIRROR  = "required_signals_min";
+
+  function getGateVal(settings){
+    let v = settings ? settings[GATE_KEY_PRIMARY] : undefined;
+    if (v === undefined || v === null || v === "") v = settings ? settings[GATE_KEY_MIRROR] : undefined;
+    let n = parseInt(v, 10);
+    if (!Number.isFinite(n) || n < 1) n = 1;
+    return n;
+  }
+  function setGateVal(settings, n){
+    n = parseInt(n, 10);
+    if (!Number.isFinite(n) || n < 1) n = 1;
+    settings[GATE_KEY_PRIMARY] = n;
+    settings[GATE_KEY_MIRROR]  = n; // mirror for compatibility
+  }
+
+  function normProfile(v){
+    v = String(v || "").toLowerCase();
+    if (v === "day" || v === "swing") return v;
+    return "day";
+  }
+
+  async function apiLoad(group, profile){
+    const r = await fetch(`/api/settings/load?group=${encodeURIComponent(group)}&profile=${encodeURIComponent(profile)}`, { cache: "no-store" });
+    const j = await r.json();
+    if (!j || !j.ok) throw new Error((j && j.error) ? j.error : "settings load not-ok");
+    return (j.data && typeof j.data === "object") ? j.data : {};
+  }
+
+  async function apiSave(group, profile, data){
+    const r = await fetch(`/api/settings/save?group=${encodeURIComponent(group)}&profile=${encodeURIComponent(profile)}`, {
+      method: "POST",
+      headers: { "Content-Type":"application/json" },
+      body: JSON.stringify(data || {})
+    });
+    const j = await r.json();
+    if (!j || !j.ok) throw new Error((j && j.error) ? j.error : "settings save not-ok");
+    return j;
+  }
+
+  async function apiScoreboard(bucket){
+    const r = await fetch(`/api/settings/scoreboard?bucket=${encodeURIComponent(bucket)}`, { cache:"no-store" });
+    const j = await r.json();
+    if (!j || !j.ok) throw new Error((j && j.error) ? j.error : "scoreboard not-ok");
+    return j;
+  }
+
+  function enabledIndicators(settings){
+    const out = [];
+    
+    // Order: enabled (gate-eligible) first, then disabled; within each group sort by count desc then label
+    const IND_ORDER = [...INDICATORS].sort((a,b) => {
+      const ae = settings && settings[a.enable_key] ? 1 : 0;
+      const be = settings && settings[b.enable_key] ? 1 : 0;
+      if (be !== ae) return be - ae;
+      const ac = (counts && counts[a.label] !== undefined) ? counts[a.label] : 0;
+      const bc = (counts && counts[b.label] !== undefined) ? counts[b.label] : 0;
+      if (bc !== ac) return bc - ac;
+      return String(a.label).localeCompare(String(b.label));
+    });
+
+    for (const it of IND_ORDER){
+      const on = !!settings[it.enable_key];
+      if (on) out.push(it);
+    }
+    return out;
+  }
+
+  function renderGate(settings){
+    const minReqSel = byId("minReqSel");
+    const gateHint  = byId("gateHint");
+    if (!minReqSel) return;
+
+    const enabled = enabledIndicators(settings);
+    const maxOpt = Math.max(1, enabled.length || 1);
+
+    minReqSel.innerHTML = "";
+    for (let i=1; i<=maxOpt; i++){
+      const opt = document.createElement("option");
+      opt.value = String(i);
+      opt.textContent = String(i);
+      minReqSel.appendChild(opt);
+    }
+
+    let cur = getGateVal(settings);
+    if (cur > maxOpt) cur = maxOpt;
+    minReqSel.value = String(cur);
+    setGateVal(settings, cur);
+
+    if (gateHint){
+      if (!enabled.length) gateHint.textContent = "No indicators enabled.";
+      else gateHint.textContent = enabled.length + " enabled: " + enabled.map(x => x.label).join(", ");
+    }
+
+    minReqSel.onchange = () => {
+      const v = parseInt(minReqSel.value, 10) || 1;
+      setGateVal(settings, v);
+    };
+  }
+
+  function indicatorPrefixes(label){
+    const L = String(label || "").toUpperCase();
+    if (L === "MACD") return [/^macd_/i];
+    if (L === "RSI")  return [/^rsi_/i];
+    if (L === "VWAP") return [/^vwap_/i];
+    if (L === "BB")   return [/^bb_/i, /^bollinger/i];
+    if (L === "ADX")  return [/^adx_/i];
+    if (L === "VOL")  return [/^vol_/i, /^volume_/i];
+    return [];
+  }
+
+  function isIndicatorKey(label, key){
+    const ps = indicatorPrefixes(label);
+    return ps.some(rx => rx.test(key));
+  }
+
+  function esc(s){
+    return String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  }
+
+  function inputRow(key, val){
+    const id = "k_" + key.replace(/[^a-z0-9_]/gi, "_");
+    if (typeof val === "boolean"){
+      return `<tr>
+        <td style="width:70%;opacity:.9;">${esc(key)}</td>
+        <td style="width:30%;text-align:right;">
+          <input type="checkbox" id="${id}" ${val ? "checked":""}/>
+        </td>
+      </tr>`;
+    }
+    if (typeof val === "number"){
+      return `<tr>
+        <td style="width:70%;opacity:.9;">${esc(key)}</td>
+        <td style="width:30%;text-align:right;">
+          <input type="number" class="form-control form-control-sm" id="${id}" value="${String(val)}" style="max-width:180px;display:inline-block;"/>
+        </td>
+      </tr>`;
+    }
+    return `<tr>
+      <td style="width:70%;opacity:.9;">${esc(key)}</td>
+      <td style="width:30%;text-align:right;">
+        <input type="text" class="form-control form-control-sm" id="${id}" value="${esc((val===null||val===undefined) ? "" : String(val))}" style="max-width:260px;display:inline-block;"/>
+      </td>
+    </tr>`;
+  }
+
+  function wireInputs(settings, keys){
+    for (const k of keys){
+      const id = "k_" + k.replace(/[^a-z0-9_]/gi, "_");
+      const el = byId(id);
+      if (!el) continue;
+      if (el.type === "checkbox"){
+        el.onchange = () => { settings[k] = !!el.checked; };
+      } else if (el.type === "number"){
+        el.onchange = () => {
+          const n = Number(el.value);
+          settings[k] = Number.isFinite(n) ? n : settings[k];
+        };
+      } else {
+        el.onchange = () => { settings[k] = String(el.value); };
+      }
+    }
+  }
+
+  function renderIndicatorCards(settings, counts, bucket){
+    const root = byId("indicatorCards");
+    const err  = byId("scoreErr");
+    const hint = byId("bucketHint");
+    if (!root) return;
+
+    if (hint) hint.textContent = bucket ? `(${bucket.toUpperCase()})` : "";
+    if (err){ err.style.display = "none"; err.textContent = ""; }
+
+    const allKeys = Object.keys(settings || {});
+    const enableKeys = new Set(INDICATORS.map(x => x.enable_key));
+    const gateKeys = new Set([GATE_KEY_PRIMARY, GATE_KEY_MIRROR]);
+
+    const chunks = [];
+
+    // per-indicator sections
+    for (const it of INDICATORS){
+      const label = it.label;
+      const onKey = it.enable_key;
+      const on = !!settings[onKey];
+
+      const cnt = (counts && typeof counts === "object" && counts[label] !== undefined) ? counts[label] : 0;
+
+      const paramKeys = allKeys
+        .filter(k => isIndicatorKey(label, k))
+        .filter(k => k !== onKey)           // enable is shown at top
+        .sort();
+
+      const enableId = "en_" + onKey.replace(/[^a-z0-9_]/gi, "_");
+
+      chunks.push(`
+        <div class="card mm-subcard">
+          <div class="card-body">
+            <div class="d-flex align-items-center justify-content-between" style="gap:12px;">
+              <div style="font-weight:800;font-size:16px;letter-spacing:.4px;">${esc(label)}</div>
+              <div class="d-flex align-items-center" style="gap:10px;">
+                <div style="opacity:.75;font-size:12px;">count: <b style="opacity:1;">${cnt}</b></div>
+                <label class="d-flex align-items-center" style="gap:8px;margin:0;">
+                  <span style="opacity:.85;">Enabled</span>
+                  <input type="checkbox" id="${enableId}" ${on ? "checked":""}/>
+                </label>
+              </div>
+            </div>
+
+            ${paramKeys.length ? `
+              <div class="table-responsive mt-2">
+                <table class="table table-sm table-dark align-middle mm-settings-table" style="margin:0;">
+                  <tbody>
+                    ${paramKeys.map(k => inputRow(k, settings[k])).join("")}
+                  </tbody>
+                </table>
+              </div>
+            ` : `<div class="mt-2" style="opacity:.75;font-size:12px;">No parameters found for ${esc(label)}.</div>`}
+          </div>
+        </div>
+      `);
+    }
+
+    // Trade Controls (everything not indicator params, not indicator enables, not gate keys)
+    const used = new Set();
+    for (const it of INDICATORS){
+      used.add(it.enable_key);
+      for (const k of allKeys){
+        if (isIndicatorKey(it.label, k)) used.add(k);
+      }
+    }
+    for (const k of gateKeys) used.add(k);
+
+    const controlKeys = allKeys
+      .filter(k => !used.has(k))
+      .sort();
+
+    if (controlKeys.length){
+      chunks.push(`
+        <div class="card mm-subcard">
+          <div class="card-body">
+            <div style="font-weight:800;font-size:16px;letter-spacing:.4px;">Trade Controls</div>
+            <div class="table-responsive mt-2">
+              <table class="table table-sm table-dark align-middle mm-settings-table" style="margin:0;">
+                <tbody>
+                  ${controlKeys.map(k => inputRow(k, settings[k])).join("")}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `);
+    }
+
+    root.innerHTML = chunks.join("");
+
+    // wire enable toggles
+    for (const it of INDICATORS){
+      const enableId = "en_" + it.enable_key.replace(/[^a-z0-9_]/gi, "_");
+      const el = byId(enableId);
+      if (!el) continue;
+      el.onchange = () => {
+        settings[it.enable_key] = !!el.checked;
+        renderGate(settings); // gate options depend on enabled count
+      };
+    }
+
+    // wire inputs
+    for (const it of INDICATORS){
+      const keys = allKeys
+        .filter(k => isIndicatorKey(it.label, k))
+        .filter(k => k !== it.enable_key)
+        .sort();
+      wireInputs(settings, keys);
+    }
+    wireInputs(settings, controlKeys);
+  }
+
+  async function refreshAll(){
+    const profileSel = byId("profileSel");
+    const bucketSel  = byId("bucketSel");
+    const saveMsg    = byId("saveMsg");
+    const scoreErr   = byId("scoreErr");
+
+    const profile = normProfile(profileSel ? profileSel.value : "day");
+    const bucket  = (bucketSel ? bucketSel.value : "today").toLowerCase();
+
+    if (saveMsg){ saveMsg.textContent = ""; }
+
+    let settings = {};
+    try{
+      settings = await apiLoad(GROUP, profile);
+    } catch(e){
+      if (saveMsg){
+        saveMsg.style.color = "#ff6b6b";
+        saveMsg.textContent = "Load error: " + (e && e.message ? e.message : String(e));
+      }
+      return;
+    }
+
+    window.currentSettings = settings;
+
+    let sc = null;
+    try{
+      sc = await apiScoreboard(bucket);
+    } catch(e){
+      if (scoreErr){
+        scoreErr.style.display="block";
+        scoreErr.textContent = "Scoreboard error: " + (e && e.message ? e.message : String(e));
+      }
+    }
+
+    renderIndicatorCards(settings, sc ? sc.counts : {}, bucket);
+    renderGate(settings);
+
+    const saveBtn = byId("saveBtn");
+    if (saveBtn){
+      saveBtn.onclick = async () => {
+        try{
+          await apiSave(GROUP, profile, window.currentSettings || settings);
+          if (saveMsg){
+            saveMsg.style.color = "#9fffa8";
+            saveMsg.textContent = "Saved.";
+          }
+          await refreshAll();
+        } catch(e){
+          if (saveMsg){
+            saveMsg.style.color = "#ff6b6b";
+            saveMsg.textContent = "Save error: " + (e && e.message ? e.message : String(e));
+          }
+        }
+      };
+    }
+  }
+
+  function init(){
+    const profileSel = byId("profileSel");
+    const bucketSel  = byId("bucketSel");
+    if (profileSel) profileSel.onchange = refreshAll;
+    if (bucketSel)  bucketSel.onchange  = refreshAll;
+    refreshAll();
+  }
+
+  document.addEventListener("DOMContentLoaded", init);
+})();
+</script>
+{% endblock %}
+
+
+
+
+

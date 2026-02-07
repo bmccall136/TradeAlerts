@@ -1,0 +1,533 @@
+﻿{% extends "layout.html" %}
+{% block content %}
+
+<div class="x-settings" data-group="sell">
+  <div class="x-settings-top">
+    <div class="x-settings-title">❓ Settings</div>
+
+    <div class="x-tabs">
+      <a class="x-tab" href="/settings/buy">BUY</a>
+      <a class="x-tab active" href="/settings/sell">SELL</a>
+    </div>
+
+    <div class="x-profile">
+      <div class="x-profile-label">Profile</div>
+      <select id="profileSel" class="x-select">
+        <option value="DAY" selected>DAY</option>
+        <option value="SWING">SWING</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- SECTION 1: Scoreboard -->
+  <div class="x-card">
+    <div class="x-card-title">Signal Scoreboard</div>
+    <div class="x-card-sub">Counts increment even if disabled. Toggles affect eligibility only.</div>
+
+    <div class="x-row">
+      <div class="x-row-label">Bucket</div>
+      <select id="bucketSel" class="x-select">
+        <option value="TODAY" selected>TODAY</option>
+        <option value="7D">7D</option>
+        <option value="30D">30D</option>
+        <option value="ALL">ALL</option>
+      </select>
+      <div id="bucketHint" class="x-hint"></div>
+    </div>
+
+    <div id="scoreErr" class="x-err" style="display:none;"></div>
+    <div id="scoreboard" class="x-scoreboard"></div>
+  </div>
+
+  <!-- SECTION 2: Required gate -->
+  <div class="x-card">
+    <div class="x-card-title">Required Signals Gate</div>
+    <div class="x-card-sub">Minimum number of ON signals that must fire before we consider a trade.</div>
+
+    <div class="x-row">
+      <div class="x-row-label">Minimum required</div>
+      <select id="minReqSel" class="x-select"></select>
+      <div id="gateHint" class="x-hint"></div>
+    </div>
+  </div>
+
+  <!-- SECTION 3: Grouped settings -->
+  <div class="x-card">
+    <div class="x-card-title">Settings</div>
+    <div class="x-card-sub">Grouped. No raw JSON.</div>
+
+    <div id="settingsGroups"></div>
+
+    <div class="x-actions">
+      <button id="saveBtn" class="x-btn">Save</button>
+      <div id="saveMsg" class="x-save-msg"></div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .x-settings { max-width: 980px; margin: 0 auto; padding: 18px 10px 50px; }
+  .x-settings-top { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-bottom:14px; }
+  .x-settings-title { font-size: 22px; font-weight: 700; opacity: .95; }
+  .x-tabs { display:flex; gap:10px; align-items:center; }
+  .x-tab { display:inline-block; padding:8px 16px; border-radius:10px; border:1px solid rgba(255,233,0,.35); text-decoration:none; color:#fff; opacity:.9; }
+  .x-tab.active { background:#ffe900; color:#000; font-weight:700; }
+  .x-profile { display:flex; gap:10px; align-items:center; }
+  .x-profile-label { opacity:.9; }
+  .x-select { background:#0b1020; color:#fff; border:1px solid rgba(255,255,255,.15); border-radius:10px; padding:8px 12px; min-width:140px; }
+
+  .x-card { background: rgba(10,16,32,.92); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:14px 16px; margin-top:14px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+  .x-card-title { font-size:18px; font-weight:700; margin-bottom:4px; }
+  .x-card-sub { opacity:.85; margin-bottom:10px; }
+  .x-row { display:flex; align-items:center; gap:12px; margin: 10px 0 6px; }
+  .x-row-label { min-width:120px; opacity:.9; }
+  .x-hint { opacity:.8; font-size: 13px; }
+  .x-err { margin-top:10px; color:#ff6b6b; font-weight:600; }
+
+  .x-scoreboard { display:flex; flex-direction:column; gap:10px; margin-top:12px; }
+  .x-sb-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border-radius:12px; border:1px solid rgba(255,255,255,.08); background: rgba(0,0,0,.15); }
+  .x-left { display:flex; gap:10px; align-items:center; min-width: 220px; }
+  .x-key { font-weight:700; letter-spacing:.3px; }
+  .x-pill { display:inline-block; padding:4px 10px; border-radius:999px; font-weight:700; font-size: 12px; }
+  .x-pill.on { background:#ffe900; color:#000; }
+  .x-pill.off { background: rgba(255,255,255,.12); color:#fff; }
+  .x-mid { opacity:.95; }
+  .x-right { min-width:60px; text-align:right; }
+  .x-count { font-weight:800; font-size: 18px; }
+
+  .x-group { margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.08); }
+  .x-group-title { font-weight:800; margin-bottom: 8px; opacity:.95; }
+  .x-group-body { display:flex; flex-direction:column; gap:10px; }
+  .x-kv { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; border-radius:12px; border:1px solid rgba(255,255,255,.08); background: rgba(0,0,0,.10); }
+  .x-in { width: 240px; background:#0b1020; color:#fff; border:1px solid rgba(255,255,255,.15); border-radius:10px; padding:8px 10px; }
+
+  .x-actions { display:flex; align-items:center; gap:12px; margin-top: 14px; }
+  .x-btn { background:#ffe900; color:#000; border:0; border-radius:10px; padding:10px 18px; font-weight:800; }
+  .x-btn:disabled { opacity:.6; }
+  .x-save-msg { opacity:.9; font-weight:600; }
+</style>
+
+<script>
+(function(){
+  "use strict";
+
+  function byId(id){ return document.getElementById(id); }
+  function escHtml(s){
+    return String(s)
+      .replace(/&/g,"&amp;")
+      .replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;");
+  }
+
+  function getGroup(){
+    // Prefer explicit dataset marker if present
+    const root = document.querySelector(".x-settings");
+    if (root && root.dataset && root.dataset.group) return String(root.dataset.group).toLowerCase();
+
+    // Fallback: infer from URL
+    const p = (location.pathname || "").toLowerCase();
+    if (p.indexOf("/settings/sell") >= 0) return "sell";
+    return "buy";
+  }
+
+  async function getLiveMode(){
+    // Returns "day" or "swing" if endpoint exists; otherwise null.
+    try{
+      const r = await fetch("/live/mode", { cache: "no-store" });
+      const j = await r.json();
+      if (!j) return null;
+      const m = (j.mode || j.live_mode || j.profile || j.value || "").toString().toLowerCase();
+      if (m === "day" || m === "swing") return m;
+      // some builds return "DAY"/"SWING"
+      if (m.indexOf("day") >= 0) return "day";
+      if (m.indexOf("swing") >= 0) return "swing";
+      return null;
+    } catch(e){
+      return null;
+    }
+  }
+
+  function getProfile(){
+    const sel = byId("profileSel");
+    if (!sel) return "day";
+    const v = (sel.value || "").toString().toLowerCase();
+    if (v === "day" || v === "swing") return v;
+    if (v.indexOf("day") >= 0) return "day";
+    if (v.indexOf("swing") >= 0) return "swing";
+    return "day";
+  }
+
+  function setProfile(p){
+    const sel = byId("profileSel");
+    if (!sel) return;
+    const want = (p || "day").toString().toLowerCase();
+    // Support either values "DAY/SWING" or "day/swing"
+    for (const opt of Array.from(sel.options || [])){
+      const ov = (opt.value || "").toString().toLowerCase();
+      if (ov === want || ov.indexOf(want) >= 0){
+        sel.value = opt.value;
+        return;
+      }
+    }
+  }
+
+  async function apiLoad(){
+    const group = getGroup();
+    const profile = getProfile();
+    const r = await fetch(`/api/settings/load?group=${encodeURIComponent(group)}&profile=${encodeURIComponent(profile)}`, { cache: "no-store" });
+    const j = await r.json();
+    if (!j || !j.ok) throw new Error((j && j.error) ? j.error : "load returned not-ok");
+    const data = j.data || {};
+    if (!data || typeof data !== "object") return {};
+    return data;
+  }
+
+  async function apiSave(settingsObj){
+    const group = getGroup();
+    const profile = getProfile();
+    const r = await fetch(`/api/settings/save?group=${encodeURIComponent(group)}&profile=${encodeURIComponent(profile)}`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ data: settingsObj || {} })
+    });
+    const j = await r.json();
+    if (!j || !j.ok) throw new Error((j && j.error) ? j.error : "save returned not-ok");
+    return j;
+  }
+
+  async function apiScoreboard(bucket){
+    const b = (bucket || "today").toString().toLowerCase();
+    const r = await fetch(`/api/settings/scoreboard?bucket=${encodeURIComponent(b)}`, { cache: "no-store" });
+    const j = await r.json();
+    if (!j || !j.ok) throw new Error((j && j.error) ? j.error : "scoreboard returned not-ok");
+    return j;
+  }
+
+  function buildIndicatorModel(settingsObj){
+    const keys = Object.keys(settingsObj || {});
+    const seen = new Set();
+    const list = [];
+
+    // From enable_* keys
+    for (const k of keys){
+      if (/^enable_/i.test(k)){
+        const name = k.replace(/^enable_/i,"").toUpperCase();
+        if (!seen.has(name)){
+          seen.add(name);
+          list.push({ name, enableKey: k });
+        }
+      }
+    }
+
+    // A little canonical ordering if present
+    const order = ["MACD","RSI","SMA","BB","VWAP","ADX","VOL","VOLUME","NEWS"];
+    list.sort((a,b)=>{
+      const ai = order.indexOf(a.name);
+      const bi = order.indexOf(b.name);
+      const ax = (ai < 0) ? 999 : ai;
+      const bx = (bi < 0) ? 999 : bi;
+      if (ax !== bx) return ax - bx;
+      return a.name.localeCompare(b.name);
+    });
+
+    return list;
+  }
+
+  function renderScoreboard(settingsObj, indicatorList, counts, total){
+    const scoreboardEl = byId("scoreboardRows");
+    const bucketHint   = byId("bucketHint");
+    const scoreErr     = byId("scoreErr");
+
+    if (!scoreboardEl) return;
+
+    if (scoreErr){
+      scoreErr.style.display = "none";
+      scoreErr.textContent = "";
+    }
+
+    scoreboardEl.innerHTML = "";
+
+    if (bucketHint){
+      bucketHint.textContent = (typeof total === "number") ? ("Total fires: " + total) : "";
+    }
+
+    // Render rows even if empty; show 0s.
+    for (const ind of indicatorList){
+      const on = !!settingsObj[ind.enableKey];
+      const c = (counts && (ind.name in counts)) ? counts[ind.name] : 0;
+
+      const row = document.createElement("div");
+      row.className = "x-sb-row";
+      row.innerHTML = `
+        <div class="x-left">
+          <div class="x-key">${escHtml(ind.name)}</div>
+          <span class="x-pill ${on ? "on":"off"}">${on ? "ON":"OFF"}</span>
+          <label style="display:flex;align-items:center;gap:8px; cursor:pointer;">
+            <input type="checkbox" ${on ? "checked":""} data-enablekey="${escHtml(ind.enableKey)}" />
+            <span>Enabled</span>
+          </label>
+        </div>
+        <div class="x-right">
+          <div class="x-count">${escHtml(c)}</div>
+        </div>
+      `;
+      scoreboardEl.appendChild(row);
+    }
+
+    // Bind toggles
+    for (const cb of scoreboardEl.querySelectorAll('input[type="checkbox"][data-enablekey]')){
+      cb.addEventListener("change", (ev)=>{
+        const key = cb.getAttribute("data-enablekey");
+        if (!key) return;
+        settingsObj[key] = !!cb.checked;
+
+        // Update pill in same row
+        const pill = cb.closest(".x-sb-row") ? cb.closest(".x-sb-row").querySelector(".x-pill") : null;
+        if (pill){
+          pill.classList.toggle("on", !!cb.checked);
+          pill.classList.toggle("off", !cb.checked);
+          pill.textContent = cb.checked ? "ON" : "OFF";
+        }
+
+        // Gate options depend on enabled count
+        ensureGateOptions(settingsObj, indicatorList);
+      });
+    }
+  }
+
+  function ensureGateOptions(settingsObj, indicatorList){
+    const sel = byId("minRequired");
+    const hint = byId("gateHint");
+    if (!sel) return;
+
+    const enabled = (indicatorList || []).filter(x => !!settingsObj[x.enableKey]);
+    const maxOpt = Math.max(1, enabled.length);
+
+    sel.innerHTML = "";
+    for (let i=1; i<=maxOpt; i++){
+      const opt = document.createElement("option");
+      opt.value = String(i);
+      opt.textContent = String(i);
+      sel.appendChild(opt);
+    }
+
+    let cur = parseInt(settingsObj.required_signals_min || 1, 10);
+    if (!cur || cur < 1) cur = 1;
+    if (cur > maxOpt) cur = maxOpt;
+
+    sel.value = String(cur);
+    settingsObj.required_signals_min = cur;
+
+    if (hint){
+      if (!enabled.length){
+        hint.textContent = "No indicators enabled.";
+      } else {
+        hint.textContent = enabled.length + " enabled: " + enabled.map(x => x.name).join(", ");
+      }
+    }
+
+    sel.onchange = () => {
+      const v = parseInt(sel.value, 10) || 1;
+      settingsObj.required_signals_min = v;
+    };
+  }
+
+  function renderGroupedSettings(settingsObj){
+    const wrap = byId("settingsGroups");
+    if (!wrap) return;
+
+    // keys to ignore in generic render
+    const IGNORE = new Set(["required_signals_min"]);
+
+    const keys = Object.keys(settingsObj || {}).filter(k => !IGNORE.has(k));
+
+    // group matchers
+    const groups = [
+      { title: "Indicator Parameters", match: k => /^(rsi_|macd_|bb_|bollinger|vwap_|sma_|adx_|vol_)/i.test(k) && !/^(enable_)/i.test(k) },
+      { title: "Risk / Trade Controls", match: k => /(max_per_trade|single_entry|pyramids|risk|exposure|budget|qty|max_qty|size|cash)/i.test(k) },
+      { title: "Timing", match: k => /(sell_after|days|poll|interval|sleep|cooldown|timeout|window)/i.test(k) },
+      { title: "Other", match: k => true },
+    ];
+
+    function renderKV(k){
+      const v = settingsObj[k];
+      const id = "xk_" + k.replace(/[^a-z0-9_]/gi, "_");
+
+      if (typeof v === "boolean"){
+        return `
+          <div class="x-kv">
+            <div>${escHtml(k)}</div>
+            <label style="display:flex;gap:8px;align-items:center;">
+              <input type="checkbox" id="${id}" ${v ? "checked":""}/>
+              <span>${v ? "ON":"OFF"}</span>
+            </label>
+          </div>
+        `;
+      }
+
+      if (typeof v === "number"){
+        return `
+          <div class="x-kv">
+            <div>${escHtml(k)}</div>
+            <input type="number" step="any" id="${id}" value="${escHtml(v)}" class="form-control form-control-sm" style="max-width:220px;" />
+          </div>
+        `;
+      }
+
+      return `
+        <div class="x-kv">
+          <div>${escHtml(k)}</div>
+          <input type="text" id="${id}" value="${escHtml(v)}" class="form-control form-control-sm" style="max-width:320px;" />
+        </div>
+      `;
+    }
+
+    // build grouped lists
+    const remaining = new Set(keys);
+    const out = [];
+
+    for (const g of groups){
+      const gkeys = [];
+      for (const k of Array.from(remaining)){
+        if (g.match(k)){
+          gkeys.push(k);
+          remaining.delete(k);
+        }
+      }
+      if (!gkeys.length) continue;
+
+      gkeys.sort((a,b)=>a.localeCompare(b));
+      out.push(`
+        <div class="x-group">
+          <div class="x-group-title">${escHtml(g.title)}</div>
+          <div class="x-group-body">
+            ${gkeys.map(renderKV).join("")}
+          </div>
+        </div>
+      `);
+    }
+
+    wrap.innerHTML = out.join("");
+
+    // bind inputs -> settingsObj
+    for (const k of keys){
+      const id = "xk_" + k.replace(/[^a-z0-9_]/gi, "_");
+      const el = byId(id);
+      if (!el) continue;
+
+      if (typeof settingsObj[k] === "boolean"){
+        el.addEventListener("change", ()=>{
+          settingsObj[k] = !!el.checked;
+          // update label text next to it if present
+          const span = el.parentElement ? el.parentElement.querySelector("span") : null;
+          if (span) span.textContent = el.checked ? "ON" : "OFF";
+        });
+      } else if (typeof settingsObj[k] === "number"){
+        el.addEventListener("change", ()=>{
+          const n = parseFloat(el.value);
+          settingsObj[k] = isFinite(n) ? n : settingsObj[k];
+        });
+      } else {
+        el.addEventListener("change", ()=>{
+          settingsObj[k] = el.value;
+        });
+      }
+    }
+  }
+
+  async function refreshAll(state){
+    const bucketSel = byId("bucket");
+    const scoreErr  = byId("scoreErr");
+
+    const bucket = bucketSel ? (bucketSel.value || "today") : "today";
+    const indicatorList = buildIndicatorModel(state.settings);
+
+    // scoreboard
+    try{
+      const sb = await apiScoreboard(bucket);
+      renderScoreboard(state.settings, indicatorList, sb.counts || {}, sb.total || 0);
+    } catch(e){
+      const scoreboardEl = byId("scoreboardRows");
+      const bucketHint   = byId("bucketHint");
+      if (scoreErr){
+        scoreErr.style.display = "block";
+        scoreErr.textContent = "Scoreboard error: " + (e && e.message ? e.message : String(e));
+      }
+      if (scoreboardEl) scoreboardEl.innerHTML = "";
+      if (bucketHint) bucketHint.textContent = "";
+    }
+
+    // gate
+    ensureGateOptions(state.settings, indicatorList);
+
+    // grouped settings
+    renderGroupedSettings(state.settings);
+  }
+
+  async function boot(){
+    const state = { settings: {} };
+
+    // best-effort profile sync to live mode
+    const liveMode = await getLiveMode();
+    if (liveMode) setProfile(liveMode);
+
+    // load
+    state.settings = await apiLoad();
+
+    // default required_signals_min
+    if (!("required_signals_min" in state.settings) && ("min_required_signals" in state.settings)){
+      state.settings.required_signals_min = state.settings.min_required_signals;
+    }
+    if (!("required_signals_min" in state.settings)){
+      state.settings.required_signals_min = 1;
+    }
+
+    // wire dropdown changes
+    const profileSel = byId("profileSel");
+    const bucketSel  = byId("bucket");
+    const saveBtn    = byId("saveBtn");
+
+    if (profileSel){
+      profileSel.addEventListener("change", async ()=>{
+        // reload settings for the new profile
+        try{
+          state.settings = await apiLoad();
+          if (!("required_signals_min" in state.settings)) state.settings.required_signals_min = 1;
+          await refreshAll(state);
+        } catch(e){
+          console.error(e);
+        }
+      });
+    }
+
+    if (bucketSel){
+      bucketSel.addEventListener("change", async ()=>{
+        await refreshAll(state);
+      });
+    }
+
+    if (saveBtn){
+      saveBtn.addEventListener("click", async ()=>{
+        saveBtn.disabled = true;
+        try{
+          await apiSave(state.settings);
+          saveBtn.textContent = "Saved";
+          setTimeout(()=>{ saveBtn.textContent = "Save"; }, 900);
+        } catch(e){
+          alert("Save failed: " + (e && e.message ? e.message : String(e)));
+        } finally{
+          saveBtn.disabled = false;
+        }
+      });
+    }
+
+    // initial render
+    await refreshAll(state);
+  }
+
+  document.addEventListener("DOMContentLoaded", boot);
+})();
+</script>
+
+{% endblock %}
