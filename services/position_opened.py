@@ -1,4 +1,4 @@
-﻿# services/position_opened.py
+# services/position_opened.py
 # Best-effort: store per-symbol "opened" timestamp in live.db without breaking the loop.
 from __future__ import annotations
 

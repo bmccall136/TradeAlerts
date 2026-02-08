@@ -1,4 +1,4 @@
-﻿import sqlite3
+import sqlite3
 
 DB = r"C:\TradeAlerts\live.db"
 

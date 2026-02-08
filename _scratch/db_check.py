@@ -1,4 +1,4 @@
-﻿import os, sqlite3
+import os, sqlite3
 
 db = "live.db"
 print("DB:", os.path.abspath(db))

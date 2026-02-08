@@ -1,4 +1,4 @@
-﻿import os, json
+import os, json
 from services.contributions import CONTRIB_PATH, _load, get_total_contributions
 
 print("CONTRIB_PATH:", CONTRIB_PATH)

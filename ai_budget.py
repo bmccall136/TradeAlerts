@@ -1,4 +1,4 @@
-﻿# ai_budget.py
+# ai_budget.py
 #
 # UNLIMITED mode for AIAdvisor:
 # - never blocks AI calls

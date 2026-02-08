@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+	<title>$$Machine</title>
+	<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%92%B0%3C/text%3E%3C/svg%3E">
+
+  <!-- 1) Bootstrap CSS -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
+
+  <!-- 2) Bootstrap Icons -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css"
+    rel="stylesheet"
+  />
+
+  <!-- 3) App CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+
+  {% block head %}{% endblock %}
+</head>
+<body class="black-bg text-light">
+
+  <!-- NAVBAR -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-black py-2 position-relative">
+    <div class="container-fluid">
+
+	<!-- Left: primary nav -->
+	<div class="d-flex align-items-center mb-3 gap-3">
+
+	  <div id="live-mode-toggle" class="btn-group btn-group-sm" role="group" aria-label="Trade mode">
+		<button type="button" class="btn btn-outline-warning" data-mode="DAY">Day Trader</button>
+		<button type="button" class="btn btn-outline-secondary" data-mode="SWING">Swing Trader</button>
+	  </div>
+
+	  <div class="ai-toggle">
+		<label class="ai-toggle-label d-flex align-items-center mb-0">
+		  <input type="checkbox" id="ai-enabled-toggle" class="me-2">
+		  <span class="me-1">AI Advisor</span>
+		  <span class="ai-emoji">🤖</span>
+		</label>
+	  </div>
+
+	  <a class="btn btn-sm btn-outline-warning btn-fixed"
+		 href="/settings/buy" title="Settings"><i class="bi bi-gear-fill"></i> Settings
+	  </a>
+
+	</div>
+
+	<div class="trade-alerts-title position-absolute top-50 start-50 translate-middle text-center">
+	  <b>$$Machine</b>
+	  <img id="maxInsideBadge" class="ms-2 mm-gear"
+		   src="{{ url_for('static', filename='Max.png') }}"
+		   alt="Max">
+	</div>
+
+      <!-- Right: actions -->
+		<div class="d-flex align-items-center gap-2 ms-auto">
+		<a class="btn btn-sm btn-outline-warning btn-fixed ms-2"
+		   href="/live" title="Dashboard">
+		  📟 Dashboard
+		</a>
+		<!-- Dashboard -->
+		<a class="btn btn-sm btn-outline-warning btn-fixed ms-2"
+		   href="/analytics" title="Daily Analytics">
+		  📊 Analytics
+		</a>
+        <!-- Checkpoint -->
+        <form action="{{ url_for('run_checkpoint') }}" method="get" class="m-0">
+          <button class="btn btn-small btn-checkpoint">
+		  ✅ Checkpoint</button>
+        </form>
+        <!-- Reconnect API -->
+        <a class="btn btn-sm btn-outline-warning btn-fixed"
+           href="{{ url_for('etrade_reconnect') }}">
+          🔁 Reconnect API
+        </a>
+      </div>
+
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="container py-4">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Live mode toggle: Day Trader / Swing Trader -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const group = document.getElementById('live-mode-toggle');
+      if (!group) return;
+
+      const buttons = group.querySelectorAll('[data-mode]');
+
+      function applyMode(mode) {
+        const upper = (mode || '').toUpperCase();
+        buttons.forEach(btn => {
+          const m = (btn.dataset.mode || '').toUpperCase();
+          const isActive = (m === upper);
+
+          if (isActive) {
+            btn.classList.add('btn-warning');
+            btn.classList.remove('btn-outline-warning', 'btn-outline-secondary');
+          } else {
+            btn.classList.add('btn-outline-warning');
+            btn.classList.remove('btn-warning');
+          }
+        });
+      }
+
+      async function fetchMode() {
+        try {
+          const resp = await fetch('/live/mode');
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          const data = await resp.json();
+          applyMode(data.mode || 'DAY');
+        } catch (err) {
+          console.error('[live-mode] fetch failed:', err);
+          applyMode('DAY');
+        }
+      }
+
+      async function setMode(mode) {
+        // Optimistic update
+        applyMode(mode);
+        try {
+          const resp = await fetch('/live/mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode })
+          });
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          const data = await resp.json();
+          applyMode(data.mode || mode);
+        } catch (err) {
+          console.error('[live-mode] set failed:', err);
+        }
+      }
+
+      buttons.forEach(btn => {
+        btn.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          const mode = this.dataset.mode;
+          if (mode) setMode(mode);
+        });
+      });
+
+      // Initial sync from server
+      fetchMode();
+    });
+  </script>
+	<script>
+	  (function () {
+		document.addEventListener('DOMContentLoaded', function () {
+		  const aiToggle = document.getElementById("ai-enabled-toggle");
+		  if (!aiToggle) return;
+
+		  const badge = document.getElementById("maxInsideBadge");
+
+		  function applyGlow() {
+			if (!badge) return;
+			badge.classList.toggle("max-ai-glow", !!aiToggle.checked);
+		  }
+
+		  // Set initial state on load
+		  applyGlow();
+
+		  // When user clicks the AI Advisor checkbox, push state to backend
+		  aiToggle.addEventListener("change", () => {
+			const enabled = aiToggle.checked;
+
+			// Optimistic UI: glow immediately
+			applyGlow();
+
+			fetch("/live/ai_toggle", {
+			  method: "POST",
+			  headers: { "Content-Type": "application/json" },
+			  body: JSON.stringify({ enabled })
+			}).catch(() => {
+			  // On error, revert checkbox + glow so UI doesn't lie
+			  aiToggle.checked = !enabled;
+			  applyGlow();
+			});
+		  });
+		});
+	  })();
+	</script>
+
+</body>
+</html>

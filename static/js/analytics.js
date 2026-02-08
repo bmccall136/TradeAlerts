@@ -1,4 +1,4 @@
-﻿// analytics.js (Daily Analytics) - $$Machine black theme + Trade Review links
+// analytics.js (Daily Analytics) - $$Machine black theme + Trade Review links
 (function(){
   const $ = (sel) => document.querySelector(sel);
   const qs = (k) => (new URLSearchParams(window.location.search).get(k) || "").trim();

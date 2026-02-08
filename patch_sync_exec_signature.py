@@ -1,4 +1,4 @@
-﻿import re
+import re
 import inspect
 from pathlib import Path
 from datetime import datetime

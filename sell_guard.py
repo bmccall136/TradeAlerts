@@ -12,7 +12,8 @@ from typing import Any, Dict, Iterable, List, Tuple, Optional
 # sell_guard.py (top-ish)
 from ai_advisor import get_ai_recommendation
 from services.news_service import news_headlines_for_symbol, has_fresh_bad_news
-from services.sell_triggers_log import emit_sell_event
+from services.sell_triggers_log import emit_sell_event as _emit_sell_event
+from services.sell_events_db import ensure_sell_events_table, log_sell_event
 
 try:
     from zoneinfo import ZoneInfo
@@ -33,6 +34,86 @@ def _live_db_path() -> str:
 
 def _db_connect():
     return sqlite3.connect(_live_db_path())
+
+
+# --- SELL_EVENTS_DB_INIT (db-backed sell lifecycle logging for Sell Analytics) ---
+try:
+    ensure_sell_events_table(_live_db_path())
+except Exception:
+    # Never break Sell Guard due to analytics logging
+    pass
+
+def _map_sell_event_name(raw: str | None) -> str:
+    """Map existing emit_sell_event event names into normalized lifecycle events."""
+    if not raw:
+        return "RAW"
+    r = raw.upper()
+    if "ORDER_PLACED" in r or r.endswith("PLACED"):
+        return "PLACED"
+    if "SKIP" in r or "BLOCK" in r:
+        return "SKIPPED"
+    if "FAIL" in r or "ERROR" in r or "EXCEPT" in r:
+        return "FAILED"
+    if "FILLED" in r or "POSITION_CLOSED" in r or "POSITION_DISAPPEARED" in r:
+        return "FILLED"
+    if "DECISION" in r or r.endswith("_EXIT") or r.endswith("_SELL") or "EVAL" in r:
+        return "ATTEMPTED"
+    return "RAW"
+
+def _map_sell_reason(raw_event: str | None, raw_reason: str | None) -> str:
+    """Normalize exit reason buckets."""
+    ev = (raw_event or "").upper()
+    rs = (raw_reason or "").upper()
+    blob = ev + " " + rs
+    if "TARGET" in blob or "TP" in blob or "TAKE_PROFIT" in blob:
+        return "TARGET"
+    if "STOP" in blob or "SL" in blob or "STOPLOSS" in blob:
+        return "STOP"
+    if "TIMEOUT" in blob or ("HOLD" in blob and "TIME" in blob):
+        return "TIMEOUT"
+    if "PROTECT" in blob or "GUARD" in blob or "RISK" in blob or "NAV" in blob:
+        return "PROTECT"
+    if blob.startswith("AI") or " AI" in blob:
+        return "AI"
+    if "MANUAL" in blob:
+        return "MANUAL"
+    return "UNKNOWN"
+
+def emit_sell_event(*args, **kwargs):
+    """Wrapper around services.sell_triggers_log.emit_sell_event that ALSO logs to LIVE_DB sell_events."""
+    _emit_sell_event(*args, **kwargs)
+    try:
+        sym = kwargs.get("symbol") or kwargs.get("sym") or ""
+        raw_event = kwargs.get("event")
+        raw_reason = kwargs.get("reason")
+        lifecycle = _map_sell_event_name(raw_event)
+        reason = _map_sell_reason(raw_event, raw_reason)
+
+        detail_obj = {
+            "event": raw_event,
+            "reason": raw_reason,
+            "action": kwargs.get("action"),
+            "pl_pct": kwargs.get("pl_pct"),
+            "hold_min": kwargs.get("hold_min"),
+            "detail": kwargs.get("detail"),
+        }
+        import json as _json
+        detail = _json.dumps(detail_obj, default=str)[:800]
+
+        log_sell_event(
+            db_path=_live_db_path(),
+            symbol=str(sym),
+            event=str(lifecycle),
+            reason=str(reason),
+            detail=detail,
+            order_id=kwargs.get("order_id"),
+            price=kwargs.get("price"),
+            qty=kwargs.get("qty"),
+            mode=kwargs.get("mode"),
+        )
+    except Exception:
+        pass
+
 
 def _ensure_sell_inflight_table(con):
     """
@@ -1019,7 +1100,7 @@ def place_with_adaptive_variants(
                 )
                 return
 
-            # 1514: symbol/account mismatch for closing order — treat as terminal for this loop.
+            # 1514: symbol/account mismatch for closing order ? treat as terminal for this loop.
             # KEEP latch (cooldown) so we don't hammer it every 30s.
             if ("code': 1514" in msg) or ('code": 1514' in msg):
                 LOG.error(
@@ -1048,7 +1129,7 @@ def place_with_adaptive_variants(
 
 
 def main() -> None:
-    LOG.info("sell_guard starting…")
+    LOG.info("sell_guard starting?")
 # NOTE: previous line had mojibake from copy/paste; fixed to a normal ellipsis.
     LOG.info("Using SELL_GUARD_SETTINGS=%s", SETTINGS_FILE)
 
@@ -1330,7 +1411,7 @@ def main() -> None:
                     hold_min,
                 )
 
-                # Min hold: donÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢t touch very fresh entries
+                # Min hold: donâ€™t touch very fresh entries
                 if hold_min < cfg.min_hold_minutes:
                     LOG.info(
                         "[HOLD] %s hold_min=%.1f < min_hold=%.1f ? skipping",

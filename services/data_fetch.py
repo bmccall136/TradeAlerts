@@ -1,4 +1,4 @@
-﻿# C:\TradeAlerts\services\data_fetch.py
+# C:\TradeAlerts\services\data_fetch.py
 """
 DATA FETCH POLICY (HARD RULE):
   - Yahoo/yfinance is allowed ONLY for INTRADAY bars (indicator helpers like VWAP).

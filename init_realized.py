@@ -1,4 +1,4 @@
-﻿import sqlite3
+import sqlite3
 
 db = r"C:\TradeAlerts\live.db"
 con = sqlite3.connect(db)

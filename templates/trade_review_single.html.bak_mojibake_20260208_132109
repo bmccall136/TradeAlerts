@@ -1,0 +1,126 @@
+﻿
+<style>
+/* --- Trade Review chart fit fix --- */
+.trade-chart-img{
+  width: 100% !important;
+  height: auto !important;
+  display: block !important;
+}
+.trade-chart-wrap{
+  overflow: visible !important;   /* prevent cropping */
+}
+</style>
+
+ï»¿{% extends "layout.html" %}
+{% block content %}
+
+<div class="tr-wrap">
+  <div class="tr-head">
+    <div class="tr-title">Trade Review â€” {{ trade.symbol }}</div>
+    <div class="tr-sub">
+      <span>Buy: {{ trade.open_date }} @ {{ '%.2f'|format(trade.price_paid or 0) }}</span>
+      <span class="sep">|</span>
+      <span>Sell: {{ trade.close_date }} @ {{ '%.2f'|format(trade.price_sold or 0) }}</span>
+      <span class="sep">|</span>
+      <span class="{{ 'win' if is_win else 'loss' }}">
+        P&L: {{ '%.2f'|format(trade.gain or 0) }} ({{ '%.2f'|format((trade.gain_pct or 0)) }}%)
+      </span>
+      <span class="sep">|</span>
+      <span>Qty: {{ trade.qty }}</span>
+    </div>
+    <div class="tr-src">
+      <div>Buy log: {{ buy_file or 'n/a' }}</div>
+      <div>Sell log: {{ sell_file or 'n/a' }}</div>
+    </div>
+  </div>
+
+  <div class="trade-chart-wrap tr-chart-wrap">
+    <img class="tr-chart trade-chart-img"
+     src="/trade_review/chart?trade_id={{ trade.id }}&name={{ (name or '')|urlencode }}&buy_ts={{ trade.open_date|urlencode }}&sell_ts={{ trade.close_date|urlencode }}&v={{ trade.close_date|urlencode }}"
+     alt="Trade chart {{ trade.symbol }}{% if name %} - {{ name }}{% endif %}">
+    <div class="tr-legend">
+      <span class="pill buy">BUY</span>
+      <span class="pill sell">SELL</span>
+      <span class="pill {{ 'win' if is_win else 'loss' }}">SHADED = time at risk</span>
+    </div>
+  </div>
+
+  <div class="tr-grid">
+    <section class="tr-col">
+      <h3>Buy Triggers</h3>
+      {% if not buy_triggers %}
+        <div class="tr-empty">No buy triggers found near {{ trade.open_date }}.</div>
+      {% else %}
+        {% for row in buy_triggers %}
+          <table class="tr-table">
+            <tbody>
+              {% for k,v in row.items() %}
+                <tr><td class="k">{{ k }}</td><td class="v">{{ v }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% endfor %}
+      {% endif %}
+    </section>
+
+    <section class="tr-col">
+      <h3>Sell Triggers</h3>
+      {% if not sell_triggers %}
+        <div class="tr-empty">No sell triggers found near {{ trade.close_date }}.</div>
+      {% else %}
+        {% for row in sell_triggers %}
+          <table class="tr-table">
+            <tbody>
+              {% for k,v in row.items() %}
+                <tr><td class="k">{{ k }}</td><td class="v">{{ v }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% endfor %}
+      {% endif %}
+    </section>
+  </div>
+</div>
+
+<style>
+  .tr-wrap { max-width: 1400px; margin: 0 auto; padding: 18px 0; }
+  .tr-title { color:#ffe900; font-size: 22px; font-weight: 800; }
+  .tr-sub { color:#cfcfcf; margin-top:6px; font-size: 13px; }
+  .tr-src { color:#8f8f8f; margin-top:10px; font-size: 12px; }
+  .sep { margin: 0 8px; opacity: 0.5; }
+
+  .win { color:#7CFF7C; }
+  .loss { color:#FF7C7C; }
+
+  .tr-chart-wrap { margin-top: 14px; }
+  .tr-chart {
+    width: 100%;
+    height: 240px;
+    display:block;
+    border-radius: 14px;
+    border: 1px solid #2a2a2a;
+    background:#0b0b0b;
+    object-fit: cover;
+  }
+  .tr-legend { margin-top: 10px; display:flex; gap:10px; flex-wrap: wrap; }
+  .pill { font-size: 11px; padding: 3px 10px; border-radius: 999px; border: 1px solid #2a2a2a; background:#101010; color:#cfcfcf; }
+  .pill.buy { border-color:#2e7d32; color:#a9f5a9; }
+  .pill.sell { border-color:#b71c1c; color:#ffb3b3; }
+
+  .tr-grid { display:grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 18px; }
+  .tr-col h3 { color:#ffe900; margin: 0 0 10px; }
+  .tr-empty { color:#cfcfcf; opacity:0.85; }
+
+  .tr-table { width:100%; border-collapse: collapse; font-size: 12px; margin-bottom: 12px; background:#0f0f0f; border:1px solid #222; border-radius: 12px; overflow:hidden; }
+  .tr-table td { padding: 6px 8px; border-bottom: 1px solid #1f1f1f; vertical-align: top; }
+  .tr-table tr:last-child td { border-bottom: none; }
+  .k { color:#9d9d9d; width: 32%; }
+  .v { color:#e0e0e0; word-break: break-word; }
+
+  @media (max-width: 1100px) {
+    .tr-grid { grid-template-columns: 1fr; }
+  }
+</style>
+
+{% endblock %}
+

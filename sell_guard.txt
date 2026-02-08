@@ -821,7 +821,7 @@ def place_with_adaptive_variants(
 
 
 def main() -> None:
-    LOG.info("sell_guard starting…")
+    LOG.info("sell_guard starting?")
 # NOTE: previous line had mojibake from copy/paste; fixed to a normal ellipsis.
     LOG.info("Using SELL_GUARD_SETTINGS=%s", SETTINGS_FILE)
 
@@ -1035,7 +1035,7 @@ def main() -> None:
                     hold_min,
                 )
 
-                # Min hold: donÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢t touch very fresh entries
+                # Min hold: donâ€™t touch very fresh entries
                 if hold_min < cfg.min_hold_minutes:
                     LOG.info(
                         "[HOLD] %s hold_min=%.1f < min_hold=%.1f ? skipping",
