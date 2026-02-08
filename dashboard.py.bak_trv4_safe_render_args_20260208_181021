@@ -3795,10 +3795,7 @@ def analytics_page():
     try:
         ts
     except Exception:
-    # Anchor timestamp (optional) ? used to highlight a moment on charts
-        anchor_ts = (request.args.get('ts') or request.args.get('anchor_ts') or request.args.get('anchor') or '').strip()
         ts = anchor_ts
-
     try:
         buy_log
     except Exception:
@@ -5140,12 +5137,12 @@ def api_trade_review():
         ts=ts,
         buy_ts=ts,
         sell_ts=None,
-        buy_log=locals().get("buy_log"),
-        sell_log=locals().get("sell_log"),
-        buy_triggers=locals().get("buy_triggers") or [],
-        buy_groups=locals().get("buy_groups") or [],
-        sell_triggers=locals().get("sell_triggers") or [],
-        sell_groups=locals().get("sell_groups") or [],
+        buy_log=buy_log,
+        sell_log=sell_log,
+        buy_triggers=buy_triggers,
+        buy_groups=buy_groups,
+        sell_triggers=sell_triggers,
+        sell_groups=sell_groups,
     )
 
 
@@ -5810,8 +5807,8 @@ def trade_review():
     return render_template(
         "trade_review_single.html",
         trade=trade,
-        buy_triggers=locals().get("buy_triggers") or [],
-        sell_triggers=locals().get("sell_triggers") or [],
+        buy_triggers=buy_triggers,
+        sell_triggers=sell_triggers,
         buy_file=str(buy_file) if buy_file else None,
         sell_file=str(sell_file) if sell_file else None,
         is_win=is_win,

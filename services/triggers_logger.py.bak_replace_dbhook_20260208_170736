@@ -100,23 +100,6 @@ def append_trigger_row(
     notes: str = "",
     signals_pretty: str = "",
 ) -> None:
-    # --- DB dual-write (BUY triggers -> live.db trigger_fires) ---
-    try:
-        ensure_trigger_fires_table(r"C:\TradeAlerts\live.db")
-        log_trigger_fire(
-            db_path=r"C:\TradeAlerts\live.db",
-            symbol=symbol,
-            price=float(price) if price is not None else None,
-            source=source,
-            notes=notes,
-            signals_pretty=signals_pretty,
-            side="BUY",
-            stage="trigger",
-        )
-    except Exception:
-        pass
-    # --- end DB dual-write ---
-
     fp = _today_path()
     _ensure_header(fp)
 

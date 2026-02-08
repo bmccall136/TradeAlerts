@@ -3791,31 +3791,6 @@ def analytics_page():
     if ymd:
         date_et = ymd
     
-    # --- TRV4 template var defaults (prevent NameError) ---
-    try:
-        ts
-    except Exception:
-    # Anchor timestamp (optional) ? used to highlight a moment on charts
-        anchor_ts = (request.args.get('ts') or request.args.get('anchor_ts') or request.args.get('anchor') or '').strip()
-        ts = anchor_ts
-
-    try:
-        buy_log
-    except Exception:
-        buy_log = None
-    try:
-        sell_log
-    except Exception:
-        sell_log = None
-    try:
-        buy_groups
-    except Exception:
-        buy_groups = []
-    try:
-        sell_groups
-    except Exception:
-        sell_groups = []
-    # --- end TRV4 template defaults ---
     return render_template(
     
         "analytics.html",
@@ -5113,21 +5088,13 @@ def api_trade_review():
     # ---- END TRV UI POLISH ----
 
 
-    # --- TRV4 safe sell_price (avoid locals()/NameError weirdness) ---
-    sell_price_safe = None
-    try:
-        sell_price_safe = sell_price  # may not exist
-    except Exception:
-        sell_price_safe = None
-    # --- end safe sell_price ---
     trade = {
         "symbol": sym,
         "name": sym,
         "buy_time": anchor_ts,
         "sell_time": None,
         "buy_price": locals().get("buy_price"),
-        "sell_price": sell_price_safe,
-        "__sig": "TRV4_SIG_20260208_180120",
+        "sell_price": sell_price,
         "pnl": None,
         "pnl_pct": None,
         "qty": None,
@@ -5140,12 +5107,12 @@ def api_trade_review():
         ts=ts,
         buy_ts=ts,
         sell_ts=None,
-        buy_log=locals().get("buy_log"),
-        sell_log=locals().get("sell_log"),
-        buy_triggers=locals().get("buy_triggers") or [],
-        buy_groups=locals().get("buy_groups") or [],
-        sell_triggers=locals().get("sell_triggers") or [],
-        sell_groups=locals().get("sell_groups") or [],
+        buy_log=buy_log,
+        sell_log=sell_log,
+        buy_triggers=buy_triggers,
+        buy_groups=buy_groups,
+        sell_triggers=sell_triggers,
+        sell_groups=sell_groups,
     )
 
 
@@ -5616,8 +5583,8 @@ def trade_review():
 
     # If no trade_id but we have symbol+ts, send to chart view (open trades / pseudo-buys)
     if (not trade_id) and sym and ts:
-        # NOTE: do NOT redirect to /chart here (prevents redirect loop)
-        pass
+        return redirect(f"/chart/{(request.args.get('symbol') or '').strip().upper()}?ts={(request.args.get('ts') or '').strip()}")
+
     # --- fallback: allow /trade_review?symbol=XYZ&ts_et=... (resolve to a realized trade_id) ---
     if not trade_id:
         symbol = (request.args.get("symbol") or "").strip().upper()
@@ -5810,8 +5777,8 @@ def trade_review():
     return render_template(
         "trade_review_single.html",
         trade=trade,
-        buy_triggers=locals().get("buy_triggers") or [],
-        sell_triggers=locals().get("sell_triggers") or [],
+        buy_triggers=buy_triggers,
+        sell_triggers=sell_triggers,
         buy_file=str(buy_file) if buy_file else None,
         sell_file=str(sell_file) if sell_file else None,
         is_win=is_win,
@@ -6750,24 +6717,40 @@ def api_analytics_sell():
 # ------------------------------------------------------------
 @app.route("/chart/<symbol>")
 def chart_symbol(symbol):
-    from flask import request, redirect, url_for
+    from flask import request, render_template
     ts = (request.args.get("ts") or "").strip()
     date = (request.args.get("date") or "").strip()
 
-    # Chart route is an alias for Trade Review (single source of truth for rendering)
-    if ts and date:
-        return redirect(f"/trade_review?symbol={symbol}&date={date}&ts={ts}", code=302)
-    if ts:
-        return redirect(f"/trade_review?symbol={symbol}&ts={ts}", code=302)
-    if date:
-        return redirect(f"/trade_review?symbol={symbol}&date={date}", code=302)
-    return redirect(f"/trade_review?symbol={symbol}", code=302)
+    # Prefer chart_view.html if present; fall back to trade_review_single.html
+    try:
+        return render_template("chart_view.html", symbol=symbol, ts=ts, date=date)
+    except Exception:
+        return render_template("trade_review_single.html", symbol=symbol, ts=ts, date=date)
 
 
-# ------------------------------------------------------------
-# Dev server entrypoint (added to ensure dashboard starts)
-# ------------------------------------------------------------
+
+
+
+
+
+
+
+
 if __name__ == "__main__":
-    # NOTE: keep reloader OFF on Windows to avoid duplicate listeners
-    app.run(host="0.0.0.0", port=5001, debug=True, use_reloader=False)
+    import os
+    port = int(os.environ.get("PORT", "5001"))
+    # IMPORTANT: disable reloader to avoid zombie/duplicate listeners on Windows
+    app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)
+
+
+# =========================
+# Settings Scoreboard + Health
+# =========================
+
+
+# (deduped duplicate api_settings_scoreboard)
+
+
+# (deduped duplicate healthz)
+
 

@@ -113,8 +113,8 @@ def append_trigger_row(
             side="BUY",
             stage="trigger",
         )
-    except Exception:
-        pass
+    except Exception as e:
+        print('[DBHOOK ERROR]', repr(e))
     # --- end DB dual-write ---
 
     fp = _today_path()

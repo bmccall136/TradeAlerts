@@ -3796,8 +3796,8 @@ def analytics_page():
         ts
     except Exception:
     # Anchor timestamp (optional) ? used to highlight a moment on charts
-        anchor_ts = (request.args.get('ts') or request.args.get('anchor_ts') or request.args.get('anchor') or '').strip()
-        ts = anchor_ts
+    anchor_ts = (request.args.get('ts') or request.args.get('anchor_ts') or request.args.get('anchor') or '').strip()
+    ts = anchor_ts
 
     try:
         buy_log

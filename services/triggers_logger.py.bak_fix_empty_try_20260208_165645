@@ -100,30 +100,12 @@ def append_trigger_row(
     notes: str = "",
     signals_pretty: str = "",
 ) -> None:
-    # --- DB dual-write (BUY triggers -> live.db trigger_fires) ---
-    try:
-        ensure_trigger_fires_table(r"C:\TradeAlerts\live.db")
-        log_trigger_fire(
-            db_path=r"C:\TradeAlerts\live.db",
-            symbol=symbol,
-            price=float(price) if price is not None else None,
-            source=source,
-            notes=notes,
-            signals_pretty=signals_pretty,
-            side="BUY",
-            stage="trigger",
-        )
-    except Exception:
-        pass
-    # --- end DB dual-write ---
-
     fp = _today_path()
     _ensure_header(fp)
 
     flags = {k: 0 for k in INDICATOR_COLS}
     for k in _norm_triggers(triggered):
         try:
-            # DB mirror for BUY trigger rows (analytics source of truth)
             # DB mirror for BUY trigger rows (analytics source of truth)
             ensure_trigger_fires_table()
             log_trigger_fire(symbol, {
@@ -154,6 +136,5 @@ def append_trigger_row(
         w = csv.DictWriter(f, fieldnames=CSV_COLS)
         w.writerow(row)
     try:
-        pass
     except Exception:
         pass

@@ -1,8 +1,6 @@
 # services/triggers_logger.py
 from __future__ import annotations
 
-
-from services.trigger_fires_db import ensure_trigger_fires_table, log_trigger_fire
 import csv
 import os
 from datetime import datetime
@@ -42,10 +40,6 @@ CSV_COLS = BASE_COLS + INDICATOR_COLS
 
 def _today_path() -> Path:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
-    try:
-        ensure_trigger_fires_table()
-    except Exception:
-        pass
     d = datetime.now().astimezone()
     return LOG_DIR / f"triggers_{d:%Y-%m-%d}.csv"
 
@@ -100,42 +94,11 @@ def append_trigger_row(
     notes: str = "",
     signals_pretty: str = "",
 ) -> None:
-    # --- DB dual-write (BUY triggers -> live.db trigger_fires) ---
-    try:
-        ensure_trigger_fires_table(r"C:\TradeAlerts\live.db")
-        log_trigger_fire(
-            db_path=r"C:\TradeAlerts\live.db",
-            symbol=symbol,
-            price=float(price) if price is not None else None,
-            source=source,
-            notes=notes,
-            signals_pretty=signals_pretty,
-            side="BUY",
-            stage="trigger",
-        )
-    except Exception:
-        pass
-    # --- end DB dual-write ---
-
     fp = _today_path()
     _ensure_header(fp)
 
     flags = {k: 0 for k in INDICATOR_COLS}
     for k in _norm_triggers(triggered):
-        try:
-            # DB mirror for BUY trigger rows (analytics source of truth)
-            # DB mirror for BUY trigger rows (analytics source of truth)
-            ensure_trigger_fires_table()
-            log_trigger_fire(symbol, {
-                'symbol': symbol,
-                'price': price,
-                'source': source,
-                'notes': notes,
-                'signals_pretty': signals_pretty,
-            }, mode='', stage='CANDIDATE')
-        except Exception:
-            pass
-
         if k in flags:
             flags[k] = 1
 
@@ -153,7 +116,3 @@ def append_trigger_row(
     with fp.open("a", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=CSV_COLS)
         w.writerow(row)
-    try:
-        pass
-    except Exception:
-        pass

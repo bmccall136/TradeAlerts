@@ -92,7 +92,7 @@
 
   <div class="trade-chart-wrap tr-chart-wrap">
     <img class="tr-chart trade-chart-img"
-         src="/chart/{{ symbol }}?ts={{ ts|urlencode }}"
+         src="/trade_review/chart?trade_id={{ trade.id }}&name={{ (name or "")|urlencode }}&buy_ts={{ trade.open_date|urlencode }}&sell_ts={{ trade.close_date|urlencode }}&v={{ trade.close_date|urlencode }}"")|urlencode }}&buy_ts={{ trade.open_date|urlencode }}&sell_ts={{ trade.close_date|urlencode }}&v={{ trade.close_date|urlencode }}"\" )|urlencode }}&buy_ts={{ trade.open_date|urlencode }}&sell_ts={{ trade.close_date|urlencode }}&v={{ trade.close_date|urlencode }}"")|urlencode }}&v={{ trade.close_date|urlencode }}"
          alt="Trade chart {{ trade.symbol }}{% if name %} ? {{ name }}{% endif %}">
     <div class="tr-legend">
       <span class="pill buy">BUY</span>

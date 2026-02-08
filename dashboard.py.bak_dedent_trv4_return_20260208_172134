@@ -3791,31 +3791,6 @@ def analytics_page():
     if ymd:
         date_et = ymd
     
-    # --- TRV4 template var defaults (prevent NameError) ---
-    try:
-        ts
-    except Exception:
-    # Anchor timestamp (optional) ? used to highlight a moment on charts
-        anchor_ts = (request.args.get('ts') or request.args.get('anchor_ts') or request.args.get('anchor') or '').strip()
-        ts = anchor_ts
-
-    try:
-        buy_log
-    except Exception:
-        buy_log = None
-    try:
-        sell_log
-    except Exception:
-        sell_log = None
-    try:
-        buy_groups
-    except Exception:
-        buy_groups = []
-    try:
-        sell_groups
-    except Exception:
-        sell_groups = []
-    # --- end TRV4 template defaults ---
     return render_template(
     
         "analytics.html",
@@ -3975,7 +3950,6 @@ def _tr__yahoo_intraday_series(symbol, interval="5m"):
 
 @app.route("/api/trade_review")
 def api_trade_review():
-    realized = {}  # default (avoid NameError on branches that don't compute realized)
     # --- TRV4 safety init ---
     sym = None
     anchor_ts = None
@@ -4039,6 +4013,11 @@ def api_trade_review():
     # keep sym defined for payload safety
     if 'sym' not in locals(): sym = (request.args.get('symbol') or request.args.get('sym') or '').strip().upper()
     # --- end TRV4 locals guard ---
+        return jsonify({"ok": False, "realized": (lambda r: (r if isinstance(r, dict) else {}))(
+                (lambda r: (r | {"year": r.get("year") or {"pnl": 0.0, "pct": 0.0}}) if hasattr(r, "get") else {"year": {"pnl": 0.0, "pct": 0.0}})(realized)
+            ),
+            
+            "error": "No logs found under .\\logs (triggers_*.csv / sell_triggers_*.csv)."}), 200
 
     buy_rows = _tr__read_csv_rows(buy_path) if buy_path else []
     sell_rows = _tr__read_csv_rows(sell_path) if sell_path else []
@@ -4274,102 +4253,114 @@ def api_trade_review():
         return d.date().isoformat()
 
 
-
     def _tr__load_buy_triggers_for_day(_day, _sym):
-        """
-        DB-first loader for BUY triggers for a given ET day and symbol.
-        Reads live.db.trigger_fires (side=BUY), filtered by day_et + symbol.
-        Falls back to triggers_YYYY-MM-DD.csv if DB is empty for that day/sym.
-        Returns list[dict] rows shaped like CSV reader output.
-        """
-        try:
-            if not _day or not _sym:
-                return []
-            _sym = str(_sym).strip().upper()
-            _day = str(_day).strip()
 
-            import os, sqlite3, csv
-            from pathlib import Path as _Path
-            from datetime import datetime, timezone
-            try:
-                from zoneinfo import ZoneInfo
-                _ET = ZoneInfo("America/New_York")
-            except Exception:
-                _ET = None
+        if not _day or not _sym:
 
-            root = os.path.abspath(os.path.dirname(__file__))
-            live_db = os.path.join(root, "live.db")
-
-            out = []
-            try:
-                con = sqlite3.connect(live_db)
-                try:
-                    con.row_factory = sqlite3.Row
-                    cur = con.execute(
-                        """
-                        SELECT ts_utc, symbol, price, source, notes, signals_pretty, time_et, day_et, mode, detail, stage
-                        FROM trigger_fires
-                        WHERE side='BUY' AND symbol=? AND day_et=?
-                        ORDER BY ts_utc ASC
-                        """,
-                        (_sym, _day),
-                    )
-                    for r in cur:
-                        ts_utc = (r["ts_utc"] or "")
-                        ts_et = ""
-                        time_et = (r["time_et"] or "")
-                        day_et = (r["day_et"] or _day)
-
-                        # Derive ET timestamps if missing
-                        try:
-                            if ts_utc:
-                                dtu = datetime.fromisoformat(ts_utc.replace("Z","")).replace(tzinfo=timezone.utc)
-                                if _ET:
-                                    dte = dtu.astimezone(_ET)
-                                    ts_et = dte.strftime("%Y-%m-%d %H:%M:%S")
-                                    if not time_et:
-                                        time_et = dte.strftime("%H:%M:%S")
-                                    if not day_et:
-                                        day_et = dte.strftime("%Y-%m-%d")
-                        except Exception:
-                            pass
-
-                        out.append({
-                            "symbol": _sym,
-                            "price": r["price"],
-                            "source": r["source"] or "",
-                            "notes": r["notes"] or "",
-                            "signals_pretty": r["signals_pretty"] or "",
-                            "time_et": time_et or "",
-                            "day_et": day_et or _day,
-                            "ts_utc": ts_utc or "",
-                            "ts_et": ts_et or "",
-                            "mode": r["mode"] or "",
-                            "detail": r["detail"] or "",
-                            "stage": r["stage"] or "",
-                        })
-                finally:
-                    con.close()
-            except Exception:
-                out = []
-
-            # Fallback to CSV only if DB returned nothing
-            if out:
-                return out
-
-            path = _Path(r"C:\TradeAlerts\logs") / ("triggers_" + str(_day) + ".csv")
-            if not path.exists():
-                return []
-
-            with open(path, "r", encoding="utf-8", newline="") as f:
-                r = csv.DictReader(f)
-                for row in r:
-                    if (row.get("symbol") or "").strip().upper() != _sym:
-                        continue
-                    out.append(row)
-            return out
-        except Exception:
             return []
+
+        path = _Path(r"C:\TradeAlerts\logs") / ("triggers_" + str(_day) + ".csv")
+
+        if not path.exists():
+
+            return []
+
+        out = []
+
+        try:
+
+            import csv as _csv
+
+            with path.open("r", encoding="utf-8", errors="ignore", newline="") as f:
+
+                r = _csv.DictReader(f)
+
+                for row in r:
+
+                    sym = (row.get("symbol") or "").strip().upper()
+
+                    if sym != _sym:
+
+                        continue
+
+                    out.append({
+
+                        "symbol": sym,
+
+                        "time_et": (row.get("time_et") or row.get("time") or "").strip(),
+
+                        "price": row.get("price"),
+
+                        "signals_pretty": row.get("signals_pretty") or row.get("signals") or row.get("notes") or "",
+
+                        "source": row.get("source") or "trigger_csv",
+
+                        "ts_et": row.get("ts_et") or "",
+
+                    })
+
+        except Exception:
+
+            return []
+
+        return out
+
+
+    # Requested symbol/ts
+
+    try:
+
+        _tr_req_sym = (request.args.get("symbol") or request.args.get("sym") or request.args.get("ticker") or "").strip().upper()
+
+        _tr_req_ts  = (request.args.get("ts") or "").strip()
+
+    except Exception:
+
+        _tr_req_sym, _tr_req_ts = "", ""
+
+
+    # 1) Filter sells[] strictly to requested symbol (stops RJF/NSC/UNP bleed)
+
+    try:
+
+        if _tr_req_sym and isinstance(locals().get("sells"), list):
+
+            sells = [s for s in sells if str(s.get("symbol","")).strip().upper() == _tr_req_sym]
+
+    except Exception:
+
+        pass
+
+
+    # 2) If buys are empty, fall back to whole-day trigger CSV for that day/symbol
+
+    try:
+
+        if _tr_req_sym and isinstance(locals().get("buys"), list) and len(buys) == 0:
+
+            _day = _tr__parse_ts_date(_tr_req_ts)
+
+            _csv_buys = _tr__load_buy_triggers_for_day(_day, _tr_req_sym)
+
+            if _csv_buys:
+
+                buys = _csv_buys
+
+    except Exception:
+
+        pass
+
+
+    # --- TRADE REVIEW: strict symbol filter + CSV fallback (v3: *_out vars) ---
+
+
+    import datetime as _dt
+
+
+    from pathlib import Path as _Path
+
+
+
     def _tr__parse_ts_date(_s):
 
 
@@ -4425,102 +4416,104 @@ def api_trade_review():
 
 
 
-
     def _tr__load_buy_triggers_for_day(_day, _sym):
-        """
-        DB-first loader for BUY triggers for a given ET day and symbol.
-        Reads live.db.trigger_fires (side=BUY), filtered by day_et + symbol.
-        Falls back to triggers_YYYY-MM-DD.csv if DB is empty for that day/sym.
-        Returns list[dict] rows shaped like CSV reader output.
-        """
-        try:
-            if not _day or not _sym:
-                return []
-            _sym = str(_sym).strip().upper()
-            _day = str(_day).strip()
 
-            import os, sqlite3, csv
-            from pathlib import Path as _Path
-            from datetime import datetime, timezone
-            try:
-                from zoneinfo import ZoneInfo
-                _ET = ZoneInfo("America/New_York")
-            except Exception:
-                _ET = None
 
-            root = os.path.abspath(os.path.dirname(__file__))
-            live_db = os.path.join(root, "live.db")
+        if not _day or not _sym:
 
-            out = []
-            try:
-                con = sqlite3.connect(live_db)
-                try:
-                    con.row_factory = sqlite3.Row
-                    cur = con.execute(
-                        """
-                        SELECT ts_utc, symbol, price, source, notes, signals_pretty, time_et, day_et, mode, detail, stage
-                        FROM trigger_fires
-                        WHERE side='BUY' AND symbol=? AND day_et=?
-                        ORDER BY ts_utc ASC
-                        """,
-                        (_sym, _day),
-                    )
-                    for r in cur:
-                        ts_utc = (r["ts_utc"] or "")
-                        ts_et = ""
-                        time_et = (r["time_et"] or "")
-                        day_et = (r["day_et"] or _day)
 
-                        # Derive ET timestamps if missing
-                        try:
-                            if ts_utc:
-                                dtu = datetime.fromisoformat(ts_utc.replace("Z","")).replace(tzinfo=timezone.utc)
-                                if _ET:
-                                    dte = dtu.astimezone(_ET)
-                                    ts_et = dte.strftime("%Y-%m-%d %H:%M:%S")
-                                    if not time_et:
-                                        time_et = dte.strftime("%H:%M:%S")
-                                    if not day_et:
-                                        day_et = dte.strftime("%Y-%m-%d")
-                        except Exception:
-                            pass
-
-                        out.append({
-                            "symbol": _sym,
-                            "price": r["price"],
-                            "source": r["source"] or "",
-                            "notes": r["notes"] or "",
-                            "signals_pretty": r["signals_pretty"] or "",
-                            "time_et": time_et or "",
-                            "day_et": day_et or _day,
-                            "ts_utc": ts_utc or "",
-                            "ts_et": ts_et or "",
-                            "mode": r["mode"] or "",
-                            "detail": r["detail"] or "",
-                            "stage": r["stage"] or "",
-                        })
-                finally:
-                    con.close()
-            except Exception:
-                out = []
-
-            # Fallback to CSV only if DB returned nothing
-            if out:
-                return out
-
-            path = _Path(r"C:\TradeAlerts\logs") / ("triggers_" + str(_day) + ".csv")
-            if not path.exists():
-                return []
-
-            with open(path, "r", encoding="utf-8", newline="") as f:
-                r = csv.DictReader(f)
-                for row in r:
-                    if (row.get("symbol") or "").strip().upper() != _sym:
-                        continue
-                    out.append(row)
-            return out
-        except Exception:
             return []
+
+
+        path = _Path(r"C:\TradeAlerts\logs") / ("triggers_" + str(_day) + ".csv")
+
+
+        if not path.exists():
+
+
+            return []
+
+
+        out = []
+
+
+        try:
+
+
+            import csv as _csv
+
+
+            with path.open("r", encoding="utf-8", errors="ignore", newline="") as f:
+
+
+                r = _csv.DictReader(f)
+
+
+                for row in r:
+
+
+                    sym = (row.get("symbol") or "").strip().upper()
+
+
+                    if sym != _sym:
+
+
+                        continue
+
+
+                    out.append({
+
+
+                        "symbol": sym,
+
+
+                        "time_et": (row.get("time_et") or row.get("time") or "").strip(),
+
+
+                        "price": row.get("price"),
+
+
+                        "signals_pretty": row.get("signals_pretty") or row.get("signals") or row.get("notes") or "",
+
+
+                        "source": row.get("source") or "trigger_csv",
+
+
+                        "ts_et": row.get("ts_et") or "",
+
+
+                    })
+
+
+        except Exception:
+
+
+            return []
+
+
+        return out
+
+
+
+    # Requested symbol/ts
+
+
+    try:
+
+
+        _tr_req_sym = (request.args.get("symbol") or request.args.get("sym") or request.args.get("ticker") or "").strip().upper()
+
+
+        _tr_req_ts  = (request.args.get("ts") or "").strip()
+
+
+    except Exception:
+
+
+        _tr_req_sym, _tr_req_ts = "", ""
+
+
+
     def _sym_ok(_x):
 
 
@@ -4634,16 +4627,33 @@ def api_trade_review():
             pass
         return d.date().isoformat()
 
-
     def _tr__load_buy_triggers_csv(day_ymd: str, sym: str):
-        """
-        Back-compat name: now DB-first.
-        Reads live.db.trigger_fires (side=BUY) by (day_et, symbol), falls back to triggers_YYYY-MM-DD.csv.
-        """
+        if not day_ymd or not sym:
+            return []
+        path = Path(r"C:\TradeAlerts\logs") / ("triggers_" + str(day_ymd) + ".csv")
+        if not path.exists():
+            return []
+        out = []
         try:
-            return _tr__load_buy_triggers_for_day(day_ymd, sym)
+            import csv
+            with path.open("r", encoding="utf-8", errors="ignore", newline="") as f:
+                r = csv.DictReader(f)
+                for row in r:
+                    rs = (row.get("symbol") or "").strip().upper()
+                    if rs != sym:
+                        continue
+                    out.append({
+                        "symbol": rs,
+                        "time_et": (row.get("time_et") or row.get("time") or "").strip(),
+                        "price": row.get("price"),
+                        "signals_pretty": row.get("signals_pretty") or row.get("signals") or row.get("notes") or "",
+                        "source": row.get("source") or "trigger_csv",
+                        "ts_et": row.get("ts_et") or "",
+                    })
         except Exception:
             return []
+        return out
+
     def _tr__load_sell_triggers_csv(day_ymd: str, sym: str):
         if not day_ymd or not sym:
             return []
@@ -5113,21 +5123,13 @@ def api_trade_review():
     # ---- END TRV UI POLISH ----
 
 
-    # --- TRV4 safe sell_price (avoid locals()/NameError weirdness) ---
-    sell_price_safe = None
-    try:
-        sell_price_safe = sell_price  # may not exist
-    except Exception:
-        sell_price_safe = None
-    # --- end safe sell_price ---
     trade = {
         "symbol": sym,
         "name": sym,
         "buy_time": anchor_ts,
         "sell_time": None,
         "buy_price": locals().get("buy_price"),
-        "sell_price": sell_price_safe,
-        "__sig": "TRV4_SIG_20260208_180120",
+        "sell_price": sell_price,
         "pnl": None,
         "pnl_pct": None,
         "qty": None,
@@ -5140,12 +5142,12 @@ def api_trade_review():
         ts=ts,
         buy_ts=ts,
         sell_ts=None,
-        buy_log=locals().get("buy_log"),
-        sell_log=locals().get("sell_log"),
-        buy_triggers=locals().get("buy_triggers") or [],
-        buy_groups=locals().get("buy_groups") or [],
-        sell_triggers=locals().get("sell_triggers") or [],
-        sell_groups=locals().get("sell_groups") or [],
+        buy_log=buy_log,
+        sell_log=sell_log,
+        buy_triggers=buy_triggers,
+        buy_groups=buy_groups,
+        sell_triggers=sell_triggers,
+        sell_groups=sell_groups,
     )
 
 
@@ -5616,8 +5618,8 @@ def trade_review():
 
     # If no trade_id but we have symbol+ts, send to chart view (open trades / pseudo-buys)
     if (not trade_id) and sym and ts:
-        # NOTE: do NOT redirect to /chart here (prevents redirect loop)
-        pass
+        return redirect(f"/chart/{(request.args.get('symbol') or '').strip().upper()}?ts={(request.args.get('ts') or '').strip()}")
+
     # --- fallback: allow /trade_review?symbol=XYZ&ts_et=... (resolve to a realized trade_id) ---
     if not trade_id:
         symbol = (request.args.get("symbol") or "").strip().upper()
@@ -5810,8 +5812,8 @@ def trade_review():
     return render_template(
         "trade_review_single.html",
         trade=trade,
-        buy_triggers=locals().get("buy_triggers") or [],
-        sell_triggers=locals().get("sell_triggers") or [],
+        buy_triggers=buy_triggers,
+        sell_triggers=sell_triggers,
         buy_file=str(buy_file) if buy_file else None,
         sell_file=str(sell_file) if sell_file else None,
         is_win=is_win,
@@ -6745,29 +6747,28 @@ def api_analytics_sell():
 
 # --- /SELL_ANALYTICS_API_V1 ---
 
-# ------------------------------------------------------------
-# Chart view (required by /trade_review redirects)
-# ------------------------------------------------------------
-@app.route("/chart/<symbol>")
-def chart_symbol(symbol):
-    from flask import request, redirect, url_for
-    ts = (request.args.get("ts") or "").strip()
-    date = (request.args.get("date") or "").strip()
-
-    # Chart route is an alias for Trade Review (single source of truth for rendering)
-    if ts and date:
-        return redirect(f"/trade_review?symbol={symbol}&date={date}&ts={ts}", code=302)
-    if ts:
-        return redirect(f"/trade_review?symbol={symbol}&ts={ts}", code=302)
-    if date:
-        return redirect(f"/trade_review?symbol={symbol}&date={date}", code=302)
-    return redirect(f"/trade_review?symbol={symbol}", code=302)
 
 
-# ------------------------------------------------------------
-# Dev server entrypoint (added to ensure dashboard starts)
-# ------------------------------------------------------------
+
+
+
+
+
+
 if __name__ == "__main__":
-    # NOTE: keep reloader OFF on Windows to avoid duplicate listeners
-    app.run(host="0.0.0.0", port=5001, debug=True, use_reloader=False)
+    import os
+    port = int(os.environ.get("PORT", "5001"))
+    # IMPORTANT: disable reloader to avoid zombie/duplicate listeners on Windows
+    app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)
+
+
+# =========================
+# Settings Scoreboard + Health
+# =========================
+
+
+# (deduped duplicate api_settings_scoreboard)
+
+
+# (deduped duplicate healthz)
 

@@ -3791,31 +3791,6 @@ def analytics_page():
     if ymd:
         date_et = ymd
     
-    # --- TRV4 template var defaults (prevent NameError) ---
-    try:
-        ts
-    except Exception:
-    # Anchor timestamp (optional) ? used to highlight a moment on charts
-        anchor_ts = (request.args.get('ts') or request.args.get('anchor_ts') or request.args.get('anchor') or '').strip()
-        ts = anchor_ts
-
-    try:
-        buy_log
-    except Exception:
-        buy_log = None
-    try:
-        sell_log
-    except Exception:
-        sell_log = None
-    try:
-        buy_groups
-    except Exception:
-        buy_groups = []
-    try:
-        sell_groups
-    except Exception:
-        sell_groups = []
-    # --- end TRV4 template defaults ---
     return render_template(
     
         "analytics.html",
@@ -3975,45 +3950,6 @@ def _tr__yahoo_intraday_series(symbol, interval="5m"):
 
 @app.route("/api/trade_review")
 def api_trade_review():
-    realized = {}  # default (avoid NameError on branches that don't compute realized)
-    # --- TRV4 safety init ---
-    sym = None
-    anchor_ts = None
-    buy_triggers = []
-    sell_triggers = []
-    buy_price = None
-    buy_qty = None
-    buy_name = ''
-    buy_symbol = None
-    buy_ts_utc = None
-    buy_time = None
-    buy_date = None
-    ts_arg = request.args.get('ts')
-    if ts_arg:
-        try:
-            anchor_ts = ts_arg
-        except Exception:
-            anchor_ts = None
-    # --- TRV4 SAFETY INIT (prevents UnboundLocalError on sym/buy_triggers/etc.) ---
-    sym = (request.args.get('symbol') or request.args.get('sym') or '').strip().upper()
-    ts_arg = (request.args.get('ts') or '').strip()
-    date_arg = (request.args.get('date') or '').strip()  # optional
-    anchor_ts = ts_arg  # keep original string for downstream
-    ts = anchor_ts  # legacy variable used by older TRV4 payload keys
-    buy_triggers = []
-    sell_triggers = []
-    buys_out = []
-    sells_out = []
-    meta = {}
-    # --- end TRV4 SAFETY INIT ---
-    # --- TRV4 safety: ensure locals always defined (prevents NameError on early returns) ---
-    buy_triggers = []
-    sell_triggers = []
-    buys_out = []
-    sells_out = []
-    meta = {}
-    # --- end safety block ---
-
     import os
     try:
         limit = int(request.args.get("limit", "5"))
@@ -4025,20 +3961,11 @@ def api_trade_review():
     sell_path = _tr__latest_log_path("sell_triggers")
 
     if not buy_path and not sell_path:
-        pass
-    # --- TRV4 locals guard (prevents NameError on partial paths) ---
-    try:
-        _anchor = anchor_ts
-    except Exception:
-        _anchor = (request.args.get('ts') or '').strip()
-    # define common TRV4 payload fields if missing
-    if 'buy_qty'   not in locals(): buy_qty   = ''
-    if 'buy_time'  not in locals(): buy_time  = _anchor
-    if 'buy_triggers' not in locals(): buy_triggers = []
-    if 'sell_triggers' not in locals(): sell_triggers = []
-    # keep sym defined for payload safety
-    if 'sym' not in locals(): sym = (request.args.get('symbol') or request.args.get('sym') or '').strip().upper()
-    # --- end TRV4 locals guard ---
+        return jsonify({"ok": False, "realized": (lambda r: (r if isinstance(r, dict) else {}))(
+                (lambda r: (r | {"year": r.get("year") or {"pnl": 0.0, "pct": 0.0}}) if hasattr(r, "get") else {"year": {"pnl": 0.0, "pct": 0.0}})(realized)
+            ),
+            
+            "error": "No logs found under .\\logs (triggers_*.csv / sell_triggers_*.csv)."}), 200
 
     buy_rows = _tr__read_csv_rows(buy_path) if buy_path else []
     sell_rows = _tr__read_csv_rows(sell_path) if sell_path else []
@@ -4200,34 +4127,6 @@ def api_trade_review():
     buys_out = [build_buy_item(r) for r in recent_buys]
     sells_out = [build_sell_item(r) for r in recent_sells]
 
-    # --- TRV4 sell_events: backfill ts_et/time_et from ts_utc (epoch or iso) ---
-    try:
-        if isinstance(sells_out, list):
-            for row in sells_out:
-                try:
-                    if not isinstance(row, dict):
-                        continue
-                    ts_et = (row.get('ts_et') or '').strip()
-                    time_et = (row.get('time_et') or '').strip()
-                    if ts_et and time_et:
-                        continue
-                    v = row.get('ts_utc') or row.get('ts_et') or row.get('time_et')
-                    ts_et2, time_et2, ts_utc_iso = _tr__normalize_ts(v)
-                    if (not ts_et) and ts_et2:
-                        row['ts_et'] = ts_et2
-                    if (not time_et) and time_et2:
-                        row['time_et'] = time_et2
-                    try:
-                        cur = str(row.get('ts_utc') or '').strip()
-                        if ts_utc_iso and (cur.isdigit() or not cur):
-                            row['ts_utc'] = ts_utc_iso
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
-    except Exception:
-        pass
-
     # --- TRADE REVIEW: strict symbol filter + CSV fallback (v2) ---
 
     import datetime as _dt
@@ -4274,102 +4173,114 @@ def api_trade_review():
         return d.date().isoformat()
 
 
-
     def _tr__load_buy_triggers_for_day(_day, _sym):
-        """
-        DB-first loader for BUY triggers for a given ET day and symbol.
-        Reads live.db.trigger_fires (side=BUY), filtered by day_et + symbol.
-        Falls back to triggers_YYYY-MM-DD.csv if DB is empty for that day/sym.
-        Returns list[dict] rows shaped like CSV reader output.
-        """
-        try:
-            if not _day or not _sym:
-                return []
-            _sym = str(_sym).strip().upper()
-            _day = str(_day).strip()
 
-            import os, sqlite3, csv
-            from pathlib import Path as _Path
-            from datetime import datetime, timezone
-            try:
-                from zoneinfo import ZoneInfo
-                _ET = ZoneInfo("America/New_York")
-            except Exception:
-                _ET = None
+        if not _day or not _sym:
 
-            root = os.path.abspath(os.path.dirname(__file__))
-            live_db = os.path.join(root, "live.db")
-
-            out = []
-            try:
-                con = sqlite3.connect(live_db)
-                try:
-                    con.row_factory = sqlite3.Row
-                    cur = con.execute(
-                        """
-                        SELECT ts_utc, symbol, price, source, notes, signals_pretty, time_et, day_et, mode, detail, stage
-                        FROM trigger_fires
-                        WHERE side='BUY' AND symbol=? AND day_et=?
-                        ORDER BY ts_utc ASC
-                        """,
-                        (_sym, _day),
-                    )
-                    for r in cur:
-                        ts_utc = (r["ts_utc"] or "")
-                        ts_et = ""
-                        time_et = (r["time_et"] or "")
-                        day_et = (r["day_et"] or _day)
-
-                        # Derive ET timestamps if missing
-                        try:
-                            if ts_utc:
-                                dtu = datetime.fromisoformat(ts_utc.replace("Z","")).replace(tzinfo=timezone.utc)
-                                if _ET:
-                                    dte = dtu.astimezone(_ET)
-                                    ts_et = dte.strftime("%Y-%m-%d %H:%M:%S")
-                                    if not time_et:
-                                        time_et = dte.strftime("%H:%M:%S")
-                                    if not day_et:
-                                        day_et = dte.strftime("%Y-%m-%d")
-                        except Exception:
-                            pass
-
-                        out.append({
-                            "symbol": _sym,
-                            "price": r["price"],
-                            "source": r["source"] or "",
-                            "notes": r["notes"] or "",
-                            "signals_pretty": r["signals_pretty"] or "",
-                            "time_et": time_et or "",
-                            "day_et": day_et or _day,
-                            "ts_utc": ts_utc or "",
-                            "ts_et": ts_et or "",
-                            "mode": r["mode"] or "",
-                            "detail": r["detail"] or "",
-                            "stage": r["stage"] or "",
-                        })
-                finally:
-                    con.close()
-            except Exception:
-                out = []
-
-            # Fallback to CSV only if DB returned nothing
-            if out:
-                return out
-
-            path = _Path(r"C:\TradeAlerts\logs") / ("triggers_" + str(_day) + ".csv")
-            if not path.exists():
-                return []
-
-            with open(path, "r", encoding="utf-8", newline="") as f:
-                r = csv.DictReader(f)
-                for row in r:
-                    if (row.get("symbol") or "").strip().upper() != _sym:
-                        continue
-                    out.append(row)
-            return out
-        except Exception:
             return []
+
+        path = _Path(r"C:\TradeAlerts\logs") / ("triggers_" + str(_day) + ".csv")
+
+        if not path.exists():
+
+            return []
+
+        out = []
+
+        try:
+
+            import csv as _csv
+
+            with path.open("r", encoding="utf-8", errors="ignore", newline="") as f:
+
+                r = _csv.DictReader(f)
+
+                for row in r:
+
+                    sym = (row.get("symbol") or "").strip().upper()
+
+                    if sym != _sym:
+
+                        continue
+
+                    out.append({
+
+                        "symbol": sym,
+
+                        "time_et": (row.get("time_et") or row.get("time") or "").strip(),
+
+                        "price": row.get("price"),
+
+                        "signals_pretty": row.get("signals_pretty") or row.get("signals") or row.get("notes") or "",
+
+                        "source": row.get("source") or "trigger_csv",
+
+                        "ts_et": row.get("ts_et") or "",
+
+                    })
+
+        except Exception:
+
+            return []
+
+        return out
+
+
+    # Requested symbol/ts
+
+    try:
+
+        _tr_req_sym = (request.args.get("symbol") or request.args.get("sym") or request.args.get("ticker") or "").strip().upper()
+
+        _tr_req_ts  = (request.args.get("ts") or "").strip()
+
+    except Exception:
+
+        _tr_req_sym, _tr_req_ts = "", ""
+
+
+    # 1) Filter sells[] strictly to requested symbol (stops RJF/NSC/UNP bleed)
+
+    try:
+
+        if _tr_req_sym and isinstance(locals().get("sells"), list):
+
+            sells = [s for s in sells if str(s.get("symbol","")).strip().upper() == _tr_req_sym]
+
+    except Exception:
+
+        pass
+
+
+    # 2) If buys are empty, fall back to whole-day trigger CSV for that day/symbol
+
+    try:
+
+        if _tr_req_sym and isinstance(locals().get("buys"), list) and len(buys) == 0:
+
+            _day = _tr__parse_ts_date(_tr_req_ts)
+
+            _csv_buys = _tr__load_buy_triggers_for_day(_day, _tr_req_sym)
+
+            if _csv_buys:
+
+                buys = _csv_buys
+
+    except Exception:
+
+        pass
+
+
+    # --- TRADE REVIEW: strict symbol filter + CSV fallback (v3: *_out vars) ---
+
+
+    import datetime as _dt
+
+
+    from pathlib import Path as _Path
+
+
+
     def _tr__parse_ts_date(_s):
 
 
@@ -4425,102 +4336,104 @@ def api_trade_review():
 
 
 
-
     def _tr__load_buy_triggers_for_day(_day, _sym):
-        """
-        DB-first loader for BUY triggers for a given ET day and symbol.
-        Reads live.db.trigger_fires (side=BUY), filtered by day_et + symbol.
-        Falls back to triggers_YYYY-MM-DD.csv if DB is empty for that day/sym.
-        Returns list[dict] rows shaped like CSV reader output.
-        """
-        try:
-            if not _day or not _sym:
-                return []
-            _sym = str(_sym).strip().upper()
-            _day = str(_day).strip()
 
-            import os, sqlite3, csv
-            from pathlib import Path as _Path
-            from datetime import datetime, timezone
-            try:
-                from zoneinfo import ZoneInfo
-                _ET = ZoneInfo("America/New_York")
-            except Exception:
-                _ET = None
 
-            root = os.path.abspath(os.path.dirname(__file__))
-            live_db = os.path.join(root, "live.db")
+        if not _day or not _sym:
 
-            out = []
-            try:
-                con = sqlite3.connect(live_db)
-                try:
-                    con.row_factory = sqlite3.Row
-                    cur = con.execute(
-                        """
-                        SELECT ts_utc, symbol, price, source, notes, signals_pretty, time_et, day_et, mode, detail, stage
-                        FROM trigger_fires
-                        WHERE side='BUY' AND symbol=? AND day_et=?
-                        ORDER BY ts_utc ASC
-                        """,
-                        (_sym, _day),
-                    )
-                    for r in cur:
-                        ts_utc = (r["ts_utc"] or "")
-                        ts_et = ""
-                        time_et = (r["time_et"] or "")
-                        day_et = (r["day_et"] or _day)
 
-                        # Derive ET timestamps if missing
-                        try:
-                            if ts_utc:
-                                dtu = datetime.fromisoformat(ts_utc.replace("Z","")).replace(tzinfo=timezone.utc)
-                                if _ET:
-                                    dte = dtu.astimezone(_ET)
-                                    ts_et = dte.strftime("%Y-%m-%d %H:%M:%S")
-                                    if not time_et:
-                                        time_et = dte.strftime("%H:%M:%S")
-                                    if not day_et:
-                                        day_et = dte.strftime("%Y-%m-%d")
-                        except Exception:
-                            pass
-
-                        out.append({
-                            "symbol": _sym,
-                            "price": r["price"],
-                            "source": r["source"] or "",
-                            "notes": r["notes"] or "",
-                            "signals_pretty": r["signals_pretty"] or "",
-                            "time_et": time_et or "",
-                            "day_et": day_et or _day,
-                            "ts_utc": ts_utc or "",
-                            "ts_et": ts_et or "",
-                            "mode": r["mode"] or "",
-                            "detail": r["detail"] or "",
-                            "stage": r["stage"] or "",
-                        })
-                finally:
-                    con.close()
-            except Exception:
-                out = []
-
-            # Fallback to CSV only if DB returned nothing
-            if out:
-                return out
-
-            path = _Path(r"C:\TradeAlerts\logs") / ("triggers_" + str(_day) + ".csv")
-            if not path.exists():
-                return []
-
-            with open(path, "r", encoding="utf-8", newline="") as f:
-                r = csv.DictReader(f)
-                for row in r:
-                    if (row.get("symbol") or "").strip().upper() != _sym:
-                        continue
-                    out.append(row)
-            return out
-        except Exception:
             return []
+
+
+        path = _Path(r"C:\TradeAlerts\logs") / ("triggers_" + str(_day) + ".csv")
+
+
+        if not path.exists():
+
+
+            return []
+
+
+        out = []
+
+
+        try:
+
+
+            import csv as _csv
+
+
+            with path.open("r", encoding="utf-8", errors="ignore", newline="") as f:
+
+
+                r = _csv.DictReader(f)
+
+
+                for row in r:
+
+
+                    sym = (row.get("symbol") or "").strip().upper()
+
+
+                    if sym != _sym:
+
+
+                        continue
+
+
+                    out.append({
+
+
+                        "symbol": sym,
+
+
+                        "time_et": (row.get("time_et") or row.get("time") or "").strip(),
+
+
+                        "price": row.get("price"),
+
+
+                        "signals_pretty": row.get("signals_pretty") or row.get("signals") or row.get("notes") or "",
+
+
+                        "source": row.get("source") or "trigger_csv",
+
+
+                        "ts_et": row.get("ts_et") or "",
+
+
+                    })
+
+
+        except Exception:
+
+
+            return []
+
+
+        return out
+
+
+
+    # Requested symbol/ts
+
+
+    try:
+
+
+        _tr_req_sym = (request.args.get("symbol") or request.args.get("sym") or request.args.get("ticker") or "").strip().upper()
+
+
+        _tr_req_ts  = (request.args.get("ts") or "").strip()
+
+
+    except Exception:
+
+
+        _tr_req_sym, _tr_req_ts = "", ""
+
+
+
     def _sym_ok(_x):
 
 
@@ -4634,16 +4547,33 @@ def api_trade_review():
             pass
         return d.date().isoformat()
 
-
     def _tr__load_buy_triggers_csv(day_ymd: str, sym: str):
-        """
-        Back-compat name: now DB-first.
-        Reads live.db.trigger_fires (side=BUY) by (day_et, symbol), falls back to triggers_YYYY-MM-DD.csv.
-        """
+        if not day_ymd or not sym:
+            return []
+        path = Path(r"C:\TradeAlerts\logs") / ("triggers_" + str(day_ymd) + ".csv")
+        if not path.exists():
+            return []
+        out = []
         try:
-            return _tr__load_buy_triggers_for_day(day_ymd, sym)
+            import csv
+            with path.open("r", encoding="utf-8", errors="ignore", newline="") as f:
+                r = csv.DictReader(f)
+                for row in r:
+                    rs = (row.get("symbol") or "").strip().upper()
+                    if rs != sym:
+                        continue
+                    out.append({
+                        "symbol": rs,
+                        "time_et": (row.get("time_et") or row.get("time") or "").strip(),
+                        "price": row.get("price"),
+                        "signals_pretty": row.get("signals_pretty") or row.get("signals") or row.get("notes") or "",
+                        "source": row.get("source") or "trigger_csv",
+                        "ts_et": row.get("ts_et") or "",
+                    })
         except Exception:
             return []
+        return out
+
     def _tr__load_sell_triggers_csv(day_ymd: str, sym: str):
         if not day_ymd or not sym:
             return []
@@ -4678,230 +4608,6 @@ def api_trade_review():
             return []
         return out
 
-    def _tr__load_sell_events_for_day(day_ymd: str, sym: str, limit: int = 800):
-        """
-        Read sell triggers/events from live.db table sell_events.
-        Handles ts_utc stored as ISO string OR unix epoch seconds.
-        Filters by *ET date* (day_ymd) in Python (reliable across ts formats).
-        Returns trigger-panel shaped rows.
-        """
-        if not day_ymd or not sym:
-            return []
-        try:
-            import os, sqlite3
-            from datetime import datetime, timezone
-            try:
-                from zoneinfo import ZoneInfo
-                _ET = ZoneInfo("America/New_York")
-            except Exception:
-                _ET = None
-
-            db_path = globals().get("LIVE_DB") or globals().get("DB_PATH") or r"C:\TradeAlerts\live.db"
-            if not os.path.exists(db_path):
-                return []
-
-            def _parse_any(x):
-                if x is None:
-                    return None
-                s = str(x).strip()
-                if not s:
-                    return None
-
-                # epoch seconds?
-                if s.isdigit():
-                    try:
-                        sec = int(s)
-                        # guard against weird ms timestamps (13 digits)
-                        if sec > 10_000_000_000:
-                            sec = int(sec / 1000)
-                        return datetime.fromtimestamp(sec, tz=timezone.utc)
-                    except Exception:
-                        return None
-
-                # ISO-ish string
-                if s.endswith("Z"):
-                    s = s[:-1] + "+00:00"
-                try:
-                    d = datetime.fromisoformat(s)
-                    if d.tzinfo is None:
-                        d = d.replace(tzinfo=timezone.utc)
-                    return d.astimezone(timezone.utc)
-                except Exception:
-                    try:
-                        d = datetime.fromisoformat(s[:19])
-                        d = d.replace(tzinfo=timezone.utc)
-                        return d
-                    except Exception:
-                        return None
-
-            def _to_et_str(dtobj):
-                try:
-                    if not dtobj:
-                        return ""
-                    if _ET and dtobj.tzinfo is not None:
-                        dtobj = dtobj.astimezone(_ET)
-                    return dtobj.strftime("%Y-%m-%d %H:%M:%S")
-                except Exception:
-                    return ""
-
-            con = sqlite3.connect(db_path)
-            cur = con.cursor()
-
-            symU = str(sym).strip().upper()
-
-            # Pull recent rows for symbol, then filter by ET day in Python.
-            cur.execute(
-                "SELECT ts_utc, symbol, event, reason, detail, order_id, price, qty, mode "
-                "FROM sell_events WHERE symbol=? ORDER BY id DESC LIMIT ?",
-                (symU, int(limit)),
-            )
-            rows = cur.fetchall() or []
-            con.close()
-
-            out = []
-            for ts_utc, symbol, event, reason, detail, order_id, price, qty, mode in rows:
-                dtu = _parse_any(ts_utc)
-                ts_et = _to_et_str(dtu)
-                if not ts_et.startswith(str(day_ymd)):
-                    continue
-
-                pretty = ""
-                if event:
-                    pretty = str(event)
-                if reason:
-                    pretty = (pretty + " | " if pretty else "") + str(reason)
-                if detail:
-                    pretty = (pretty + " | " if pretty else "") + str(detail)
-                if order_id:
-                    pretty = (pretty + " | " if pretty else "") + f"oid={order_id}"
-                if qty not in (None, "", 0, "0"):
-                    pretty = (pretty + " | " if pretty else "") + f"qty={qty}"
-                if mode:
-                    pretty = (pretty + " | " if pretty else "") + f"mode={mode}"
-
-                out.append({
-                    "symbol": (symbol or symU),
-                    "time_et": ts_et,
-                    "price": price if price is not None else "",
-                    "signals_pretty": pretty,
-                    "source": "live_db:sell_events",
-                    "ts_et": ts_et,
-                    "ts_utc": str(ts_utc or ""),
-                })
-
-            out = list(reversed(out))  # chronological
-            return out
-        except Exception:
-            return []
-
-    def _tr__load_sell_events_recent(sym: str, limit: int = 50):
-        """
-        Most recent sells for symbol (ts_utc may be ISO or epoch seconds).
-        """
-        if not sym:
-            return []
-        try:
-            import os, sqlite3
-            from datetime import datetime, timezone
-            try:
-                from zoneinfo import ZoneInfo
-                _ET = ZoneInfo("America/New_York")
-            except Exception:
-                _ET = None
-
-            db_path = globals().get("LIVE_DB") or globals().get("DB_PATH") or r"C:\TradeAlerts\live.db"
-            if not os.path.exists(db_path):
-                return []
-
-            def _parse_any(x):
-                if x is None:
-                    return None
-                s = str(x).strip()
-                if not s:
-                    return None
-
-                if s.isdigit():
-                    try:
-                        sec = int(s)
-                        if sec > 10_000_000_000:
-                            sec = int(sec / 1000)
-                        return datetime.fromtimestamp(sec, tz=timezone.utc)
-                    except Exception:
-                        return None
-
-                if s.endswith("Z"):
-                    s = s[:-1] + "+00:00"
-                try:
-                    d = datetime.fromisoformat(s)
-                    if d.tzinfo is None:
-                        d = d.replace(tzinfo=timezone.utc)
-                    return d.astimezone(timezone.utc)
-                except Exception:
-                    try:
-                        d = datetime.fromisoformat(s[:19])
-                        d = d.replace(tzinfo=timezone.utc)
-                        return d
-                    except Exception:
-                        return None
-
-            def _to_et_str(dtobj):
-                try:
-                    if not dtobj:
-                        return ""
-                    if _ET and dtobj.tzinfo is not None:
-                        dtobj = dtobj.astimezone(_ET)
-                    return dtobj.strftime("%Y-%m-%d %H:%M:%S")
-                except Exception:
-                    return ""
-
-            con = sqlite3.connect(db_path)
-            cur = con.cursor()
-
-            symU = str(sym).strip().upper()
-            cur.execute(
-                "SELECT ts_utc, symbol, event, reason, detail, order_id, price, qty, mode "
-                "FROM sell_events WHERE symbol=? ORDER BY id DESC LIMIT ?",
-                (symU, int(limit)),
-            )
-            rows = cur.fetchall() or []
-            con.close()
-
-            out = []
-            for ts_utc, symbol, event, reason, detail, order_id, price, qty, mode in reversed(rows):
-                dtu = _parse_any(ts_utc)
-                ts_et = _to_et_str(dtu)
-
-                pretty = ""
-                if event:
-                    pretty = str(event)
-                if reason:
-                    pretty = (pretty + " | " if pretty else "") + str(reason)
-                if detail:
-                    pretty = (pretty + " | " if pretty else "") + str(detail)
-                if order_id:
-                    pretty = (pretty + " | " if pretty else "") + f"oid={order_id}"
-                if qty not in (None, "", 0, "0"):
-                    pretty = (pretty + " | " if pretty else "") + f"qty={qty}"
-                if mode:
-                    pretty = (pretty + " | " if pretty else "") + f"mode={mode}"
-
-                out.append({
-                    "symbol": (symbol or symU),
-                    "time_et": ts_et,
-                    "price": price if price is not None else "",
-                    "signals_pretty": pretty,
-                    "source": "live_db:sell_events",
-                    "ts_et": ts_et,
-                    "ts_utc": str(ts_utc or ""),
-                })
-            return out
-        except Exception:
-            return []
-
-
-        except Exception:
-            return []
-
     # 1) strict symbol filter on sells_out (prevents RJF/NSC/UNP bleed)
     try:
         if _tr_req_sym and isinstance(locals().get("sells_out"), list):
@@ -4918,72 +4624,85 @@ def api_trade_review():
                 buys_out = _csv_buys
     except Exception:
         pass    # 3) if sells_out empty, fall back to whole-day SELL trigger CSV for that day/symbol
-    # 3) if sells_out empty, load sells from live.db (sell_events) first.
-    # If ts/day missing, fall back to most recent sells for that symbol.
     try:
         if _tr_req_sym and isinstance(locals().get("sells_out"), list) and len(sells_out) == 0:
             _day = _tr__day_from_ts(_tr_req_ts)
-            _db_sells = _tr__load_sell_events_for_day(_day, _tr_req_sym) if _day else []
-            if not _db_sells:
-                _db_sells = _tr__load_sell_events_recent(_tr_req_sym, limit=50)
-            if not _db_sells and _day:
-                # last-ditch: old CSV file fallback
-                _db_sells = _tr__load_sell_triggers_csv(_day, _tr_req_sym)
-            if _db_sells:
-                sells_out = _db_sells
+            _csv_sells = _tr__load_sell_triggers_csv(_day, _tr_req_sym)
+            if _csv_sells:
+                sells_out = _csv_sells
     except Exception:
         pass
 
 
 
+    return jsonify({"ok": True, "buy_log": buy_path, "sell_log": sell_path, "tr_patch": tr_patch, "buys": buys_out, "sells": sells_out}), 200
+@app.route("/chart/<symbol>")
+def chart_view(symbol):
+    """
+    Chart view doubles as the single-trade review page right now.
+    It renders trade_review_single.html, and MUST hydrate trigger panels from /api/trade_review (TRV4).
+    """
+    from flask import request, render_template
+    import json
 
-    def _tr__normalize_ts(v):
-        """Return (ts_et_iso, time_et_str, ts_utc_iso) from epoch/iso inputs."""
+    sym = str(symbol).strip().upper()
+    # Ensure TRV4 sees symbol in request.args
+    if not request.args.get("symbol"):
+        request.args = request.args.copy()
+        request.args = request.args.to_dict(flat=True)
+        request.args["symbol"] = sym
+
+    ts = (request.args.get("ts") or "").strip()
+
+    # ---- TRV CHART HYDRATE: pull triggers + logs from /api/trade_review (TRV4) ----
+    buy_triggers = []
+    sell_triggers = []
+    buy_log = None
+    sell_log = None
+    buy_price = None
+    sell_price = None
+
+    try:
+        _resp = api_trade_review()
+        _r0 = _resp[0] if isinstance(_resp, tuple) else _resp
+        _txt = _r0.get_data(as_text=True) if hasattr(_r0, "get_data") else ""
+        _j = json.loads(_txt) if _txt else {}
+
+        # TRV4 returns keys: buys, sells, buy_log, sell_log, tr_patch, ok
+        buy_triggers = _j.get("buys") or []
+        sell_triggers = _j.get("sells") or []
+        buy_log = _j.get("buy_log")
+        sell_log = _j.get("sell_log")
+
+        # Best-effort prices from trigger rows (first/last non-empty)
         try:
-            if v is None:
-                return ("", "", "")
-            s = str(v).strip()
-            if not s or s.lower() == "none":
-                return ("", "", "")
-    
-            d_utc = None
-    
-            # epoch seconds/ms (string digits)
-            if re.fullmatch(r"\d+", s):
-                try:
-                    n = int(s)
-                    if len(s) >= 13:  # ms
-                        n = int(n / 1000)
-                    d_utc = dt.datetime.fromtimestamp(n, tz=dt.timezone.utc)
-                except Exception:
-                    d_utc = None
-    
-            # ISO-ish fallback
-            if d_utc is None:
-                ss = s.replace(" ", "T").replace("Z", "+00:00")
-                try:
-                    d = dt.datetime.fromisoformat(ss)
-                except Exception:
-                    d = None
-                if d is None:
-                    return ("", "", "")
-                if d.tzinfo is None:
-                    d_utc = d.replace(tzinfo=dt.timezone.utc)
-                else:
-                    d_utc = d.astimezone(dt.timezone.utc)
-    
-            try:
-                from zoneinfo import ZoneInfo
-                d_et = d_utc.astimezone(ZoneInfo("America/New_York"))
-            except Exception:
-                d_et = d_utc
-    
-            ts_utc_iso = d_utc.isoformat()
-            ts_et_iso  = d_et.isoformat()
-            time_et = d_et.strftime("%Y-%m-%d %H:%M:%S")
-            return (ts_et_iso, time_et, ts_utc_iso)
+            for row in (buy_triggers or []):
+                px = row.get("price")
+                if px not in (None, "", "0", "0.0"):
+                    buy_price = px
+                    break
+            if buy_price is None and buy_triggers:
+                buy_price = buy_triggers[-1].get("price")
         except Exception:
-            return ("", "", "")
+            pass
+
+        try:
+            for row in (sell_triggers or []):
+                px = row.get("price")
+                if px not in (None, "", "0", "0.0"):
+                    sell_price = px
+                    break
+            if sell_price is None and sell_triggers:
+                sell_price = sell_triggers[-1].get("price")
+        except Exception:
+            pass
+
+    except Exception:
+        # keep page alive even if TRV API fails
+        pass
+    # ---------------------------------------------------------------------------
+
+    # Minimal trade dict expected by trade_review_single.html    # ---- TRV UI POLISH: group triggers + anchor highlight ----
     def _trv_parse_dt_et(val: str):
         try:
             if not val:
@@ -5113,21 +4832,13 @@ def api_trade_review():
     # ---- END TRV UI POLISH ----
 
 
-    # --- TRV4 safe sell_price (avoid locals()/NameError weirdness) ---
-    sell_price_safe = None
-    try:
-        sell_price_safe = sell_price  # may not exist
-    except Exception:
-        sell_price_safe = None
-    # --- end safe sell_price ---
     trade = {
         "symbol": sym,
         "name": sym,
-        "buy_time": anchor_ts,
+        "buy_time": ts,
         "sell_time": None,
-        "buy_price": locals().get("buy_price"),
-        "sell_price": sell_price_safe,
-        "__sig": "TRV4_SIG_20260208_180120",
+        "buy_price": buy_price,
+        "sell_price": sell_price,
         "pnl": None,
         "pnl_pct": None,
         "qty": None,
@@ -5140,12 +4851,12 @@ def api_trade_review():
         ts=ts,
         buy_ts=ts,
         sell_ts=None,
-        buy_log=locals().get("buy_log"),
-        sell_log=locals().get("sell_log"),
-        buy_triggers=locals().get("buy_triggers") or [],
-        buy_groups=locals().get("buy_groups") or [],
-        sell_triggers=locals().get("sell_triggers") or [],
-        sell_groups=locals().get("sell_groups") or [],
+        buy_log=buy_log,
+        sell_log=sell_log,
+        buy_triggers=buy_triggers,
+        buy_groups=buy_groups,
+        sell_triggers=sell_triggers,
+        sell_groups=sell_groups,
     )
 
 
@@ -5616,8 +5327,8 @@ def trade_review():
 
     # If no trade_id but we have symbol+ts, send to chart view (open trades / pseudo-buys)
     if (not trade_id) and sym and ts:
-        # NOTE: do NOT redirect to /chart here (prevents redirect loop)
-        pass
+        return redirect(f"/chart/{(request.args.get('symbol') or '').strip().upper()}?ts={(request.args.get('ts') or '').strip()}")
+
     # --- fallback: allow /trade_review?symbol=XYZ&ts_et=... (resolve to a realized trade_id) ---
     if not trade_id:
         symbol = (request.args.get("symbol") or "").strip().upper()
@@ -5810,8 +5521,8 @@ def trade_review():
     return render_template(
         "trade_review_single.html",
         trade=trade,
-        buy_triggers=locals().get("buy_triggers") or [],
-        sell_triggers=locals().get("sell_triggers") or [],
+        buy_triggers=buy_triggers,
+        sell_triggers=sell_triggers,
         buy_file=str(buy_file) if buy_file else None,
         sell_file=str(sell_file) if sell_file else None,
         is_win=is_win,
@@ -6745,29 +6456,28 @@ def api_analytics_sell():
 
 # --- /SELL_ANALYTICS_API_V1 ---
 
-# ------------------------------------------------------------
-# Chart view (required by /trade_review redirects)
-# ------------------------------------------------------------
-@app.route("/chart/<symbol>")
-def chart_symbol(symbol):
-    from flask import request, redirect, url_for
-    ts = (request.args.get("ts") or "").strip()
-    date = (request.args.get("date") or "").strip()
-
-    # Chart route is an alias for Trade Review (single source of truth for rendering)
-    if ts and date:
-        return redirect(f"/trade_review?symbol={symbol}&date={date}&ts={ts}", code=302)
-    if ts:
-        return redirect(f"/trade_review?symbol={symbol}&ts={ts}", code=302)
-    if date:
-        return redirect(f"/trade_review?symbol={symbol}&date={date}", code=302)
-    return redirect(f"/trade_review?symbol={symbol}", code=302)
 
 
-# ------------------------------------------------------------
-# Dev server entrypoint (added to ensure dashboard starts)
-# ------------------------------------------------------------
+
+
+
+
+
+
 if __name__ == "__main__":
-    # NOTE: keep reloader OFF on Windows to avoid duplicate listeners
-    app.run(host="0.0.0.0", port=5001, debug=True, use_reloader=False)
+    import os
+    port = int(os.environ.get("PORT", "5001"))
+    # IMPORTANT: disable reloader to avoid zombie/duplicate listeners on Windows
+    app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)
+
+
+# =========================
+# Settings Scoreboard + Health
+# =========================
+
+
+# (deduped duplicate api_settings_scoreboard)
+
+
+# (deduped duplicate healthz)
 
