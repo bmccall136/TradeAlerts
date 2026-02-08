@@ -4510,18 +4510,6 @@ def api_trade_review():
 
     # --- TRADE REVIEW wiring fix (TRV4): filter + CSV fallback applied to *_out vars ---
     tr_patch = "TRV4"
-
-    # --- TRV4 out-var init (ensure fallbacks can run even if sells_out/buys_out weren't created earlier) ---
-    try:
-        if "buys_out" not in locals():
-            _b = locals().get("buys")
-            buys_out = _b if isinstance(_b, list) else []
-        if "sells_out" not in locals():
-            _s = locals().get("sells")
-            sells_out = _s if isinstance(_s, list) else []
-    except Exception:
-        pass
-    # --- end TRV4 out-var init ---
     try:
         _tr_req_sym = (request.args.get("symbol") or request.args.get("sym") or request.args.get("ticker") or "").strip().upper()
         _tr_req_ts  = (request.args.get("ts") or "").strip()
@@ -6306,157 +6294,203 @@ def api_analytics_daily():
 
 
 
-
-
 # --- SELL_ANALYTICS_API_V1 (LIVE_DB sell_events) ---
 @app.get("/api/analytics/sell")
 def api_analytics_sell():
     """
     Sell Analytics (LIVE_DB-only)
-    - exit_reason_breakdown: sell_events where event='FILLED'
-    - execution_outcomes: sell_events all events
-    - hold_buckets: realized_trades open_date/close_date (best-effort)
+    Returns:
+      - exit_reason_breakdown (FILLED only)
+      - execution_outcomes (all events)
+      - hold_buckets (V1 placeholder; will be filled after realized_trades schema confirmed)
     """
     try:
         import sqlite3
         from datetime import datetime, timedelta, timezone
         from collections import Counter
+        from pathlib import Path as _Path
 
         bucket = (request.args.get("bucket") or "7d").lower().strip()
-        # Support bucket=today (midnight ET -> now, converted to UTC epoch)
-        start_epoch_today = None
-        try:
-            from zoneinfo import ZoneInfo
-            etz = ZoneInfo("America/New_York")
-            now_et = datetime.now(etz)
-            mid_et = now_et.replace(hour=0, minute=0, second=0, microsecond=0)
-            start_epoch_today = int(mid_et.astimezone(timezone.utc).timestamp())
-        except Exception:
-            start_epoch_today = None
-
-        days_map = {"today": 0, "7d": 7, "30d": 30, "all": None}
+        days_map = {"7d": 7, "30d": 30, "all": None}
         days = days_map.get(bucket, 7)
 
         now_utc = datetime.now(timezone.utc)
-        start_epoch = start_epoch_today if bucket=="today" else (int((now_utc - timedelta(days=days)).timestamp()) if days else None)
+        start_epoch = int((now_utc - timedelta(days=days)).timestamp()) if days else None
 
-        # HARD-PIN the DB path (no ambiguity)
-        db_path = r"C:\TradeAlerts\live.db"
+        # Resolve LIVE_DB path
+        db_path = None
+        try:
+            if "LIVE_DB" in globals():
+                db_path = str(globals()["LIVE_DB"])
+            elif "LIVE_DB_PATH" in globals():
+                db_path = str(globals()["LIVE_DB_PATH"])
+        except Exception:
+            db_path = None
+        if not db_path:
+            db_path = str(_Path(__file__).resolve().parent / "live.db")
 
         con = sqlite3.connect(db_path, timeout=30)
         try:
             con.execute("PRAGMA journal_mode=WAL;")
 
-            # ---- outcomes ----
-            if start_epoch is None:
-                rows = con.execute("SELECT event FROM sell_events").fetchall()
-            else:
-                rows = con.execute("SELECT event FROM sell_events WHERE ts_utc >= ?", (start_epoch,)).fetchall()
+            where = ""
+            params = []
+            if start_epoch is not None:
+                where = " WHERE ts_utc >= ? "
+                params = [start_epoch]
+
+            rows = con.execute(
+                f"SELECT event FROM sell_events{where}",
+                params
+            ).fetchall()
             outcomes = Counter([r[0] for r in rows if r and r[0]])
 
-            # ---- exit reasons (FILLED only) ----
-            if start_epoch is None:
-                rows2 = con.execute("SELECT reason FROM sell_events WHERE event='FILLED'").fetchall()
+            if start_epoch is not None:
+                rows2 = con.execute(
+                    "SELECT reason FROM sell_events WHERE event='FILLED' AND ts_utc >= ?",
+                    (start_epoch,)
+                ).fetchall()
             else:
-                rows2 = con.execute("SELECT reason FROM sell_events WHERE event='FILLED' AND ts_utc >= ?", (start_epoch,)).fetchall()
+                rows2 = con.execute(
+                    "SELECT reason FROM sell_events WHERE event='FILLED'"
+                ).fetchall()
+
             reasons = Counter([(r[0] or "UNKNOWN") for r in rows2])
-
-            # ---- hold-time buckets (realized_trades) ----
-            def _parse_dt(s):
-                if not s:
-                    return None, "missing"
-                s = str(s).strip()
-                # ISO first
-                try:
-                    d = datetime.fromisoformat(s.replace("Z","+00:00"))
-                    if d.tzinfo is None:
-                        return d, "naive_ok"
-                    return d.astimezone(timezone.utc).replace(tzinfo=None), "aware_ok"
-                except Exception:
-                    pass
-                for f in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-                    try:
-                        d = datetime.strptime(s, f)
-                        return d, ("date_only" if f == "%Y-%m-%d" else "naive_ok")
-                    except Exception:
-                        continue
-                return None, "bad"
-
-            rt = con.execute("SELECT symbol, action, open_date, close_date FROM realized_trades").fetchall()
-
-            buckets = [
-                ("<5m",     0,    5),
-                ("5?15m",   5,   15),
-                ("15?30m", 15,   30),
-                ("30?60m", 30,   60),
-                ("1?2h",   60,  120),
-                ("2?4h",  120,  240),
-                (">4h",   240,  10**9),
-            ]
-            hold_counts = Counter()
-            unknown = 0
-
-            for sym, act, od, cd in rt:
-                if not cd:
-                    continue
-                if act and str(act).upper() in ("BUY","B"):
-                    continue
-
-                odt, of = _parse_dt(od)
-                cdt, cf = _parse_dt(cd)
-                if odt is None or cdt is None or of != "naive_ok" or cf != "naive_ok":
-                    unknown += 1
-                    continue
-
-                try:
-                    # interpret naive as UTC (consistent); used only for duration
-                    mins = (cdt - odt).total_seconds() / 60.0
-                    if mins < 0:
-                        unknown += 1
-                        continue
-                except Exception:
-                    unknown += 1
-                    continue
-
-                placed = False
-                for name, lo, hi in buckets:
-                    if mins >= lo and mins < hi:
-                        hold_counts[name] += 1
-                        placed = True
-                        break
-                if not placed:
-                    unknown += 1
-
-            if unknown:
-                hold_counts["UNKNOWN"] += int(unknown)
-
-            order = ["<5m","5?15m","15?30m","30?60m","1?2h","2?4h",">4h","UNKNOWN"]
-            hold_buckets = [{"bucket": k, "ct": int(v)} for k, v in hold_counts.items()]
-            hold_buckets.sort(key=lambda x: order.index(x["bucket"]) if x["bucket"] in order else 999)
-
-            dbg = {
-                "sell_events_total": int(con.execute("SELECT COUNT(*) FROM sell_events").fetchone()[0]),
-                "realized_trades_total": int(con.execute("SELECT COUNT(*) FROM realized_trades").fetchone()[0]),
-            }
 
         finally:
             con.close()
 
-        return jsonify({
-            "meta": {"bucket": bucket, "start_epoch": start_epoch, "db_path": db_path},
+        # ---- hold-time buckets (computed from realized_trades.open_date/close_date) ----
+        def _parse_dt(s):
+            if not s:
+                return None, "missing"
+            s = str(s).strip()
+            # tolerate "YYYY-MM-DD" only
+            fmts = [
+                None,  # fromisoformat attempt
+                "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%d %H:%M",
+                "%Y-%m-%d",
+            ]
+            # 1) ISO-ish
+            try:
+                d = datetime.fromisoformat(s.replace("Z","+00:00"))
+                # If it's date-only isoformat returns date? usually raises; keep fallback
+                return d, "ok"
+            except Exception:
+                pass
+            # 2) explicit formats
+            for f in fmts[1:]:
+                try:
+                    d = datetime.strptime(s, f)
+                    if f == "%Y-%m-%d":
+                        return d, "date_only"
+                    return d, "ok"
+                except Exception:
+                    continue
+            return None, "bad"
+
+        # Pull realized trades (SELL rows only if action present, else any row with close_date)
+        if start_epoch is not None:
+            # Use close_date text filter coarse, then parse precisely in Python
+            rt_rows = con.execute(
+                "SELECT symbol, action, open_date, close_date FROM realized_trades"
+            ).fetchall()
+        else:
+            rt_rows = con.execute(
+                "SELECT symbol, action, open_date, close_date FROM realized_trades"
+            ).fetchall()
+
+        buckets = [
+            ("<5m",     0,    5),
+            ("5?15m",   5,   15),
+            ("15?30m", 15,   30),
+            ("30?60m", 30,   60),
+            ("1?2h",   60,  120),
+            ("2?4h",  120,  240),
+            (">4h",   240,  10**9),
+        ]
+        hold_counts = Counter()
+        unknown_ct = 0
+
+        for sym, act, od, cd in rt_rows:
+            if not cd:
+                continue
+            # If action is present and looks like a BUY row, skip
+            if act and str(act).upper() in ("BUY", "B"):
+                continue
+
+            odt, od_flag = _parse_dt(od)
+            cdt, cd_flag = _parse_dt(cd)
+
+            # bucket filter by time window (use close time)
+            if cdt is None:
+                unknown_ct += 1
+                continue
+
+            if start_epoch is not None:
+                # treat parsed close_dt as naive local; assume it's UTC-like? best effort:
+                # compare by epoch of naive interpreted as UTC
+                try:
+                    c_epoch = int(cdt.replace(tzinfo=timezone.utc).timestamp())
+                    if c_epoch < start_epoch:
+                        continue
+                except Exception:
+                    pass
+
+            if odt is None or od_flag != "ok" or cd_flag != "ok":
+                unknown_ct += 1
+                continue
+
+            # interpret naive timestamps as UTC (consistent & safe). UI uses ET anyway.
+            try:
+                odt_u = odt.replace(tzinfo=timezone.utc)
+                cdt_u = cdt.replace(tzinfo=timezone.utc)
+                mins = (cdt_u - odt_u).total_seconds() / 60.0
+                if mins < 0:
+                    unknown_ct += 1
+                    continue
+            except Exception:
+                unknown_ct += 1
+                continue
+
+            placed = False
+            for name, lo, hi in buckets:
+                if mins >= lo and mins < hi:
+                    hold_counts[name] += 1
+                    placed = True
+                    break
+            if not placed:
+                unknown_ct += 1
+
+        if unknown_ct:
+            hold_counts["UNKNOWN"] += int(unknown_ct)
+
+        # Return as stable list for UI
+        hold_buckets = [{"bucket": k, "ct": int(v)} for k, v in hold_counts.items()]
+        order = ["<5m","5?15m","15?30m","30?60m","1?2h","2?4h",">4h","UNKNOWN"]
+        hold_buckets.sort(key=lambda x: order.index(x["bucket"]) if x["bucket"] in order else 999)
+        # ---- /hold-time buckets ----
+
+
+
+        payload = {
+            "meta": {
+                "bucket": bucket,
+                "start_epoch": start_epoch,
+                "db_path": db_path,
+            },
             "exit_reason_breakdown": dict(reasons),
             "execution_outcomes": dict(outcomes),
             "hold_buckets": hold_buckets,
-            "debug": dbg,
             "v": "SELL_ANALYTICS_API_V1",
-        })
+        }
+        return jsonify(payload)
 
     except Exception as e:
         return jsonify({"error": str(e), "v": "SELL_ANALYTICS_API_V1"}), 500
 
 # --- /SELL_ANALYTICS_API_V1 ---
-
-
 
 
 

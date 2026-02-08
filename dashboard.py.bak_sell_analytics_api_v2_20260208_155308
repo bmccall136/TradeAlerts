@@ -4510,18 +4510,6 @@ def api_trade_review():
 
     # --- TRADE REVIEW wiring fix (TRV4): filter + CSV fallback applied to *_out vars ---
     tr_patch = "TRV4"
-
-    # --- TRV4 out-var init (ensure fallbacks can run even if sells_out/buys_out weren't created earlier) ---
-    try:
-        if "buys_out" not in locals():
-            _b = locals().get("buys")
-            buys_out = _b if isinstance(_b, list) else []
-        if "sells_out" not in locals():
-            _s = locals().get("sells")
-            sells_out = _s if isinstance(_s, list) else []
-    except Exception:
-        pass
-    # --- end TRV4 out-var init ---
     try:
         _tr_req_sym = (request.args.get("symbol") or request.args.get("sym") or request.args.get("ticker") or "").strip().upper()
         _tr_req_ts  = (request.args.get("ts") or "").strip()
@@ -6307,7 +6295,6 @@ def api_analytics_daily():
 
 
 
-
 # --- SELL_ANALYTICS_API_V1 (LIVE_DB sell_events) ---
 @app.get("/api/analytics/sell")
 def api_analytics_sell():
@@ -6323,22 +6310,11 @@ def api_analytics_sell():
         from collections import Counter
 
         bucket = (request.args.get("bucket") or "7d").lower().strip()
-        # Support bucket=today (midnight ET -> now, converted to UTC epoch)
-        start_epoch_today = None
-        try:
-            from zoneinfo import ZoneInfo
-            etz = ZoneInfo("America/New_York")
-            now_et = datetime.now(etz)
-            mid_et = now_et.replace(hour=0, minute=0, second=0, microsecond=0)
-            start_epoch_today = int(mid_et.astimezone(timezone.utc).timestamp())
-        except Exception:
-            start_epoch_today = None
-
-        days_map = {"today": 0, "7d": 7, "30d": 30, "all": None}
+        days_map = {"7d": 7, "30d": 30, "all": None}
         days = days_map.get(bucket, 7)
 
         now_utc = datetime.now(timezone.utc)
-        start_epoch = start_epoch_today if bucket=="today" else (int((now_utc - timedelta(days=days)).timestamp()) if days else None)
+        start_epoch = int((now_utc - timedelta(days=days)).timestamp()) if days else None
 
         # HARD-PIN the DB path (no ambiguity)
         db_path = r"C:\TradeAlerts\live.db"
@@ -6455,7 +6431,6 @@ def api_analytics_sell():
         return jsonify({"error": str(e), "v": "SELL_ANALYTICS_API_V1"}), 500
 
 # --- /SELL_ANALYTICS_API_V1 ---
-
 
 
 

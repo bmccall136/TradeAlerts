@@ -66,7 +66,7 @@
 
     <div class="mm-card">
       <h3>Hold-time buckets</h3>
-      <div id="hold-buckets" class="mm-list"><div class="mm-pill"><div class="k">Loading</div><div class="v">?</div></div></div>
+      <div id="hold-buckets" class="mm-muted">Coming next (computed from <code>position_opened</code> + <code>realized_trades</code>).</div>
     </div>
   </div>
 
@@ -107,16 +107,6 @@
     el.innerHTML = items.map(([k,v]) => pill(k, v)).join("");
   }
 
-  function renderHolds(arr) {
-    const el = $("#hold-buckets");
-    const a = Array.isArray(arr) ? arr : [];
-    if (!a.length) {
-      el.innerHTML = pill("No hold data", 0);
-      return;
-    }
-    el.innerHTML = a.map(x => pill(x.bucket ?? "?", x.ct ?? 0)).join("");
-  }
-
   function renderOutcomes(map) {
     const el = $("#outcomes");
     const keys = Object.keys(map || {});
@@ -142,7 +132,6 @@
 
     renderReasons(j.exit_reason_breakdown || {});
     renderOutcomes(j.execution_outcomes || {});
-    renderHolds(j.hold_buckets || []);
   }
 
   // default bucket = 7d

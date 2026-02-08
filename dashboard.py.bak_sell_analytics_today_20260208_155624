@@ -6323,22 +6323,11 @@ def api_analytics_sell():
         from collections import Counter
 
         bucket = (request.args.get("bucket") or "7d").lower().strip()
-        # Support bucket=today (midnight ET -> now, converted to UTC epoch)
-        start_epoch_today = None
-        try:
-            from zoneinfo import ZoneInfo
-            etz = ZoneInfo("America/New_York")
-            now_et = datetime.now(etz)
-            mid_et = now_et.replace(hour=0, minute=0, second=0, microsecond=0)
-            start_epoch_today = int(mid_et.astimezone(timezone.utc).timestamp())
-        except Exception:
-            start_epoch_today = None
-
-        days_map = {"today": 0, "7d": 7, "30d": 30, "all": None}
+        days_map = {"7d": 7, "30d": 30, "all": None}
         days = days_map.get(bucket, 7)
 
         now_utc = datetime.now(timezone.utc)
-        start_epoch = start_epoch_today if bucket=="today" else (int((now_utc - timedelta(days=days)).timestamp()) if days else None)
+        start_epoch = int((now_utc - timedelta(days=days)).timestamp()) if days else None
 
         # HARD-PIN the DB path (no ambiguity)
         db_path = r"C:\TradeAlerts\live.db"
