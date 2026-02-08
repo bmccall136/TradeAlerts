@@ -145,8 +145,7 @@
     const today = now.getFullYear() + "-" + pad2(now.getMonth()+1) + "-" + pad2(now.getDate());
 
     liveBtn.href = "/analytics"; // no date param = today
-    const onToday = (!cur) || (cur === today);
-    const isLive = !onToday; // yellow only when you can jump back to today
+    const isLive = (!cur) || (cur === today);
 
     liveBtn.classList.remove("btn-outline-secondary","btn-outline-warning");
     liveBtn.classList.add(isLive ? "btn-outline-warning" : "btn-outline-secondary");

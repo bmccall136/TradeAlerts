@@ -53,7 +53,7 @@
         <a class="btn btn-sm btn-outline-warning" id="ax-datego" href="#">Go</a>
       </div>
 
-      <a class="btn btn-sm btn-outline-secondary" id="ax-live" href="/analytics">Live</a>
+      <a class="btn btn-sm btn-outline-secondary" href="/live">Live</a>
     </div>
   </div>
 
@@ -131,27 +131,6 @@
     });
   }
 })();
-
-  // Live button: return to current day (clears ?date=) and highlight when on today
-  (function(){
-    const liveBtn = document.getElementById("ax-live");
-    if (!liveBtn) return;
-
-    const u = new URL(window.location.href);
-    const cur = (u.searchParams.get("date") || "").trim();
-
-    const pad2 = (n) => String(n).padStart(2,'0');
-    const now = new Date();
-    const today = now.getFullYear() + "-" + pad2(now.getMonth()+1) + "-" + pad2(now.getDate());
-
-    liveBtn.href = "/analytics"; // no date param = today
-    const onToday = (!cur) || (cur === today);
-    const isLive = !onToday; // yellow only when you can jump back to today
-
-    liveBtn.classList.remove("btn-outline-secondary","btn-outline-warning");
-    liveBtn.classList.add(isLive ? "btn-outline-warning" : "btn-outline-secondary");
-  })();
-
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
