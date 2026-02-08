@@ -1,4 +1,4 @@
-{% extends "layout.html" %}
+﻿{% extends "layout.html" %}
 {% block content %}
 <style>
   /* --- Buy Analytics: make Source/Bucket selects look like true dropdowns --- */
@@ -121,7 +121,7 @@
       </div>
 
       <div class="mm-note">
-        Next upgrades (when you want): candidate-only fires, candidate→buy funnel, combos, hour-of-day heatmap.
+        Next upgrades (when you want): candidate-only fires, candidateâ†’buy funnel, combos, hour-of-day heatmap.
       </div>
     </div>
   </div>
@@ -186,7 +186,7 @@ async function load(){
   } catch(e) {}
 
     const bucket = $("bucketSel").value || "7d";
-    $("metaText").textContent = "Loading…";
+    $("metaText").textContent = "Loadingâ€¦";
     $("rows").innerHTML = "";
 
         const source = (document.getElementById('sourceSel')?.value || 'pregate');
@@ -204,7 +204,7 @@ async function load(){
     const items = j.items || [];
     const total = j.total || 0;
 
-    $("metaText").textContent = `Rows: ${total} • Bucket: ${j.bucket || bucket}`;
+    $("metaText").textContent = `Rows: ${total} â€¢ Bucket: ${j.bucket || bucket}`;
 
     if (!items.length){
       $("rows").innerHTML = `<tr><td colspan="3" class="mm-muted">No data in this bucket.</td></tr>`;
@@ -236,3 +236,4 @@ async function load(){
 </script>
 {% endblock %}
 '@ | Set-Content -Encoding UTF8 C:\TradeAlerts\templates\analytics_buy.html
+

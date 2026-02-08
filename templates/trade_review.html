@@ -1,12 +1,12 @@
-{% extends "layout.html" %}
+﻿{% extends "layout.html" %}
 {% block content %}
 
 <div class="tr-wrap">
   <div class="tr-topbar">
     <div>
-      <div class="tr-title">$$Machine — Trade Review</div>
+      <div class="tr-title">$$Machine â€” Trade Review</div>
       <div class="tr-sub">
-        Live view from <code>/api/trade_review</code>. Buys are allowed to fall back to <code>position_opened</code> when trigger logs don’t contain BUY events.
+        Live view from <code>/api/trade_review</code>. Buys are allowed to fall back to <code>position_opened</code> when trigger logs donâ€™t contain BUY events.
       </div>
       <div class="tr-src" id="tr-src"></div>
     </div>
@@ -21,14 +21,14 @@
     <section class="tr-col">
       <div class="tr-col-title">Recent Buys</div>
       <div id="buys" class="tr-list">
-        <div class="tr-empty">Loading…</div>
+        <div class="tr-empty">Loadingâ€¦</div>
       </div>
     </section>
 
     <section class="tr-col">
       <div class="tr-col-title">Recent Sells</div>
       <div id="sells" class="tr-list">
-        <div class="tr-empty">Loading…</div>
+        <div class="tr-empty">Loadingâ€¦</div>
       </div>
     </section>
   </div>
@@ -271,8 +271,8 @@
     const limit = params.get("limit") || "12";
     const interval = params.get("interval") || "5m";
 
-    buysEl.innerHTML = '<div class="tr-empty">Loading…</div>';
-    sellsEl.innerHTML = '<div class="tr-empty">Loading…</div>';
+    buysEl.innerHTML = '<div class="tr-empty">Loadingâ€¦</div>';
+    sellsEl.innerHTML = '<div class="tr-empty">Loadingâ€¦</div>';
 
     const url = "/api/trade_review?limit=" + encodeURIComponent(limit) + "&interval=" + encodeURIComponent(interval);
 
@@ -340,3 +340,4 @@ document.addEventListener('DOMContentLoaded', () => {
   img.setAttribute('src', url);
 });
 </script>
+

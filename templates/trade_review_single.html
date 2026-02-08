@@ -1,4 +1,4 @@
-
+﻿
 <style>
 /* --- Trade Review chart fit fix --- */
 .trade-chart-img{
@@ -11,12 +11,12 @@
 }
 </style>
 
-﻿{% extends "layout.html" %}
+ï»¿{% extends "layout.html" %}
 {% block content %}
 
 <div class="tr-wrap">
   <div class="tr-head">
-    <div class="tr-title">Trade Review — {{ trade.symbol }}</div>
+    <div class="tr-title">Trade Review â€” {{ trade.symbol }}</div>
     <div class="tr-sub">
       <span>Buy: {{ trade.open_date }} @ {{ '%.2f'|format(trade.price_paid or 0) }}</span>
       <span class="sep">|</span>
@@ -123,3 +123,4 @@
 </style>
 
 {% endblock %}
+

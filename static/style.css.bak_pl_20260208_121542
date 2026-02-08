@@ -1268,22 +1268,3 @@ table.ax-table.table-striped > tbody > tr:nth-of-type(odd) > * {
 table.ax-table.table-striped > tbody > tr:nth-of-type(even) > * {
   background-color: #0b0d12 !important;
 }
-
- /* === P/L coloring === */
- .pl-pos {
-   color: #00e676;        /* neon green */
-   font-weight: 600;
- }
- .pl-neg {
-   color: #ff5252;        /* punchy red */
-   font-weight: 600;
- }
- .pl-zero {
-   color: #9e9e9e;
- }
-
-/* === P/L coloring (FORCE) === */
-td.pl-pos, td .pl-pos { color: #00e676 !important; font-weight: 800 !important; }
-td.pl-neg, td .pl-neg { color: #ff5252 !important; font-weight: 800 !important; }
-td.pl-zero, td .pl-zero { color: #9e9e9e !important; font-weight: 700 !important; }
-

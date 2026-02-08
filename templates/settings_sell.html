@@ -1,4 +1,4 @@
-{% extends "layout.html" %}
+﻿{% extends "layout.html" %}
 {% block content %}
 <style>
   .mm-card { background:#0f1118; border:1px solid #222531; border-radius:10px; }
@@ -111,12 +111,12 @@
     </div>
   </div>
 
-  <!-- SELL “split” legend (like BUY, but NOT a gate) -->
+  <!-- SELL â€œsplitâ€ legend (like BUY, but NOT a gate) -->
   <div id="sellLegendCard" class="card mm-card mb-3">
     <div class="card-body">
       <div style="font-size:18px;font-weight:700;">Sell Modules Overview</div>
       <div style="opacity:.9;margin:2px 0 10px 0;">
-        <b>Exit Triggers</b> decide “should we sell”. <b>Execution/Safety</b> controls how we place orders and guardrails.
+        <b>Exit Triggers</b> decide â€œshould we sellâ€. <b>Execution/Safety</b> controls how we place orders and guardrails.
       </div>
 
       <div class="mm-gate-subtitle">Exit Triggers (cause a sell)</div>
@@ -125,7 +125,7 @@
 
       <div class="mm-divider"></div>
 
-      <div class="mm-gate-subtitle">Execution / Safety (does not “cause” a sell)</div>
+      <div class="mm-gate-subtitle">Execution / Safety (does not â€œcauseâ€ a sell)</div>
       <div class="mm-gate-note">These control routing, windows, throttles, counts, and safety rules.</div>
       <div id="sellGridExec" class="mm-gate-grid"></div>
     </div>
@@ -223,7 +223,7 @@
       }
     ],
 
-    // “Split” legend pills
+    // â€œSplitâ€ legend pills
     triggers: [
       {"key":"targets","label":"TARGET/STOP"},
       {"key":"timeouts","label":"TIMEOUT/HOLD"},
@@ -310,7 +310,7 @@
       return pill;
     };
 
-    // Triggers: show as “active category” pills (still disabled — this is a legend, not a gate)
+    // Triggers: show as â€œactive categoryâ€ pills (still disabled â€” this is a legend, not a gate)
     if (hostA){
       for (const g of (CFG.triggers || [])) hostA.appendChild(mk(g,false));
     }
@@ -431,3 +431,4 @@
 </script>
 
 {% endblock %}
+

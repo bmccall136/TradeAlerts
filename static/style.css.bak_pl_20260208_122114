@@ -1281,9 +1281,3 @@ table.ax-table.table-striped > tbody > tr:nth-of-type(even) > * {
  .pl-zero {
    color: #9e9e9e;
  }
-
-/* === P/L coloring (FORCE) === */
-td.pl-pos, td .pl-pos { color: #00e676 !important; font-weight: 800 !important; }
-td.pl-neg, td .pl-neg { color: #ff5252 !important; font-weight: 800 !important; }
-td.pl-zero, td .pl-zero { color: #9e9e9e !important; font-weight: 700 !important; }
-
