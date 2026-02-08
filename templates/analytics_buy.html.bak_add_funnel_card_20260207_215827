@@ -1,3 +1,4 @@
+@'
 {% extends "layout.html" %}
 {% block content %}
 <style>
@@ -67,43 +68,7 @@
   <div class="card mm-card">
     <div class="card-body">
       <div class="mm-row" style="margin-bottom:10px;">
-        
-  <div id="funnelCard" class="mm-card" style="margin: 14px 0 14px 0; padding: 14px 16px; display:none;">
-    <div class="mm-row" style="margin-bottom:10px;">
-      <div>
-        <div style="font-size:18px; font-weight:700;">Candidate Funnel</div>
-        <div class="mm-muted" style="margin-top:2px;">
-          Candidates are from triggers_*.csv (post-required gate). Strict-pass uses strict_buy_signals.
-        </div>
-      </div>
-      <div class="mm-muted" id="funnelMeta" style="text-align:right;"></div>
-    </div>
-
-    <div style="display:grid; grid-template-columns: repeat(5, minmax(160px, 1fr)); gap:10px;">
-      <div class="mm-card" style="padding:12px 12px;">
-        <div class="mm-muted">Candidates</div>
-        <div id="fCand" style="font-size:22px; font-weight:800; margin-top:4px;">?</div>
-      </div>
-      <div class="mm-card" style="padding:12px 12px;">
-        <div class="mm-muted">Required-pass</div>
-        <div id="fReq" style="font-size:22px; font-weight:800; margin-top:4px;">?</div>
-      </div>
-      <div class="mm-card" style="padding:12px 12px;">
-        <div class="mm-muted">Strict-pass</div>
-        <div id="fStrict" style="font-size:22px; font-weight:800; margin-top:4px;">?</div>
-      </div>
-      <div class="mm-card" style="padding:12px 12px;">
-        <div class="mm-muted">Buyable</div>
-        <div id="fBuyable" style="font-size:22px; font-weight:800; margin-top:4px;">?</div>
-      </div>
-      <div class="mm-card" style="padding:12px 12px;">
-        <div class="mm-muted">Bought</div>
-        <div id="fBought" style="font-size:22px; font-weight:800; margin-top:4px;">?</div>
-      </div>
-    </div>
-  </div>
-
-<div style="font-size:18px;font-weight:800;">Signal Fires</div>
+        <div style="font-size:18px;font-weight:800;">Signal Fires</div>
         <div class="mm-muted" id="metaText"></div>
       </div>
 
@@ -142,57 +107,12 @@
     }[c]));
   }
 
-  
-async function loadFunnel(bucket) {
-  try {
-    const r = await fetch(`/api/analytics/buy_funnel?bucket=${encodeURIComponent(bucket)}`, {cache:'no-store'});
-    const j = await r.json();
-    if (!j || !j.ok) return;
-    const fmtInt = (n) => (n==null ? '?' : Number(n).toLocaleString());
-    document.getElementById('fCand').textContent    = fmtInt(j.candidates);
-    document.getElementById('fReq').textContent     = fmtInt(j.required_pass);
-    document.getElementById('fStrict').textContent  = fmtInt(j.strict_pass);
-    document.getElementById('fBuyable').textContent = fmtInt(j.buyable);
-    document.getElementById('fBought').textContent  = fmtInt(j.bought);
-    document.getElementById('funnelMeta').textContent = `Bucket: ${j.bucket}  ?  Strict>=${j.strict_n}`;
-  } catch(e) {}
-}
-
-function syncFunnelVisibility() {
-  try {
-    const sel = document.getElementById('sourceSel');
-    const source = (sel && sel.value) ? sel.value : 'pregate';
-    const el = document.getElementById('funnelCard');
-    if (!el) return;
-    el.style.display = (source === 'candidate') ? '' : 'none';
-  } catch(e) {}
-}
-
-
-async function load(){
-
-  // keep funnel visibility aligned to Source
-  if (typeof syncFunnelVisibility === 'function') syncFunnelVisibility();
-
-  // if Source is candidate, populate funnel KPIs
-  try {
-    const _srcSel = document.getElementById('sourceSel');
-    const _source = (_srcSel && _srcSel.value) ? _srcSel.value : 'pregate';
-    const _bucketSel = document.getElementById('bucketSel');
-    const _bucket = (_bucketSel && _bucketSel.value) ? _bucketSel.value : 'all';
-    if (_source === 'candidate' && (typeof loadFunnel === 'function')) {
-      await loadFunnel(_bucket);
-    }
-  } catch(e) {}
-
+  async function load(){
     const bucket = $("bucketSel").value || "7d";
     $("metaText").textContent = "Loading…";
     $("rows").innerHTML = "";
 
         const source = (document.getElementById('sourceSel')?.value || 'pregate');
-    if (typeof syncFunnelVisibility === 'function') syncFunnelVisibility();
-    if (source === 'candidate') { await loadFunnel(bucket); }
-
     const endpoint = (source === 'candidate') ? '/api/analytics/candidate_fires' : '/api/analytics/fires';
     const r = await fetch(`${endpoint}?bucket=${encodeURIComponent(bucket)}`, {cache:"no-store"});
     const j = await r.json();

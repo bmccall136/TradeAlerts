@@ -1,3 +1,4 @@
+@'
 {% extends "layout.html" %}
 {% block content %}
 <style>
@@ -170,21 +171,6 @@ function syncFunnelVisibility() {
 
 
 async function load(){
-
-  // keep funnel visibility aligned to Source
-  if (typeof syncFunnelVisibility === 'function') syncFunnelVisibility();
-
-  // if Source is candidate, populate funnel KPIs
-  try {
-    const _srcSel = document.getElementById('sourceSel');
-    const _source = (_srcSel && _srcSel.value) ? _srcSel.value : 'pregate';
-    const _bucketSel = document.getElementById('bucketSel');
-    const _bucket = (_bucketSel && _bucketSel.value) ? _bucketSel.value : 'all';
-    if (_source === 'candidate' && (typeof loadFunnel === 'function')) {
-      await loadFunnel(_bucket);
-    }
-  } catch(e) {}
-
     const bucket = $("bucketSel").value || "7d";
     $("metaText").textContent = "Loading…";
     $("rows").innerHTML = "";

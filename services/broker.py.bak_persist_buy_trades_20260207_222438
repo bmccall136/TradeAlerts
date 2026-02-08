@@ -1,41 +1,6 @@
 # services/broker.py
 from __future__ import annotations
 
-
-def _persist_trade_best_effort(symbol: str, action: str, qty: float, price, ts_et: str = None, ts_utc: str = None):
-    """
-    Best-effort telemetry insert. MUST NEVER block order execution.
-    Writes to SQLite live.db table 'trades' columns: ts_et, ts_utc, symbol, action, qty, price
-    """
-    try:
-        import sqlite3
-        import datetime as _dt
-        try:
-            from config import LIVE_DB as _LIVE_DB
-            db_path = _LIVE_DB
-        except Exception:
-            db_path = r"C:\TradeAlerts\live.db"
-
-        if not ts_et:
-            ts_et = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        if ts_utc is None:
-            ts_utc = ts_et  # keep consistent with your current schema usage
-
-        con = sqlite3.connect(db_path)
-        cur = con.cursor()
-        cur.execute("""
-            INSERT INTO trades (ts_et, ts_utc, symbol, action, qty, price)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (ts_et, ts_utc, symbol, action, float(qty or 0), (None if price is None else float(price))))
-        con.commit()
-        con.close()
-    except Exception:
-        try:
-            import logging
-            logging.getLogger("broker").exception("[persist_trade] failed (ignored)")
-        except Exception:
-            pass
-
 import json
 import logging
 import math

@@ -893,34 +893,6 @@ def buy_stock(symbol: str, qty: int, price: float, trade_time: str | None = None
     set_cash(cash - cost)
     insert_trade(symbol, "BUY", float(price), int(qty), None, trade_time)
     insert_or_update_holding(symbol, int(qty), avg_cost=float(price), last_price=float(price))
-    # --- PERSIST_BUY_TRADE: guarantee BUY rows are persisted (non-blocking) ---
-    try:
-        import datetime as _dt
-        _now = _dt.datetime.now()
-        _ts = _now.strftime('%Y-%m-%d %H:%M:%S')
-        _px = None
-        try:
-            _r = locals().get('result') or locals().get('resp') or locals().get('r')
-            if isinstance(_r, dict):
-                _px = _r.get('price') or _r.get('filledPrice') or _r.get('fillPrice') or _r.get('executedPrice')
-        except Exception:
-            _px = None
-        try:
-            _px = float(_px) if _px is not None else None
-        except Exception:
-            _px = None
-        insert_trade(
-            ts_et=_ts,
-            ts_utc=_ts,
-            symbol=str(symbol).upper(),
-            action='BUY',
-            qty=float(qty) if qty is not None else None,
-            price=_px,
-        )
-    except Exception:
-        # never block a BUY due to persistence issues
-        pass
-
     return True
 
 

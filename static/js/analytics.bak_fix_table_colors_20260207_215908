@@ -1,0 +1,205 @@
+/* Daily Analytics (DB-backed) - crash-proof renderer */
+(function () {
+  "use strict";
+
+  // ---------- tiny helpers ----------
+  const $ = (id) => document.getElementById(id);
+
+  function enc(x) {
+    try { return encodeURIComponent(String(x ?? "")); }
+    catch (e) { return encodeURIComponent(String(x)); }
+  }
+
+  function setText(id, txt) {
+    const el = $(id);
+    if (!el) return;
+    el.textContent = (txt === undefined || txt === null) ? "" : String(txt);
+  }
+
+  function esc(s) {
+    return String(s ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function fmtNum(x, digits) {
+    const n = Number(x);
+    if (!isFinite(n)) return "";
+    return n.toFixed(digits ?? 2);
+  }
+
+  // YYYY-MM-DD in America/New_York
+  function todayETISO() {
+    const fmt = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/New_York",
+      year: "numeric", month: "2-digit", day: "2-digit"
+    });
+    return fmt.format(new Date()); // en-CA => YYYY-MM-DD
+  }
+
+  function addDaysISO(iso, deltaDays) {
+    // Interpret iso as date-only; do math in UTC to avoid DST weirdness
+    const [y, m, d] = String(iso || "").split("-").map(Number);
+    if (!y || !m || !d) return todayETISO();
+    const t = Date.UTC(y, m - 1, d);
+    const t2 = t + (deltaDays * 86400 * 1000);
+    const dt2 = new Date(t2);
+    const yy = dt2.getUTCFullYear();
+    const mm = String(dt2.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(dt2.getUTCDate()).padStart(2, "0");
+    return `${yy}-${mm}-${dd}`;
+  }
+
+  function qs(name) {
+    try {
+      return (new URLSearchParams(window.location.search).get(name) || "").trim();
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function setURLDate(iso) {
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.set("date", iso);
+      window.history.replaceState({}, "", u.toString());
+    } catch (e) {}
+  }
+
+  function makeTable(rows, kind) {
+    const list = Array.isArray(rows) ? rows : [];
+    if (!list.length) {
+      return `<div class="text-secondary">No ${kind === "BUY" ? "buys" : "sells"} for this day.</div>`;
+    }
+
+    if (kind === "BUY") {
+      // Expect: symbol, ts_et, qty, price, name, reason
+      let html = `<table class="table table-sm table-dark table-striped mb-0">
+        <thead><tr>
+          <th style="width:150px;">Time (ET)</th>
+          <th style="width:90px;">Symbol</th>
+          <th style="width:70px;">Qty</th>
+          <th style="width:90px;">Price</th>
+          <th>Name</th>
+        </tr></thead><tbody>`;
+
+      for (const r of list) {
+        const ts = (r.ts_et || r.time_et || r.ts || "").toString();
+        const time = ts ? ts : "";
+        const sym  = (r.symbol || "").toString().toUpperCase();
+        const qty  = (r.qty ?? "").toString();
+        const px   = (r.price ?? "");
+        const name = (r.name || "").toString();
+        html += `<tr>
+          <td>${esc(time)}</td>
+          <td><b>${esc(sym)}</b></td>
+          <td>${esc(qty)}</td>
+          <td>${esc(isFinite(Number(px)) ? fmtNum(px, 2) : px)}</td>
+          <td>${esc(name)}</td>
+        </tr>`;
+      }
+      html += `</tbody></table>`;
+      return html;
+    }
+
+    // SELL
+    // Expect: symbol, close_date/ts_et, qty, gain, price_sold
+    let html = `<table class="table table-sm table-dark table-striped mb-0">
+      <thead><tr>
+        <th style="width:150px;">Time (ET)</th>
+        <th style="width:90px;">Symbol</th>
+        <th style="width:90px;">Price</th>
+        <th style="width:90px;">Gain</th>
+      </tr></thead><tbody>`;
+
+    for (const r of list) {
+      const ts = (r.ts_et || r.close_date || r.ts || "").toString();
+      const sym = (r.symbol || "").toString().toUpperCase();
+      const price = (r.price_sold ?? r.price ?? "");
+      const gain = (r.gain ?? r.pnl ?? "");
+      const gainNum = Number(gain);
+      const gainHtml = isFinite(gainNum)
+        ? `<span style="color:${gainNum >= 0 ? "#39d353" : "#ff4d4d"}">${esc(fmtNum(gainNum, 2))}</span>`
+        : esc(gain);
+
+      html += `<tr>
+        <td>${esc(ts)}</td>
+        <td><b>${esc(sym)}</b></td>
+        <td>${esc(isFinite(Number(price)) ? fmtNum(price, 2) : price)}</td>
+        <td>${gainHtml}</td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+    return html;
+  }
+
+  async function loadDay(dateISO) {
+    const iso = (dateISO || "").trim() || todayETISO();
+    setURLDate(iso);
+
+    const buyCol  = $("ax-buy-col")  || $("buy-col");
+    const sellCol = $("ax-sell-col") || $("sell-col");
+
+    if (buyCol) buyCol.innerHTML = `<div class="text-secondary">loading?</div>`;
+    if (sellCol) sellCol.innerHTML = `<div class="text-secondary">loading?</div>`;
+    setText("ax-date", iso);
+    setText("ax-buy-count", "");
+    setText("ax-sell-count", "");
+
+    const errorsEl = $("ax-errors");
+    if (errorsEl) errorsEl.innerHTML = "";
+
+    const url = `/api/analytics/day?date=${enc(iso)}&cb=${Date.now()}`;
+
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      const d = await res.json();
+
+      // errors
+      const errs = (d && d.errors) ? d.errors : [];
+      if (errorsEl && Array.isArray(errs) && errs.length) {
+        errorsEl.innerHTML = `<div class="alert alert-warning py-2 mb-0">
+          <div><b>Analytics warnings:</b></div>
+          <ul class="mb-0">${errs.map(e => `<li>${esc(e)}</li>`).join("")}</ul>
+        </div>`;
+      }
+
+      // payload shape: { buy:{items:[]}, sell:{items:[]} } OR legacy {buys:[], sells:[]}
+      const buys  = (d && (d.buys || (d.buy && d.buy.items))) || [];
+      const sells = (d && (d.sells || (d.sell && d.sell.items))) || [];
+
+      setText("ax-buy-count", Array.isArray(buys) ? buys.length : 0);
+      setText("ax-sell-count", Array.isArray(sells) ? sells.length : 0);
+
+      if (buyCol) buyCol.innerHTML = makeTable(buys, "BUY");
+      if (sellCol) sellCol.innerHTML = makeTable(sells, "SELL");
+      setText("ax-source", d && d.source ? d.source : "");
+    } catch (e) {
+      const msg = (e && e.message) ? e.message : String(e);
+      if (errorsEl) errorsEl.innerHTML = `<div class="alert alert-danger py-2 mb-0">Load failed: ${esc(msg)}</div>`;
+      if (buyCol) buyCol.innerHTML = `<div class="text-danger">Load failed.</div>`;
+      if (sellCol) sellCol.innerHTML = `<div class="text-danger">Load failed.</div>`;
+    }
+  }
+
+  function wireUI() {
+    const y = $("ax-yesterday");
+    if (y) {
+      y.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        const cur = (qs("date") || $("ax-date")?.textContent || todayETISO()).trim();
+        const prev = addDaysISO(cur, -1);
+        loadDay(prev);
+      });
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    wireUI();
+    const initial = qs("date") || todayETISO();
+    loadDay(initial);
+  });
+})();

@@ -5190,6 +5190,15 @@ def api_analytics_fires():
     except Exception as e:
         return jsonify(ok=False, error=str(e), bucket=bucket, total=0, items=[])
 
+@app.route("/analytics/buy")
+def analytics_buy():
+    return render_template("analytics_buy.html")
+
+
+@app.route("/analytics/sell")
+def analytics_sell():
+    return render_template("analytics_sell.html")
+
 @app.route("/api/analytics/candidate_fires")
 def api_analytics_candidate_fires():
     """
