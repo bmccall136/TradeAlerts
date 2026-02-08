@@ -6748,30 +6748,6 @@ def api_analytics_sell():
 # ------------------------------------------------------------
 # Chart view (required by /trade_review redirects)
 # ------------------------------------------------------------
-
-@app.route("/chart_img/<symbol>")
-def chart_img_symbol(symbol):
-    """
-    Trade Review chart IMAGE endpoint (for <img src=...>).
-
-    Delegates to the existing PNG chart endpoint (/chart?symbol=...),
-    so we keep ONE chart renderer and avoid referrer/symbol ambiguity.
-    """
-    from flask import request, redirect
-    from urllib.parse import quote
-
-    sym  = (symbol or "").strip().upper()
-    ts   = (request.args.get("ts") or "").strip()
-    date = (request.args.get("date") or "").strip()
-
-    # Explicit symbol in querystring = no referrer hacks
-    url = f"/chart?symbol={quote(sym)}"
-    if ts:
-        url += f"&ts={quote(ts)}"
-    if date:
-        url += f"&date={quote(date)}"
-    return redirect(url, code=302)
-
 @app.route("/chart/<symbol>")
 def chart_symbol(symbol):
     from flask import request, redirect, url_for

@@ -85,6 +85,8 @@
       <span>Qty: {{ trade.qty }}</span>
     </div>
     <div class="tr-src">
+      <div>Buy log: {{ buy_file or 'n/a' }}</div>
+      <div>Sell log: {{ sell_file or 'n/a' }}</div>
     </div>
   </div>
 
@@ -96,7 +98,7 @@
   <!-- --- Inline Trade Review chart (BUY/SELL marked) --- -->
   <div class="trade-chart-wrap tr-chart-wrap">
     <img class="tr-chart trade-chart-img"
-         src="/trade_review/chart?symbol={{ trade.symbol|urlencode }}&name={{ (name or trade.name or '')|urlencode }}&buy_ts={{ trade.buy_time|urlencode }}&sell_ts={{ trade.sell_time|urlencode }}&ts={{ ts|urlencode }}&v={{ ts|urlencode }}"
+         src="/trade_review/chart?symbol={{ symbol|urlencode }}&name={{ (name or '')|urlencode }}&buy_ts={{ trade.buy_time|urlencode }}&sell_ts={{ trade.sell_time|urlencode }}&ts={{ ts|urlencode }}&v={{ ts|urlencode }}"
          alt="Trade chart {{ symbol }}{% if name %} - {{ name }}{% endif %}">
   </div>
   <!-- --- end chart --- -->
