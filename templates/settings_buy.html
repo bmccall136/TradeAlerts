@@ -1,4 +1,3 @@
-
 {% extends "layout.html" %}
 {% block content %}
 <style>
@@ -27,6 +26,16 @@
     background:#0b0d14;
   }
   .mm-gate-pill input { transform: scale(1.05); }
+
+  .mm-gate-subtitle { font-weight:800; margin: 12px 0 6px 0; }
+  .mm-gate-note { font-size: 12px; opacity:.85; margin: 0 0 10px 0; }
+
+  .mm-disabled-pill {
+    opacity: .55;
+    filter: grayscale(20%);
+  }
+  .mm-disabled-pill input { cursor:not-allowed; }
+  .mm-disabled-pill label { cursor:not-allowed; }
 
   .mm-cards { display:flex; flex-direction:column; gap:10px; }
   details.mm-ind { border:1px solid #222531; border-radius:10px; background:#0b0d14; }
@@ -81,7 +90,6 @@
   #otherCard .card-body { background: transparent; }
   #otherCard .mm-section-title { color: #e9edf6; }
   #otherCard input[type="checkbox"] { accent-color: #f5d400; }
-  /* Some browsers still draw blue focus ring; neutralize */
   #otherCard input[type="checkbox"]:focus { outline: none; box-shadow: 0 0 0 2px rgba(245,212,0,0.25); }
 </style>
 
@@ -117,10 +125,19 @@
     <div class="card-body">
       <div style="font-size:18px;font-weight:700;">Required Signals Gate</div>
       <div style="opacity:.9;margin:2px 0 12px 0;">
-        Checking an indicator means it <b>must</b> be present in the gate (required). Unchecked indicators may still be enabled and contribute to strict buy signals.
+        Only <b>true indicators</b> can be required. Enhancers can still be enabled and logged, but cannot be required.
       </div>
 
-      <div id="gateGrid" class="mm-gate-grid"></div>
+      <div class="mm-gate-subtitle">True Indicators (gate-able)</div>
+      <div class="mm-gate-note">These can be required and count toward your gate rules.</div>
+      <div id="gateGridPrimary" class="mm-gate-grid"></div>
+
+      <div class="mm-divider"></div>
+
+      <div class="mm-gate-subtitle">Enhancers / Emitters (not gate-able)</div>
+      <div class="mm-gate-note">These enrich signals but are <b>not</b> eligible for Required Signals Gate.</div>
+      <div id="gateGridEnhancers" class="mm-gate-grid"></div>
+
       <div id="gateHint" class="mm-muted" style="margin-top:10px;"></div>
     </div>
   </div>
@@ -130,7 +147,6 @@
       <div class="mm-section-title">Indicators</div>
       <div class="mm-muted mm-subtitle">Each section can be expanded/collapsed. Enable controls eligibility; settings live inside each card.</div>
       <div id="indicatorCards" class="mm-cards"></div>
-</div>
     </div>
   </div>
 
@@ -146,16 +162,35 @@
 <script>
   window.__MM_GROUP__ = "buy";
   window.__MM_CFG__ = {
-    cards: [{"key": "rsi", "label": "RSI", "enable_key": "rsi_on", "enable_is_field": false, "fields": [{"k": "rsi_len", "label": "Length", "type": "number", "optional": false}, {"k": "rsi_overbought", "label": "Overbought", "type": "number", "optional": false}, {"k": "rsi_oversold", "label": "Oversold", "type": "number", "optional": false}, {"k": "rsi_slope_on", "label": "RSI Slope", "type": "bool", "optional": false}]}, {"key": "sma", "label": "SMA", "enable_key": "sma_on", "enable_is_field": false, "fields": [{"k": "sma_length", "label": "Length", "type": "number", "optional": false}, {"k": "sma_len", "label": "Length (alt)", "type": "number", "optional": true}]}, {"key": "sma20", "label": "SMA20 (Require)", "enable_key": "require_sma20", "enable_is_field": true, "fields": [{"k": "require_sma20", "label": "Require SMA20", "type": "bool", "optional": false}]}, {"key": "super", "label": "Supertrend", "enable_key": "super_on", "enable_is_field": false, "fields": [{"k": "super_fast", "label": "Fast", "type": "number", "optional": false}, {"k": "super_slow", "label": "Slow", "type": "number", "optional": false}, {"k": "super_signal", "label": "Signal", "type": "number", "optional": false}]}, {"key": "vol", "label": "Volume", "enable_key": "vol_on", "enable_is_field": false, "fields": [{"k": "vol_multiplier", "label": "Multiplier", "type": "number", "optional": false}, {"k": "vol_mult", "label": "Multiplier (alt)", "type": "number", "optional": true}]}, {"key": "vwap", "label": "VWAP", "enable_key": "vwap_on", "enable_is_field": false, "fields": [{"k": "vwap_threshold", "label": "Threshold", "type": "number", "optional": false}, {"k": "vwap_diff_threshold", "label": "Diff Threshold", "type": "number", "optional": true}, {"k": "vwap_len", "label": "Length", "type": "number", "optional": true}]}, {"key": "range", "label": "Range", "enable_key": "range_on", "enable_is_field": false, "fields": [{"k": "range_pct", "label": "Range %", "type": "number", "optional": false}]}, {"key": "price_sma", "label": "Price SMA", "enable_key": "price_sma_on", "enable_is_field": false, "fields": [{"k": "price_sma_len", "label": "Length", "type": "number", "optional": false}]}, {"key": "macd", "label": "MACD", "enable_key": "macd_on", "enable_is_field": false, "fields": [{"k": "macd_fast", "label": "Fast", "type": "number", "optional": false}, {"k": "macd_signal", "label": "Signal", "type": "number", "optional": false}, {"k": "macd_slow", "label": "Slow", "type": "number", "optional": false}]}, {"key": "macd_hist", "label": "MACD Histogram", "enable_key": "macd_hist_on", "enable_is_field": true, "fields": [{"k": "macd_hist_on", "label": "Histogram Enabled", "type": "bool", "optional": false}]}, {"key": "gap", "label": "Gap", "enable_key": "gap_on", "enable_is_field": false, "fields": [{"k": "gap_pct", "label": "Gap %", "type": "number", "optional": false}]}, {"key": "bb", "label": "Bollinger Bands", "enable_key": "bb_on", "enable_is_field": false, "fields": [{"k": "bb_length", "label": "Length", "type": "number", "optional": false}, {"k": "bb_len", "label": "Length (alt)", "type": "number", "optional": true}, {"k": "bb_std", "label": "StdDev", "type": "number", "optional": false}, {"k": "bb_stddev", "label": "StdDev (alt)", "type": "number", "optional": true}]}, {"key": "bb_break", "label": "BB Breakout", "enable_key": "bb_breakout_on", "enable_is_field": true, "fields": [{"k": "bb_breakout_on", "label": "Breakout Enabled", "type": "bool", "optional": false}]}, {"key": "atr", "label": "ATR", "enable_key": "atr_on", "enable_is_field": false, "fields": [{"k": "atr_threshold", "label": "Threshold", "type": "number", "optional": false}]}, {"key": "atr_pct", "label": "ATR %", "enable_key": "atr_pct_on", "enable_is_field": false, "fields": [{"k": "atr_pct_on", "label": "ATR % Enabled", "type": "bool", "optional": false}, {"k": "atr_pct", "label": "ATR %", "type": "number", "optional": false}]}, {"key": "adx", "label": "ADX", "enable_key": "adx_on", "enable_is_field": false, "fields": [{"k": "adx_len", "label": "Length", "type": "number", "optional": false}, {"k": "adx_threshold", "label": "Threshold", "type": "number", "optional": false}]}, {"key": "ai", "label": "AI Advisor", "enable_key": null, "enable_is_field": false, "fields": [{"k": "ai.enabled", "label": "Enabled", "type": "bool", "optional": false}, {"k": "ai.use_entries", "label": "Use Entries", "type": "bool", "optional": false}, {"k": "ai.use_exits", "label": "Use Exits", "type": "bool", "optional": false}]}],
+    cards: [{"key": "rsi", "label": "RSI", "enable_key": "rsi_on", "enable_is_field": false, "fields": [{"k": "rsi_len", "label": "Length", "type": "number", "optional": false}, {"k": "rsi_overbought", "label": "Overbought", "type": "number", "optional": false}, {"k": "rsi_oversold", "label": "Oversold", "type": "number", "optional": false}, {"k": "rsi_slope_on", "label": "RSI Slope", "type": "bool", "optional": false}]}, {"key": "sma", "label": "SMA", "enable_key": "sma_on", "enable_is_field": false, "fields": [{"k": "sma_length", "label": "Length", "type": "number", "optional": false}, {"k": "sma_len", "label": "Length (alt)", "type": "number", "optional": true}]}, {"key": "sma20", "label": "SMA20 (Require)", "enable_key": "require_sma20", "enable_is_field": true, "fields": [{"k": "require_sma20", "label": "Require SMA20", "type": "bool", "optional": false}]}, {"key": "super", "label": "Supertrend", "enable_key": "supertrend_on", "enable_is_field": false, "fields": [{"k": "supertrend_fast", "label": "Fast", "type": "number", "optional": false}, {"k": "supertrend_slow", "label": "Slow", "type": "number", "optional": false}, {"k": "supertrend_signal", "label": "Signal", "type": "number", "optional": false}]}, {"key": "vol", "label": "Volume", "enable_key": "vol_on", "enable_is_field": false, "fields": [{"k": "vol_multiplier", "label": "Multiplier", "type": "number", "optional": false}, {"k": "vol_mult", "label": "Multiplier (alt)", "type": "number", "optional": true}]}, {"key": "vwap", "label": "VWAP", "enable_key": "vwap_on", "enable_is_field": false, "fields": [{"k": "vwap_threshold", "label": "Threshold", "type": "number", "optional": false}, {"k": "vwap_diff_threshold", "label": "Diff Threshold", "type": "number", "optional": true}, {"k": "vwap_len", "label": "Length", "type": "number", "optional": true}]}, {"key": "range", "label": "Range", "enable_key": "range_on", "enable_is_field": false, "fields": [{"k": "range_pct", "label": "Range %", "type": "number", "optional": false}]}, {"key": "price_sma", "label": "Price SMA", "enable_key": "price_sma_on", "enable_is_field": false, "fields": [{"k": "price_sma_len", "label": "Length", "type": "number", "optional": false}]}, {"key": "macd", "label": "MACD", "enable_key": "macd_on", "enable_is_field": false, "fields": [{"k": "macd_fast", "label": "Fast", "type": "number", "optional": false}, {"k": "macd_signal", "label": "Signal", "type": "number", "optional": false}, {"k": "macd_slow", "label": "Slow", "type": "number", "optional": false}]}, {"key": "macd_hist", "label": "MACD Histogram", "enable_key": "macd_hist_on", "enable_is_field": true, "fields": [{"k": "macd_hist_on", "label": "Histogram Enabled", "type": "bool", "optional": false}]}, {"key": "gap", "label": "Gap", "enable_key": "gap_on", "enable_is_field": false, "fields": [{"k": "gap_pct", "label": "Gap %", "type": "number", "optional": false}]}, {"key": "bb", "label": "Bollinger Bands", "enable_key": "bb_on", "enable_is_field": false, "fields": [{"k": "bb_length", "label": "Length", "type": "number", "optional": false}, {"k": "bb_len", "label": "Length (alt)", "type": "number", "optional": true}, {"k": "bb_std", "label": "StdDev", "type": "number", "optional": false}, {"k": "bb_stddev", "label": "StdDev (alt)", "type": "number", "optional": true}]}, {"key": "bb_break", "label": "BB Breakout", "enable_key": "bb_breakout_enabled", "enable_is_field": true, "fields": [{"k": "bb_breakout_enabled", "label": "Breakout Enabled", "type": "bool", "optional": false}]}, {"key": "atr", "label": "ATR", "enable_key": "atr_on", "enable_is_field": false, "fields": [{"k": "atr_threshold", "label": "Threshold", "type": "number", "optional": false}]}, {"key": "atr_pct", "label": "ATR %", "enable_key": "atr_pct_on", "enable_is_field": false, "fields": [{"k": "atr_pct_on", "label": "ATR % Enabled", "type": "bool", "optional": false}, {"k": "atr_pct", "label": "ATR %", "type": "number", "optional": false}]}, {"key": "adx", "label": "ADX", "enable_key": "adx_on", "enable_is_field": false, "fields": [{"k": "adx_len", "label": "Length", "type": "number", "optional": false}, {"k": "adx_threshold", "label": "Threshold", "type": "number", "optional": false}]}, {"key": "ai", "label": "AI Advisor", "enable_key": null, "enable_is_field": false, "fields": [{"k": "ai.enabled", "label": "Enabled", "type": "bool", "optional": false}, {"k": "ai.use_entries", "label": "Use Entries", "type": "bool", "optional": false}, {"k": "ai.use_exits", "label": "Use Exits", "type": "bool", "optional": false}]}],
     other: [{"k": "_ui_test_toggle", "label": "UI Test Toggle", "type": "bool", "optional": true}, {"k": "account_type", "label": "Account Type", "type": "text", "optional": false}, {"k": "broker_mode", "label": "Broker", "type": "text", "optional": false}, {"k": "mode", "label": "Mode", "type": "text", "optional": false}, {"k": "market_gate_on", "label": "Market Gate", "type": "bool", "optional": false}, {"k": "market_session", "label": "Market Session", "type": "text", "optional": false}, {"k": "pause_when_market_closed", "label": "Pause When Market Closed", "type": "bool", "optional": false}, {"k": "order_term", "label": "Order Term", "type": "text", "optional": false}, {"k": "prefer_quotes", "label": "Prefer Quotes", "type": "bool", "optional": false}, {"k": "poll_interval", "label": "Poll Interval", "type": "number", "optional": false}, {"k": "scan_sleep_secs", "label": "Scan Sleep Secs", "type": "number", "optional": false}, {"k": "max_per_trade", "label": "Max Per Trade", "type": "number", "optional": false}, {"k": "max_pyramids", "label": "Max Pyramids", "type": "number", "optional": false}, {"k": "single_entry_only", "label": "Single Entry Only", "type": "bool", "optional": false}, {"k": "sell_after_days", "label": "Sell After Days", "type": "number", "optional": false}, {"k": "stop_loss_pct", "label": "Stop Loss %", "type": "number", "optional": false}, {"k": "take_profit_pct", "label": "Take Profit %", "type": "number", "optional": false}, {"k": "use_trailing_stop", "label": "Use Trailing Stop", "type": "bool", "optional": false}, {"k": "trailing_stop_pct", "label": "Trailing Stop %", "type": "number", "optional": false}, {"k": "trail_arm_gain_pct", "label": "Trail Arm Gain %", "type": "number", "optional": false}, {"k": "trail_floor_to_entry", "label": "Trail Floor To Entry", "type": "bool", "optional": false}, {"k": "trail_tiers", "label": "Trail Tiers", "type": "text", "optional": true}, {"k": "news_on", "label": "News On", "type": "bool", "optional": false}, {"k": "nuke_db", "label": "Nuke DB", "type": "bool", "optional": false}, {"k": "realized_since", "label": "Realized Since", "type": "text", "optional": false}, {"k": "realized_tz", "label": "Realized TZ", "type": "text", "optional": false}, {"k": "strict_buy_signals", "label": "Strict Buy Signals", "type": "number", "optional": false}],
-    gate: [{"key": "rsi", "label": "RSI"}, {"key": "sma", "label": "SMA"}, {"key": "sma20", "label": "SMA20"}, {"key": "super", "label": "SUPER"}, {"key": "vol", "label": "VOL"}, {"key": "vwap", "label": "VWAP"}, {"key": "range", "label": "RANGE"}, {"key": "price_sma", "label": "PRICE SMA"}, {"key": "macd", "label": "MACD"}, {"key": "macd_hist", "label": "MACD HIST"}, {"key": "gap", "label": "GAP"}, {"key": "bb", "label": "BB"}, {"key": "bb_break", "label": "BB BREAK"}, {"key": "atr", "label": "ATR"}, {"key": "atr_pct", "label": "ATR PCT"}, {"key": "adx", "label": "ADX"}]
+    gate_primary: [
+      {"key": "rsi", "label": "RSI"},
+      {"key": "sma", "label": "SMA"},
+      {"key": "sma20", "label": "SMA20"},
+      {"key": "super", "label": "SUPER"},
+      {"key": "vwap", "label": "VWAP"},
+      {"key": "range", "label": "RANGE"},
+      {"key": "price_sma", "label": "PRICE SMA"},
+      {"key": "macd", "label": "MACD"},
+      {"key": "bb", "label": "BB"},
+      {"key": "atr_pct", "label": "ATR %"},
+      {"key": "adx", "label": "ADX"}
+    ],
+    gate_enhancers: [
+      {"key": "vol", "label": "VOL"},
+      {"key": "macd_hist", "label": "MACD HIST"},
+      {"key": "gap", "label": "GAP"},
+      {"key": "bb_break", "label": "BB BREAK"},
+      {"key": "atr", "label": "ATR"}
+    ]
   };
 </script>
 
 <script>
 (() => {
   const GROUP = (window.__MM_GROUP__ || "buy");
-  const CFG = window.__MM_CFG__ || { cards:[], other:[], gate:[] };
+  const CFG = window.__MM_CFG__ || { cards:[], other:[], gate_primary:[], gate_enhancers:[] };
   const byId = (id) => document.getElementById(id);
 
   let SETTINGS = {};
@@ -243,6 +278,87 @@
     }
   }
 
+  function getEnable(card){
+    if (card.enable_is_field){
+      return !!SETTINGS[card.enable_key];
+    }
+    if (!card.enable_key) return true;
+    return !!SETTINGS[card.enable_key];
+  }
+
+  function setEnable(card, v){
+    if (card.enable_is_field){
+      SETTINGS[card.enable_key] = !!v;
+      return;
+    }
+    if (!card.enable_key) return;
+    SETTINGS[card.enable_key] = !!v;
+  }
+
+  function cleanRequiredFilters(){
+    const allowed = new Set((CFG.gate_primary || []).map(x => String(x.key||"").toLowerCase()));
+    let req = SETTINGS.required_filters;
+    if (!Array.isArray(req)) req = [];
+    req = req.map(x => String(x||"").toLowerCase()).filter(x => allowed.has(x));
+    SETTINGS.required_filters = Array.from(new Set(req));
+  }
+
+  function renderGate(){
+    const hostA = byId("gateGridPrimary");
+    const hostB = byId("gateGridEnhancers");
+    if (hostA) hostA.innerHTML = "";
+    if (hostB) hostB.innerHTML = "";
+
+    cleanRequiredFilters();
+
+    const reqSet = new Set((SETTINGS.required_filters || []).map(x => String(x||"").toLowerCase()));
+
+    // Primary gate-able
+    if (hostA){
+      for (const g of (CFG.gate_primary || [])){
+        const pill = document.createElement("div");
+        pill.className = "mm-gate-pill";
+        const id = `gate_${g.key}`;
+        const checked = reqSet.has(String(g.key).toLowerCase());
+        pill.innerHTML = `
+          <input type="checkbox" id="${id}" ${checked ? "checked" : ""}>
+          <label for="${id}" style="margin:0;font-weight:800;">${g.label}</label>
+        `;
+        pill.querySelector("input").onchange = (e) => {
+          const on = !!e.target.checked;
+          const key = String(g.key).toLowerCase();
+          let arr = Array.isArray(SETTINGS.required_filters) ? SETTINGS.required_filters.slice() : [];
+          arr = arr.map(x => String(x||"").toLowerCase());
+          const s = new Set(arr);
+          if (on) s.add(key); else s.delete(key);
+          SETTINGS.required_filters = Array.from(s);
+          cleanRequiredFilters();
+          const hint = byId("gateHint");
+          if (hint) hint.textContent = "Required: " + (SETTINGS.required_filters.length ? SETTINGS.required_filters.join(", ") : "(none)");
+        };
+        hostA.appendChild(pill);
+      }
+    }
+
+    // Enhancers (display only)
+    if (hostB){
+      for (const g of (CFG.gate_enhancers || [])){
+        const pill = document.createElement("div");
+        pill.className = "mm-gate-pill mm-disabled-pill";
+        const id = `enh_${g.key}`;
+        pill.title = "Enhancer / emitter: cannot be required (not part of Required Signals Gate).";
+        pill.innerHTML = `
+          <input type="checkbox" id="${id}" disabled>
+          <label for="${id}" style="margin:0;font-weight:800;">${g.label}</label>
+        `;
+        hostB.appendChild(pill);
+      }
+    }
+
+    const hint = byId("gateHint");
+    if (hint) hint.textContent = "Required: " + (reqSet.size ? Array.from(reqSet).join(", ") : "(none)");
+  }
+
   function renderScoreboard(){
     const host = byId("scoreboardCards");
     if (!host) return;
@@ -270,58 +386,6 @@
       `;
       host.appendChild(div);
     }
-  }
-
-  function renderGate(){
-    const host = byId("gateGrid");
-    if (!host) return;
-    host.innerHTML = "";
-
-    let required = SETTINGS.required_filters;
-    if (!Array.isArray(required)) required = [];
-    const reqSet = new Set(required.map(x => String(x||"").toLowerCase()));
-
-    for (const g of (CFG.gate || [])){
-      const pill = document.createElement("div");
-      pill.className = "mm-gate-pill";
-      const id = `gate_${g.key}`;
-      const checked = reqSet.has(String(g.key).toLowerCase());
-      pill.innerHTML = `
-        <input type="checkbox" id="${id}" ${checked ? "checked" : ""}>
-        <label for="${id}" style="margin:0;font-weight:800;">${g.label}</label>
-      `;
-      pill.querySelector("input").onchange = (e) => {
-        const on = !!e.target.checked;
-        const key = String(g.key).toLowerCase();
-        let arr = Array.isArray(SETTINGS.required_filters) ? SETTINGS.required_filters.slice() : [];
-        arr = arr.map(x => String(x||"").toLowerCase());
-        const s = new Set(arr);
-        if (on) s.add(key); else s.delete(key);
-        SETTINGS.required_filters = Array.from(s);
-        const hint = byId("gateHint");
-        if (hint) hint.textContent = "Required: " + (SETTINGS.required_filters.length ? SETTINGS.required_filters.join(", ") : "(none)");
-      };
-      host.appendChild(pill);
-    }
-    const hint = byId("gateHint");
-    if (hint) hint.textContent = "Required: " + (reqSet.size ? Array.from(reqSet).join(", ") : "(none)");
-  }
-
-  function getEnable(card){
-    if (card.enable_is_field){
-      return !!SETTINGS[card.enable_key];
-    }
-    if (!card.enable_key) return true;
-    return !!SETTINGS[card.enable_key];
-  }
-
-  function setEnable(card, v){
-    if (card.enable_is_field){
-      SETTINGS[card.enable_key] = !!v;
-      return;
-    }
-    if (!card.enable_key) return;
-    SETTINGS[card.enable_key] = !!v;
   }
 
   function renderCards(){
@@ -494,31 +558,30 @@
 
   async function doSave(){
     const prof = normProfile(byId("profileSel")?.value || "day");
-    const msg1 = byId("saveMsg");
     const msg2 = byId("saveMsgTop");
-    if (msg1) msg1.textContent = "Saving...";
     if (msg2) msg2.textContent = "Saving...";
     try {
+      cleanRequiredFilters();
       await apiSave(prof, SETTINGS);
-      if (msg1) msg1.textContent = "Saved.";
       if (msg2) msg2.textContent = "Saved.";
-      setTimeout(() => { if (msg1) msg1.textContent = ""; if (msg2) msg2.textContent = ""; }, 1500);
+      setTimeout(() => { if (msg2) msg2.textContent = ""; }, 1500);
     } catch(e) {
       console.error(e);
-      if (msg1) msg1.textContent = "Save failed.";
       if (msg2) msg2.textContent = "Save failed.";
     }
   }
 
   document.addEventListener("DOMContentLoaded", () => {
     const profileSel = byId("profileSel");
-if (profileSel) profileSel.onchange = refreshAll;
-const saveBtnTop = byId("saveBtnTop");
-if (saveBtnTop) saveBtnTop.onclick = doSave;
+    if (profileSel) profileSel.onchange = refreshAll;
+
+    const saveBtnTop = byId("saveBtnTop");
+    if (saveBtnTop) saveBtnTop.onclick = doSave;
 
     refreshAll();
   });
 })();
+
 </script>
 
 {% endblock %}

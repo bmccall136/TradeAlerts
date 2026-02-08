@@ -929,25 +929,21 @@ def run_live_loop(settings, symbols, broker_mode=None):
                     continue
 
                 price, triggered, passed = res
-
                 # --- SCOREBOARD: log raw signal fires (pre-gates, pre-requirements) ---
                 # Purpose: count fires even if later rejected by required_filters/strict/etc.
                 # Noise control: only log when something actually fired.
                 try:
-                    # Normalize tokens from `triggered` (tokens_lc isn't built yet at this point)
-                    tlc = [str(t or "").strip().lower().replace(" ", "") for t in (triggered or [])]
                     enh = []
+                    tlc = list(tokens_lc or [])
                     # Enhancers / emitters (count them too, pre-gate)
                     if any(("vol" in t) or t.startswith("vol") for t in tlc):
                         enh.append("vol")
-                    if any(("macdhist" in t) or ("macd_hist" in t) or ("hist" in t and "macd" in t) for t in tlc):
+                    if any(("macd_hist" in t) or ("hist" in t and "macd" in t) for t in tlc):
                         enh.append("macd_hist")
                     if any(("gap" in t) or t.startswith("gap") for t in tlc):
                         enh.append("gap")
-                    if any(("bbbreak" in t) or ("bb_break" in t) or ("breakout" in t and "bb" in t) for t in tlc):
+                    if any(("bb_break" in t) or ("break" in t and "bb" in t) for t in tlc):
                         enh.append("bb_break")
-                    if any(("atrpct" in t) or ("atr_pct" in t) or ("atr%" in t) for t in tlc):
-                        enh.append("atr_pct")
                     if any(t.startswith("atr") or "atr" in t for t in tlc):
                         enh.append("atr")
                 
@@ -1031,19 +1027,6 @@ def run_live_loop(settings, symbols, broker_mode=None):
                 "sma20":     has_sma,      # keeps your existing SMA gate semantics (price>sma{len})
                 "price_sma": has_sma,
             }
-
-
-            # --- SCOREBOARD: ensure emitter families get counted even if not present in `triggered` tokens ---
-            # Helpful + not noisy: only log when these are true.
-            try:
-                emit_fires = []
-                for k in ("macd_hist", "bb_break", "gap", "atr", "atr_pct"):
-                    if present.get(k, False):
-                        emit_fires.append(k)
-                if emit_fires:
-                    log_signal_fires(os.path.join(ROOT, "live.db"), sym, emit_fires)
-            except Exception:
-                pass
 
             # Normalize required_filters keys (allow commas/spaces from UI)
             req = set(getattr(settings, "required_filters", []) or [])

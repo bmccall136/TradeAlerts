@@ -1,0 +1,35 @@
+@'
+{% extends "layout.html" %}
+{% block content %}
+<style>
+  .mm-card { background:#0f1118; border:1px solid #222531; border-radius:10px; }
+  .mm-muted { opacity:.82; }
+  .mm-title { font-size:22px; font-weight:800; margin:18px 0 10px 0; }
+  .mm-sub { margin:0 0 12px 0; opacity:.9; }
+  .mm-pill { display:inline-block; padding:2px 8px; border:1px solid #262a38; border-radius:999px; background:#0b0d14; }
+</style>
+
+<div class="container-fluid" style="max-width:1100px;margin-left:auto;margin-right:auto;">
+  <div class="mm-title">Sell Analytics</div>
+  <p class="mm-sub mm-muted">
+    This page will focus on <b>exit reasons</b>, <b>execution outcomes</b>, and <b>time-in-position</b>.
+    (We will not put these counts on the SELL Settings page.)
+  </p>
+
+  <div class="card mm-card">
+    <div class="card-body">
+      <div style="font-size:18px;font-weight:800;margin-bottom:6px;">Coming next</div>
+      <ul class="mm-muted" style="margin:0;">
+        <li>Exit reason breakdown (target/stop/timeout/protect/AI/manual)</li>
+        <li>Execution outcomes (attempted/placed/filled/skipped/failed)</li>
+        <li>Hold-time buckets</li>
+      </ul>
+
+      <div style="margin-top:12px;">
+        <a href="/analytics" class="mm-pill">Back to Analytics</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+'@ | Set-Content -Encoding UTF8 C:\TradeAlerts\templates\analytics_sell.html

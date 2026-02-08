@@ -1032,19 +1032,6 @@ def run_live_loop(settings, symbols, broker_mode=None):
                 "price_sma": has_sma,
             }
 
-
-            # --- SCOREBOARD: ensure emitter families get counted even if not present in `triggered` tokens ---
-            # Helpful + not noisy: only log when these are true.
-            try:
-                emit_fires = []
-                for k in ("macd_hist", "bb_break", "gap", "atr", "atr_pct"):
-                    if present.get(k, False):
-                        emit_fires.append(k)
-                if emit_fires:
-                    log_signal_fires(os.path.join(ROOT, "live.db"), sym, emit_fires)
-            except Exception:
-                pass
-
             # Normalize required_filters keys (allow commas/spaces from UI)
             req = set(getattr(settings, "required_filters", []) or [])
             req_norm = set()
