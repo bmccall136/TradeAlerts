@@ -5482,8 +5482,6 @@ def api_analytics_daily():
 
     try:
         # ---------- BUYS ----------
-# ---------- BUYS ----------
-        # Primary source: position_opened
         po_cols = table_cols(cur, "position_opened")
         po_ts   = pick(po_cols, "opened_utc", "opened_at", "ts_utc", "ts", "time_utc")
         po_sym  = pick(po_cols, "symbol", "ticker")
@@ -5491,62 +5489,27 @@ def api_analytics_daily():
         po_qty  = pick(po_cols, "qty", "quantity", "shares")
         po_px   = pick(po_cols, "price", "entry_price", "fill_price", "avg_price")
 
-        buys_po = []
-        if po_ts and po_sym:
+        if not po_ts or not po_sym:
+            buys = []
+        else:
             sel = [
                 f"{po_ts} AS ts",
                 f"{po_sym} AS symbol",
-                (f"{po_name} AS name" if po_name else "'' AS name"),
-                (f"{po_qty} AS qty"   if po_qty  else "NULL AS qty"),
-                (f"{po_px} AS price"  if po_px   else "NULL AS price"),
-                "'position_opened' AS src"
             ]
-            sql = "SELECT " + ", ".join(sel) + f" FROM position_opened WHERE date({po_ts})=? ORDER BY {po_ts} ASC"
-            cur.execute(sql, (date_arg,))
-            buys_po = [dict(r) for r in cur.fetchall()]
+            if po_name: sel.append(f"{po_name} AS name")
+            else:       sel.append("'' AS name")
+            if po_qty:  sel.append(f"{po_qty} AS qty")
+            else:       sel.append("NULL AS qty")
+            if po_px:   sel.append(f"{po_px} AS price")
+            else:       sel.append("NULL AS price")
 
-        # Secondary source (manual reimport days): trades action='BUY'
-        tr_cols = table_cols(cur, "trades")
-        tr_ts   = pick(tr_cols, "ts_utc", "ts_et", "ts", "time_utc", "time_et", "created_at")
-        tr_sym  = pick(tr_cols, "symbol", "ticker")
-        tr_name = pick(tr_cols, "name", "company_name")
-        tr_qty  = pick(tr_cols, "qty", "quantity", "shares")
-        tr_px   = pick(tr_cols, "price", "fill_price", "avg_price", "entry_price")
-        tr_act  = pick(tr_cols, "action", "side", "type", "transactionType", "transaction_type")
-
-        buys_tr = []
-        if tr_ts and tr_sym and tr_act:
-            sel = [
-                f"{tr_ts} AS ts",
-                f"{tr_sym} AS symbol",
-                (f"{tr_name} AS name" if tr_name else "'' AS name"),
-                (f"{tr_qty} AS qty"   if tr_qty  else "NULL AS qty"),
-                (f"{tr_px} AS price"  if tr_px   else "NULL AS price"),
-                "'trades' AS src"
-            ]
-            sql = (
-                "SELECT " + ", ".join(sel) +
-                f" FROM trades WHERE date({tr_ts})=? AND {tr_act} IN ('BUY','Buy','B','Bought','Open') ORDER BY {tr_ts} ASC"
-            )
-            cur.execute(sql, (date_arg,))
-            buys_tr = [dict(r) for r in cur.fetchall()]
-
-        # Merge + de-dupe (prefer position_opened for same (symbol, ts))
-        merged = []
-        seen = set()  # (symbol, ts)
-        for r in buys_po:
-            k = (str(r.get('symbol','')), str(r.get('ts','')))
-            if k in seen: continue
-            seen.add(k)
-            merged.append(r)
-        for r in buys_tr:
-            k = (str(r.get('symbol','')), str(r.get('ts','')))
-            if k in seen: continue
-            seen.add(k)
-            merged.append(r)
-
-        buys = merged
-
+            cur.execute(f"""
+                SELECT {", ".join(sel)}
+                FROM position_opened
+                WHERE date({po_ts})=?
+                ORDER BY {po_ts} ASC
+            """, (date_arg,))
+            buys = [dict(r) for r in cur.fetchall()]
 
         # ---------- SELLS ----------
         rt_cols = table_cols(cur, "realized_trades")
