@@ -177,6 +177,3 @@
 {% else %}
 <div class="mm-muted">No sell triggers found.</div>
 {% endif %}
-
-{% endblock %}
-<!-- EOF_SENTINEL 20260208_153914 -->
