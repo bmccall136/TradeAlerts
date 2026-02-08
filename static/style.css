@@ -1262,3 +1262,9 @@ html body option {
   padding-left: 12px;
   padding-right: 12px;
 }
+table.ax-table.table-striped > tbody > tr:nth-of-type(odd) > * {
+  background-color: #0f1118 !important;
+}
+table.ax-table.table-striped > tbody > tr:nth-of-type(even) > * {
+  background-color: #0b0d12 !important;
+}

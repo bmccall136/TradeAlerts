@@ -5440,136 +5440,64 @@ def api_analytics_buy_funnel():
 
 
 # -------------------------
-# Daily Analytics API (schema-adaptive)
-# BUYS: position_opened (opened timestamp)
-# SELLS: realized_trades (close timestamp)
+# Daily Analytics API
+# BUYS come from position_opened
+# SELLS come from realized_trades
 # -------------------------
 @app.route("/api/analytics/daily")
 def api_analytics_daily():
     import sqlite3
-    from datetime import datetime
-    from flask import jsonify, request
+    from datetime import datetime, timedelta
 
     date_arg = (request.args.get("date") or "").strip()  # YYYY-MM-DD
     if not date_arg:
+        # default: today in ET display, but stored timestamps are UTC-ish; date() works for our daily buckets
+        # We'll default to "today" local system date if none supplied.
         date_arg = datetime.now().strftime("%Y-%m-%d")
 
-    db_path = None
-    if "LIVE_DB" in globals():
-        db_path = LIVE_DB
-    elif "DB_PATH" in globals():
-        db_path = DB_PATH
-
-    if not db_path:
-        return jsonify({"error": "No LIVE_DB/DB_PATH configured", "date": date_arg}), 500
-
-    def table_cols(cur, table):
-        try:
-            cur.execute(f"PRAGMA table_info({table})")
-            return {r[1] for r in cur.fetchall()}
-        except Exception:
-            return set()
-
-    def pick(cols, *names):
-        for n in names:
-            if n in cols:
-                return n
-        return None
-
+    db_path = LIVE_DB if "LIVE_DB" in globals() else DB_PATH
     con = sqlite3.connect(db_path)
     con.row_factory = sqlite3.Row
     cur = con.cursor()
 
-    try:
-        # ---------- BUYS ----------
-        po_cols = table_cols(cur, "position_opened")
-        po_ts   = pick(po_cols, "opened_utc", "opened_at", "ts_utc", "ts", "time_utc")
-        po_sym  = pick(po_cols, "symbol", "ticker")
-        po_name = pick(po_cols, "name", "company_name")
-        po_qty  = pick(po_cols, "qty", "quantity", "shares")
-        po_px   = pick(po_cols, "price", "entry_price", "fill_price", "avg_price")
+    # BUYS: position_opened (opened_utc is stored as text/ts)
+    cur.execute("""
+        SELECT
+          opened_utc AS ts,
+          symbol,
+          COALESCE(name,'') AS name,
+          COALESCE(price, NULL) AS price,
+          COALESCE(qty, NULL)   AS qty
+        FROM position_opened
+        WHERE date(opened_utc)=?
+        ORDER BY opened_utc ASC
+    """, (date_arg,))
+    buys = [dict(r) for r in cur.fetchall()]
 
-        if not po_ts or not po_sym:
-            buys = []
-        else:
-            sel = [
-                f"{po_ts} AS ts",
-                f"{po_sym} AS symbol",
-            ]
-            if po_name: sel.append(f"{po_name} AS name")
-            else:       sel.append("'' AS name")
-            if po_qty:  sel.append(f"{po_qty} AS qty")
-            else:       sel.append("NULL AS qty")
-            if po_px:   sel.append(f"{po_px} AS price")
-            else:       sel.append("NULL AS price")
+    # SELLS: realized_trades (close_date is stored as text/ts)
+    cur.execute("""
+        SELECT
+          close_date AS ts,
+          symbol,
+          COALESCE(name,'') AS name,
+          COALESCE(qty, NULL)  AS qty,
+          COALESCE(open_price, NULL)  AS open_price,
+          COALESCE(close_price, NULL) AS close_price,
+          COALESCE(gain, NULL) AS gain,
+          COALESCE(gain_pct, NULL) AS gain_pct
+        FROM realized_trades
+        WHERE date(close_date)=?
+        ORDER BY close_date ASC
+    """, (date_arg,))
+    sells = [dict(r) for r in cur.fetchall()]
 
-            cur.execute(f"""
-                SELECT {", ".join(sel)}
-                FROM position_opened
-                WHERE date({po_ts})=?
-                ORDER BY {po_ts} ASC
-            """, (date_arg,))
-            buys = [dict(r) for r in cur.fetchall()]
-
-        # ---------- SELLS ----------
-        rt_cols = table_cols(cur, "realized_trades")
-        rt_ts   = pick(rt_cols, "close_date", "closed_utc", "ts_utc", "ts", "time_utc")
-        rt_sym  = pick(rt_cols, "symbol", "ticker")
-        rt_name = pick(rt_cols, "name", "company_name")
-        rt_qty  = pick(rt_cols, "qty", "quantity", "shares")
-        rt_open = pick(rt_cols, "open_price", "entry_price", "buy_price", "avg_open", "cost_basis")
-        rt_close= pick(rt_cols, "close_price", "exit_price", "sell_price", "avg_close")
-        rt_gain = pick(rt_cols, "gain", "pnl", "pl", "profit")
-        rt_gpct = pick(rt_cols, "gain_pct", "pnl_pct", "pl_pct", "profit_pct")
-
-        if not rt_ts or not rt_sym:
-            sells = []
-        else:
-            sel = [
-                f"{rt_ts} AS ts",
-                f"{rt_sym} AS symbol",
-            ]
-            if rt_name: sel.append(f"{rt_name} AS name")
-            else:       sel.append("'' AS name")
-            if rt_qty:  sel.append(f"{rt_qty} AS qty")
-            else:       sel.append("NULL AS qty")
-            if rt_open: sel.append(f"{rt_open} AS open_price")
-            else:       sel.append("NULL AS open_price")
-            if rt_close:sel.append(f"{rt_close} AS close_price")
-            else:       sel.append("NULL AS close_price")
-            if rt_gain: sel.append(f"{rt_gain} AS gain")
-            else:       sel.append("NULL AS gain")
-            if rt_gpct: sel.append(f"{rt_gpct} AS gain_pct")
-            else:       sel.append("NULL AS gain_pct")
-
-            cur.execute(f"""
-                SELECT {", ".join(sel)}
-                FROM realized_trades
-                WHERE date({rt_ts})=?
-                ORDER BY {rt_ts} ASC
-            """, (date_arg,))
-            sells = [dict(r) for r in cur.fetchall()]
-
-        return jsonify({
-            "date": date_arg,
-            "buys": buys,
-            "sells": sells,
-            "counts": {"buys": len(buys), "sells": len(sells)},
-            "meta": {
-                "db": str(db_path),
-                "position_opened_ts": po_ts,
-                "realized_trades_ts": rt_ts
-            }
-        })
-
-    except Exception as e:
-        return jsonify({
-            "error": str(e),
-            "date": date_arg
-        }), 500
-    finally:
-        con.close()
-
+    con.close()
+    return jsonify({
+        "date": date_arg,
+        "buys": buys,
+        "sells": sells,
+        "counts": {"buys": len(buys), "sells": len(sells)}
+    })
 
 
 

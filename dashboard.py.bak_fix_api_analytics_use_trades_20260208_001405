@@ -32,6 +32,22 @@ from datetime import UTC, datetime, date, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+# ------------------------------------------------------------
+# Analytics guard: always return JSON on errors (prevents client JSONDecodeError)
+# ------------------------------------------------------------
+def _json_500(err, where="analytics"):
+    try:
+        import traceback
+        tb = traceback.format_exc()
+    except Exception:
+        tb = str(err)
+    try:
+        from flask import jsonify
+        return jsonify({"ok": False, "where": where, "error": str(err), "trace": tb}), 500
+    except Exception:
+        return (f'{{"ok":false,"where":"{where}","error":"{str(err)}"}}', 500, {"Content-Type":"application/json"})
+
+
 from flask import (
     Flask,
     jsonify,
@@ -3442,338 +3458,368 @@ def _today_log_paths():
     sell = log_dir / str(LOG_DIR / f"sell_triggers_{ymd}.csv")
     return ymd, str(buy), str(sell)
 
+
+
 @app.route("/api/analytics/day")
 def api_analytics_day():
     """
-    Daily Analytics (DB-backed)
-
-      BUYS  = buy_cooldowns.last_buy_utc (ET day bucket)
-      SELLS = realized_trades.close_date (ET day bucket)
-
-    Notes:
-      - buy_cooldowns schema (confirmed): symbol, last_buy_utc, reason
-      - realized_trades schema (confirmed): symbol, qty, open_date, close_date, gain, gain_pct, price_bought, price_sold
+    Daily Analytics data source (UI contract preserved).
+    Returns:
+      {
+        ok, date_et, errors:[],
+        realized:{day/week/month/year},
+        buy:{rows, items, top_symbols, top_combos},
+        sell:{rows, items, top_symbols, top_combos}
+      }
     """
-    from flask import request, jsonify
-    import sqlite3
-    from datetime import datetime, timezone, timedelta
+    from flask import jsonify, request
+    import sqlite3, os, datetime as dt
 
-    # --- pick DB path safely (your project usually defines LIVE_DB or DB_PATH) ---
-    db_path = None
-    for name in ("LIVE_DB", "DB_PATH"):
-        try:
-            v = globals().get(name)
-            if v:
-                db_path = str(v)
-                break
-        except Exception:
-            pass
-    if not db_path:
-        db_path = r"C:\TradeAlerts\live.db"
-
-    # --- helpers ---
-    def _parse_dt(s):
-        if not s:
-            return None
-        s = str(s).strip()
-        if not s:
-            return None
-        if s.endswith("Z"):
-            s = s[:-1] + "+00:00"
-        try:
-            dt = datetime.fromisoformat(s)
-        except Exception:
-            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f"):
-                try:
-                    dt = datetime.strptime(s, fmt)
-                    break
-                except Exception:
-                    dt = None
-            if dt is None:
-                return None
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc)
-
-    def _utc_to_et(dt_utc):
-        try:
-            from zoneinfo import ZoneInfo
-            et = ZoneInfo("America/New_York")
-            return dt_utc.astimezone(et)
-        except Exception:
-            # fallback: UTC-5 (DST edge cases near midnight only)
-            return dt_utc + timedelta(hours=-5)
-
-    def _utc_to_et_date(dt_utc):
-        return _utc_to_et(dt_utc).date().isoformat()
-
-    def _utc_to_et_ts(dt_utc):
-        return _utc_to_et(dt_utc).strftime("%Y-%m-%d %H:%M:%S")
-
-    # date=YYYY-MM-DD in ET
     date_et = (request.args.get("date") or "").strip()
     if not date_et:
-        try:
-            from zoneinfo import ZoneInfo
-            et = ZoneInfo("America/New_York")
-            date_et = datetime.now(et).date().isoformat()
-        except Exception:
-            date_et = datetime.utcnow().date().isoformat()
+        date_et = dt.datetime.now().strftime("%Y-%m-%d")
 
-    buys = []
-    sells = []
     errors = []
 
-    con = sqlite3.connect(db_path)
-    con.row_factory = sqlite3.Row
-    cur = con.cursor()
+    def connect_live():
+        # Prefer explicit constants if present
+        for name in ("LIVE_DB", "LIVE_DB_PATH", "DB_LIVE", "LIVE_DBFILE"):
+            if name in globals():
+                try:
+                    v = globals()[name]
+                    if isinstance(v, str) and v.lower().endswith(".db") and os.path.exists(v):
+                        return sqlite3.connect(v)
+                except Exception:
+                    pass
 
-    # helper to get column list
-    def _cols(table):
+        # Standard known path in this project
+        if os.path.exists(r"C:\TradeAlerts\live.db"):
+            return sqlite3.connect(r"C:\TradeAlerts\live.db")
+
+        # Fallbacks
+        for c in (
+            os.path.join(os.getcwd(), "live.db"),
+            os.path.join(os.getcwd(), "data", "live.db"),
+        ):
+            if os.path.exists(c):
+                return sqlite3.connect(c)
+
+        # last resort
+        if "DB_PATH" in globals() and isinstance(DB_PATH, str) and os.path.exists(DB_PATH):
+            return sqlite3.connect(DB_PATH)
+
+        raise FileNotFoundError("live.db not found")
+
+    def table_cols(cur, t):
         try:
-            rows = cur.execute(f"PRAGMA table_info({table})").fetchall()
-            return [r[1] for r in rows]
+            cur.execute(f"PRAGMA table_info({t})")
+            return [r[1] for r in cur.fetchall()]
         except Exception:
             return []
 
-    cols_bc = _cols("buy_cooldowns")
-    cols_rt = _cols("realized_trades")
+    def date_expr(col):
+        # handles "YYYY-MM-DD HH:MM:SS" and "YYYY-MM-DDTHH:MM:SS"
+        return f"date(replace({col}, 'T', ' '))"
 
-    # --- BUYS from buy_cooldowns ---
+    def pick(cols, candidates):
+        for c in candidates:
+            if c in cols:
+                return c
+        return None
+
+    def realized_summary(conn):
+        # Use existing helper if present; otherwise zeros
+        try:
+            if "_realized_summary_from_live_db" in globals():
+                return globals()["_realized_summary_from_live_db"]()
+        except Exception as e:
+            errors.append(f"realized_summary: {e}")
+        return {
+            "day":   {"pnl": 0.0, "pct": 0.0},
+            "week":  {"pnl": 0.0, "pct": 0.0},
+            "month": {"pnl": 0.0, "pct": 0.0},
+            "year":  {"pnl": 0.0, "pct": 0.0},
+        }
+
+    def load_symbol_names(cur):
+        # returns dict symbol->name
+        mp = {}
+        try:
+            if "symbol_names" in [r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]:
+                cur.execute("SELECT symbol, name FROM symbol_names")
+                for s,n in cur.fetchall():
+                    if s:
+                        mp[str(s).strip().upper()] = (n or "").strip()
+        except Exception:
+            pass
+        return mp
+
+    def fetch_buys(cur, sym2name):
+        items = []
+        cols = table_cols(cur, "trades")
+        if not cols:
+            return items
+
+        ts_col   = pick(cols, ["ts_et","time_et","opened_et","ts_utc","time_utc"])
+        side_col = pick(cols, ["side","action","type","trade_type"])
+        sym_col  = pick(cols, ["symbol","ticker"])
+        qty_col  = pick(cols, ["qty","quantity"])
+        px_col   = pick(cols, ["price","fill_price","avg_price"])
+
+        if not (ts_col and sym_col):
+            return items
+
+        where = [f"{date_expr(ts_col)} = ?"]
+        params = [date_et]
+
+        if side_col:
+            where.append(f"upper({side_col}) IN ('BUY','B')")
+
+        sql = f"""
+          SELECT {sym_col} AS symbol,
+                 {ts_col}  AS ts,
+                 {qty_col} AS qty,
+                 {px_col}  AS price
+          FROM trades
+          WHERE {" AND ".join(where)}
+          ORDER BY replace({ts_col}, 'T', ' ') ASC
+        """
+
+        try:
+            cur.execute(sql, params)
+            for sym, ts, qty, price in cur.fetchall():
+                s = (sym or "").strip().upper()
+                items.append({
+                    "symbol": s,
+                    "name": sym2name.get(s, ""),
+                    "time_et": ts,
+                    "qty": qty,
+                    "price": price
+                })
+        except Exception as e:
+            errors.append(f"buys_query: {e}")
+
+        return items
+
+    def fetch_sells(cur, sym2name):
+        # IMPORTANT: use trades table for daily SELL rows because realized_trades.close_date
+        # is not a real timestamp (often 00:00:00 / date-only).
+        items = []
+        cols = table_cols(cur, "trades")
+        if not cols:
+            return items
+
+        ts_col   = pick(cols, ["ts_et","time_et","opened_et","ts_utc","time_utc"])
+        side_col = pick(cols, ["side","action","type","trade_type"])
+        sym_col  = pick(cols, ["symbol","ticker"])
+        qty_col  = pick(cols, ["qty","quantity"])
+        px_col   = pick(cols, ["price","price_paid","fill_price","avg_price"])
+        pnl_col  = pick(cols, ["pnl","gain","gain_loss","realized_pl"])
+        pnlp_col = pick(cols, ["pnl_pct","gain_pct","return_pct"])
+
+        if not (ts_col and sym_col):
+            return items
+
+        where = [f"{date_expr(ts_col)} = ?"]
+        params = [date_et]
+
+        if side_col:
+            where.append(f"upper({side_col}) IN ('SELL','S')")
+
+        sql = f"""
+          SELECT {sym_col} AS symbol,
+                 {ts_col}  AS ts,
+                 {qty_col} AS qty,
+                 {px_col}  AS price,
+                 {pnl_col} AS pnl,
+                 {pnlp_col} AS pnl_pct
+          FROM trades
+          WHERE {" AND ".join(where)}
+          ORDER BY replace({ts_col}, 'T', ' ') ASC
+        """
+
+        try:
+            cur.execute(sql, params)
+            for sym, ts, qty, price, pnl, pnl_pct in cur.fetchall():
+                s = (sym or "").strip().upper()
+                items.append({
+                    "symbol": s,
+                    "name": sym2name.get(s, ""),
+                    "time_et": ts,
+                    "qty": qty,
+                    "price": price,
+                    "pnl": pnl,
+                    "pnl_pct": pnl_pct
+                })
+        except Exception as e:
+            errors.append(f"sells_query(trades): {e}")
+
+        return items
+        sym_col = pick(cols, ["symbol","ticker"])
+        ts_col  = pick(cols, ["close_date","closed_et","ts_et","time_et","ts_utc","time_utc"])
+        qty_col = pick(cols, ["qty","quantity"])
+        out_px  = pick(cols, ["exit_price","sell_price","price","close_price"])
+        pnl_col = pick(cols, ["pnl","pnl_usd","gain","gain_loss","realized_pl"])
+        pnlp    = pick(cols, ["pnl_pct","gain_pct","return_pct"])
+
+        if not (ts_col and sym_col):
+            return items
+
+        sql = f"""
+          SELECT {sym_col} AS symbol,
+                 {ts_col}  AS ts,
+                 {qty_col} AS qty,
+                 {out_px}  AS price,
+                 {pnl_col} AS pnl,
+                 {pnlp}    AS pnl_pct
+          FROM realized_trades
+          WHERE {date_expr(ts_col)} = ?
+          ORDER BY replace({ts_col}, 'T', ' ') ASC
+        """
+
+        try:
+            cur.execute(sql, [date_et])
+            for sym, ts, qty, price, pnl, pnl_pct in cur.fetchall():
+                s = (sym or "").strip().upper()
+                items.append({
+                    "symbol": s,
+                    "name": sym2name.get(s, ""),
+                    "time_et": ts,
+                    "qty": qty,
+                    "price": price,
+                    "pnl": pnl,
+                    "pnl_pct": pnl_pct
+                })
+        except Exception as e:
+            errors.append(f"sells_query: {e}")
+
+        return items
+
     try:
-        # select only columns that exist
-        sel = ["symbol", "last_buy_utc"]
-        if "reason" in cols_bc:
-            sel.append("reason")
-        q = "SELECT " + ", ".join(sel) + " FROM buy_cooldowns WHERE last_buy_utc IS NOT NULL AND trim(last_buy_utc) <> '' ORDER BY last_buy_utc DESC"
-        rows = cur.execute(q).fetchall()
+        conn = connect_live()
+        cur = conn.cursor()
+        sym2name = load_symbol_names(cur)
 
-        for r in rows:
-            dt_utc = _parse_dt(r["last_buy_utc"])
-            if not dt_utc:
-                continue
-            if _utc_to_et_date(dt_utc) != date_et:
-                continue
-            buys.append({
-                "symbol": r["symbol"],
-                "ts_utc": dt_utc.strftime("%Y-%m-%d %H:%M:%S"),
-                "ts_et": _utc_to_et_ts(dt_utc),
-                "reason": (r["reason"] if "reason" in r.keys() else "") or ""
-            })
+        buy_items  = fetch_buys(cur, sym2name)
+        sell_items = fetch_sells(cur, sym2name)
+
+        payload = {
+            "ok": True,
+            "date_et": date_et,
+            "errors": errors,
+            "realized": realized_summary(conn),
+            "buy":  {"rows": len(buy_items),  "items": buy_items,  "top_symbols": [], "top_combos": []},
+            "sell": {"rows": len(sell_items), "items": sell_items, "top_symbols": [], "top_combos": []},
+        }
+        return jsonify(payload)
+
     except Exception as e:
-        errors.append(f"BUYS query failed (buy_cooldowns): {e}")
-
-    # --- SELLS from realized_trades ---
-    try:
-        # confirmed schema fields
-        sel = ["symbol", "qty", "close_date", "gain", "gain_pct"]
-        if "price_sold" in cols_rt:
-            sel.append("price_sold")
-        # some historical variants might have notes/reason; include if present
-        if "notes" in cols_rt:
-            sel.append("notes")
-        if "reason" in cols_rt:
-            sel.append("reason")
-
-        q = "SELECT " + ", ".join(sel) + " FROM realized_trades WHERE close_date IS NOT NULL AND trim(close_date) <> '' ORDER BY close_date DESC"
-        rows = cur.execute(q).fetchall()
-
-        for r in rows:
-            dt_utc = _parse_dt(r["close_date"])
-            if not dt_utc:
-                continue
-            if _utc_to_et_date(dt_utc) != date_et:
-                continue
-
-            reason = ""
-            if "reason" in r.keys() and r["reason"]:
-                reason = r["reason"]
-            elif "notes" in r.keys() and r["notes"]:
-                reason = r["notes"]
-
-            sells.append({
-                "symbol": r["symbol"],
-                "qty": r["qty"],
-                "ts_utc": dt_utc.strftime("%Y-%m-%d %H:%M:%S"),
-                "ts_et": _utc_to_et_ts(dt_utc),
-                "price": (r["price_sold"] if "price_sold" in r.keys() else None),
-                "gain": r["gain"],
-                "gain_pct": r["gain_pct"],
-                "reason": reason or ""
-            })
-    except Exception as e:
-        errors.append(f"SELLS query failed (realized_trades): {e}")
-
-    con.close()
-
-    # REALIZED_BUCKETS__DAY_WEEK_MONTH_YEAR
-    try:
-        realized = _realized_summary_from_live_db(db_path)
-    except Exception:
-        realized = {"day":{"pnl":0.0,"pct":0.0},"week":{"pnl":0.0,"pct":0.0},"month":{"pnl":0.0,"pct":0.0},"year":{"pnl":0.0,"pct":0.0}}
-
-    return jsonify({
-        "ok": True,
-        "date_et": date_et,
-        "buy": {
-            "rows": len(buys),
-            "items": buys,
-            "top_symbols": [],
-            "top_combos": []
-        },
-        "sell": {
-            "rows": len(sells),
-            "items": sells,
-            "top_symbols": [],
-            "top_combos": []
-        },
-        "realized": realized,
-        "errors": errors
-    })
+        try:
+            import traceback
+            tb = traceback.format_exc()
+        except Exception:
+            tb = str(e)
+        return jsonify({"ok": False, "date_et": date_et, "errors": [str(e)], "trace": tb}), 500
 
 @app.route("/api/analytics")
 def api_analytics():
-    bucket = (request.args.get("bucket") or "today").strip().lower()
+    """Daily analytics payload.
 
-    if bucket in ("today", "tod"):
-        return api_analytics_today()
-
-    if bucket in ("yesterday", "day", "date"):
-        return api_analytics_day()
-
-    return api_analytics_today()
-
-
-@app.route("/api/analytics/today")
-def api_analytics_today():
+    BUYS: from trades where action='BUY' for selected day (ts_et).
+    SELLS: from realized_trades where close_date matches selected day.
+    Schema-safe: realized_trades price column names vary; we auto-detect.
     """
-    Daily Analytics JSON for today (ET).
-      - date_et, buy_file, sell_file, errors
-      - buy (summary), sell (summary)
-      - buys (rows), sells (rows filtered to true SELL actions)
-    """
-    errors = []
-    buys_rows = []
-    sell_rows_all = []
+    import sqlite3
+    import datetime as _dt
+    from flask import request, jsonify
 
-    def _ci_get(d, want_key):
-        """Case-insensitive dict get (handles Action/action/ACTION)."""
-        if not isinstance(d, dict):
-            return None
-        lk = str(want_key).lower()
-        for k, v in d.items():
-            if str(k).lower() == lk:
-                return v
+    day = (request.args.get("date") or "").strip()  # 'YYYY-MM-DD'
+    if not day:
+        day = _dt.datetime.now().strftime("%Y-%m-%d")
+
+    like = f"{day}%"
+    db = DB_PATH if "DB_PATH" in globals() else r"C:\TradeAlerts\live.db"
+
+    con = sqlite3.connect(db)
+    con.row_factory = sqlite3.Row
+    cur = con.cursor()
+
+    # --- detect realized_trades schema (safe whitelist) ---
+    cols = [r[1] for r in cur.execute("PRAGMA table_info(realized_trades)").fetchall()]
+
+    def pick(*names):
+        for n in names:
+            if n in cols:
+                return n
         return None
 
-    try:
-        ymd, buy_path, sell_path = _today_log_paths()
-    except Exception as e:
-        return jsonify(
-            date_et="",
-            buy_file=None,
-            sell_file=None,
-            errors=[f"_today_log_paths failed: {e!r}"],
-            buy={},
-            sell={},
-            buys=[],
-            sells=[],
-        )
+    close_date_col  = pick("close_date", "close_dt", "closed_at", "close_time", "ts_close", "sold_at", "close_ts")
+    open_date_col   = pick("open_date", "open_dt", "opened_at", "open_time", "ts_open", "bought_at", "open_ts")
+    close_price_col = pick("close_price", "close_px", "sell_price", "price_close", "exit_price", "closeFillPrice", "closeFill", "price")
+    open_price_col  = pick("open_price", "open_px", "buy_price", "price_open", "entry_price", "openFillPrice", "openFill", "price")
 
-    # Read BUY log
-    try:
-        if buy_path and _Path(buy_path).exists():
-            buys_rows = _read_csv_rows(buy_path) or []
-        else:
-            errors.append(f"Missing buy log: {buy_path}")
-            buys_rows = []
-    except Exception as e:
-        errors.append(f"Error reading buy log {buy_path}: {e!r}")
-        buys_rows = []
+    gain_col     = pick("gain", "pnl", "profit", "realized_pnl", "realized")
+    gain_pct_col = pick("gain_pct", "pnl_pct", "profit_pct", "realized_pnl_pct", "realized_pct")
 
-    # Read SELL log
-    try:
-        if sell_path and _Path(sell_path).exists():
-            sell_rows_all = _read_csv_rows(sell_path) or []
-        else:
-            errors.append(f"Missing sell log: {sell_path}")
-            sell_rows_all = []
-    except Exception as e:
-        errors.append(f"Error reading sell log {sell_path}: {e!r}")
-        sell_rows_all = []
+    # If close_date missing, fail gracefully instead of 500
+    sells = []
+    if close_date_col and close_price_col:
+        q = f"""
+            SELECT
+              {close_date_col}   AS time_et,
+              symbol,
+              qty,
+              {close_price_col}  AS price,
+              {gain_col if gain_col else 'NULL'}      AS pnl,
+              {gain_pct_col if gain_pct_col else 'NULL'} AS pnl_pct
+            FROM realized_trades
+            WHERE {close_date_col} LIKE ?
+            ORDER BY {close_date_col} DESC
+        """
+        sells = cur.execute(q, (like,)).fetchall()
 
-    # Normalize rows lightly (keep keys analytics.js expects)
-    def _norm_buy(r):
-        return {
-            "ts_et": _ci_get(r, "ts_et") or _ci_get(r, "time_et") or _ci_get(r, "time") or "",
-            "symbol": _ci_get(r, "symbol") or "",
-            "price": _ci_get(r, "price") or _ci_get(r, "last_price") or "",
-            "trigger": _ci_get(r, "trigger") or _ci_get(r, "family") or _ci_get(r, "reason") or "",
-            "extra_json": _ci_get(r, "extra_json") or "",
+    # BUYS from trades (execution truth)
+    buys = cur.execute("""
+        SELECT
+          ts_et AS time_et,
+          symbol,
+          qty,
+          price
+        FROM trades
+        WHERE action='BUY' AND ts_et LIKE ?
+        ORDER BY ts_et DESC
+    """, (like,)).fetchall()
+
+    con.close()
+
+    def rowdict(r):
+        d = dict(r) if r is not None else {}
+        for k in ("qty", "price", "pnl", "pnl_pct"):
+            if k in d and d[k] is not None:
+                try:
+                    d[k] = float(d[k])
+                except Exception:
+                    pass
+        return d
+
+    return jsonify({
+        "date": day,
+        "buys": [rowdict(r) for r in buys],
+        "sells": [rowdict(r) for r in sells],
+        "meta": {
+            "buy_ct": len(buys),
+            "sell_ct": len(sells),
+            "buy_source": "trades(action='BUY', ts_et LIKE day)",
+            "sell_source": "realized_trades(close_date LIKE day)",
+            "rt_cols": {
+                "close_date": close_date_col,
+                "close_price": close_price_col,
+                "gain": gain_col,
+                "gain_pct": gain_pct_col,
+            }
         }
+    })
 
-    def _norm_sell(r):
-        return {
-            "ts_et": _ci_get(r, "ts_et") or _ci_get(r, "time_et") or _ci_get(r, "time") or "",
-            "symbol": _ci_get(r, "symbol") or "",
-            "qty": _ci_get(r, "qty") or "",
-            "action": _ci_get(r, "action") or "",
-            "reason": _ci_get(r, "reason") or "",
-            "pl_pct": _ci_get(r, "pl_pct") or "",
-            "hold_min": _ci_get(r, "hold_min") or "",
-            "entry_price": _ci_get(r, "entry_price") or "",
-            "last_price": _ci_get(r, "last_price") or "",
-            "order_type": _ci_get(r, "order_type") or "",
-            "limit_price": _ci_get(r, "limit_price") or "",
-            "source": _ci_get(r, "source") or "",
-            "extra_json": _ci_get(r, "extra_json") or "",
-        }
-
-    buys_out = [_norm_buy(r) for r in (buys_rows or []) if isinstance(r, dict)]
-
-    sells_norm_all = [_norm_sell(r) for r in (sell_rows_all or []) if isinstance(r, dict)]
-    sell_summary = _compute_sell_analytics(sells_norm_all)
-
-    # ONLY true SELL actions for the "Today's Trades" sell column
-    sell_trades = [r for r in sells_norm_all if str((r.get("action") or "")).upper() == "SELL"]
-
-    buy_summary = _compute_buy_analytics(buys_out)
-
-    return jsonify(
-        date_et=ymd,
-        buy_file=buy_path if _Path(buy_path).exists() else None,
-        sell_file=sell_path if _Path(sell_path).exists() else None,
-        errors=errors,
-        buy=buy_summary,
-        sell=sell_summary,
-        buys=buys_out,
-        sells=sell_trades,
-    )
-def _ax_parse_date_arg(arg: str | None) -> str:
-    """
-    Returns YYYY-MM-DD in America/New_York.
-    If arg is invalid/None, returns today's ET date.
-    """
-    try:
-        if arg:
-            dt = datetime.strptime(arg.strip(), "%Y-%m-%d")
-            return dt.strftime("%Y-%m-%d")
-    except Exception:
-        pass
-    # fallback: today ET (no tz import needed; date string only)
-    return datetime.now().strftime("%Y-%m-%d")
-
-def _ax_yesterday(ymd: str) -> str:
-    try:
-        dt = datetime.strptime(ymd, "%Y-%m-%d") - timedelta(days=1)
-        return dt.strftime("%Y-%m-%d")
-    except Exception:
-        return ymd
-
-def _ax_log_paths_for_date(log_dir: str, ymd: str):
-    buy_path  = str(Path(log_dir) / str(LOG_DIR / f"triggers_{ymd}.csv"))
-    sell_path = str(Path(log_dir) / str(LOG_DIR / f"sell_triggers_{ymd}.csv"))
-    return ymd, buy_path, sell_path
 
 
 @app.route("/analytics")
@@ -5437,141 +5483,6 @@ def api_analytics_buy_funnel():
         "buyable": int(buyable),
         "bought": int(bought),
     })
-
-
-# -------------------------
-# Daily Analytics API (schema-adaptive)
-# BUYS: position_opened (opened timestamp)
-# SELLS: realized_trades (close timestamp)
-# -------------------------
-@app.route("/api/analytics/daily")
-def api_analytics_daily():
-    import sqlite3
-    from datetime import datetime
-    from flask import jsonify, request
-
-    date_arg = (request.args.get("date") or "").strip()  # YYYY-MM-DD
-    if not date_arg:
-        date_arg = datetime.now().strftime("%Y-%m-%d")
-
-    db_path = None
-    if "LIVE_DB" in globals():
-        db_path = LIVE_DB
-    elif "DB_PATH" in globals():
-        db_path = DB_PATH
-
-    if not db_path:
-        return jsonify({"error": "No LIVE_DB/DB_PATH configured", "date": date_arg}), 500
-
-    def table_cols(cur, table):
-        try:
-            cur.execute(f"PRAGMA table_info({table})")
-            return {r[1] for r in cur.fetchall()}
-        except Exception:
-            return set()
-
-    def pick(cols, *names):
-        for n in names:
-            if n in cols:
-                return n
-        return None
-
-    con = sqlite3.connect(db_path)
-    con.row_factory = sqlite3.Row
-    cur = con.cursor()
-
-    try:
-        # ---------- BUYS ----------
-        po_cols = table_cols(cur, "position_opened")
-        po_ts   = pick(po_cols, "opened_utc", "opened_at", "ts_utc", "ts", "time_utc")
-        po_sym  = pick(po_cols, "symbol", "ticker")
-        po_name = pick(po_cols, "name", "company_name")
-        po_qty  = pick(po_cols, "qty", "quantity", "shares")
-        po_px   = pick(po_cols, "price", "entry_price", "fill_price", "avg_price")
-
-        if not po_ts or not po_sym:
-            buys = []
-        else:
-            sel = [
-                f"{po_ts} AS ts",
-                f"{po_sym} AS symbol",
-            ]
-            if po_name: sel.append(f"{po_name} AS name")
-            else:       sel.append("'' AS name")
-            if po_qty:  sel.append(f"{po_qty} AS qty")
-            else:       sel.append("NULL AS qty")
-            if po_px:   sel.append(f"{po_px} AS price")
-            else:       sel.append("NULL AS price")
-
-            cur.execute(f"""
-                SELECT {", ".join(sel)}
-                FROM position_opened
-                WHERE date({po_ts})=?
-                ORDER BY {po_ts} ASC
-            """, (date_arg,))
-            buys = [dict(r) for r in cur.fetchall()]
-
-        # ---------- SELLS ----------
-        rt_cols = table_cols(cur, "realized_trades")
-        rt_ts   = pick(rt_cols, "close_date", "closed_utc", "ts_utc", "ts", "time_utc")
-        rt_sym  = pick(rt_cols, "symbol", "ticker")
-        rt_name = pick(rt_cols, "name", "company_name")
-        rt_qty  = pick(rt_cols, "qty", "quantity", "shares")
-        rt_open = pick(rt_cols, "open_price", "entry_price", "buy_price", "avg_open", "cost_basis")
-        rt_close= pick(rt_cols, "close_price", "exit_price", "sell_price", "avg_close")
-        rt_gain = pick(rt_cols, "gain", "pnl", "pl", "profit")
-        rt_gpct = pick(rt_cols, "gain_pct", "pnl_pct", "pl_pct", "profit_pct")
-
-        if not rt_ts or not rt_sym:
-            sells = []
-        else:
-            sel = [
-                f"{rt_ts} AS ts",
-                f"{rt_sym} AS symbol",
-            ]
-            if rt_name: sel.append(f"{rt_name} AS name")
-            else:       sel.append("'' AS name")
-            if rt_qty:  sel.append(f"{rt_qty} AS qty")
-            else:       sel.append("NULL AS qty")
-            if rt_open: sel.append(f"{rt_open} AS open_price")
-            else:       sel.append("NULL AS open_price")
-            if rt_close:sel.append(f"{rt_close} AS close_price")
-            else:       sel.append("NULL AS close_price")
-            if rt_gain: sel.append(f"{rt_gain} AS gain")
-            else:       sel.append("NULL AS gain")
-            if rt_gpct: sel.append(f"{rt_gpct} AS gain_pct")
-            else:       sel.append("NULL AS gain_pct")
-
-            cur.execute(f"""
-                SELECT {", ".join(sel)}
-                FROM realized_trades
-                WHERE date({rt_ts})=?
-                ORDER BY {rt_ts} ASC
-            """, (date_arg,))
-            sells = [dict(r) for r in cur.fetchall()]
-
-        return jsonify({
-            "date": date_arg,
-            "buys": buys,
-            "sells": sells,
-            "counts": {"buys": len(buys), "sells": len(sells)},
-            "meta": {
-                "db": str(db_path),
-                "position_opened_ts": po_ts,
-                "realized_trades_ts": rt_ts
-            }
-        })
-
-    except Exception as e:
-        return jsonify({
-            "error": str(e),
-            "date": date_arg
-        }), 500
-    finally:
-        con.close()
-
-
-
 
 
 if __name__ == "__main__":

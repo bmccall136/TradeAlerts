@@ -32,6 +32,22 @@ from datetime import UTC, datetime, date, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+# ------------------------------------------------------------
+# Analytics guard: always return JSON on errors (prevents client JSONDecodeError)
+# ------------------------------------------------------------
+def _json_500(err, where="analytics"):
+    try:
+        import traceback
+        tb = traceback.format_exc()
+    except Exception:
+        tb = str(err)
+    try:
+        from flask import jsonify
+        return jsonify({"ok": False, "where": where, "error": str(err), "trace": tb}), 500
+    except Exception:
+        return (f'{{"ok":false,"where":"{where}","error":"{str(err)}"}}', 500, {"Content-Type":"application/json"})
+
+
 from flask import (
     Flask,
     jsonify,
@@ -3633,18 +3649,77 @@ def api_analytics_day():
 
 @app.route("/api/analytics")
 def api_analytics():
-    bucket = (request.args.get("bucket") or "today").strip().lower()
+    """Daily analytics payload.
 
-    if bucket in ("today", "tod"):
-        return api_analytics_today()
+    BUYS: from trades where action='BUY' for selected day (ts_et).
+    SELLS: from realized_trades where close_date is selected day.
+    """
+    import sqlite3
+    import datetime as _dt
+    from flask import request, jsonify
 
-    if bucket in ("yesterday", "day", "date"):
-        return api_analytics_day()
+    day = (request.args.get("date") or "").strip()  # 'YYYY-MM-DD'
+    if not day:
+        day = _dt.datetime.now().strftime("%Y-%m-%d")
 
-    return api_analytics_today()
+    like = f"{day}%"
 
+    db = DB_PATH if "DB_PATH" in globals() else r"C:\TradeAlerts\live.db"
+    con = sqlite3.connect(db)
+    con.row_factory = sqlite3.Row
+    cur = con.cursor()
 
-@app.route("/api/analytics/today")
+    # SELLS (broker truth) - 27 rows on 2026-02-06 confirmed
+    sells = cur.execute("""
+        SELECT
+          close_date  AS time_et,
+          symbol,
+          qty,
+          close_price AS price,
+          gain        AS pnl,
+          gain_pct    AS pnl_pct
+        FROM realized_trades
+        WHERE close_date LIKE ?
+        ORDER BY close_date DESC
+    """, (like,)).fetchall()
+
+    # BUYS (execution truth) - use trades table for that day
+    buys = cur.execute("""
+        SELECT
+          ts_et AS time_et,
+          symbol,
+          qty,
+          price
+        FROM trades
+        WHERE action='BUY' AND ts_et LIKE ?
+        ORDER BY ts_et DESC
+    """, (like,)).fetchall()
+
+    con.close()
+
+    def rowdict(r):
+        d = dict(r) if r is not None else {}
+        for k in ("qty", "price", "pnl", "pnl_pct"):
+            if k in d and d[k] is not None:
+                try:
+                    d[k] = float(d[k])
+                except Exception:
+                    pass
+        return d
+
+    payload = {
+        "date": day,
+        "buys": [rowdict(r) for r in buys],
+        "sells": [rowdict(r) for r in sells],
+        "meta": {
+            "buy_ct": len(buys),
+            "sell_ct": len(sells),
+            "buy_source": "trades(action='BUY', ts_et LIKE day)",
+            "sell_source": "realized_trades(close_date LIKE day)"
+        }
+    }
+    return jsonify(payload)
+
 def api_analytics_today():
     """
     Daily Analytics JSON for today (ET).
@@ -5437,141 +5512,6 @@ def api_analytics_buy_funnel():
         "buyable": int(buyable),
         "bought": int(bought),
     })
-
-
-# -------------------------
-# Daily Analytics API (schema-adaptive)
-# BUYS: position_opened (opened timestamp)
-# SELLS: realized_trades (close timestamp)
-# -------------------------
-@app.route("/api/analytics/daily")
-def api_analytics_daily():
-    import sqlite3
-    from datetime import datetime
-    from flask import jsonify, request
-
-    date_arg = (request.args.get("date") or "").strip()  # YYYY-MM-DD
-    if not date_arg:
-        date_arg = datetime.now().strftime("%Y-%m-%d")
-
-    db_path = None
-    if "LIVE_DB" in globals():
-        db_path = LIVE_DB
-    elif "DB_PATH" in globals():
-        db_path = DB_PATH
-
-    if not db_path:
-        return jsonify({"error": "No LIVE_DB/DB_PATH configured", "date": date_arg}), 500
-
-    def table_cols(cur, table):
-        try:
-            cur.execute(f"PRAGMA table_info({table})")
-            return {r[1] for r in cur.fetchall()}
-        except Exception:
-            return set()
-
-    def pick(cols, *names):
-        for n in names:
-            if n in cols:
-                return n
-        return None
-
-    con = sqlite3.connect(db_path)
-    con.row_factory = sqlite3.Row
-    cur = con.cursor()
-
-    try:
-        # ---------- BUYS ----------
-        po_cols = table_cols(cur, "position_opened")
-        po_ts   = pick(po_cols, "opened_utc", "opened_at", "ts_utc", "ts", "time_utc")
-        po_sym  = pick(po_cols, "symbol", "ticker")
-        po_name = pick(po_cols, "name", "company_name")
-        po_qty  = pick(po_cols, "qty", "quantity", "shares")
-        po_px   = pick(po_cols, "price", "entry_price", "fill_price", "avg_price")
-
-        if not po_ts or not po_sym:
-            buys = []
-        else:
-            sel = [
-                f"{po_ts} AS ts",
-                f"{po_sym} AS symbol",
-            ]
-            if po_name: sel.append(f"{po_name} AS name")
-            else:       sel.append("'' AS name")
-            if po_qty:  sel.append(f"{po_qty} AS qty")
-            else:       sel.append("NULL AS qty")
-            if po_px:   sel.append(f"{po_px} AS price")
-            else:       sel.append("NULL AS price")
-
-            cur.execute(f"""
-                SELECT {", ".join(sel)}
-                FROM position_opened
-                WHERE date({po_ts})=?
-                ORDER BY {po_ts} ASC
-            """, (date_arg,))
-            buys = [dict(r) for r in cur.fetchall()]
-
-        # ---------- SELLS ----------
-        rt_cols = table_cols(cur, "realized_trades")
-        rt_ts   = pick(rt_cols, "close_date", "closed_utc", "ts_utc", "ts", "time_utc")
-        rt_sym  = pick(rt_cols, "symbol", "ticker")
-        rt_name = pick(rt_cols, "name", "company_name")
-        rt_qty  = pick(rt_cols, "qty", "quantity", "shares")
-        rt_open = pick(rt_cols, "open_price", "entry_price", "buy_price", "avg_open", "cost_basis")
-        rt_close= pick(rt_cols, "close_price", "exit_price", "sell_price", "avg_close")
-        rt_gain = pick(rt_cols, "gain", "pnl", "pl", "profit")
-        rt_gpct = pick(rt_cols, "gain_pct", "pnl_pct", "pl_pct", "profit_pct")
-
-        if not rt_ts or not rt_sym:
-            sells = []
-        else:
-            sel = [
-                f"{rt_ts} AS ts",
-                f"{rt_sym} AS symbol",
-            ]
-            if rt_name: sel.append(f"{rt_name} AS name")
-            else:       sel.append("'' AS name")
-            if rt_qty:  sel.append(f"{rt_qty} AS qty")
-            else:       sel.append("NULL AS qty")
-            if rt_open: sel.append(f"{rt_open} AS open_price")
-            else:       sel.append("NULL AS open_price")
-            if rt_close:sel.append(f"{rt_close} AS close_price")
-            else:       sel.append("NULL AS close_price")
-            if rt_gain: sel.append(f"{rt_gain} AS gain")
-            else:       sel.append("NULL AS gain")
-            if rt_gpct: sel.append(f"{rt_gpct} AS gain_pct")
-            else:       sel.append("NULL AS gain_pct")
-
-            cur.execute(f"""
-                SELECT {", ".join(sel)}
-                FROM realized_trades
-                WHERE date({rt_ts})=?
-                ORDER BY {rt_ts} ASC
-            """, (date_arg,))
-            sells = [dict(r) for r in cur.fetchall()]
-
-        return jsonify({
-            "date": date_arg,
-            "buys": buys,
-            "sells": sells,
-            "counts": {"buys": len(buys), "sells": len(sells)},
-            "meta": {
-                "db": str(db_path),
-                "position_opened_ts": po_ts,
-                "realized_trades_ts": rt_ts
-            }
-        })
-
-    except Exception as e:
-        return jsonify({
-            "error": str(e),
-            "date": date_arg
-        }), 500
-    finally:
-        con.close()
-
-
-
 
 
 if __name__ == "__main__":

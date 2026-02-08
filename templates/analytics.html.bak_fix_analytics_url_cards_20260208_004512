@@ -1,0 +1,56 @@
+﻿{% extends "layout.html" %}
+{% block content %}
+<div class="container-fluid py-3">
+
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div class="d-flex align-items-center gap-2">
+      <img src="/static/Max.png" style="height:36px;width:36px;border-radius:8px;" alt="Max"/>
+      <div>
+        <div class="h4 mb-0">Daily Analytics</div>
+        <div class="text-secondary small" id="ax-date">Loading…</div>
+      </div>
+    </div>
+
+    <div class="d-flex align-items-center gap-3">
+      <a class="btn btn-sm btn-outline-info" href="/analytics/buy">Buy Analytics</a>
+      <a class="btn btn-sm btn-outline-info" href="/analytics/sell">Sell Analytics</a>
+
+      <a class="btn btn-sm btn-outline-warning" id="ax-yesterday" href="#">Yesterday</a>
+      <a class="btn btn-sm btn-outline-secondary" href="/live">Live</a>
+    </div>
+  </div>
+
+  <div id="ax-errors" class="mb-3"></div>
+
+  <div class="row g-3">
+    <div class="col-12 col-xxl-6">
+      <div class="card mm-card">
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <div class="fw-bold text-success">BUYS</div>
+          <div class="small text-secondary" id="ax-buy-count"></div>
+        </div>
+        <div class="card-body">
+          <div id="ax-buy-col" class="text-secondary small">loading…</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-xxl-6">
+      <div class="card mm-card">
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <div class="fw-bold text-danger">SELLS</div>
+          <div class="small text-secondary" id="ax-sell-count"></div>
+        </div>
+        <div class="card-body">
+          <div id="ax-sell-col" class="text-secondary small">loading…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-3 small text-secondary" id="ax-files"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="/static/js/analytics.js?v={{ (config.get("BUILD_ID") or "") }}"></script>
+{% endblock %}
