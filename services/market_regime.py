@@ -1,0 +1,195 @@
+# services/market_regime.py
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+from typing import Dict, Any, Optional, Tuple
+
+_ET = ZoneInfo("America/New_York")
+
+# NOTE: Yahoo is allowed for intraday in $$Machine (hard rule).
+# We keep this module read-only + cached.
+def _fetch_spy_intraday(minutes: int = 240, interval: str = "1m"):
+    import yfinance as yf
+
+    # yfinance period limits vary; 1d is fine for 1m
+    t = yf.Ticker("SPY")
+    df = t.history(period="1d", interval=interval, auto_adjust=False, actions=False)
+
+    if df is None or df.empty:
+        return None
+
+    # Ensure timezone-aware index
+    if df.index.tz is None:
+        df.index = df.index.tz_localize("UTC")
+    # Convert to ET for interpretation
+    df = df.tz_convert(_ET)
+
+    # Keep last N minutes
+    if minutes and len(df) > minutes:
+        df = df.tail(minutes)
+
+    return df
+
+
+def _vwap(df):
+    # Typical VWAP from OHLCV
+    tp = (df["High"] + df["Low"] + df["Close"]) / 3.0
+    vol = df["Volume"].fillna(0.0)
+    pv = (tp * vol).cumsum()
+    vv = vol.cumsum().replace(0.0, 1.0)
+    return pv / vv
+
+
+def _atr(df, n: int = 14):
+    hi = df["High"]
+    lo = df["Low"]
+    cl = df["Close"]
+    prev = cl.shift(1)
+    tr = (hi - lo).abs()
+    tr = tr.combine((hi - prev).abs(), max)
+    tr = tr.combine((lo - prev).abs(), max)
+    return tr.rolling(n).mean()
+
+
+def _lin_slope(y):
+    # simple linear regression slope, x=0..n-1
+    import numpy as np
+    yv = y.dropna().values
+    if len(yv) < 8:
+        return 0.0
+    x = np.arange(len(yv), dtype=float)
+    x -= x.mean()
+    yv = yv.astype(float)
+    yv -= yv.mean()
+    den = (x * x).sum()
+    if den == 0:
+        return 0.0
+    return float((x * yv).sum() / den)
+
+
+def _count_vwap_crosses(px, vwap, lookback: int = 60) -> int:
+    # count sign changes in (px - vwap) over last lookback bars
+    s = (px - vwap).dropna()
+    if len(s) < 3:
+        return 0
+    s = s.tail(lookback)
+    sign = s.apply(lambda z: 1 if z > 0 else (-1 if z < 0 else 0))
+    sign = sign.replace(0, method="ffill").fillna(0)
+    changes = (sign != sign.shift(1)).sum()
+    # First element counts as change sometimes; normalize
+    return int(max(0, changes - 1))
+
+
+@dataclass
+class Regime:
+    label: str
+    confidence: int
+    reason: str
+    detail: Dict[str, Any]
+    asof_et: str
+
+
+_cache: Optional[Tuple[float, Dict[str, Any]]] = None  # (epoch, payload)
+_TTL_SEC = 60
+
+
+def get_market_regime_cached(force: bool = False) -> Dict[str, Any]:
+    global _cache
+    now = time.time()
+    if (not force) and _cache and (now - _cache[0] < _TTL_SEC):
+        return _cache[1]
+
+    payload = compute_market_regime()
+    _cache = (now, payload)
+    return payload
+
+
+def compute_market_regime() -> Dict[str, Any]:
+    df = _fetch_spy_intraday(minutes=240, interval="1m")
+    if df is None or df.empty:
+        return {
+            "ok": False,
+            "label": "UNKNOWN",
+            "confidence": 0,
+            "reason": "No SPY intraday data",
+            "detail": {},
+            "asof_et": datetime.now(_ET).strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
+    close = df["Close"]
+    vwap = _vwap(df)
+    atr = _atr(df, n=14)
+
+    px = float(close.dropna().iloc[-1])
+    vw = float(vwap.dropna().iloc[-1])
+
+    # Features
+    above_vwap = (px > vw)
+    vwap_slope = _lin_slope(vwap.tail(60))  # last hour-ish
+    atr_now = float(atr.dropna().iloc[-1]) if atr.dropna().shape[0] else 0.0
+
+    # ATR expansion: compare last 30m mean vs prior 60m mean
+    atr_tail = atr.dropna().tail(120)  # 2h window
+    atr_expanding = False
+    if len(atr_tail) >= 60:
+        last = float(atr_tail.tail(30).mean())
+        prev = float(atr_tail.tail(90).head(60).mean())
+        # expanding if last >= prev * 1.08 (8% expansion)
+        atr_expanding = (prev > 0 and last >= prev * 1.08)
+
+    crosses_60 = _count_vwap_crosses(close, vwap, lookback=60)
+
+    # Range percent (last 60m)
+    tail60 = df.tail(60)
+    rng = float((tail60["High"].max() - tail60["Low"].min())) if len(tail60) else 0.0
+    rng_pct = float(rng / px) if px else 0.0
+
+    # Scoring
+    score = 0
+    score += 1 if above_vwap else -1
+    score += 1 if vwap_slope > 0 else (-1 if vwap_slope < 0 else 0)
+    score += 1 if atr_expanding else 0
+    score += -1 if crosses_60 >= 6 else (0 if crosses_60 <= 3 else -0)  # penalize lots of crosses
+
+    # DEAD detection (quiet + flat VWAP + lots of mean reversion)
+    dead = (rng_pct < 0.0035) and (abs(vwap_slope) < 0.0005) and (crosses_60 >= 4)
+
+    if dead:
+        label = "DEAD"
+        conf = 70
+        reason = "Low range + flat VWAP + many VWAP crosses"
+    else:
+        if score >= 2:
+            label = "TREND"
+            conf = 65 + min(30, score * 10)
+            reason = "SPY above/below VWAP with VWAP slope + ATR support"
+        else:
+            label = "CHOP"
+            conf = 60 + min(25, (2 - score) * 8)
+            reason = "VWAP mean-reversion / low follow-through"
+
+    asof = df.index[-1].to_pydatetime().strftime("%Y-%m-%d %H:%M:%S")
+
+    detail = {
+        "spy_px": round(px, 4),
+        "spy_vwap": round(vw, 4),
+        "above_vwap": bool(above_vwap),
+        "vwap_slope": round(float(vwap_slope), 6),
+        "atr_now": round(float(atr_now), 6),
+        "atr_expanding": bool(atr_expanding),
+        "vwap_crosses_60": int(crosses_60),
+        "range_60m_pct": round(float(rng_pct), 6),
+        "score": int(score),
+    }
+
+    return {
+        "ok": True,
+        "label": label,
+        "confidence": int(conf),
+        "reason": reason,
+        "detail": detail,
+        "asof_et": asof,
+    }

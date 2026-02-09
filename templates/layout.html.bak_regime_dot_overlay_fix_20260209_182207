@@ -141,11 +141,13 @@
   function setDot(reg){
     var dot = document.getElementById("mm-regime-dot");
     if(!dot) return;
+    
+    try { dot.textContent = "?"; } catch(e) {}
 var r = String(reg || "UNKNOWN").toUpperCase();
-    if(r === "TREND") dot.style.backgroundColor = "#4caf50";
-    else if(r === "CHOP") dot.style.backgroundColor = "#ffb300";
-    else if(r === "DEAD") dot.style.backgroundColor = "#f44336";
-    else dot.style.backgroundColor = "#9e9e9e";
+    if(r === "TREND") dot.style.color = "#4caf50";
+    else if(r === "CHOP") dot.style.color = "#ffb300";
+    else if(r === "DEAD") dot.style.color = "#f44336";
+    else dot.style.color = "#9e9e9e";
   }
 
   async function update(){

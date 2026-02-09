@@ -47,17 +47,6 @@
   .mm-regime-conf{ opacity:.80; }
 </style>
 
-
-<style id="mm-regime-dot-css">
-  #mm-regime-dot{
-    display:inline-block;
-    width:10px;
-    height:10px;
-    border-radius:50%;
-    background:#9e9e9e; /* UNKNOWN */
-  }
-</style>
-
 </head>
 <body class="black-bg text-light">
 <!-- NAVBAR -->
@@ -121,7 +110,7 @@
 
 <!-- mm-regime-canonical -->
 <div id="mm-regime-wrap" class="mm-regime-wrap" aria-live="polite">
-  <span class="mm-regime-dot" id="mm-regime-dot"></span>
+  <span class="mm-regime-dot" id="mm-regime-dot">?</span>
   <span class="mm-regime-text">Regime:</span>
   <span class="mm-regime-name" id="mm-regime-name">?</span>
   <span class="mm-regime-conf" id="mm-regime-conf"></span>
@@ -141,11 +130,11 @@
   function setDot(reg){
     var dot = document.getElementById("mm-regime-dot");
     if(!dot) return;
-var r = String(reg || "UNKNOWN").toUpperCase();
-    if(r === "TREND") dot.style.backgroundColor = "#4caf50";
-    else if(r === "CHOP") dot.style.backgroundColor = "#ffb300";
-    else if(r === "DEAD") dot.style.backgroundColor = "#f44336";
-    else dot.style.backgroundColor = "#9e9e9e";
+    var r = String(reg || "UNKNOWN").toUpperCase();
+    if(r === "TREND") dot.style.color = "#4caf50";
+    else if(r === "CHOP") dot.style.color = "#ffb300";
+    else if(r === "DEAD") dot.style.color = "#f44336";
+    else dot.style.color = "#9e9e9e";
   }
 
   async function update(){

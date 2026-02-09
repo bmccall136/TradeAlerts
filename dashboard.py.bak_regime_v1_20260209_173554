@@ -48,7 +48,6 @@ from services import etrade_service as et
 from services.trade_source import load_trades_merged
 from services.contributions import get_total_contributions
 from services.event_log import log_event
-from services.market_regime import get_market_regime_cached
 
 # live guardrails holds opened_at for live trades
 try:
@@ -481,7 +480,7 @@ def _realized_summary_from_live_db(db_path):
             year_start_utc  = day_start_utc.replace(month=1, day=1)
 
         return {
-            "market_regime_label": (mr.get("label") if isinstance(mr, dict) else "UNKNOWN"), "market_regime_conf": (mr.get("confidence") if isinstance(mr, dict) else 0), "market_regime_reason": (mr.get("reason") if isinstance(mr, dict) else ""), "market_regime_asof": (mr.get("asof_et") if isinstance(mr, dict) else ""), "market_regime_detail": (mr.get("detail") if isinstance(mr, dict) else {}), "day":   _bucket(rows, day_start_utc, now_utc),
+            "day":   _bucket(rows, day_start_utc, now_utc),
             "week":  _bucket(rows, week_start_utc, now_utc),
             "month": _bucket(rows, month_start_utc, now_utc),
             "year":  _bucket(rows, year_start_utc, now_utc),
@@ -1894,19 +1893,6 @@ def _inject_nav_flags():
             checkpoint_url = url_for("run_checkpoint")
         except Exception:
             checkpoint_url = "/checkpoint"
-
-    # --- Market Regime (SPY) ---
-
-    mr = {}
-
-    try:
-
-        mr = get_market_regime_cached()
-
-    except Exception:
-
-        mr = {'ok': False, 'label': 'UNKNOWN', 'confidence': 0, 'reason': 'regime error', 'detail': {}, 'asof_et': ''}
-
 
     return {
         "HAS_SIM": has_sim,
@@ -3455,15 +3441,6 @@ def _today_log_paths():
     buy = log_dir / str(LOG_DIR / f"triggers_{ymd}.csv")
     sell = log_dir / str(LOG_DIR / f"sell_triggers_{ymd}.csv")
     return ymd, str(buy), str(sell)
-
-
-
-@app.route("/api/market_regime")
-def api_market_regime():
-    try:
-        return jsonify(get_market_regime_cached())
-    except Exception as e:
-        return jsonify({"ok": False, "label": "UNKNOWN", "confidence": 0, "reason": str(e), "detail": {}, "asof_et": ""})
 
 @app.route("/api/analytics/day")
 def api_analytics_day():
