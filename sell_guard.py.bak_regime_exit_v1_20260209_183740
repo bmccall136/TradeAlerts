@@ -1,103 +1,5 @@
 from __future__ import annotations
 
-
-# ----------------------------
-# $$Machine: Regime exit overlay (v1B)
-# Baseline settings remain DAY/SWING JSON; we apply runtime overlay in sell_guard only.
-# ----------------------------
-MM_REGIME_OVERLAY_ON = True  # set False to disable instantly
-
-def _mm_regime_snapshot():
-    try:
-        from services import market_regime as mr
-        for fn in ("get_market_regime", "compute_market_regime", "market_regime", "get_regime"):
-            if hasattr(mr, fn):
-                out = getattr(mr, fn)()
-                if isinstance(out, dict):
-                    lab = (out.get("label") or out.get("regime") or out.get("name") or out.get("state") or "UNKNOWN")
-                    out["label"] = str(lab).upper()
-                    return out
-        if hasattr(mr, "LATEST") and isinstance(mr.LATEST, dict):
-            out = dict(mr.LATEST)
-            lab = (out.get("label") or out.get("regime") or "UNKNOWN")
-            out["label"] = str(lab).upper()
-            return out
-    except Exception:
-        pass
-    return {"label":"UNKNOWN","confidence":0,"ok":False,"reason":"regime_unavailable","detail":{}}
-
-def _mm_regime_overlay(label: str):
-    lab = (label or "UNKNOWN").upper()
-    if lab == "CHOP":
-        return {"target_mult": 0.60, "stop_mult": 0.80, "time_mult": 0.80}
-    if lab == "TREND":
-        return {"target_mult": 1.60, "stop_mult": 1.25, "time_mult": 1.30}
-    if lab == "DEAD":
-        return {"target_mult": 0.50, "stop_mult": 0.70, "time_mult": 0.60}
-    return {"target_mult": 1.00, "stop_mult": 1.00, "time_mult": 1.00}
-
-def _mm_apply_exit_overlay(target_gain_pct, stop_pct, hold_minutes=None, snap=None):
-    snap = snap or _mm_regime_snapshot()
-    lab  = (snap.get("label") or "UNKNOWN").upper()
-    ov   = _mm_regime_overlay(lab)
-
-    try: tg = float(target_gain_pct)
-    except Exception: tg = target_gain_pct
-    try: sp = float(stop_pct)
-    except Exception: sp = stop_pct
-
-    if isinstance(tg, (int,float)):
-        tg = tg * ov["target_mult"]
-
-    if isinstance(sp, (int,float)):
-        # Preserve sign conventions
-        sp = sp * ov["stop_mult"]
-
-    hm = hold_minutes
-    if hm is not None:
-        try: hm = float(hm) * ov["time_mult"]
-        except Exception: pass
-
-    return tg, sp, hm, ov
-
-def _mm_db_insert_sell_event(db_path, symbol, event, reason, snap=None, extra=None):
-    """DEPRECATED: use services.sell_events_db.log_sell_event (single source of truth)."""
-    try:
-        from services.sell_events_db import log_sell_event
-    except Exception:
-        log_sell_event = None
-
-    # Best-effort: accept either (payload) dict or explicit args; never raise.
-    try:
-        # Common injected signature was (payload: dict) or (row: dict) style.
-        payload = locals().get("payload") or locals().get("row") or None
-
-        if isinstance(payload, dict):
-            ts_utc  = payload.get("ts_utc")
-            symbol  = payload.get("symbol")
-            event   = payload.get("event")
-            reason  = payload.get("reason")
-            detail  = payload.get("detail")
-            order_id= payload.get("order_id")
-            price   = payload.get("price")
-            qty     = payload.get("qty")
-            mode    = payload.get("mode")
-            overlay = payload.get("overlay_json")
-            # If overlay_json exists, pack it into detail to preserve it even if schema differs.
-            if overlay and (not detail):
-                detail = overlay
-
-            if log_sell_event and symbol and event:
-                log_sell_event(
-                    symbol=symbol, event=event, reason=reason, detail=detail,
-                    order_id=order_id, price=price, qty=qty, mode=mode, ts_utc=ts_utc
-                )
-            return
-    except Exception:
-        pass
-
-    # Fallback: do nothing. This function is intentionally non-blocking.
-    return
 import json
 import logging
 import os
@@ -123,165 +25,6 @@ except Exception:  # pragma: no cover
 LIVE_DB = "live.db"  # adjust if your path is different
 
 SELL_INFLIGHT_COOLDOWN_SEC = 120
-
-
-
-
-
-def _mm_stamp_last_sell_event_v2(conn=None, cur=None, symbol=None, event=None, ts_utc=None):
-    """DEPRECATED: use services.sell_events_db.log_sell_event (single source of truth)."""
-    try:
-        from services.sell_events_db import log_sell_event
-    except Exception:
-        log_sell_event = None
-
-    # Best-effort: accept either (payload) dict or explicit args; never raise.
-    try:
-        # Common injected signature was (payload: dict) or (row: dict) style.
-        payload = locals().get("payload") or locals().get("row") or None
-
-        if isinstance(payload, dict):
-            ts_utc  = payload.get("ts_utc")
-            symbol  = payload.get("symbol")
-            event   = payload.get("event")
-            reason  = payload.get("reason")
-            detail  = payload.get("detail")
-            order_id= payload.get("order_id")
-            price   = payload.get("price")
-            qty     = payload.get("qty")
-            mode    = payload.get("mode")
-            overlay = payload.get("overlay_json")
-            # If overlay_json exists, pack it into detail to preserve it even if schema differs.
-            if overlay and (not detail):
-                detail = overlay
-
-            if log_sell_event and symbol and event:
-                log_sell_event(
-                    symbol=symbol, event=event, reason=reason, detail=detail,
-                    order_id=order_id, price=price, qty=qty, mode=mode, ts_utc=ts_utc
-                )
-            return
-    except Exception:
-        pass
-
-    # Fallback: do nothing. This function is intentionally non-blocking.
-    return
-
-def _mm_clone_cfg(cfg):
-    """Best-effort clone for per-symbol cfg mutation."""
-    try:
-        from dataclasses import replace
-        return replace(cfg)
-    except Exception:
-        pass
-    try:
-        import copy
-        return copy.deepcopy(cfg)
-    except Exception:
-        return cfg
-
-def _mm_apply_overlay_to_exitconfig(exit_cfg, mode="", symbol=None):
-    """
-    Mutate ExitConfig in-place using current market regime overlay.
-    Logs an event into sell_events with regime+mode so Analytics can slice Mode?Regime.
-    """
-    # prevent double-application (safe if called multiple times)
-    try:
-        if getattr(exit_cfg, "_mm_overlay_applied", False):
-            return
-        setattr(exit_cfg, "_mm_overlay_applied", True)
-    except Exception:
-        pass
-
-    snap = _mm_regime_snapshot()
-    lab  = (snap.get("label") or "UNKNOWN").upper()
-    ov   = _mm_regime_overlay(lab)
-
-    # capture before for logging
-    before = {}
-    for k in ("min_hold_minutes","max_hold_minutes","target_gain_pct","trail_arm_gain_pct","trail_backoff_pct","timeout_exit_pct","intraday_stoploss_pct"):
-        try:
-            before[k] = float(getattr(exit_cfg, k))
-        except Exception:
-            pass
-
-    # time overlay (minutes)
-    try:
-        if hasattr(exit_cfg, "min_hold_minutes"):
-            exit_cfg.min_hold_minutes = float(exit_cfg.min_hold_minutes) * ov["time_mult"]
-        if hasattr(exit_cfg, "max_hold_minutes"):
-            exit_cfg.max_hold_minutes = float(exit_cfg.max_hold_minutes) * ov["time_mult"]
-    except Exception:
-        pass
-
-    # profit targets (positive %)
-    try:
-        if hasattr(exit_cfg, "target_gain_pct"):
-            exit_cfg.target_gain_pct = float(exit_cfg.target_gain_pct) * ov["target_mult"]
-        if hasattr(exit_cfg, "trail_arm_gain_pct"):
-            exit_cfg.trail_arm_gain_pct = float(exit_cfg.trail_arm_gain_pct) * ov["target_mult"]
-    except Exception:
-        pass
-
-    # trailing backoff + stops (often positive backoff, negative exits)
-    try:
-        if hasattr(exit_cfg, "trail_backoff_pct"):
-            exit_cfg.trail_backoff_pct = float(exit_cfg.trail_backoff_pct) * ov["stop_mult"]
-    except Exception:
-        pass
-
-    # defensive exits (these are usually negative % values)
-    def _mul_attr(name):
-        try:
-            if hasattr(exit_cfg, name):
-                v = float(getattr(exit_cfg, name))
-                setattr(exit_cfg, name, v * ov["stop_mult"])
-        except Exception:
-            pass
-
-    _mul_attr("timeout_exit_pct")
-    _mul_attr("intraday_stoploss_pct")
-
-    # after snapshot
-    after = {}
-    for k in before.keys():
-        try:
-            after[k] = float(getattr(exit_cfg, k))
-        except Exception:
-            pass
-
-    # best-effort: log overlay application for transparency
-    try:
-        payload = {
-            "mode": mode,
-            "regime": snap,
-            "overlay": ov,
-            "before": before,
-            "after": after,
-        }
-        emit_sell_event(event="REGIME_OVERLAY_APPLIED", symbol=(symbol or ""), reason="REGIME_OVERLAY", detail=json.dumps(payload, separators=(",", ":")), overlay_json=json.dumps(payload, separators=(",", ":")))
-    except Exception:
-        pass
-
-    # Log for analytics
-    try:
-        _dbp = globals().get("LIVE_DB") or globals().get("DB_PATH") or r"C:\TradeAlerts\live.db"
-        _sym = "SPY"  # regime overlay is market-wide; we log once per run loop decision point
-        # If you prefer per-symbol, change _sym to the position symbol when you call this.
-        extra = {
-            "mode": mode,
-            "label": lab,
-            "confidence": snap.get("confidence"),
-            "reason": snap.get("reason"),
-            "overlay": ov,
-            "before": before,
-            "after": after,
-        }
-        _mm_db_insert_sell_event(_dbp, _sym, "REGIME_PROFILE", f"{lab} conf={snap.get('confidence',0)}", snap, extra=extra)
-    except Exception:
-        pass
-
-    return exit_cfg, snap, ov
 
 def _live_db_path() -> str:
     try:
@@ -339,24 +82,6 @@ def _map_sell_reason(raw_event: str | None, raw_reason: str | None) -> str:
 def emit_sell_event(*args, **kwargs):
     """Wrapper around services.sell_triggers_log.emit_sell_event that ALSO logs to LIVE_DB sell_events."""
     _emit_sell_event(*args, **kwargs)
-    try:
-        from services.sell_events_db import log_sell_event
-        symbol = (kwargs.get("symbol") or kwargs.get("sym") or kwargs.get("ticker") or "").strip().upper()
-        event  = (kwargs.get("event") or kwargs.get("ev") or kwargs.get("action") or "").strip().upper()
-        if symbol and event:
-            log_sell_event(
-                symbol=symbol,
-                event=event,
-                reason=kwargs.get("reason"),
-                detail=kwargs.get("detail"),
-                order_id=kwargs.get("order_id"),
-                price=kwargs.get("price"),
-                qty=kwargs.get("qty"),
-                mode=kwargs.get("mode"),
-                ts_utc=kwargs.get("ts_utc"),
-            )
-    except Exception:
-        pass
     try:
         sym = kwargs.get("symbol") or kwargs.get("sym") or ""
         raw_event = kwargs.get("event")
@@ -1414,10 +1139,8 @@ def main() -> None:
     ai_enabled, ai_use_exits = get_ai_flags(settings)
     LOG.info("AI exits config: enabled=%s use_exits=%s", ai_enabled, ai_use_exits)
 
-    base_cfg = SellGuardConfig.from_dict(sg)
-    LOG.info("SellGuardConfig(base): %s", base_cfg)
-
-    cfg = base_cfg  # keep existing code paths working; per-symbol clone happens in loop
+    cfg = SellGuardConfig.from_dict(sg)
+    LOG.info("SellGuardConfig: %s", cfg)
 
     acct_key = account_id_key()
     LOG.info("account_id_key=%s", acct_key)
@@ -1594,25 +1317,6 @@ def main() -> None:
 
             for p in positions:
                 s = p.symbol
-
-
-                # --- per-symbol Market Regime overlay (safe clone) ---
-
-
-                cfg = _mm_clone_cfg(base_cfg)
-
-
-                try:
-
-
-                    _mm_apply_overlay_to_exitconfig(cfg, mode=mode, symbol=s)
-                    LOG.info("[REGIME_OVERLAY] %s mode=%s cfg target=%.2f stop=%.2f hold=[%.0f..%.0f]", s, mode, cfg.target_gain_pct, cfg.intraday_stoploss_pct, cfg.min_hold_minutes, cfg.max_hold_minutes)
-
-
-                except Exception:
-
-
-                    pass
                 has_open_sell = (s in open_sell_symbols)
                 qty = p.qty
                 mv = p.mv
@@ -1873,7 +1577,7 @@ def main() -> None:
                     LOG.info("[TIMEOUT] SKIP %s: no position_opened.opened_epoch (guarded)", s)
 
                 # Intraday stop-loss (hard floor, AI cannot veto)
-                if cfg.allow_intraday_stoploss and (not is_prior_day) and pl_pct <= cfg.intraday_stoploss_pct:
+                if cfg.allow_intraday_stoploss and (not is_prior_day) and pl_pct <= cfg.timeout_exit_pct:
                     LOG.info(
                         "[STOPLOSS] %s pl=%.2f%% <= timeout_exit_pct=%.2f%% ? exit",
                         s,

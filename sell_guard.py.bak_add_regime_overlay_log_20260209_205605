@@ -1606,7 +1606,6 @@ def main() -> None:
 
 
                     _mm_apply_overlay_to_exitconfig(cfg, mode=mode, symbol=s)
-                    LOG.info("[REGIME_OVERLAY] %s mode=%s cfg target=%.2f stop=%.2f hold=[%.0f..%.0f]", s, mode, cfg.target_gain_pct, cfg.intraday_stoploss_pct, cfg.min_hold_minutes, cfg.max_hold_minutes)
 
 
                 except Exception:

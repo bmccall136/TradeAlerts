@@ -1417,8 +1417,6 @@ def main() -> None:
     base_cfg = SellGuardConfig.from_dict(sg)
     LOG.info("SellGuardConfig(base): %s", base_cfg)
 
-    cfg = base_cfg  # keep existing code paths working; per-symbol clone happens in loop
-
     acct_key = account_id_key()
     LOG.info("account_id_key=%s", acct_key)
 
@@ -1594,25 +1592,6 @@ def main() -> None:
 
             for p in positions:
                 s = p.symbol
-
-
-                # --- per-symbol Market Regime overlay (safe clone) ---
-
-
-                cfg = _mm_clone_cfg(base_cfg)
-
-
-                try:
-
-
-                    _mm_apply_overlay_to_exitconfig(cfg, mode=mode, symbol=s)
-                    LOG.info("[REGIME_OVERLAY] %s mode=%s cfg target=%.2f stop=%.2f hold=[%.0f..%.0f]", s, mode, cfg.target_gain_pct, cfg.intraday_stoploss_pct, cfg.min_hold_minutes, cfg.max_hold_minutes)
-
-
-                except Exception:
-
-
-                    pass
                 has_open_sell = (s in open_sell_symbols)
                 qty = p.qty
                 mv = p.mv

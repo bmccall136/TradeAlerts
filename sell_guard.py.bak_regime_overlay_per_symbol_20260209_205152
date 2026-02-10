@@ -166,20 +166,6 @@ def _mm_stamp_last_sell_event_v2(conn=None, cur=None, symbol=None, event=None, t
 
     # Fallback: do nothing. This function is intentionally non-blocking.
     return
-
-def _mm_clone_cfg(cfg):
-    """Best-effort clone for per-symbol cfg mutation."""
-    try:
-        from dataclasses import replace
-        return replace(cfg)
-    except Exception:
-        pass
-    try:
-        import copy
-        return copy.deepcopy(cfg)
-    except Exception:
-        return cfg
-
 def _mm_apply_overlay_to_exitconfig(exit_cfg, mode="", symbol=None):
     """
     Mutate ExitConfig in-place using current market regime overlay.
@@ -1414,10 +1400,13 @@ def main() -> None:
     ai_enabled, ai_use_exits = get_ai_flags(settings)
     LOG.info("AI exits config: enabled=%s use_exits=%s", ai_enabled, ai_use_exits)
 
-    base_cfg = SellGuardConfig.from_dict(sg)
-    LOG.info("SellGuardConfig(base): %s", base_cfg)
-
-    cfg = base_cfg  # keep existing code paths working; per-symbol clone happens in loop
+    cfg = SellGuardConfig.from_dict(sg)
+    LOG.info("SellGuardConfig: %s", cfg)
+    # --- Market Regime overlay (applied once per cfg) ---
+    try:
+        _mm_apply_overlay_to_exitconfig(cfg, mode=mode, symbol=(locals().get("s") or locals().get("symbol") or ""))
+    except Exception:
+        pass
 
     acct_key = account_id_key()
     LOG.info("account_id_key=%s", acct_key)
@@ -1594,25 +1583,6 @@ def main() -> None:
 
             for p in positions:
                 s = p.symbol
-
-
-                # --- per-symbol Market Regime overlay (safe clone) ---
-
-
-                cfg = _mm_clone_cfg(base_cfg)
-
-
-                try:
-
-
-                    _mm_apply_overlay_to_exitconfig(cfg, mode=mode, symbol=s)
-                    LOG.info("[REGIME_OVERLAY] %s mode=%s cfg target=%.2f stop=%.2f hold=[%.0f..%.0f]", s, mode, cfg.target_gain_pct, cfg.intraday_stoploss_pct, cfg.min_hold_minutes, cfg.max_hold_minutes)
-
-
-                except Exception:
-
-
-                    pass
                 has_open_sell = (s in open_sell_symbols)
                 qty = p.qty
                 mv = p.mv

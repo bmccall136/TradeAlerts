@@ -166,33 +166,11 @@ def _mm_stamp_last_sell_event_v2(conn=None, cur=None, symbol=None, event=None, t
 
     # Fallback: do nothing. This function is intentionally non-blocking.
     return
-
-def _mm_clone_cfg(cfg):
-    """Best-effort clone for per-symbol cfg mutation."""
-    try:
-        from dataclasses import replace
-        return replace(cfg)
-    except Exception:
-        pass
-    try:
-        import copy
-        return copy.deepcopy(cfg)
-    except Exception:
-        return cfg
-
-def _mm_apply_overlay_to_exitconfig(exit_cfg, mode="", symbol=None):
+def _mm_apply_overlay_to_exitconfig(exit_cfg, mode=""):
     """
     Mutate ExitConfig in-place using current market regime overlay.
     Logs an event into sell_events with regime+mode so Analytics can slice Mode?Regime.
     """
-    # prevent double-application (safe if called multiple times)
-    try:
-        if getattr(exit_cfg, "_mm_overlay_applied", False):
-            return
-        setattr(exit_cfg, "_mm_overlay_applied", True)
-    except Exception:
-        pass
-
     snap = _mm_regime_snapshot()
     lab  = (snap.get("label") or "UNKNOWN").upper()
     ov   = _mm_regime_overlay(lab)
@@ -249,19 +227,6 @@ def _mm_apply_overlay_to_exitconfig(exit_cfg, mode="", symbol=None):
             after[k] = float(getattr(exit_cfg, k))
         except Exception:
             pass
-
-    # best-effort: log overlay application for transparency
-    try:
-        payload = {
-            "mode": mode,
-            "regime": snap,
-            "overlay": ov,
-            "before": before,
-            "after": after,
-        }
-        emit_sell_event(event="REGIME_OVERLAY_APPLIED", symbol=(symbol or ""), reason="REGIME_OVERLAY", detail=json.dumps(payload, separators=(",", ":")), overlay_json=json.dumps(payload, separators=(",", ":")))
-    except Exception:
-        pass
 
     # Log for analytics
     try:
@@ -1414,10 +1379,8 @@ def main() -> None:
     ai_enabled, ai_use_exits = get_ai_flags(settings)
     LOG.info("AI exits config: enabled=%s use_exits=%s", ai_enabled, ai_use_exits)
 
-    base_cfg = SellGuardConfig.from_dict(sg)
-    LOG.info("SellGuardConfig(base): %s", base_cfg)
-
-    cfg = base_cfg  # keep existing code paths working; per-symbol clone happens in loop
+    cfg = SellGuardConfig.from_dict(sg)
+    LOG.info("SellGuardConfig: %s", cfg)
 
     acct_key = account_id_key()
     LOG.info("account_id_key=%s", acct_key)
@@ -1594,25 +1557,6 @@ def main() -> None:
 
             for p in positions:
                 s = p.symbol
-
-
-                # --- per-symbol Market Regime overlay (safe clone) ---
-
-
-                cfg = _mm_clone_cfg(base_cfg)
-
-
-                try:
-
-
-                    _mm_apply_overlay_to_exitconfig(cfg, mode=mode, symbol=s)
-                    LOG.info("[REGIME_OVERLAY] %s mode=%s cfg target=%.2f stop=%.2f hold=[%.0f..%.0f]", s, mode, cfg.target_gain_pct, cfg.intraday_stoploss_pct, cfg.min_hold_minutes, cfg.max_hold_minutes)
-
-
-                except Exception:
-
-
-                    pass
                 has_open_sell = (s in open_sell_symbols)
                 qty = p.qty
                 mv = p.mv
@@ -1873,7 +1817,7 @@ def main() -> None:
                     LOG.info("[TIMEOUT] SKIP %s: no position_opened.opened_epoch (guarded)", s)
 
                 # Intraday stop-loss (hard floor, AI cannot veto)
-                if cfg.allow_intraday_stoploss and (not is_prior_day) and pl_pct <= cfg.intraday_stoploss_pct:
+                if cfg.allow_intraday_stoploss and (not is_prior_day) and pl_pct <= cfg.timeout_exit_pct:
                     LOG.info(
                         "[STOPLOSS] %s pl=%.2f%% <= timeout_exit_pct=%.2f%% ? exit",
                         s,
