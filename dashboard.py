@@ -2280,6 +2280,140 @@ def live_data():
     # --- VALUE TILE NAV SOURCE (E*TRADE acct summary Computed.netAccountValue) ---
     # Single-source-of-truth: use acct summary Computed.netAccountValue (or totalAccountValue).
     # Never stomp NAV with 0.0; if missing, keep what was already computed.
+
+    # --- MM_OPENED_FROM_POSITION_OPENED (authoritative entry time) ---
+    try:
+        import sqlite3
+        import datetime as _dt
+        try:
+            from zoneinfo import ZoneInfo as _ZoneInfo
+            _ET = _ZoneInfo("America/New_York")
+        except Exception:
+            _ET = None
+    
+        _mm_holdings = None
+        if "holdings" in locals() and isinstance(holdings, list):
+            _mm_holdings = holdings
+        elif "payload" in locals() and isinstance(payload, dict) and isinstance(payload.get("holdings"), list):
+            _mm_holdings = payload.get("holdings")
+    
+        if _mm_holdings:
+            _mm_map = {}
+            _con = None
+            try:
+                _con = sqlite3.connect(LIVE_DB, timeout=5)
+                _cur = _con.cursor()
+                for sym, ts in _cur.execute("SELECT symbol, opened_ts_utc FROM position_opened WHERE opened_ts_utc IS NOT NULL"):
+                    if sym:
+                        _mm_map[str(sym).upper()] = int(ts)
+            finally:
+                try:
+                    if _con: _con.close()
+                except Exception:
+                    pass
+    
+            for _h in _mm_holdings:
+                if not isinstance(_h, dict):
+                    continue
+                _sym = str(_h.get("symbol") or _h.get("Symbol") or "").upper().strip()
+                if not _sym:
+                    continue
+                _ts = _mm_map.get(_sym)
+                if not _ts:
+                    continue
+    
+                # preserve prior opened_et (often epoch float / midnight artifact)
+                if "opened_et_epoch" not in _h and "opened_et" in _h:
+                    try:
+                        _h["opened_et_epoch"] = float(_h.get("opened_et"))
+                    except Exception:
+                        _h["opened_et_epoch"] = _h.get("opened_et")
+    
+                _h["opened_ts_utc"] = int(_ts)
+    
+                # authoritative formatted ET string (prevents frontend epoch parsing)
+                try:
+                    _dtu = _dt.datetime.fromtimestamp(int(_ts), tz=_dt.timezone.utc)
+                    _dte = _dtu.astimezone(_ET) if _ET is not None else _dtu
+                    _h["opened_et"] = _dte.strftime("%m/%d/%Y, %I:%M %p")
+                except Exception:
+                    _h["opened_et"] = str(_ts)
+    except Exception:
+        # never let Opened-time hydration break the dashboard
+        pass
+
+
+    # --- MM_LIVE_DATA_LATE_HYDRATOR (force authoritative Opened time) ---
+
+    # --- MM_LIVE_DATA_DEBUG_STAMP ---
+    try:
+        for _k,_v in list(locals().items()):
+            if isinstance(_v, dict) and isinstance(_v.get("holdings"), list):
+                _v["mm_live_data_patch"] = "DEBUG_STAMP_20260210_180104"
+                break
+    except Exception:
+        pass
+
+    try:
+        import sqlite3
+        import datetime as _dt
+        try:
+            from zoneinfo import ZoneInfo as _ZoneInfo
+            _ET = _ZoneInfo("America/New_York")
+        except Exception:
+            _ET = None
+    
+        _live_db_path = None
+        if "LIVE_DB" in globals():
+            _live_db_path = globals().get("LIVE_DB")
+        if not _live_db_path:
+            _live_db_path = "live.db"
+    
+        # Find the dict we?re about to return (payload/data/out/etc.)
+        _mm_dict = None
+        for _k, _v in list(locals().items()):
+            if isinstance(_v, dict) and isinstance(_v.get("holdings"), list):
+                _mm_dict = _v
+                break
+    
+        if _mm_dict is not None:
+            _mm_map = {}
+            _con = None
+            try:
+                _con = sqlite3.connect(_live_db_path, timeout=5)
+                _cur = _con.cursor()
+                for sym, ts in _cur.execute("SELECT symbol, opened_ts_utc FROM position_opened WHERE opened_ts_utc IS NOT NULL"):
+                    if sym:
+                        _mm_map[str(sym).upper()] = int(ts)
+            finally:
+                try:
+                    if _con: _con.close()
+                except Exception:
+                    pass
+    
+            for _h in _mm_dict.get("holdings") or []:
+                if not isinstance(_h, dict):
+                    continue
+                _sym = str(_h.get("symbol") or _h.get("Symbol") or "").upper().strip()
+                if not _sym:
+                    continue
+                _ts = _mm_map.get(_sym)
+                if not _ts:
+                    continue
+    
+                if "opened_et_epoch" not in _h and "opened_et" in _h:
+                    _h["opened_et_epoch"] = _h.get("opened_et")
+    
+                _h["opened_ts_utc"] = int(_ts)
+                try:
+                    _dtu = _dt.datetime.fromtimestamp(int(_ts), tz=_dt.timezone.utc)
+                    _dte = _dtu.astimezone(_ET) if _ET is not None else _dtu
+                    _h["opened_et"] = _dte.strftime("%m/%d/%Y, %I:%M %p")
+                except Exception:
+                    _h["opened_et"] = str(_ts)
+    except Exception:
+        pass
+
     try:
         def _ff(x, default=None):
             try:
@@ -2408,6 +2542,55 @@ def live_data():
 
         holdings, positions_value = _build_holdings_from_positions(pos_rows)
 
+        # --- MM_HYDRATE_HOLDINGS_FROM_POSITION_OPENED_LIVE_DATA_V3 ---
+        try:
+            import sqlite3
+            import datetime as _dt
+            try:
+                from zoneinfo import ZoneInfo as _ZoneInfo
+                _ET = _ZoneInfo("America/New_York")
+            except Exception:
+                _ET = None
+        
+            _mm_map = {}
+            _con = None
+            try:
+                _con = sqlite3.connect(str(LIVE_DB), timeout=5)
+                _cur = _con.cursor()
+                for _sym, _ts in _cur.execute("SELECT symbol, opened_ts_utc FROM position_opened WHERE opened_ts_utc IS NOT NULL"):
+                    if _sym:
+                        _mm_map[str(_sym).upper()] = int(_ts)
+            finally:
+                try:
+                    if _con:
+                        _con.close()
+                except Exception:
+                    pass
+        
+            for _h in holdings or []:
+                if not isinstance(_h, dict):
+                    continue
+                _sym = str(_h.get("symbol") or _h.get("Symbol") or "").upper().strip()
+                if not _sym:
+                    continue
+                _ts = _mm_map.get(_sym)
+                if not _ts:
+                    continue
+        
+                # preserve broker artifact (epoch float/string)
+                if "opened_et_epoch" not in _h and "opened_et" in _h:
+                    _h["opened_et_epoch"] = _h.get("opened_et")
+        
+                _h["opened_ts_utc"] = int(_ts)
+                try:
+                    _dtu = _dt.datetime.fromtimestamp(int(_ts), tz=_dt.timezone.utc)
+                    _dte = _dtu.astimezone(_ET) if _ET is not None else _dtu
+                    _h["opened_et"] = _dte.strftime("%m/%d/%Y, %I:%M %p")
+                except Exception:
+                    _h["opened_et"] = str(_ts)
+        except Exception:
+            pass
+
         # If holdings math couldn’t produce a value, fall back to broker netMv
         if (not positions_value) and positions_value_from_api > 0:
             positions_value = float(positions_value_from_api)
@@ -2416,6 +2599,49 @@ def live_data():
         try:
             from services.symbol_names import enrich_holdings_names
             holdings = enrich_holdings_names(holdings, str(LIVE_DB))
+            # --- MM_HYDRATE_HOLDINGS_FROM_POSITION_OPENED_LIVE_DATA_V4 ---
+            try:
+                import sqlite3
+                import datetime as _dt
+                try:
+                    from zoneinfo import ZoneInfo as _ZoneInfo
+                    _ET = _ZoneInfo('America/New_York')
+                except Exception:
+                    _ET = None
+                _mm_map = {}
+                _con = None
+                try:
+                    _con = sqlite3.connect(str(LIVE_DB), timeout=5)
+                    _cur = _con.cursor()
+                    for _sym, _ts in _cur.execute("SELECT symbol, opened_ts_utc FROM position_opened WHERE opened_ts_utc IS NOT NULL"):
+                        if _sym:
+                            _mm_map[str(_sym).upper()] = int(_ts)
+                finally:
+                    try:
+                        if _con: _con.close()
+                    except Exception:
+                        pass
+                for _h in holdings or []:
+                    if not isinstance(_h, dict):
+                        continue
+                    _sym = str(_h.get('symbol') or _h.get('Symbol') or '').upper().strip()
+                    if not _sym:
+                        continue
+                    _ts = _mm_map.get(_sym)
+                    if not _ts:
+                        continue
+                    if 'opened_et_epoch' not in _h and 'opened_et' in _h:
+                        _h['opened_et_epoch'] = _h.get('opened_et')
+                    _h['opened_ts_utc'] = int(_ts)
+                    try:
+                        _dtu = _dt.datetime.fromtimestamp(int(_ts), tz=_dt.timezone.utc)
+                        _dte = _dtu.astimezone(_ET) if _ET is not None else _dtu
+                        _h['opened_et'] = _dte.strftime('%m/%d/%Y, %I:%M %p')
+                    except Exception:
+                        _h['opened_et'] = str(_ts)
+            except Exception:
+                pass
+
         except Exception as _exc:
             LOG.warning("name enrichment failed: %s", _exc)
 
@@ -3460,10 +3686,23 @@ def _today_log_paths():
 
 @app.route("/api/market_regime")
 def api_market_regime():
+    from flask import jsonify, current_app
     try:
-        return jsonify(get_market_regime_cached())
+        from services.market_regime import get_market_regime_cached
+        data = get_market_regime_cached() or {}
+        # Ensure stable keys for UI
+        if "label" not in data and "regime" in data:
+            data["label"] = data.get("regime")
+        if "confidence" in data:
+            try:
+                data["confidence"] = int(round(float(data["confidence"])))
+            except Exception:
+                pass
+        return jsonify(data)
     except Exception as e:
+        current_app.logger.exception("api_market_regime failed: %s", e)
         return jsonify({"ok": False, "label": "UNKNOWN", "confidence": 0, "reason": str(e), "detail": {}, "asof_et": ""})
+
 
 @app.route("/api/analytics/day")
 def api_analytics_day():

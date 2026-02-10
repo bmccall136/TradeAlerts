@@ -478,6 +478,33 @@ def insert_trade(
     conn.close()
 
 
+
+    # --- MM_BUY_EVENTS_DB_V1: DB-backed BUY regime analytics (buy_events) ---
+    try:
+        _act = str(action).upper().strip() if "action" in locals() else ""
+        if _act == "BUY":
+            from services.buy_events_db import log_buy_event
+            # try to reuse the same DB path this module is using (DB_PATH/LIVE_DB), else project live.db
+            _dbp = None
+            try:
+                _dbp = str(LIVE_DB) if "LIVE_DB" in globals() else None
+            except Exception:
+                _dbp = None
+            if not _dbp:
+                try:
+                    _dbp = str(DB_PATH) if "DB_PATH" in globals() else None
+                except Exception:
+                    _dbp = None
+            log_buy_event(
+                symbol=symbol,
+                event="FILLED",
+                db_path=_dbp,
+                price=(price if "price" in locals() else None),
+                qty=(qty if "qty" in locals() else None),
+                note="insert_trade BUY",
+            )
+    except Exception:
+        pass
 def get_trades(limit: int = 1000, db_path: str | None = None):
     """
     Return recent trades if the DB has a 'trades' table; otherwise return [].

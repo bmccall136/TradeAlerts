@@ -222,6 +222,44 @@
 </div>
 
 <script>
+
+// --- $$Machine: format Opened (UTC epoch seconds) as ET ---
+function fmtOpenedET(x) {
+  try {
+    if (x === null || x === undefined) return '';
+    const s = ('' + x).trim();
+    if (!s) return '';
+
+    // If backend already provided a formatted ET string, DO NOT re-parse it.
+    // Examples: "02/10/2026, 10:37 AM"
+    if (isNaN(Number(s))) {
+      if (s.includes('/') && (s.includes(':') || s.toUpperCase().includes('AM') || s.toUpperCase().includes('PM') || s.includes(','))) {
+        return s;
+      }
+      return s; // safest: display string as-is
+    }
+
+    const n = Number(s);
+    if (!n) return s;
+
+    // seconds vs ms
+    const d = new Date(n > 2e12 ? n : n * 1000);
+
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hour12: true
+      }).format(d);
+    } catch (e) {
+      return d.toLocaleString();
+    }
+  } catch (e) {
+    try { return '' + x; } catch (_) { return ''; }
+  }
+}
+
+
 (() => {
   const POS  = '#2ecc71';
   const NEG  = '#ff6b6b';
@@ -324,7 +362,7 @@
         const name = ('' + ((h && (h.name || h.full_name || h.company_name)) || '')).trim();
         if (sym && name) { HOLD_NAME_MAP[sym] = name; }
 
-        const open = (h && h.opened_et) ? (''+h.opened_et) : '?';
+        const open = (typeof mmOpenedDisplay === 'function') ? mmOpenedDisplay(h) : ((h && h.opened_et) ? (''+h.opened_et) : '?');
 
         const last  = num(h && h.last_price);
         const paid  = num(h && h.price_paid);
@@ -533,10 +571,307 @@ set('#kpi-bp',     money(bp));
   };
 
   document.addEventListener('DOMContentLoaded', () => {
+
+// --- MM_OPENED_DISPLAY_HELPER ---
+// Use backend-provided opened_et string verbatim (authoritative).
+// Fallback: format opened_ts_utc (seconds) to ET.
+// Last resort: if opened_et is numeric epoch, format it.
+function mmOpenedDisplay(h) {
+  try {
+    if (h && typeof h.opened_et === 'string' && h.opened_et.trim() !== '') {
+      return h.opened_et; // authoritative string from backend
+    }
+
+    const ts = h && (h.opened_ts_utc || h.opened_ts);
+    if (ts) {
+      const d = new Date(Number(ts) * 1000);
+      try {
+        return new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/New_York',
+          year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit',
+          hour12: true
+        }).format(d);
+      } catch (e) {
+        return d.toLocaleString();
+      }
+    }
+
+    const oe = h && h.opened_et;
+    if (oe && (typeof oe === 'number' || (typeof oe === 'string' && oe.trim() !== '' && !isNaN(Number(oe))))) {
+      const n = Number(oe);
+      // If it's huge, assume ms; else seconds
+      const d = new Date(n > 2e12 ? n : n * 1000);
+      try {
+        return new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/New_York',
+          year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit',
+          hour12: true
+        }).format(d);
+      } catch (e) {
+        return d.toLocaleString();
+      }
+    }
+  } catch (e) {}
+  return '?';
+}
+
+
     refreshLive().catch(console.error);
     setInterval(() => refreshLive().catch(console.error), 30000);
   });
 })();
 </script>
 
+
+<!-- MM_OPENED_ET_FIX_V2 -->
+<script>
+// --- $$Machine: Fix Holdings "Opened (ET)" (handles no <thead>, live rebuilds) ---
+(function mmObserveOpenedET_v2(){
+
+  function fmtOpenedET(x) {
+  try {
+    if (x === null || x === undefined) return '';
+    const s = ('' + x).trim();
+    if (!s) return '';
+
+    // If backend already provided a formatted ET string, DO NOT re-parse it.
+    // Examples: "02/10/2026, 10:37 AM"
+    if (isNaN(Number(s))) {
+      if (s.includes('/') && (s.includes(':') || s.toUpperCase().includes('AM') || s.toUpperCase().includes('PM') || s.includes(','))) {
+        return s;
+      }
+      return s; // safest: display string as-is
+    }
+
+    const n = Number(s);
+    if (!n) return s;
+
+    // seconds vs ms
+    const d = new Date(n > 2e12 ? n : n * 1000);
+
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hour12: true
+      }).format(d);
+    } catch (e) {
+      return d.toLocaleString();
+    }
+  } catch (e) {
+    try { return '' + x; } catch (_) { return ''; }
+  }
+}
+
+  function headerCells(table) {
+    let ths = Array.from(table.querySelectorAll("thead th"));
+    if (ths.length) return ths;
+    for (const r of Array.from(table.querySelectorAll("tr"))) {
+      const rths = Array.from(r.querySelectorAll("th"));
+      if (rths.length) return rths;
+    }
+    return [];
+  }
+
+  function openedIdx(table) {
+    const ths = headerCells(table);
+    if (!ths.length) return -1;
+    for (let i=0; i<ths.length; i++) {
+      const label = (ths[i].textContent || "").replace(/\s+/g," ").trim().toLowerCase();
+      if (label === "opened (et)" || (label.includes("opened") && label.includes("et"))) return i;
+    }
+    return -1;
+  }
+
+  function patch(root=document) {
+    const tables = root.querySelectorAll ? root.querySelectorAll("table") : [];
+    for (const t of tables) {
+      const idx = openedIdx(t);
+      if (idx < 0) continue;
+      t.querySelectorAll("tbody tr").forEach(tr=>{
+        const td = tr.children && tr.children[idx];
+        if (!td) return;
+        const raw = (td.textContent || "").trim();
+        const out = fmtOpenedET(raw);
+        if (out !== raw) td.textContent = out;
+      });
+    }
+  }
+
+  function run(){ try { patch(document); } catch(e) {} }
+
+  run();
+
+  const obs = new MutationObserver(muts=>{
+    for (const m of muts) {
+      if (!m.addedNodes) continue;
+      m.addedNodes.forEach(n=>{
+        if (n && n.nodeType === 1) { try { patch(n); } catch(e) {} }
+      });
+    }
+  });
+  obs.observe(document.documentElement || document.body, { childList:true, subtree:true });
+
+  setInterval(run, 1000);
+
+})();
+</script>
+
 {% endblock %}
+
+
+<script>
+// --- $$Machine: fix Holdings "Opened (ET)" column (backend sends UTC epoch seconds) ---
+(function mmFixOpenedET(){
+  function fmtOpenedET(x) {
+  try {
+    if (x === null || x === undefined) return '';
+    const s = ('' + x).trim();
+    if (!s) return '';
+
+    // If backend already provided a formatted ET string, DO NOT re-parse it.
+    // Examples: "02/10/2026, 10:37 AM"
+    if (isNaN(Number(s))) {
+      if (s.includes('/') && (s.includes(':') || s.toUpperCase().includes('AM') || s.toUpperCase().includes('PM') || s.includes(','))) {
+        return s;
+      }
+      return s; // safest: display string as-is
+    }
+
+    const n = Number(s);
+    if (!n) return s;
+
+    // seconds vs ms
+    const d = new Date(n > 2e12 ? n : n * 1000);
+
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hour12: true
+      }).format(d);
+    } catch (e) {
+      return d.toLocaleString();
+    }
+  } catch (e) {
+    try { return '' + x; } catch (_) { return ''; }
+  }
+}
+
+  function run(){
+    // find the Holdings table by locating the header "Opened (ET)"
+    const tables = Array.from(document.querySelectorAll("table"));
+    for (const t of tables) {
+      const ths = Array.from(t.querySelectorAll("thead th"));
+      if (!ths.length) continue;
+      let openedIdx = -1;
+      ths.forEach((th,i)=>{
+        const label = (th.textContent || "").toLowerCase();
+        if (label.includes("opened") && label.includes("et")) openedIdx = i;
+      });
+      if (openedIdx < 0) continue;
+
+      const rows = Array.from(t.querySelectorAll("tbody tr"));
+      for (const tr of rows) {
+        const tds = tr.querySelectorAll("td");
+        if (!tds || tds.length <= openedIdx) continue;
+        const td = tds[openedIdx];
+        const raw = (td.textContent || "").trim();
+        const out = fmtOpenedET(raw);
+        if (out && out !== raw) td.textContent = out;
+      }
+      // only patch the first matching table
+      break;
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", run);
+  } else {
+    run();
+  }
+})();
+</script>
+
+
+
+<script>
+// --- $$Machine: Fix Holdings "Opened (ET)" via MutationObserver ---
+(function mmObserveOpenedET(){
+
+  function fmtOpenedET(x) {
+  try {
+    if (x === null || x === undefined) return '';
+    const s = ('' + x).trim();
+    if (!s) return '';
+
+    // If backend already provided a formatted ET string, DO NOT re-parse it.
+    // Examples: "02/10/2026, 10:37 AM"
+    if (isNaN(Number(s))) {
+      if (s.includes('/') && (s.includes(':') || s.toUpperCase().includes('AM') || s.toUpperCase().includes('PM') || s.includes(','))) {
+        return s;
+      }
+      return s; // safest: display string as-is
+    }
+
+    const n = Number(s);
+    if (!n) return s;
+
+    // seconds vs ms
+    const d = new Date(n > 2e12 ? n : n * 1000);
+
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hour12: true
+      }).format(d);
+    } catch (e) {
+      return d.toLocaleString();
+    }
+  } catch (e) {
+    try { return '' + x; } catch (_) { return ''; }
+  }
+}
+
+  function patchTables(root=document) {
+    const tables = root.querySelectorAll ? root.querySelectorAll("table") : [];
+    for (const t of tables) {
+      const ths = Array.from(t.querySelectorAll("thead th"));
+      let openedIdx = -1;
+      ths.forEach((th,i)=>{
+        const label = (th.textContent || "").toLowerCase();
+        if (label.includes("opened") && label.includes("et")) openedIdx = i;
+      });
+      if (openedIdx < 0) continue;
+
+      const rows = t.querySelectorAll("tbody tr");
+      rows.forEach(tr=>{
+        const td = tr.children && tr.children[openedIdx];
+        if (!td) return;
+        const raw = (td.textContent || "").trim();
+        const out = fmtOpenedET(raw);
+        if (out !== raw) td.textContent = out;
+      });
+    }
+  }
+
+  // initial
+  patchTables();
+
+  // observe live updates
+  const obs = new MutationObserver(muts=>{
+    for (const m of muts) {
+      if (!m.addedNodes) continue;
+      m.addedNodes.forEach(n=>{
+        if (n && n.nodeType === 1) patchTables(n);
+      });
+    }
+  });
+
+  obs.observe(document.documentElement || document.body, { childList:true, subtree:true });
+})();
+</script>
+
