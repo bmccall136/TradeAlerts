@@ -71,11 +71,7 @@
   overflow:hidden;
   background:rgba(0,0,0,0.35);
   position:relative; /* REQUIRED for ::after ticks */
-
-  --mm-hour-step: 64.615px;   /* 60m */
-  --mm-minor-step: 10.769px; /* 10m */
 }
-
 .mm-regime-bar > div{
   height:100%;
   position:relative;
@@ -85,27 +81,18 @@
   content:"";
   position:absolute;
   inset:0;
-  z-index:1;
+  z-index:1; /* BELOW colored segments */
   pointer-events:none;
-  opacity:0.75;
-
-  /* major ticks exactly on the hour (9:30->16:00 maps to 420px over 390m) */
-  background:
-    repeating-linear-gradient(
-      to right,
-      rgba(255,255,255,0.70) 0px,
-      rgba(255,255,255,0.70) 1px,
-      rgba(255,255,255,0.0)  1px,
-      rgba(255,255,255,0.0)  var(--mm-hour-step)
-    ),
-    repeating-linear-gradient(
-      to right,
-      rgba(255,255,255,0.28) 0px,
-      rgba(255,255,255,0.28) 1px,
-      rgba(255,255,255,0.0)  1px,
-      rgba(255,255,255,0.0)  var(--mm-minor-step)
-    );
+  opacity:0.35; /* visible ticks */
+  background:repeating-linear-gradient(
+    to right,
+    rgba(255,255,255,0.35) 0px,
+    rgba(255,255,255,0.35) 1px,
+    rgba(255,255,255,0.0) 1px,
+    rgba(255,255,255,0.0) 20px
+  );
 }
+
 /* Hour labels row */
 .mm-regime-hours{
   width:420px;
@@ -160,28 +147,6 @@
   background-size: calc(100% / 6) 100%;
   background-repeat: repeat;
   opacity: 0.55;
-}
-</style>
-
-
-<style>
-/* MM_REGIME_STRIP_CSS_V4 */
-#mm-regime-strip .mm-regime-legend{ text-align:center; width:100%; }
-#mm-regime-strip .mm-regime-hours{
-  width: 520px;
-  height: 16px;
-  display: block;
-  position: relative;
-  opacity: 0.85;
-  font-size: 12px;
-  line-height: 16px;
-  margin-top: 4px;
-}
-#mm-regime-strip .mm-hour{
-  position:absolute;
-  transform: translateX(-50%);
-  top: 0;
-  white-space: nowrap;
 }
 </style>
 
@@ -389,65 +354,7 @@ var conf = (j.confidence != null ? j.confidence : (j.conf != null ? j.conf : j.s
       const r = await fetch(url, {cache:'no-store'});
       if (!r.ok) return;
       const j = await r.json();
-            // --- MM_REGIME_HOURS_FALLBACK_V1 ---
-      // Ensure the hours row exists and is visible; if tick builder fails or is overridden, we still show hours.
-      const labels = document.querySelector('#mm-regime-strip .mm-regime-hours');
-      if (labels){
-        labels.style.display = 'block';
-        labels.style.position = 'relative';
-        labels.style.height = '16px';
-        labels.style.width = (j && j.width_px ? (String(j.width_px) + 'px') : labels.style.width) || labels.style.width;
-
-        // Clear + rebuild hour labels from start_et/end_et when needed.
-        const ensureHours = () => {
-          if (labels.querySelector('.mm-hour')) return; // already has labels
-          const start = (j && j.start_et) ? j.start_et : '09:30';
-          const end   = (j && j.end_et)   ? j.end_et   : '16:00';
-
-          // Compute hour marks (10..16) within the session, place them proportionally.
-          // Session in minutes (handles 09:30 start cleanly).
-          const toMin = (hhmm) => {
-            const m = String(hhmm||'').match(/^(\d{1,2}):(\d{2})$/);
-            if (!m) return None;
-            return (int(m[1]) * 60) + int(m[2]);
-          };
-
-          // JS version inline (avoid python replacement complexity)
-        };
-
-        // We run this after a short delay too (in case other code wipes labels)
-        setTimeout(() => {
-          if (labels.querySelector('.mm-hour')) return;
-          labels.innerHTML = '';
-
-          const parse = (hhmm) => {
-            const m = String(hhmm||'').match(/^(\d{1,2}):(\d{2})$/);
-            if (!m) return null;
-            return (parseInt(m[1],10)*60) + parseInt(m[2],10);
-          };
-
-          const startMin = parse((j && j.start_et) ? j.start_et : '09:30') || (9*60+30);
-          const endMin   = parse((j && j.end_et)   ? j.end_et   : '16:00') || (16*60);
-
-          const span = Math.max(1, endMin - startMin);
-
-          // Label hours 10..16 (display 10,11,12,1,2,3,4)
-          const hours = [10,11,12,13,14,15,16];
-          for (const h of hours){
-            const t = h*60;
-            if (t < startMin || t > endMin) continue;
-            const pct = ((t - startMin) / span) * 100;
-
-            const sp = document.createElement('span');
-            sp.className = 'mm-hour';
-            sp.style.left = pct.toFixed(3) + '%';
-            sp.textContent = (h <= 12) ? String(h) : String(h-12);
-            labels.appendChild(sp);
-          }
-        }, 50);
-      }
-      // --- /MM_REGIME_HOURS_FALLBACK_V1 ---
-const buckets = j.buckets || [];
+      const buckets = j.buckets || [];
       if (!buckets.length) return;
 
       const segs = compressBuckets(buckets);

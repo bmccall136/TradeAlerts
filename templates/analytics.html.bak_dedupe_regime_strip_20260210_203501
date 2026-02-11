@@ -1,18 +1,4 @@
 {% extends "layout.html" %}
-{% block analytics_regime_strip %}
-<div id="mm-regime-strip" class="mm-regime-strip-wrap" style="margin:10px 0 6px 0;">
-  <div class="mm-regime-strip-inner">
-    <div class="mm-regime-legend">
-      <span style="color:#00d26a;">TREND</span>/<span style="color:#ffd400;">CHOP</span>/<span style="color:#ff4a4a;">DEAD</span>
-    </div>
-    <div class="mm-regime-bar"></div>
-    <div class="mm-regime-hours"></div>
-  </div>
-</div>
-{% endblock %}
-
-
-
 {% block content %}
 
 <style>
@@ -37,7 +23,60 @@
 }
 .ax-date-input:focus { outline: none; box-shadow: none; border-color: #8b94a3; }
 
-
+/* REGIME STRIP (Analytics-only) */
+.ax-regime-wrap{
+  display:flex;
+  justify-content:center;
+  margin: 6px 0 14px 0;
+}
+.ax-regime{
+  display:flex;
+  align-items:flex-start;
+  gap:16px;
+}
+.ax-regime-label{
+  font-weight:800;
+  letter-spacing:.2px;
+  line-height:1.1;
+  user-select:none;
+  white-space:nowrap;
+}
+.ax-regime-label .t { color:#00c853; } /* TREND */
+.ax-regime-label .c { color:#ffd600; } /* CHOP */
+.ax-regime-label .d { color:#ff5252; } /* DEAD */
+.ax-regime-stripcol{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.ax-regime-strip{
+  width: 360px;
+  height: 22px;
+  border: 1px solid #e8e8e8;
+  border-radius: 2px;
+  overflow:hidden;
+  background:#000;
+  display:flex;
+}
+.ax-regime-seg{
+  height:100%;
+}
+.ax-regime-hours{
+  display:flex;
+  justify-content:space-between;
+  width: 360px;
+  color:#e8e8e8;
+  opacity:.85;
+  font-weight:700;
+  padding: 0 2px;
+  user-select:none;
+}
+.ax-regime-note{
+  text-align:center;
+  font-size:12px;
+  color:#9aa0a6;
+  margin-top:2px;
+}
 </style>
 
 <div class="container-fluid py-3">
@@ -50,7 +89,22 @@
         <div class="text-secondary small" id="ax-date">Loading…</div>
       </div>
 
+{% block analytics_regime_strip %}
+<div class="ax-regime-wrap">
+    <div class="ax-regime">
+      <div class="ax-regime-label">
+        <span class="t">TREND</span>/<span class="c">CHOP</span>/<span class="d">DEAD</span>
+      </div>
 
+      <div class="ax-regime-stripcol">
+        <div class="ax-regime-strip" id="ax-regime-strip" aria-label="Market regime history strip"></div>
+        <div class="ax-regime-hours">
+          <span>10</span><span>11</span><span>12</span><span>1</span><span>2</span><span>3</span><span>4</span>
+        </div>
+        <div class="ax-regime-note" id="ax-regime-note" style="display:none;"></div>
+      </div>
+    </div>
+{% endblock %}
 
     </div>
 
@@ -175,6 +229,81 @@
   liveBtn.classList.add(canJump ? "btn-outline-warning" : "btn-outline-secondary");
 })();
 
+// Regime strip renderer
+(function(){
+  const strip = document.getElementById("ax-regime-strip");
+  const note  = document.getElementById("ax-regime-note");
+  if (!strip) return;
+
+  const u = new URL(window.location.href);
+  const dateArg = (u.searchParams.get("date") || "").trim();
+  const apiUrl = "/api/market_regime_timeline" + (dateArg ? ("?date=" + encodeURIComponent(dateArg)) : "");
+
+  const COLORS = {
+    "TREND": "#00c853",
+    "CHOP":  "#ffd600",
+    "DEAD":  "#ff5252",
+    "":      "#000000",
+    null:    "#000000"
+  };
+
+  function showNote(msg){
+    if (!note) return;
+    note.style.display = "block";
+    note.textContent = msg;
+  }
+
+  function clearStrip(){
+    strip.innerHTML = "";
+  }
+
+  // buckets => compress contiguous regimes into segments
+  function buildSegments(buckets){
+    const segs = [];
+    let cur = null;
+    for (const b of buckets){
+      const r = (b && b.r) ? String(b.r).toUpperCase() : "";
+      if (!cur || cur.r !== r){
+        cur = { r, n: 1 };
+        segs.push(cur);
+      } else {
+        cur.n += 1;
+      }
+    }
+    return segs;
+  }
+
+  function renderSegments(segs){
+    clearStrip();
+    const total = segs.reduce((a,s)=>a+s.n,0) || 1;
+
+    for (const s of segs){
+      const d = document.createElement("div");
+      d.className = "ax-regime-seg";
+      d.style.width = (100 * (s.n/total)).toFixed(3) + "%";
+      d.style.background = COLORS[s.r] || "#000";
+      strip.appendChild(d);
+    }
+  }
+
+  fetch(apiUrl, {cache:"no-store"})
+    .then(r => r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status)))
+    .then(j => {
+      const buckets = Array.isArray(j.buckets) ? j.buckets : [];
+      if (!buckets.length){
+        // render empty strip
+        renderSegments([{r:"", n:1}]);
+        showNote("No regime samples for this date yet.");
+        return;
+      }
+      const segs = buildSegments(buckets);
+      renderSegments(segs);
+    })
+    .catch(err => {
+      renderSegments([{r:"", n:1}]);
+      showNote("Regime timeline unavailable (" + err.message + ")");
+    });
+})();
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>

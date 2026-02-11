@@ -1329,14 +1329,3 @@ td.pl-zero, td .pl-zero { color: #9e9e9e !important; font-weight: 700 !important
   padding-left: 0 !important;
   padding-right: 0 !important;
 }
-
-/* === MM REGIME STRIP TICK ALIGN (override) === */
-.mm-regime-bar, #mm-regime-bar,
-.mm-regime-ticks, #mm-regime-ticks,
-.mm-regime-hours, #mm-regime-hours {
-  padding-left: 0 !important;
-  padding-right: 0 !important;
-  margin-left: auto !important;
-  margin-right: auto !important;
-}
-

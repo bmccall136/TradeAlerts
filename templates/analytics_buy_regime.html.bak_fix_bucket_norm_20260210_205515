@@ -34,9 +34,6 @@
   }
   button { cursor:pointer; }
   button.primary { background:#f5d400; color:#121212; border-color:#f5d400; font-weight:800; }
-
-.mm-btn{display:inline-block;padding:10px 14px;border:1px solid #333;border-radius:10px;background:#111;color:#ddd;text-decoration:none}
-.mm-btn:hover{border-color:#ffcc00;color:#ffcc00}
 </style>
 
 <div id="settings-page" class="container-fluid" style="max-width:1100px;margin-left:auto;margin-right:auto;">
@@ -63,7 +60,7 @@
         <option value="all">ALL</option>
       </select>
       <button id="refreshBtn">Refresh</button>
-      <a href="/analytics" class="mm-pill">Back to Analytics</a><a href="/analytics/buy_regime" class="mm-btn" style="margin-left:10px">Regime</a>
+      <a href="/analytics" class="mm-pill">Back to Analytics</a>
     </div>
   </div>
 
@@ -106,6 +103,26 @@
     </div>
   </div>
 
+
+      <div class="mm-card" style="margin:0 0 14px 0;padding:14px 16px;">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:16px;font-weight:800;">Regime Breakdown</div>
+            <div class="mm-muted" style="margin-top:4px;">Distribution of BUY events by market regime for the selected bucket.</div>
+          </div>
+        </div>
+        <div class="mm-table-wrap" style="margin-top:10px;">
+          <table class="mm-table">
+            <thead>
+              <tr><th>Regime</th><th class="mm-right">Count</th><th class="mm-right">Avg Conf</th></tr>
+            </thead>
+            <tbody id="regimeBuyRows">
+              <tr><td colspan="3" class="mm-muted">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
 <div style="font-size:18px;font-weight:800;">Signal Fires</div>
         <div class="mm-muted" id="metaText"></div>
       </div>
@@ -131,18 +148,6 @@
 </div>
 
 <script>
-// --- MM_BUCKET_NORMALIZE_V1 ---
-function mmNormBucket(b) {
-  if (!b) return "today";
-  const s = String(b).trim();
-  const u = s.toUpperCase();
-  if (u === "TODAY") return "today";
-  if (u === "7D") return "7d";
-  if (u === "30D") return "30d";
-  if (u === "ALL") return "all";
-  return s.toLowerCase();
-}
-
 (function(){
   const $ = (id)=>document.getElementById(id);
 
@@ -158,6 +163,34 @@ function mmNormBucket(b) {
   }
 
   
+
+  function renderBuyRegime(rows) {
+    const tbody = document.getElementById("regimeBuyRows");
+    if (!tbody) return;
+    const data = Array.isArray(rows) ? rows : [];
+    if (!data.length) {
+      tbody.innerHTML = '<tr><td colspan="3" class="mm-muted">No data</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.map(r => {
+      const rg = esc(r.regime || "");
+      const ct = fmtInt(r.count || 0);
+      const ac = (r.avg_conf === null || r.avg_conf === undefined) ? "" : (Number(r.avg_conf).toFixed(1));
+      return `<tr><td>${rg}</td><td class="mm-right">${ct}</td><td class="mm-right">${ac}</td></tr>`;
+    }).join("");
+  }
+
+  async function loadBuyRegime(bucket) {
+    try {
+      const u = `/api/analytics/buy_regime?bucket=${encodeURIComponent(bucket)}`;
+      const r = await fetch(u, { cache: "no-store" });
+      const j = await r.json();
+      renderBuyRegime(j.by_regime || []);
+    } catch (e) {
+      renderBuyRegime([]);
+    }
+  }
+
 async function loadFunnel(bucket) {
   try {
     const r = await fetch(`/api/analytics/buy_funnel?bucket=${encodeURIComponent(bucket)}`, {cache:'no-store'});
@@ -201,6 +234,7 @@ async function load(){
   } catch(e) {}
 
     const bucket = $("bucketSel").value || "7d";
+    await loadBuyRegime(bucket);
     $("metaText").textContent = "Loading...";
     $("rows").innerHTML = "";
 

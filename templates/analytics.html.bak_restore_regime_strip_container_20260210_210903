@@ -1,18 +1,4 @@
 {% extends "layout.html" %}
-{% block analytics_regime_strip %}
-<div id="mm-regime-strip" class="mm-regime-strip-wrap" style="margin:10px 0 6px 0;">
-  <div class="mm-regime-strip-inner">
-    <div class="mm-regime-legend">
-      <span style="color:#00d26a;">TREND</span>/<span style="color:#ffd400;">CHOP</span>/<span style="color:#ff4a4a;">DEAD</span>
-    </div>
-    <div class="mm-regime-bar"></div>
-    <div class="mm-regime-hours"></div>
-  </div>
-</div>
-{% endblock %}
-
-
-
 {% block content %}
 
 <style>

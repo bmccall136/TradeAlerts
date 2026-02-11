@@ -44,7 +44,23 @@
   </div>
 
   <div class="mm-grid" style="margin-top:12px;">
+    
     <div class="mm-card">
+      <div class="mm-card-title">Regime Breakdown</div>
+      <div class="mm-card-sub">Distribution of sell-events by market regime for the selected bucket.</div>
+      <div class="mm-table-wrap">
+        <table class="mm-table">
+          <thead>
+            <tr><th>Regime</th><th class="mm-right">Count</th><th class="mm-right">Avg Conf</th></tr>
+          </thead>
+          <tbody id="regimeSellRows">
+            <tr><td colspan="3" class="mm-muted">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+<div class="mm-card">
       <h3>Exit reason breakdown</h3>
       <div id="exit-reasons" class="mm-kv">
         <div class="mm-pill"><div class="k">Loading</div><div class="v">?</div></div>
@@ -76,18 +92,6 @@
 </div>
 
 <script>
-// --- MM_BUCKET_NORMALIZE_V1 ---
-function mmNormBucket(b) {
-  if (!b) return "today";
-  const s = String(b).trim();
-  const u = s.toUpperCase();
-  if (u === "TODAY") return "today";
-  if (u === "7D") return "7d";
-  if (u === "30D") return "30d";
-  if (u === "ALL") return "all";
-  return s.toLowerCase();
-}
-
 (function() {
   const $  = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -143,6 +147,23 @@ function mmNormBucket(b) {
     el.innerHTML = items.map(([k,v]) => pill(k, v)).join("");
   }
 
+
+  function renderSellRegime(rows) {
+    const tbody = document.getElementById("regimeSellRows");
+    if (!tbody) return;
+    const data = Array.isArray(rows) ? rows : [];
+    if (!data.length) {
+      tbody.innerHTML = '<tr><td colspan="3" class="mm-muted">No data</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.map(r => {
+      const rg = esc(r.regime || "");
+      const ct = fmtInt(r.count || 0);
+      const ac = (r.avg_conf === null || r.avg_conf === undefined) ? "" : (Number(r.avg_conf).toFixed(1));
+      return `<tr><td>${rg}</td><td class="mm-right">${ct}</td><td class="mm-right">${ac}</td></tr>`;
+    }).join("");
+  }
+
   async function load(bucket) {
     setActive(bucket);
     $("#exit-reasons").innerHTML = pill("Loading", "?");
@@ -151,6 +172,15 @@ function mmNormBucket(b) {
     const url = `/api/analytics/sell?bucket=${encodeURIComponent(bucket)}`;
     const r = await fetch(url, { cache: "no-store" });
     const j = await r.json();
+    const urlReg = `/api/analytics/sell_regime?bucket=${encodeURIComponent(bucket)}`;
+    try {
+      const rr = await fetch(urlReg, { cache: "no-store" });
+      const jr = await rr.json();
+      renderSellRegime(jr.by_regime || []);
+    } catch (e) {
+      renderSellRegime([]);
+    }
+
 
     renderReasons(j.exit_reason_breakdown || {});
     renderOutcomes(j.execution_outcomes || {});
@@ -170,101 +200,4 @@ function mmNormBucket(b) {
   });
 })();
 </script>
-
-<!-- MM_SELL_REGIME_UI_V1 -->
-<div class="card" style="margin-top:16px;">
-  <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
-    <div>
-      <div style="font-size:18px; font-weight:700;">Market Regime breakdown</div>
-      <div style="opacity:.8; font-size:13px;">Counts/avg confidence come from <code>sell_events</code> in the selected bucket.</div>
-    </div>
-    <button id="mmSellRegimeRefresh" class="btn">Refresh</button>
-  </div>
-
-  <div id="mmSellRegimeMeta" style="margin-top:10px; opacity:.85; font-size:13px;"></div>
-
-  <div id="mmSellRegimeCards" style="margin-top:12px; display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:12px;">
-    <!-- cards injected -->
-  </div>
-</div>
-
-<script>
-(function(){
-  function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m])); }
-
-  function getBucket(){
-    // try existing bucket buttons/controls on the page
-    const active = document.querySelector('.bucket-btn.active,[data-bucket].active');
-    if (active && (active.dataset && active.dataset.bucket)) return active.dataset.bucket;
-
-    // fallback: try URL param
-    const u = new URL(window.location.href);
-    const b = u.searchParams.get('bucket');
-    return b || 'today';
-  }
-
-  async function loadSellRegime(){
-    const bucket = getBucket();
-    const metaEl  = document.getElementById('mmSellRegimeMeta');
-    const cardsEl = document.getElementById('mmSellRegimeCards');
-    if (!metaEl || !cardsEl) return;
-
-    metaEl.textContent = 'Loading?';
-    cardsEl.innerHTML = '';
-
-    try{
-      const r = await fetch(`/api/analytics/sell_regime?bucket=${encodeURIComponent(bucket)}`, { cache: 'no-store' });
-      const j = await r.json();
-
-      if (!j || !j.ok){
-        metaEl.textContent = `Error: ${esc(j && j.error ? j.error : 'unknown')}`;
-        return;
-      }
-
-      const rows = Array.isArray(j.by_regime) ? j.by_regime : [];
-      const total = rows.reduce((a,x)=>a+(Number(x.count)||0),0);
-
-      metaEl.textContent = `Bucket: ${bucket.toUpperCase()} ? Rows: ${total.toLocaleString()} ? Since ts_utc: ${esc(j.since_ts_utc)}`;
-
-      rows.forEach(x=>{
-        const regime = esc(x.regime || 'UNKNOWN');
-        const count  = Number(x.count)||0;
-        const avg    = (x.avg_conf==null ? null : Number(x.avg_conf));
-        const share  = total ? (count/total*100) : 0;
-
-        const card = document.createElement('div');
-        card.className = 'mini-card';
-        card.style.padding = '12px';
-        card.style.border = '1px solid rgba(255,255,255,.08)';
-        card.style.borderRadius = '12px';
-        card.style.background = 'rgba(255,255,255,.03)';
-
-        card.innerHTML = `
-          <div style="display:flex; align-items:center; justify-content:space-between;">
-            <div style="font-weight:800; letter-spacing:.5px;">${regime}</div>
-            <div style="opacity:.8; font-size:12px;">${share.toFixed(1)}%</div>
-          </div>
-          <div style="margin-top:8px; font-size:22px; font-weight:800;">${count.toLocaleString()}</div>
-          <div style="opacity:.8; font-size:13px;">avg conf: ${avg==null ? '?' : avg.toFixed(1)}</div>
-        `;
-        cardsEl.appendChild(card);
-      });
-
-      if (!rows.length){
-        metaEl.textContent = `Bucket: ${bucket.toUpperCase()} ? No rows returned.`;
-      }
-    }catch(e){
-      metaEl.textContent = 'Error: ' + (e && e.message ? e.message : String(e));
-    }
-  }
-
-  // wire refresh button
-  const btn = document.getElementById('mmSellRegimeRefresh');
-  if (btn) btn.addEventListener('click', loadSellRegime);
-
-  // initial load
-  loadSellRegime();
-})();
-</script>
-
 {% endblock %}

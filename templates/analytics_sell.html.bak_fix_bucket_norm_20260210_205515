@@ -76,18 +76,6 @@
 </div>
 
 <script>
-// --- MM_BUCKET_NORMALIZE_V1 ---
-function mmNormBucket(b) {
-  if (!b) return "today";
-  const s = String(b).trim();
-  const u = s.toUpperCase();
-  if (u === "TODAY") return "today";
-  if (u === "7D") return "7d";
-  if (u === "30D") return "30d";
-  if (u === "ALL") return "all";
-  return s.toLowerCase();
-}
-
 (function() {
   const $  = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));

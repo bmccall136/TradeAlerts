@@ -61,68 +61,6 @@
 
 <style>
 /* MM_REGIME_STRIP_STYLE_V1 */
-/* MM_REGIME_STRIP_CSS_V2 */
-.mm-regime-bar{
-  width:420px;
-  height:18px;
-  border:1px solid rgba(255,255,255,0.35);
-  border-radius:2px;
-  display:flex;
-  overflow:hidden;
-  background:rgba(0,0,0,0.35);
-  position:relative; /* REQUIRED for ::after ticks */
-
-  --mm-hour-step: 64.615px;   /* 60m */
-  --mm-minor-step: 10.769px; /* 10m */
-}
-
-.mm-regime-bar > div{
-  height:100%;
-  position:relative;
-  z-index:2; /* ABOVE ticks */
-}
-.mm-regime-bar::after{
-  content:"";
-  position:absolute;
-  inset:0;
-  z-index:1;
-  pointer-events:none;
-  opacity:0.75;
-
-  /* major ticks exactly on the hour (9:30->16:00 maps to 420px over 390m) */
-  background:
-    repeating-linear-gradient(
-      to right,
-      rgba(255,255,255,0.70) 0px,
-      rgba(255,255,255,0.70) 1px,
-      rgba(255,255,255,0.0)  1px,
-      rgba(255,255,255,0.0)  var(--mm-hour-step)
-    ),
-    repeating-linear-gradient(
-      to right,
-      rgba(255,255,255,0.28) 0px,
-      rgba(255,255,255,0.28) 1px,
-      rgba(255,255,255,0.0)  1px,
-      rgba(255,255,255,0.0)  var(--mm-minor-step)
-    );
-}
-/* Hour labels row */
-.mm-regime-hours{
-  width:420px;
-  display:flex;
-  justify-content:space-between;
-  padding-top:2px;
-  font-size:13px;
-  opacity:0.85;
-}
-
-
-/* MM_REGIME_STRIP_ZFIX_V1 */
-.ax-regime-bar > div, .mm-regime-bar > div, .regime-bar > div {
-  position: relative;
-  z-index: 2;
-}
-
 /* ---- Regime strip polish (Analytics timeline strip rendered in layout slot) ---- */
 
 /* Make the TREND/CHOP/DEAD legend smaller + tighter */
@@ -150,7 +88,6 @@
 .ax-regime-bar::after,
 .mm-regime-bar::after,
 .regime-bar::after {
-  z-index: 1;
   content: "";
   position: absolute;
   inset: 0;
@@ -160,28 +97,6 @@
   background-size: calc(100% / 6) 100%;
   background-repeat: repeat;
   opacity: 0.55;
-}
-</style>
-
-
-<style>
-/* MM_REGIME_STRIP_CSS_V4 */
-#mm-regime-strip .mm-regime-legend{ text-align:center; width:100%; }
-#mm-regime-strip .mm-regime-hours{
-  width: 520px;
-  height: 16px;
-  display: block;
-  position: relative;
-  opacity: 0.85;
-  font-size: 12px;
-  line-height: 16px;
-  margin-top: 4px;
-}
-#mm-regime-strip .mm-hour{
-  position:absolute;
-  transform: translateX(-50%);
-  top: 0;
-  white-space: nowrap;
 }
 </style>
 
@@ -325,152 +240,6 @@ var conf = (j.confidence != null ? j.confidence : (j.conf != null ? j.conf : j.s
   if(window.__mmRegimeTimer) clearInterval(window.__mmRegimeTimer);
   update();
   window.__mmRegimeTimer = setInterval(update, 60000);
-})();
-</script>
-
-
-<script>
-/* MM_REGIME_STRIP_RENDERER_V1 */
-(function(){
-  function q(sel){ return document.querySelector(sel); }
-
-  function getAnalyticsDate(){
-    // Prefer analytics page date input if present
-    const di = q('input[type="date"], input[name="date"], #date, #analytics-date');
-    if (di && di.value) return di.value;
-    // Fall back: try to parse the visible "YYYY-MM-DD" under Daily Analytics
-    const el = q('.page-subtitle, .subtitle, .ax-date, .analytics-date');
-    if (el){
-      const m = (el.textContent||'').match(/(\d{4}-\d{2}-\d{2})/);
-      if (m) return m[1];
-    }
-    return "";
-  }
-
-  function compressBuckets(buckets){
-    // buckets: [{t:"HH:MM", r:"TREND|CHOP|DEAD", ...}, ...]
-    if (!buckets || !buckets.length) return [];
-    const segs = [];
-    let cur = buckets[0].r, start = 0;
-    for (let i=1;i<buckets.length;i++){
-      if (buckets[i].r !== cur){
-        segs.push({r: cur, n: i - start});
-        cur = buckets[i].r;
-        start = i;
-      }
-    }
-    segs.push({r: cur, n: buckets.length - start});
-    return segs;
-  }
-
-  function colorFor(r){
-    r = (r||'').toUpperCase();
-    if (r === 'TREND') return '#00d26a';
-    if (r === 'CHOP')  return '#ffd400';
-    if (r === 'DEAD')  return '#ff4a4a';
-    return 'rgba(255,255,255,0.12)';
-  }
-
-  async function render(){
-    const host = q('#mm-regime-strip');
-    try{ host.setAttribute('data-painted','1'); }catch(e){}
-    if (!host) return;
-
-    const bar = q('.mm-regime-bar') || q('.ax-regime-bar') || q('.regime-bar');
-    if (!bar) return;
-
-    // wipe bar
-    bar.innerHTML = '';
-
-    const date = getAnalyticsDate();
-    const url = date ? ('/api/market_regime_timeline?date=' + encodeURIComponent(date)) : '/api/market_regime_timeline';
-
-    try{
-      const r = await fetch(url, {cache:'no-store'});
-      if (!r.ok) return;
-      const j = await r.json();
-            // --- MM_REGIME_HOURS_FALLBACK_V1 ---
-      // Ensure the hours row exists and is visible; if tick builder fails or is overridden, we still show hours.
-      const labels = document.querySelector('#mm-regime-strip .mm-regime-hours');
-      if (labels){
-        labels.style.display = 'block';
-        labels.style.position = 'relative';
-        labels.style.height = '16px';
-        labels.style.width = (j && j.width_px ? (String(j.width_px) + 'px') : labels.style.width) || labels.style.width;
-
-        // Clear + rebuild hour labels from start_et/end_et when needed.
-        const ensureHours = () => {
-          if (labels.querySelector('.mm-hour')) return; // already has labels
-          const start = (j && j.start_et) ? j.start_et : '09:30';
-          const end   = (j && j.end_et)   ? j.end_et   : '16:00';
-
-          // Compute hour marks (10..16) within the session, place them proportionally.
-          // Session in minutes (handles 09:30 start cleanly).
-          const toMin = (hhmm) => {
-            const m = String(hhmm||'').match(/^(\d{1,2}):(\d{2})$/);
-            if (!m) return None;
-            return (int(m[1]) * 60) + int(m[2]);
-          };
-
-          // JS version inline (avoid python replacement complexity)
-        };
-
-        // We run this after a short delay too (in case other code wipes labels)
-        setTimeout(() => {
-          if (labels.querySelector('.mm-hour')) return;
-          labels.innerHTML = '';
-
-          const parse = (hhmm) => {
-            const m = String(hhmm||'').match(/^(\d{1,2}):(\d{2})$/);
-            if (!m) return null;
-            return (parseInt(m[1],10)*60) + parseInt(m[2],10);
-          };
-
-          const startMin = parse((j && j.start_et) ? j.start_et : '09:30') || (9*60+30);
-          const endMin   = parse((j && j.end_et)   ? j.end_et   : '16:00') || (16*60);
-
-          const span = Math.max(1, endMin - startMin);
-
-          // Label hours 10..16 (display 10,11,12,1,2,3,4)
-          const hours = [10,11,12,13,14,15,16];
-          for (const h of hours){
-            const t = h*60;
-            if (t < startMin || t > endMin) continue;
-            const pct = ((t - startMin) / span) * 100;
-
-            const sp = document.createElement('span');
-            sp.className = 'mm-hour';
-            sp.style.left = pct.toFixed(3) + '%';
-            sp.textContent = (h <= 12) ? String(h) : String(h-12);
-            labels.appendChild(sp);
-          }
-        }, 50);
-      }
-      // --- /MM_REGIME_HOURS_FALLBACK_V1 ---
-const buckets = j.buckets || [];
-      if (!buckets.length) return;
-
-      const segs = compressBuckets(buckets);
-      const total = buckets.length;
-
-      for (const s of segs){
-        const div = document.createElement('div');
-        div.style.flex = String(s.n);
-        div.style.background = colorFor(s.r);
-        div.title = s.r + ' (' + s.n + ' buckets)';
-        bar.appendChild(div);
-      }
-    }catch(e){
-      // silent
-    }
-  }
-
-  // render on load + after a short delay (in case analytics date input populates late)
-  if (document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', ()=>{ render(); setTimeout(render, 600); });
-  } else {
-    render(); setTimeout(render, 600);
-  }
 })();
 </script>
 

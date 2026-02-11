@@ -1,16 +1,23 @@
 {% extends "layout.html" %}
 {% block analytics_regime_strip %}
-<div id="mm-regime-strip" class="mm-regime-strip-wrap" style="margin:10px 0 6px 0;">
-  <div class="mm-regime-strip-inner">
-    <div class="mm-regime-legend">
+<div id="mm-regime-strip" class="mm-regime-strip-wrap" style="display:flex;justify-content:center;margin:2px 0 10px 0;">
+  <div style="display:grid;grid-template-columns:auto 420px;column-gap:12px;row-gap:4px;align-items:center;">
+    <div class="mm-regime-legend" style="font-size:14px;line-height:1;opacity:0.9;white-space:nowrap;justify-self:end;">
       <span style="color:#00d26a;">TREND</span>/<span style="color:#ffd400;">CHOP</span>/<span style="color:#ff4a4a;">DEAD</span>
     </div>
+
     <div class="mm-regime-bar"></div>
-    <div class="mm-regime-hours"></div>
+
+    <!-- spacer under legend -->
+    <div></div>
+
+    <!-- hours aligned to the bar column -->
+    <div class="mm-regime-hours">
+      <span>10</span><span>11</span><span>12</span><span>1</span><span>2</span><span>3</span><span>4</span>
+    </div>
   </div>
 </div>
 {% endblock %}
-
 
 
 {% block content %}

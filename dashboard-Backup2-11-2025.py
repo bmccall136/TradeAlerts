@@ -4100,178 +4100,57 @@ def api_analytics_daily():
         con.row_factory = sqlite3.Row
         cur = con.cursor()
 
+
         # -----------------------
-        # BUYS (priority order)
+        # BUYS
         # -----------------------
+        # Truth source for executed buys is `trades` (Recent Trades UI).
+        # Use ts_et LIKE 'YYYY-MM-DD%' to avoid ts_utc type/scale issues.
         buy_rows = []
-
-        # 1) position_opened
-        if _table_exists(cur, "position_opened"):
-            c = _cols(cur, "position_opened")
-            tcol = _pick_col(c, "opened_utc", "ts_utc")
-            sym  = _pick_col(c, "symbol", "sym", "ticker")
-            px   = _pick_col(c, "price", "open_price", "buy_price")
-            qty  = _pick_col(c, "qty", "quantity", "shares")
-            if tcol and sym:
-                sel = f"SELECT {tcol} as ts_utc, {sym} as symbol"
-                if qty: sel += f", {qty} as qty"
-                if px:  sel += f", {px} as price"
-                sel += f" FROM position_opened WHERE {tcol} >= ? AND {tcol} < ? ORDER BY {tcol} ASC"
-                buy_rows = cur.execute(sel, (since_ts_utc, until_ts_utc)).fetchall()
-
-        # 2) buy_events (this is the missing piece)
-        if (not buy_rows) and _table_exists(cur, "buy_events"):
-            c = _cols(cur, "buy_events")
-            tcol = _pick_col(c, "ts_utc")
-            sym  = _pick_col(c, "symbol", "sym", "ticker")
-            ev   = _pick_col(c, "event")
-            qty  = _pick_col(c, "qty", "quantity", "shares")
-            px   = _pick_col(c, "price", "fill_price", "avg_price")
-            mode = _pick_col(c, "mode")
-            note = _pick_col(c, "note")
-            if tcol and sym and ev:
-                # broad allowlist of "this was a real buy" events
-                allow = ("BUY","BOUGHT","FILLED","EXECUTED","OPENED","ENTRY","ENTERED")
-                sel = f"SELECT {tcol} as ts_utc, {sym} as symbol, {ev} as event"
-                if qty: sel += f", {qty} as qty"
-                if px:  sel += f", {px} as price"
-                if mode: sel += f", {mode} as mode"
-                if note: sel += f", {note} as note"
-                sel += f""" FROM buy_events
-                            WHERE {tcol} >= ? AND {tcol} < ?
-                              AND UPPER(COALESCE({ev},'')) IN ({",".join(["?"]*len(allow))})
-                            ORDER BY {tcol} ASC"""
-                buy_rows = cur.execute(sel, (since_ts_utc, until_ts_utc, *allow)).fetchall()
-
-                # if allowlist yields 0 (schema/event names differ), fallback to "anything not obviously non-buy"
-                if not buy_rows:
-                    sel2 = f"SELECT {tcol} as ts_utc, {sym} as symbol, {ev} as event"
-                    if qty: sel2 += f", {qty} as qty"
-                    if px:  sel2 += f", {px} as price"
-                    if mode: sel2 += f", {mode} as mode"
-                    if note: sel2 += f", {note} as note"
-                    sel2 += f""" FROM buy_events
-                                 WHERE {tcol} >= ? AND {tcol} < ?
-                                   AND UPPER(COALESCE({ev},'')) NOT IN ('EVAL','ATTEMPTED','SKIP','SKIPPED','BLOCKED','COOLDOWN')
-                                 ORDER BY {tcol} ASC"""
-                    buy_rows = cur.execute(sel2, (since_ts_utc, until_ts_utc)).fetchall()
-
-        # 3) trades table BUYs
-        if (not buy_rows) and _table_exists(cur, "trades"):
+        if _table_exists(cur, "trades"):
             c = _cols(cur, "trades")
-            tcol = _pick_col(c, "ts_utc")
+            ts_et_col = _pick_col(c, "ts_et")
             sym  = _pick_col(c, "symbol", "sym", "ticker")
             side = _pick_col(c, "side", "action", "type")
-            px   = _pick_col(c, "price", "price_paid", "fill_price", "avg_price")
             qty  = _pick_col(c, "qty", "quantity", "shares")
-            if tcol and sym and side:
-                allow = ("BUY","BOT","B","BUY_TO_OPEN","BUY_OPEN","OPEN_BUY")
-                sel = f"SELECT {tcol} as ts_utc, {sym} as symbol, {side} as event"
-                if qty: sel += f", {qty} as qty"
-                if px:  sel += f", {px} as price"
-                sel += f""" FROM trades
-                            WHERE {tcol} >= ? AND {tcol} < ?
-                              AND UPPER(COALESCE({side},'')) IN ({",".join(["?"]*len(allow))})
-                            ORDER BY {tcol} ASC"""
-                buy_rows = cur.execute(sel, (since_ts_utc, until_ts_utc, *allow)).fetchall()
+            px   = _pick_col(c, "price", "price_paid", "fill_price", "avg_price")
+            name = _pick_col(c, "name")
+
+            if ts_et_col and sym and side:
+                date_prefix = date_et.isoformat() + "%"
+                sel = f"SELECT {sym} as symbol, {side} as event, {ts_et_col} as ts_et"
+                if qty:  sel += f", {qty} as qty"
+                if px:   sel += f", {px} as price"
+                if name: sel += f", {name} as name"
+                sel += f"""
+                    FROM trades
+                    WHERE {ts_et_col} LIKE ?
+                      AND UPPER(COALESCE({side},''))='BUY'
+                    ORDER BY {ts_et_col} ASC
+                """
+                buy_rows = cur.execute(sel, (date_prefix,)).fetchall()
 
         buys_out = []
         for r in buy_rows[:4000]:
             d = dict(r)
             buys_out.append({
-                "ts_utc": int(d.get("ts_utc") or 0),
+                "ts_utc": None,
+                "ts_et": d.get("ts_et"),
                 "symbol": d.get("symbol"),
+                "name": d.get("name"),
                 "qty": float(d["qty"]) if ("qty" in d and d["qty"] is not None) else None,
                 "price": float(d["price"]) if ("price" in d and d["price"] is not None) else None,
                 "event": d.get("event"),
-                "mode": d.get("mode"),
-                "note": d.get("note"),
+                "mode": None,
+                "note": None,
             })
-
-        
-        # --- MM_DAILY_BUYS_FROM_TRADE_SOURCE_V2 (append + dedupe) ---
-        # Live UI "Recent Trades" comes from services.trade_source.load_trades_merged.
-        # Always append BUY rows from merged trade source for this ET date, then de-dupe.
-        try:
-            from services.trade_source import load_trades_merged
-
-            ymd = date_et.isoformat()          # 2026-02-10
-            mdy = date_et.strftime("%m/%d/%Y")  # 02/10/2026
-
-            merged = load_trades_merged() or []
-            _rows = []
-            for t in merged:
-                if not isinstance(t, dict):
-                    continue
-                side = str(t.get("side") or t.get("action") or t.get("type") or "").upper().strip()
-                if side != "BUY":
-                    continue
-
-                ts_et = (t.get("ts_et") or t.get("time_et") or t.get("trade_time") or t.get("Time (ET)") or t.get("time") or "")
-                ts_et = str(ts_et)
-
-                if not (ts_et.startswith(ymd) or ts_et.startswith(mdy)):
-                    continue
-
-                sym = str(t.get("symbol") or t.get("sym") or t.get("ticker") or "").upper().strip()
-                if not sym:
-                    continue
-
-                px  = t.get("price") if t.get("price") is not None else t.get("fill_price")
-                qty = t.get("qty") if t.get("qty") is not None else t.get("quantity")
-
-                _rows.append({
-                    "ts_utc": t.get("ts_utc"),
-                    "ts_et": ts_et,
-                    "symbol": sym,
-                    "qty": qty,
-                    "price": px,
-                    "event": "BUY",
-                    "mode": t.get("mode"),
-                    "note": t.get("note") or t.get("notes"),
-                    "source": "trade_source",
-                })
-
-            # normalize buy_rows into a list of dicts we can merge/dedupe
-            _base = []
-            if buy_rows:
-                for r in buy_rows:
-                    if isinstance(r, dict):
-                        _base.append(r)
-                    else:
-                        try:
-                            d = dict(r)
-                            _base.append(d)
-                        except Exception:
-                            pass
-
-            combined = _base + _rows
-
-            # de-dupe by (symbol, ts_et) then (symbol, ts_utc) as backup
-            seen = set()
-            deduped = []
-            for it in combined:
-                sym = str(it.get("symbol") or "").upper().strip()
-                if not sym:
-                    continue
-                k = (sym, str(it.get("ts_et") or ""))
-                if k == (sym, ""):
-                    k = (sym, str(it.get("ts_utc") or ""))
-                if k in seen:
-                    continue
-                seen.add(k)
-                deduped.append(it)
-
-            if deduped:
-                buy_rows = deduped
-        except Exception:
-            pass
         out["buys"] = buys_out
         out["buy"]["rows"] = len(buy_rows)
         out["buy"]["top_symbols"] = [{"symbol": s, "ct": c} for s, c in Counter([b["symbol"] for b in buys_out if b.get("symbol")]).most_common(12)]
 
         # -----------------------
-        # SELLS: realized_trades
+        # SELLS
+: realized_trades
         # -----------------------
         sell_rows = []
         if _table_exists(cur, "realized_trades"):

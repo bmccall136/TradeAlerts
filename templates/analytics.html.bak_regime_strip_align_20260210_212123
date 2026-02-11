@@ -1,16 +1,17 @@
 {% extends "layout.html" %}
 {% block analytics_regime_strip %}
-<div id="mm-regime-strip" class="mm-regime-strip-wrap" style="margin:10px 0 6px 0;">
-  <div class="mm-regime-strip-inner">
-    <div class="mm-regime-legend">
-      <span style="color:#00d26a;">TREND</span>/<span style="color:#ffd400;">CHOP</span>/<span style="color:#ff4a4a;">DEAD</span>
-    </div>
-    <div class="mm-regime-bar"></div>
-    <div class="mm-regime-hours"></div>
+<div id="mm-regime-strip" class="mm-regime-strip-wrap" style="display:flex;justify-content:center;margin:8px 0 2px 0;">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div class="mm-regime-legend"><span style="color:#00d26a;">TREND</span>/<span style="color:#ffd400;">CHOP</span>/<span style="color:#ff4a4a;">DEAD</span></div>
+    <div class="mm-regime-bar" style="width:420px;height:18px;border:1px solid rgba(255,255,255,0.35);border-radius:2px;display:flex;overflow:hidden;background:rgba(0,0,0,0.35);"></div>
+  </div>
+</div>
+<div class="mm-regime-hours" style="display:flex;justify-content:center;margin:0 0 10px 0;">
+  <div style="width:420px;display:flex;justify-content:space-between;padding:4px 0 0 0;opacity:0.85;">
+    <span>10</span><span>11</span><span>12</span><span>1</span><span>2</span><span>3</span><span>4</span>
   </div>
 </div>
 {% endblock %}
-
 
 
 {% block content %}

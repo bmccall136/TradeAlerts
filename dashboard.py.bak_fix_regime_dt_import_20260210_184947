@@ -773,6 +773,7 @@ def _ax_parse_ymd(s: str | None) -> str | None:
 
 def _ax_yesterday_ymd(ymd: str | None) -> str:
     """Return yesterday (ET) for a given YYYY-MM-DD (or for today if None/invalid)."""
+    import datetime as dt
     base = None
     try:
         if ymd:
@@ -4037,278 +4038,6 @@ def _ax_log_paths_for_date(log_dir: str, ymd: str):
     return ymd, buy_path, sell_path
 
 
-# --- MM_API_ANALYTICS_DAILY_ALIAS_V1 ---
-@app.route("/api/analytics/daily")
-def api_analytics_daily():
-    """
-    DB-backed Daily Analytics (schema-adaptive).
-    - Window is America/New_York midnight -> UTC epoch [since, until)
-    - Buys: position_opened -> buy_events -> trades(BUY)
-    - Sells: realized_trades
-    No CSV/log dependencies.
-    """
-    import sqlite3
-    import datetime as dt
-    from zoneinfo import ZoneInfo
-    from flask import request, jsonify
-    from collections import Counter
-
-    ET  = ZoneInfo("America/New_York")
-    UTC = ZoneInfo("UTC")
-
-    date_arg = (request.args.get("date") or "").strip()
-    if date_arg:
-        try:
-            date_et = dt.date.fromisoformat(date_arg)
-        except Exception:
-            return jsonify({"error": "Invalid date. Use YYYY-MM-DD", "date": date_arg}), 400
-    else:
-        date_et = dt.datetime.now(ET).date()
-
-    start_et = dt.datetime.combine(date_et, dt.time(0,0,0), tzinfo=ET)
-    end_et   = start_et + dt.timedelta(days=1)
-
-    since_ts_utc = int(start_et.astimezone(UTC).timestamp())
-    until_ts_utc = int(end_et.astimezone(UTC).timestamp())
-
-    def _table_exists(cur, name: str) -> bool:
-        return cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None
-
-    def _cols(cur, name: str):
-        return [r[1] for r in cur.execute(f"PRAGMA table_info({name})").fetchall()]
-
-    def _pick_col(cols, *cands):
-        for c in cands:
-            if c in cols:
-                return c
-        return None
-
-    out = {
-        "date_et": date_et.isoformat(),
-        "window": {"since_ts_utc": since_ts_utc, "until_ts_utc": until_ts_utc},
-        "buy": {"rows": 0, "top_symbols": [], "top_triggers": [], "top_combos": []},
-        "sell": {"rows": 0, "top_symbols": [], "reasons": [], "actions": [], "hold_buckets": [], "pl_buckets": []},
-        "buys": [],
-        "sells": [],
-        "errors": []
-    }
-
-    db_path = globals().get("DB_PATH") or r"C:\TradeAlerts\live.db"
-
-    try:
-        con = sqlite3.connect(db_path)
-        con.row_factory = sqlite3.Row
-        cur = con.cursor()
-
-        # -----------------------
-        # BUYS (priority order)
-        # -----------------------
-        buy_rows = []
-
-        # 1) position_opened
-        if _table_exists(cur, "position_opened"):
-            c = _cols(cur, "position_opened")
-            tcol = _pick_col(c, "opened_utc", "ts_utc")
-            sym  = _pick_col(c, "symbol", "sym", "ticker")
-            px   = _pick_col(c, "price", "open_price", "buy_price")
-            qty  = _pick_col(c, "qty", "quantity", "shares")
-            if tcol and sym:
-                sel = f"SELECT {tcol} as ts_utc, {sym} as symbol"
-                if qty: sel += f", {qty} as qty"
-                if px:  sel += f", {px} as price"
-                sel += f" FROM position_opened WHERE {tcol} >= ? AND {tcol} < ? ORDER BY {tcol} ASC"
-                buy_rows = cur.execute(sel, (since_ts_utc, until_ts_utc)).fetchall()
-
-        # 2) buy_events (this is the missing piece)
-        if (not buy_rows) and _table_exists(cur, "buy_events"):
-            c = _cols(cur, "buy_events")
-            tcol = _pick_col(c, "ts_utc")
-            sym  = _pick_col(c, "symbol", "sym", "ticker")
-            ev   = _pick_col(c, "event")
-            qty  = _pick_col(c, "qty", "quantity", "shares")
-            px   = _pick_col(c, "price", "fill_price", "avg_price")
-            mode = _pick_col(c, "mode")
-            note = _pick_col(c, "note")
-            if tcol and sym and ev:
-                # broad allowlist of "this was a real buy" events
-                allow = ("BUY","BOUGHT","FILLED","EXECUTED","OPENED","ENTRY","ENTERED")
-                sel = f"SELECT {tcol} as ts_utc, {sym} as symbol, {ev} as event"
-                if qty: sel += f", {qty} as qty"
-                if px:  sel += f", {px} as price"
-                if mode: sel += f", {mode} as mode"
-                if note: sel += f", {note} as note"
-                sel += f""" FROM buy_events
-                            WHERE {tcol} >= ? AND {tcol} < ?
-                              AND UPPER(COALESCE({ev},'')) IN ({",".join(["?"]*len(allow))})
-                            ORDER BY {tcol} ASC"""
-                buy_rows = cur.execute(sel, (since_ts_utc, until_ts_utc, *allow)).fetchall()
-
-                # if allowlist yields 0 (schema/event names differ), fallback to "anything not obviously non-buy"
-                if not buy_rows:
-                    sel2 = f"SELECT {tcol} as ts_utc, {sym} as symbol, {ev} as event"
-                    if qty: sel2 += f", {qty} as qty"
-                    if px:  sel2 += f", {px} as price"
-                    if mode: sel2 += f", {mode} as mode"
-                    if note: sel2 += f", {note} as note"
-                    sel2 += f""" FROM buy_events
-                                 WHERE {tcol} >= ? AND {tcol} < ?
-                                   AND UPPER(COALESCE({ev},'')) NOT IN ('EVAL','ATTEMPTED','SKIP','SKIPPED','BLOCKED','COOLDOWN')
-                                 ORDER BY {tcol} ASC"""
-                    buy_rows = cur.execute(sel2, (since_ts_utc, until_ts_utc)).fetchall()
-
-        # 3) trades table BUYs
-        if (not buy_rows) and _table_exists(cur, "trades"):
-            c = _cols(cur, "trades")
-            tcol = _pick_col(c, "ts_utc")
-            sym  = _pick_col(c, "symbol", "sym", "ticker")
-            side = _pick_col(c, "side", "action", "type")
-            px   = _pick_col(c, "price", "price_paid", "fill_price", "avg_price")
-            qty  = _pick_col(c, "qty", "quantity", "shares")
-            if tcol and sym and side:
-                allow = ("BUY","BOT","B","BUY_TO_OPEN","BUY_OPEN","OPEN_BUY")
-                sel = f"SELECT {tcol} as ts_utc, {sym} as symbol, {side} as event"
-                if qty: sel += f", {qty} as qty"
-                if px:  sel += f", {px} as price"
-                sel += f""" FROM trades
-                            WHERE {tcol} >= ? AND {tcol} < ?
-                              AND UPPER(COALESCE({side},'')) IN ({",".join(["?"]*len(allow))})
-                            ORDER BY {tcol} ASC"""
-                buy_rows = cur.execute(sel, (since_ts_utc, until_ts_utc, *allow)).fetchall()
-
-        buys_out = []
-        for r in buy_rows[:4000]:
-            d = dict(r)
-            buys_out.append({
-                "ts_utc": int(d.get("ts_utc") or 0),
-                "symbol": d.get("symbol"),
-                "qty": float(d["qty"]) if ("qty" in d and d["qty"] is not None) else None,
-                "price": float(d["price"]) if ("price" in d and d["price"] is not None) else None,
-                "event": d.get("event"),
-                "mode": d.get("mode"),
-                "note": d.get("note"),
-            })
-
-        
-        # --- MM_DAILY_BUYS_FROM_TRADE_SOURCE_V2 (append + dedupe) ---
-        # Live UI "Recent Trades" comes from services.trade_source.load_trades_merged.
-        # Always append BUY rows from merged trade source for this ET date, then de-dupe.
-        try:
-            from services.trade_source import load_trades_merged
-
-            ymd = date_et.isoformat()          # 2026-02-10
-            mdy = date_et.strftime("%m/%d/%Y")  # 02/10/2026
-
-            merged = load_trades_merged() or []
-            _rows = []
-            for t in merged:
-                if not isinstance(t, dict):
-                    continue
-                side = str(t.get("side") or t.get("action") or t.get("type") or "").upper().strip()
-                if side != "BUY":
-                    continue
-
-                ts_et = (t.get("ts_et") or t.get("time_et") or t.get("trade_time") or t.get("Time (ET)") or t.get("time") or "")
-                ts_et = str(ts_et)
-
-                if not (ts_et.startswith(ymd) or ts_et.startswith(mdy)):
-                    continue
-
-                sym = str(t.get("symbol") or t.get("sym") or t.get("ticker") or "").upper().strip()
-                if not sym:
-                    continue
-
-                px  = t.get("price") if t.get("price") is not None else t.get("fill_price")
-                qty = t.get("qty") if t.get("qty") is not None else t.get("quantity")
-
-                _rows.append({
-                    "ts_utc": t.get("ts_utc"),
-                    "ts_et": ts_et,
-                    "symbol": sym,
-                    "qty": qty,
-                    "price": px,
-                    "event": "BUY",
-                    "mode": t.get("mode"),
-                    "note": t.get("note") or t.get("notes"),
-                    "source": "trade_source",
-                })
-
-            # normalize buy_rows into a list of dicts we can merge/dedupe
-            _base = []
-            if buy_rows:
-                for r in buy_rows:
-                    if isinstance(r, dict):
-                        _base.append(r)
-                    else:
-                        try:
-                            d = dict(r)
-                            _base.append(d)
-                        except Exception:
-                            pass
-
-            combined = _base + _rows
-
-            # de-dupe by (symbol, ts_et) then (symbol, ts_utc) as backup
-            seen = set()
-            deduped = []
-            for it in combined:
-                sym = str(it.get("symbol") or "").upper().strip()
-                if not sym:
-                    continue
-                k = (sym, str(it.get("ts_et") or ""))
-                if k == (sym, ""):
-                    k = (sym, str(it.get("ts_utc") or ""))
-                if k in seen:
-                    continue
-                seen.add(k)
-                deduped.append(it)
-
-            if deduped:
-                buy_rows = deduped
-        except Exception:
-            pass
-        out["buys"] = buys_out
-        out["buy"]["rows"] = len(buy_rows)
-        out["buy"]["top_symbols"] = [{"symbol": s, "ct": c} for s, c in Counter([b["symbol"] for b in buys_out if b.get("symbol")]).most_common(12)]
-
-        # -----------------------
-        # SELLS: realized_trades
-        # -----------------------
-        sell_rows = []
-        if _table_exists(cur, "realized_trades"):
-            c = _cols(cur, "realized_trades")
-            tcol = _pick_col(c, "close_ts_utc", "closed_utc", "ts_utc")
-            sym  = _pick_col(c, "symbol", "sym", "ticker")
-            px   = _pick_col(c, "close_price", "price", "fill_price")
-            gain = _pick_col(c, "gain", "pnl", "profit")
-            gpct = _pick_col(c, "gain_pct", "pnl_pct", "profit_pct")
-            if tcol and sym:
-                sel = f"SELECT {tcol} as ts_utc, {sym} as symbol"
-                if px:   sel += f", {px} as price"
-                if gain: sel += f", {gain} as gain"
-                if gpct: sel += f", {gpct} as gain_pct"
-                sel += f" FROM realized_trades WHERE {tcol} >= ? AND {tcol} < ? ORDER BY {tcol} ASC"
-                sell_rows = cur.execute(sel, (since_ts_utc, until_ts_utc)).fetchall()
-
-        sells_out = []
-        for r in sell_rows[:6000]:
-            d = dict(r)
-            sells_out.append({
-                "ts_utc": int(d.get("ts_utc") or 0),
-                "symbol": d.get("symbol"),
-                "price": float(d["price"]) if ("price" in d and d["price"] is not None) else None,
-                "gain": float(d["gain"]) if ("gain" in d and d["gain"] is not None) else None,
-                "gain_pct": float(d["gain_pct"]) if ("gain_pct" in d and d["gain_pct"] is not None) else None,
-            })
-        out["sells"] = sells_out
-        out["sell"]["rows"] = len(sell_rows)
-        out["sell"]["top_symbols"] = [{"symbol": s, "ct": c} for s, c in Counter([s["symbol"] for s in sells_out if s.get("symbol")]).most_common(12)]
-
-        con.close()
-
-    except Exception as e:
-        out["errors"].append(f"DB error: {e!r}")
-
-    return jsonify(out)
 @app.route("/analytics")
 def analytics_page():
     # --- analytics date override ---
@@ -6713,467 +6442,781 @@ def api_analytics_fires():
 
 
 # --- MM_REGIME_ANALYTICS_ENDPOINTS_V1 ---
-
 # Regime analytics summary endpoints for Buy/Sell Analytics.
 # Reads LIVE_DB tables and adapts to whatever schema exists (PRAGMA table_info).
 
-def _mm_bucket_since_epoch(bucket: str) -> int:
-    """
-    Bucket start as UTC epoch, but anchored to America/New_York midnight.
-    Fixes the ~7pm ET "today becomes tomorrow" UTC flip.
-    """
-    import datetime as dt
-    from zoneinfo import ZoneInfo
+def _mm_bucket_since_epoch(bucket: str):
+    bucket = (bucket or "today").strip().lower()
+    now = dt.datetime.now(dt.timezone.utc)
+    if bucket == "today":
+        # midnight UTC (good enough for bucketed analytics; UI is ET-focused anyway)
+        start = dt.datetime(now.year, now.month, now.day, tzinfo=dt.timezone.utc)
+        return int(start.timestamp())
+    if bucket in ("7d", "7days", "week"):
+        return int((now - dt.timedelta(days=7)).timestamp())
+    if bucket in ("30d", "30days", "month"):
+        return int((now - dt.timedelta(days=30)).timestamp())
+    if bucket in ("all", "alltime", "all_time"):
+        return None
+    # default
+    start = dt.datetime(now.year, now.month, now.day, tzinfo=dt.timezone.utc)
+    return int(start.timestamp())
 
-    b = (bucket or "").strip().lower()
-    if b in ("", "all", "*"):
-        return 0
-
-    et = ZoneInfo("America/New_York")
-    utc = ZoneInfo("UTC")
-
-    now_et = dt.datetime.now(et)
-
-    def sod(x: dt.datetime) -> dt.datetime:
-        return x.replace(hour=0, minute=0, second=0, microsecond=0)
-
-    if b == "today":
-        start_et = sod(now_et)
-    elif b in ("7d", "7"):
-        start_et = sod(now_et - dt.timedelta(days=7))
-    elif b in ("30d", "30"):
-        start_et = sod(now_et - dt.timedelta(days=30))
-    else:
-        # best-effort: treat like Nd
-        try:
-            n = int(b.rstrip("d"))
-            start_et = sod(now_et - dt.timedelta(days=n))
-        except Exception:
-            start_et = sod(now_et)
-
-    return int(start_et.astimezone(utc).timestamp())
-
-# --- 
-# --- MM_MARKET_REGIME_TIMELINE_API_V1 ---
-@app.route("/api/market_regime_timeline")
-def api_market_regime_timeline():
-    """
-    Returns a filled, carry-forward regime timeline for the trading day (ET).
-    Midnight-clear behavior: we do NOT seed from prior days.
-    """
+def _mm_table_cols(cur, table: str):
+    cols = []
     try:
-        import datetime as dt
-        import sqlite3, os
-        from zoneinfo import ZoneInfo
+        for row in cur.execute(f"PRAGMA table_info({table})"):
+            # (cid, name, type, notnull, dflt, pk)
+            cols.append(str(row[1]))
+    except Exception:
+        pass
+    return cols
 
-        tz = ZoneInfo("America/New_York")
-        utc = ZoneInfo("UTC")
+def _mm_pick_col(cols, candidates):
+    cols_l = {c.lower(): c for c in cols}
+    for want in candidates:
+        w = want.lower()
+        if w in cols_l:
+            return cols_l[w]
+    return None
 
-        date_arg = (request.args.get("date") or "").strip()
-        if date_arg:
-            try:
-                y, m, d = [int(x) for x in date_arg.split("-")]
-                day = dt.datetime(y, m, d, tzinfo=tz)
-            except Exception:
-                return jsonify({"ok": False, "error": "bad date; expected YYYY-MM-DD"}), 400
-        else:
-            now_et = dt.datetime.now(tz)
-            day = dt.datetime(now_et.year, now_et.month, now_et.day, tzinfo=tz)
+def _mm_exists(cur, table: str) -> bool:
+    try:
+        r = cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1", (table,)).fetchone()
+        return bool(r)
+    except Exception:
+        return False
 
-        start_et = day.replace(hour=9, minute=30, second=0, microsecond=0)
-        end_et   = day.replace(hour=16, minute=0, second=0, microsecond=0)
-
-        start_utc = int(start_et.astimezone(utc).timestamp())
-        end_utc   = int(end_et.astimezone(utc).timestamp())
-
-        # For today's date, only paint up to "now" (but not past 16:00)
-        now_utc = int(dt.datetime.now(utc).timestamp())
-        capped_end_utc = min(end_utc, now_utc) if (date_arg == "" or date_arg == day.strftime("%Y-%m-%d")) else end_utc
-
-        bucket_minutes = 5
-        bucket_sec = bucket_minutes * 60
-
-        db = os.environ.get("LIVE_DB", r"C:\TradeAlerts\live.db")
-        con = sqlite3.connect(db)
+def _mm_regime_summary_from_table(table: str, bucket: str):
+    import sqlite3
+    out = {"ok": True, "table": table, "bucket": bucket, "by_regime": [], "meta": {}}
+    con = None
+    try:
+        con = sqlite3.connect(str(LIVE_DB), timeout=5)
         cur = con.cursor()
 
-        # Grab raw samples for this day
-        cur.execute(
-            "SELECT ts_utc, regime, conf FROM market_regime_samples "
-            "WHERE ts_utc >= ? AND ts_utc <= ? "
-            "ORDER BY ts_utc ASC",
-            (start_utc, end_utc),
-        )
-        rows = cur.fetchall()
-        con.close()
+        if not _mm_exists(cur, table):
+            out["ok"] = False
+            out["error"] = f"missing_table:{table}"
+            return out
 
-        # Snap samples into 5-min buckets; last write wins per bucket
-        buckets = {}  # ts_bucket_utc -> (ts_utc, REGIME, conf)
-        for ts, reg, conf in rows:
-            try:
-                ts = int(ts)
-            except Exception:
-                continue
-            b = (ts // bucket_sec) * bucket_sec
-            r = (str(reg or "").upper() or None)
-            if r:
-                buckets[b] = (ts, r, int(conf) if conf is not None else None)
+        cols = _mm_table_cols(cur, table)
+        out["meta"]["cols"] = cols
 
-        # Carry-forward within the day, but do NOT seed from prior days (midnight clear).
-        out = []
-        last_reg = None
-        last_conf = None
+        # regime col is required for this summary
+        c_regime = _mm_pick_col(cols, ["regime"])
+        if not c_regime:
+            out["ok"] = False
+            out["error"] = "missing_col:regime"
+            return out
 
-        t = start_utc
-        while t <= capped_end_utc:
-            if t in buckets:
-                _ts, last_reg, last_conf = buckets[t]
-            if last_reg:
-                t_et = dt.datetime.fromtimestamp(t, dt.timezone.utc).astimezone(tz)
-                out.append({"t": t_et.strftime("%H:%M"), "r": last_reg, "c": last_conf})
-            t += bucket_sec
+        # optional
+        c_event   = _mm_pick_col(cols, ["event", "action", "type"])
+        c_ts_utc  = _mm_pick_col(cols, ["ts_utc", "ts", "timestamp_utc", "time_utc_epoch"])
+        c_reason  = _mm_pick_col(cols, ["exit_reason", "reason", "sell_reason", "why"])
 
-        return jsonify({
-            "ok": True,
-            "tz": "America/New_York",
-            "date": day.strftime("%Y-%m-%d"),
-            "start_et": start_et.strftime("%H:%M"),
-            "end_et": end_et.strftime("%H:%M"),
-            "bucket_minutes": bucket_minutes,
-            "buckets": out
-        })
+        since = _mm_bucket_since_epoch(bucket)
+        where = []
+        params = []
+        if since is not None and c_ts_utc:
+            where.append(f"{c_ts_utc} >= ?")
+            params.append(int(since))
+
+        where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+
+        # Base counts by regime
+        q = f"SELECT {c_regime} as regime, COUNT(1) as n FROM {table}{where_sql} GROUP BY {c_regime} ORDER BY n DESC"
+        rows = cur.execute(q, params).fetchall()
+
+        # Optional per-event counts (ATTEMPTED/PLACED/FILLED) per regime
+        event_counts = {}
+        if c_event:
+            q2 = f"SELECT {c_regime} as regime, {c_event} as ev, COUNT(1) as n FROM {table}{where_sql} GROUP BY {c_regime}, {c_event}"
+            for rg, ev, n in cur.execute(q2, params).fetchall():
+                rgk = str(rg or "UNKNOWN")
+                evk = str(ev or "UNKNOWN")
+                event_counts.setdefault(rgk, {})[evk] = int(n)
+
+        # Optional top reasons per regime
+        top_reasons = {}
+        if c_reason:
+            q3 = f"""
+            SELECT {c_regime} as regime, {c_reason} as reason, COUNT(1) as n
+            FROM {table}{where_sql}
+            WHERE {c_reason} IS NOT NULL AND TRIM({c_reason}) <> ''
+            GROUP BY {c_regime}, {c_reason}
+            ORDER BY n DESC
+            """
+            for rg, rs, n in cur.execute(q3, params).fetchall():
+                rgk = str(rg or "UNKNOWN")
+                top_reasons.setdefault(rgk, []).append({"reason": str(rs), "n": int(n)})
+            # cap lists
+            for rgk in list(top_reasons.keys()):
+                top_reasons[rgk] = top_reasons[rgk][:6]
+
+        by = []
+        for rg, n in rows:
+            rgk = str(rg or "UNKNOWN")
+            item = {"regime": rgk, "n": int(n)}
+            if rgk in event_counts:
+                item["events"] = event_counts[rgk]
+            if rgk in top_reasons:
+                item["top_reasons"] = top_reasons[rgk]
+            by.append(item)
+
+        out["by_regime"] = by
+        out["meta"]["since_epoch"] = since
+        out["meta"]["has_ts_filter"] = bool(since is not None and c_ts_utc)
+        out["meta"]["ts_col"] = c_ts_utc
+        out["meta"]["event_col"] = c_event
+        out["meta"]["reason_col"] = c_reason
+        return out
+
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-# --- MM_MAIN_RUN_V1 ---
-
-
-# --- MM_REGIME_ANALYTICS_ENDPOINTS_V2_RESTORE ---
-
-@app.route("/analytics/buy_regime")
-def analytics_buy_regime_page():
-    return render_template("analytics_buy_regime.html")
-
-@app.route("/analytics/sell_regime")
-def analytics_sell_regime_page():
-    return render_template("analytics_sell_regime.html")
-
-
-def _mm_regime_agg_by_regime(con, table_name: str, since_ts_utc: int):
-    """
-    Returns list of dicts: [{regime, count, avg_conf}]
-    Expects columns: ts_utc, regime, regime_conf (optional).
-    """
-    cur = con.cursor()
-
-    # schema sniff
-    cols = {r[1] for r in cur.execute(f"PRAGMA table_info({table_name})").fetchall()}
-    if "ts_utc" not in cols or "regime" not in cols:
-        return []
-
-    conf_expr = "AVG(regime_conf)" if "regime_conf" in cols else "NULL"
-    sql = f"""
-      SELECT regime,
-             COUNT(*) AS ct,
-             {conf_expr} AS avg_conf
-      FROM {table_name}
-      WHERE ts_utc >= ?
-        AND regime IS NOT NULL
-        AND TRIM(regime) <> ''
-      GROUP BY regime
-      ORDER BY ct DESC
-    """
-    out = []
-    for regime, ct, avg_conf in cur.execute(sql, (int(since_ts_utc),)).fetchall():
-        out.append({
-            "regime": str(regime),
-            "count": int(ct or 0),
-            "avg_conf": (None if avg_conf is None else int(round(float(avg_conf)))),
-        })
-    return out
-
+        out["ok"] = False
+        out["error"] = str(e)
+        return out
+    finally:
+        try:
+            if con:
+                con.close()
+        except Exception:
+            pass
 
 @app.route("/api/analytics/buy_regime")
 def api_analytics_buy_regime():
-    bucket = (request.args.get("bucket") or "today").strip().lower()
-    since_ts_utc = _mm_bucket_since_epoch(bucket)
-
-    con = sqlite3.connect(LIVE_DB)
-    try:
-        items = _mm_regime_agg_by_regime(con, "buy_events", since_ts_utc)
-        total = sum(i.get("count", 0) for i in items)
-        return jsonify(ok=True, bucket=bucket, since_ts_utc=int(since_ts_utc), total=int(total), by_regime=items)
-    finally:
-        try: con.close()
-        except Exception: pass
-
+    bucket = request.args.get("bucket") or "today"
+    # buy table name: try buy_events first, then fall back to signal_fires if needed
+    # (schema-adaptive ? if no regime col exists, response will show missing_col)
+    for table in ("buy_events", "buy_event", "signal_fires", "trigger_fires"):
+        r = _mm_regime_summary_from_table(table, bucket)
+        if r.get("ok") or (r.get("error") not in ("missing_table:buy_events","missing_table:buy_event","missing_table:signal_fires","missing_table:trigger_fires")):
+            return jsonify(r)
+    return jsonify({"ok": False, "error": "no_candidate_tables_found"})
 
 @app.route("/api/analytics/sell_regime")
 def api_analytics_sell_regime():
-    bucket = (request.args.get("bucket") or "today").strip().lower()
-    since_ts_utc = _mm_bucket_since_epoch(bucket)
+    bucket = request.args.get("bucket") or "today"
+    # sell_events is the source of truth for Sell Analytics
+    return jsonify(_mm_regime_summary_from_table("sell_events", bucket))
 
-    con = sqlite3.connect(LIVE_DB)
-    try:
-        items = _mm_regime_agg_by_regime(con, "sell_events", since_ts_utc)
-        total = sum(i.get("count", 0) for i in items)
-        return jsonify(ok=True, bucket=bucket, since_ts_utc=int(since_ts_utc), total=int(total), by_regime=items)
-    finally:
-        try: con.close()
-        except Exception: pass
+# --- /MM_REGIME_ANALYTICS_ENDPOINTS_V1 ---
 
-# --- /MM_REGIME_ANALYTICS_ENDPOINTS_V2_RESTORE ---
+def api_analytics_candidate_fires():
+    """
+    Counts indicator fires from triggers_*.csv (candidate rows).
+    Bucket: today / 7d / 30d / all  (defaults to 7d)
+    """
+    import os, glob, csv, re
+    from datetime import datetime, timedelta, timezone
+    from flask import jsonify, request
 
-# --- MM_REGIME_ANALYTICS_OUTCOMES_EXITS_V1 ---
+    bucket = (request.args.get("bucket", "7d") or "7d").strip().lower()
+    root = os.path.abspath(os.path.dirname(__file__))
+    logs_dir = os.path.join(root, "logs")
 
-def _mm_parse_ts_to_epoch_any(x):
-    import datetime as dt
-    from zoneinfo import ZoneInfo
-    if x is None:
-        return None
-    if isinstance(x, (int, float)):
-        try: return int(float(x))
-        except Exception: return None
-    s = str(x).strip()
-    if not s:
-        return None
-    if re.fullmatch(r"\d+(\.\d+)?", s):
-        try: return int(float(s))
-        except Exception: return None
-    et = ZoneInfo("America/New_York")
-    utc = ZoneInfo("UTC")
-    if s.endswith("Z"):
-        s2 = s[:-1] + "+00:00"
-    else:
-        s2 = s
-    try:
-        d = dt.datetime.fromisoformat(s2)
-        if d.tzinfo is None:
-            d = d.replace(tzinfo=et)
-        return int(d.astimezone(utc).timestamp())
-    except Exception:
-        pass
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+    def _bucket_days(b: str):
+        if b in ("all",):
+            return None
+        if b in ("today",):
+            return 0
+        if b.endswith("d") and b[:-1].isdigit():
+            return int(b[:-1])
+        return 7
+
+    days = _bucket_days(bucket)
+    now = datetime.now(timezone.utc)
+
+    def _file_ok(fp: str) -> bool:
+        if days is None:
+            return True
+        base = os.path.basename(fp)
+        m = re.search(r"triggers_(\d{4}-\d{2}-\d{2})\.csv", base)
+        if not m:
+            return False
         try:
-            d = dt.datetime.strptime(s, fmt).replace(tzinfo=et)
-            return int(d.astimezone(utc).timestamp())
+            d = datetime.strptime(m.group(1), "%Y-%m-%d").date()
+        except Exception:
+            return False
+        cutoff = (now - timedelta(days=days)).date()
+        return d >= cutoff
+
+    # Normalize from signals_pretty tokens into families
+    def _norm_token(t: str) -> str | None:
+        tl = (t or "").strip().lower()
+        if not tl:
+            return None
+        tl = tl.replace(" ", "")
+        if "price>sma" in tl or tl.startswith("sma") or "sma(" in tl:
+            return "sma"
+        if "vwap" in tl:
+            return "vwap"
+        if "macd" in tl:
+            return "macd"
+        if "rsi" in tl:
+            return "rsi"
+        if "vol" in tl or "volume" in tl:
+            return "vol"
+        if "bb" in tl or "boll" in tl:
+            return "bb"
+        if "adx" in tl:
+            return "adx"
+        if "gap" in tl:
+            return "gap"
+        if "atr" in tl:
+            return "atr"
+        if "range" in tl:
+            return "range"
+        if "super" in tl:
+            return "super"
+        return None
+
+    def _split_signals(raw: str) -> list[str]:
+        parts = [p.strip() for p in (raw or "").split(",") if p.strip()]
+        out = []
+        seen = set()
+        for p in parts:
+            k = p.lower()
+            if k in seen:
+                continue
+            seen.add(k)
+            out.append(p)
+        return out
+
+    counts = {}
+    total_rows = 0
+
+    files = sorted(glob.glob(os.path.join(logs_dir, "triggers_*.csv")))
+    for fp in files:
+        if not _file_ok(fp):
+            continue
+        try:
+            with open(fp, "r", encoding="utf-8", newline="") as f:
+                r = csv.DictReader(f)
+                cols = r.fieldnames or []
+                sigk = next((k for k in cols if "signals_pretty" in (k or "").lower() or (k or "").lower() == "signals"), None)
+                for row in r:
+                    total_rows += 1
+                    raw = (row.get(sigk) if sigk else "") or ""
+                    toks = _split_signals(raw)
+                    families = set()
+                    for t in toks:
+                        fam = _norm_token(t)
+                        if fam:
+                            families.add(fam)
+                    for fam in families:
+                        counts[fam] = counts.get(fam, 0) + 1
         except Exception:
             continue
-    return None
 
-def _mm_quantiles(values):
-    if not values:
-        return (None, None)
-    v = sorted(float(x) for x in values)
-    avg = sum(v) / len(v)
-    n = len(v)
-    med = v[n//2] if (n % 2 == 1) else (v[n//2 - 1] + v[n//2]) / 2.0
-    return (avg, med)
+    items = [{"indicator": k, "n": int(v)} for k, v in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
+    return jsonify({"ok": True, "bucket": bucket, "total": int(total_rows), "items": items})
 
-def _mm_regime_for_sell(con, symbol: str, close_ts_utc: int):
-    cur = con.cursor()
-    try:
-        row = cur.execute("""
-          SELECT regime, regime_conf, event, ts_utc
-          FROM sell_events
-          WHERE symbol = ?
-            AND regime IS NOT NULL AND TRIM(regime) <> ''
-          ORDER BY ABS(ts_utc - ?) ASC
-          LIMIT 1
-        """, (symbol, int(close_ts_utc))).fetchone()
-        if not row:
-            return (None, None, None, None)
-        return (row[0], row[1], row[2], row[3])
-    except Exception:
-        return (None, None, None, None)
+@app.route("/api/analytics/buy_funnel")
+def api_analytics_buy_funnel():
+    """
+    Candidate -> funnel summary (bucketed).
+    Candidates come from triggers_*.csv rows (post-required gate).
+    Strict-pass approximated by signals_pretty token count >= strict_buy_signals.
+    Bought is best-effort from live.db (optional; returns 0 if not found).
+    """
+    import os, glob, csv, re, sqlite3
+    from datetime import datetime, timedelta, timezone
+    from flask import jsonify, request
 
-def _mm_regime_for_buy(con, symbol: str, opened_ts_utc: int):
-    cur = con.cursor()
-    try:
-        w = 6 * 3600
-        row = cur.execute("""
-          SELECT regime, regime_conf, ts_utc
-          FROM buy_events
-          WHERE symbol = ?
-            AND ts_utc BETWEEN ? AND ?
-            AND regime IS NOT NULL AND TRIM(regime) <> ''
-          ORDER BY ABS(ts_utc - ?) ASC
-          LIMIT 1
-        """, (symbol, int(opened_ts_utc - w), int(opened_ts_utc + w), int(opened_ts_utc))).fetchone()
-        if not row:
-            return (None, None, None)
-        return (row[0], row[1], row[2])
-    except Exception:
-        return (None, None, None)
+    bucket = (request.args.get("bucket", "7d") or "7d").strip().lower()
+    root = os.path.abspath(os.path.dirname(__file__))
+    logs_dir = os.path.join(root, "logs")
+    live_db = os.path.join(root, "live.db")
 
-@app.route("/api/analytics/sell_regime_exits")
-def api_analytics_sell_regime_exits():
-    bucket = (request.args.get("bucket") or "today").strip().lower()
-    since_ts_utc = _mm_bucket_since_epoch(bucket)
-    con = sqlite3.connect(LIVE_DB)
-    try:
-        cur = con.cursor()
-        cols = {r[1] for r in cur.execute("PRAGMA table_info(sell_events)").fetchall()}
-        if "ts_utc" not in cols or "regime" not in cols or "event" not in cols:
-            return jsonify(ok=True, bucket=bucket, since_ts_utc=int(since_ts_utc), by_regime=[], note="sell_events missing fields")
+    def _bucket_days(b: str):
+        if b in ("all",):
+            return None
+        if b in ("today",):
+            return 0
+        if b.endswith("d") and b[:-1].isdigit():
+            return int(b[:-1])
+        return 7
 
-        rows = cur.execute("""
-          SELECT regime, event, COUNT(*) AS ct
-          FROM sell_events
-          WHERE ts_utc >= ?
-            AND regime IS NOT NULL AND TRIM(regime) <> ''
-          GROUP BY regime, event
-          ORDER BY ct DESC
-        """, (int(since_ts_utc),)).fetchall()
+    days = _bucket_days(bucket)
+    now = datetime.now(timezone.utc)
 
-        agg = {}
-        for regime, event, ct in rows:
-            r = agg.setdefault(str(regime), {"regime": str(regime), "total": 0, "events": []})
-            r["total"] += int(ct or 0)
-            r["events"].append({"event": str(event), "count": int(ct or 0)})
+    def _file_ok(fp: str) -> bool:
+        if days is None:
+            return True
+        base = os.path.basename(fp)
+        m = re.search(r"triggers_(\d{4}-\d{2}-\d{2})\.csv", base)
+        if not m:
+            return False
+        try:
+            d = datetime.strptime(m.group(1), "%Y-%m-%d").date()
+        except Exception:
+            return False
+        cutoff = (now - timedelta(days=days)).date()
+        return d >= cutoff
 
-        conf_rows = cur.execute("""
-          SELECT regime, AVG(regime_conf) AS avg_conf
-          FROM sell_events
-          WHERE ts_utc >= ?
-            AND regime IS NOT NULL AND TRIM(regime) <> ''
-            AND regime_conf IS NOT NULL
-          GROUP BY regime
-        """, (int(since_ts_utc),)).fetchall()
-
-        for regime, avg_conf in conf_rows:
-            if str(regime) in agg:
-                agg[str(regime)]["avg_conf"] = int(round(float(avg_conf)))
-
-        out = sorted(agg.values(), key=lambda x: x.get("total", 0), reverse=True)
-        return jsonify(ok=True, bucket=bucket, since_ts_utc=int(since_ts_utc), by_regime=out)
-    finally:
-        try: con.close()
-        except Exception: pass
-
-@app.route("/api/analytics/sell_regime_outcomes")
-def api_analytics_sell_regime_outcomes():
-    bucket = (request.args.get("bucket") or "today").strip().lower()
-    since_ts_utc = _mm_bucket_since_epoch(bucket)
-    con = sqlite3.connect(LIVE_DB)
-    try:
-        cur = con.cursor()
-        cols = {r[1] for r in cur.execute("PRAGMA table_info(realized_trades)").fetchall()}
-        if "gain" not in cols or "close_date" not in cols or "symbol" not in cols:
-            return jsonify(ok=True, bucket=bucket, since_ts_utc=int(since_ts_utc), by_regime=[], note="realized_trades missing symbol/gain/close_date")
-
-        rows = cur.execute("SELECT symbol, gain, close_date FROM realized_trades").fetchall()
-        by = {}
-        for symbol, gain, close_date in rows:
-            close_ts = _mm_parse_ts_to_epoch_any(close_date)
-            if close_ts is None or close_ts < int(since_ts_utc):
-                continue
-            try:
-                g = float(gain)
-            except Exception:
-                continue
-            regime, _, _, _ = _mm_regime_for_sell(con, str(symbol), int(close_ts))
-            if not regime:
-                regime = "UNKNOWN"
-            a = by.setdefault(str(regime), {"regime": str(regime), "n": 0, "wins": 0, "sum_gain": 0.0, "gains": []})
-            a["n"] += 1
-            a["wins"] += (1 if g > 0 else 0)
-            a["sum_gain"] += g
-            a["gains"].append(g)
-
+    def _split_signals(raw: str) -> list[str]:
+        parts = [p.strip() for p in (raw or "").split(",") if p.strip()]
         out = []
-        for regime, a in by.items():
-            avg_gain, med_gain = _mm_quantiles(a["gains"])
-            win_rate = (a["wins"] / a["n"]) if a["n"] else 0.0
-            out.append({
-                "regime": regime,
-                "count": int(a["n"]),
-                "win_rate": round(100.0 * win_rate, 1),
-                "sum_gain": round(float(a["sum_gain"]), 2),
-                "avg_gain": (None if avg_gain is None else round(float(avg_gain), 2)),
-                "median_gain": (None if med_gain is None else round(float(med_gain), 2)),
-            })
-        out.sort(key=lambda x: x.get("count", 0), reverse=True)
-        return jsonify(ok=True, bucket=bucket, since_ts_utc=int(since_ts_utc), by_regime=out, total=sum(x["count"] for x in out))
-    finally:
-        try: con.close()
-        except Exception: pass
+        seen = set()
+        for p in parts:
+            k = p.lower()
+            if k in seen:
+                continue
+            seen.add(k)
+            out.append(p)
+        return out
 
-@app.route("/api/analytics/buy_regime_outcomes")
-def api_analytics_buy_regime_outcomes():
-    bucket = (request.args.get("bucket") or "today").strip().lower()
-    since_ts_utc = _mm_bucket_since_epoch(bucket)
-    con = sqlite3.connect(LIVE_DB)
+    # strict threshold (safe default)
+    strict_n = 4
+
+    candidates = 0
+    strict_pass = 0
+
+    files = sorted(glob.glob(os.path.join(logs_dir, "triggers_*.csv")))
+    for fp in files:
+        if not _file_ok(fp):
+            continue
+        try:
+            with open(fp, "r", encoding="utf-8", newline="") as f:
+                r = csv.DictReader(f)
+                cols = r.fieldnames or []
+                sigk = next((k for k in cols if "signals_pretty" in (k or "").lower() or (k or "").lower() == "signals"), None)
+                for row in r:
+                    candidates += 1
+                    raw = (row.get(sigk) if sigk else "") or ""
+                    n = len(_split_signals(raw))
+                    if n >= strict_n:
+                        strict_pass += 1
+        except Exception:
+            continue
+
+    # Best-effort bought count from live.db (safe = never raises)
+    bought = 0
     try:
-        cur = con.cursor()
-        rcols = {r[1] for r in cur.execute("PRAGMA table_info(realized_trades)").fetchall()}
-        pcols = {r[1] for r in cur.execute("PRAGMA table_info(position_opened)").fetchall()}
-        if "symbol" not in rcols or "gain" not in rcols or "close_date" not in rcols:
-            return jsonify(ok=True, bucket=bucket, since_ts_utc=int(since_ts_utc), by_regime=[], note="realized_trades missing symbol/gain/close_date")
-        if "symbol" not in pcols or ("opened_ts_utc" not in pcols and "opened_utc" not in pcols):
-            return jsonify(ok=True, bucket=bucket, since_ts_utc=int(since_ts_utc), by_regime=[], note="position_opened missing opened_ts")
+        if os.path.exists(live_db):
+            con = sqlite3.connect(live_db)
+            cur = con.cursor()
 
-        opened_field = "opened_ts_utc" if "opened_ts_utc" in pcols else "opened_utc"
-        rows = cur.execute("SELECT symbol, gain, close_date FROM realized_trades").fetchall()
+            # choose a likely table
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = {r[0] for r in cur.fetchall()}
 
-        by = {}
-        for symbol, gain, close_date in rows:
-            close_ts = _mm_parse_ts_to_epoch_any(close_date)
-            if close_ts is None:
-                continue
-            # map to nearest opened time
-            opened_row = cur.execute(f"""
-              SELECT {opened_field}
-              FROM position_opened
-              WHERE symbol = ?
-              ORDER BY ABS(COALESCE({opened_field},0) - ?) ASC
-              LIMIT 1
-            """, (str(symbol), int(close_ts))).fetchone()
-            if not opened_row:
-                continue
-            opened_ts = _mm_parse_ts_to_epoch_any(opened_row[0])
-            if opened_ts is None or int(opened_ts) < int(since_ts_utc):
-                continue
-            try:
-                g = float(gain)
-            except Exception:
-                continue
-            regime, _, _ = _mm_regime_for_buy(con, str(symbol), int(opened_ts))
-            if not regime:
-                regime = "UNKNOWN"
-            a = by.setdefault(str(regime), {"regime": str(regime), "n": 0, "wins": 0, "sum_gain": 0.0, "gains": []})
-            a["n"] += 1
-            a["wins"] += (1 if g > 0 else 0)
-            a["sum_gain"] += g
-            a["gains"].append(g)
+            t = None
+            for cand in ("trades", "executed_trades", "order_fills", "fills", "orders"):
+                if cand in tables:
+                    t = cand
+                    break
 
-        out = []
-        for regime, a in by.items():
-            avg_gain, med_gain = _mm_quantiles(a["gains"])
-            win_rate = (a["wins"] / a["n"]) if a["n"] else 0.0
-            out.append({
-                "regime": regime,
-                "count": int(a["n"]),
-                "win_rate": round(100.0 * win_rate, 1),
-                "sum_gain": round(float(a["sum_gain"]), 2),
-                "avg_gain": (None if avg_gain is None else round(float(avg_gain), 2)),
-                "median_gain": (None if med_gain is None else round(float(med_gain), 2)),
-            })
-        out.sort(key=lambda x: x.get("count", 0), reverse=True)
-        return jsonify(ok=True, bucket=bucket, since_ts_utc=int(since_ts_utc), by_regime=out, total=sum(x["count"] for x in out))
+            if t:
+                cur.execute(f"PRAGMA table_info({t})")
+                cols = [r[1].lower() for r in cur.fetchall()]
+
+                side_col = next((c for c in ("action","side","type") if c in cols), None)
+                ts_col   = next((c for c in ("ts_utc","time_utc","created_utc","timestamp","time","time_et","ts_et") if c in cols), None)
+
+                wh = []
+                params = []
+
+                if side_col:
+                    wh.append(f"LOWER({side_col}) IN ('buy','b')")
+
+                if ts_col and days is not None:
+                    cutoff = (now - timedelta(days=days)).isoformat()
+                    wh.append(f"julianday({ts_col}) >= julianday(?)")
+                    params.append(cutoff)
+
+                where_sql = (" WHERE " + " AND ".join(wh)) if wh else ""
+                cur.execute(f"SELECT COUNT(*) FROM {t}{where_sql}", params)
+                bought = int(cur.fetchone()[0] or 0)
+
+            con.close()
+    except Exception:
+        bought = 0
+
+    # derived stages (keep simple + non-noisy)
+    required_pass = candidates         # triggers_*.csv implies passed required gate
+    buyable = strict_pass              # conservative approximation
+
+    return jsonify({
+        "ok": True,
+        "bucket": bucket,
+        "strict_n": strict_n,
+        "candidates": int(candidates),
+        "required_pass": int(required_pass),
+        "strict_pass": int(strict_pass),
+        "buyable": int(buyable),
+        "bought": int(bought),
+    })
+
+
+# -------------------------
+# Daily Analytics API (schema-adaptive)
+# BUYS: position_opened (opened timestamp)
+# SELLS: realized_trades (close timestamp)
+# -------------------------
+@app.route("/api/analytics/daily")
+def api_analytics_daily():
+    import sqlite3
+    from datetime import datetime
+    from flask import jsonify, request
+
+    date_arg = (request.args.get("date") or "").strip()  # YYYY-MM-DD
+    if not date_arg:
+        date_arg = datetime.now().strftime("%Y-%m-%d")
+
+    db_path = None
+    if "LIVE_DB" in globals():
+        db_path = LIVE_DB
+    elif "DB_PATH" in globals():
+        db_path = DB_PATH
+
+    if not db_path:
+        return jsonify({"error": "No LIVE_DB/DB_PATH configured", "date": date_arg}), 500
+
+    def table_cols(cur, table):
+        try:
+            cur.execute(f"PRAGMA table_info({table})")
+            return {r[1] for r in cur.fetchall()}
+        except Exception:
+            return set()
+
+    def pick(cols, *names):
+        for n in names:
+            if n in cols:
+                return n
+        return None
+
+    con = sqlite3.connect(db_path)
+    con.row_factory = sqlite3.Row
+    cur = con.cursor()
+
+    try:
+        # ---------- BUYS ----------
+# ---------- BUYS ----------
+        # Primary source: position_opened
+        po_cols = table_cols(cur, "position_opened")
+        po_ts   = pick(po_cols, "opened_utc", "opened_at", "ts_utc", "ts", "time_utc")
+        po_sym  = pick(po_cols, "symbol", "ticker")
+        po_name = pick(po_cols, "name", "company_name")
+        po_qty  = pick(po_cols, "qty", "quantity", "shares")
+        po_px   = pick(po_cols, "price", "entry_price", "fill_price", "avg_price")
+
+        buys_po = []
+        if po_ts and po_sym:
+            sel = [
+                f"{po_ts} AS ts",
+                f"{po_sym} AS symbol",
+                (f"{po_name} AS name" if po_name else "'' AS name"),
+                (f"{po_qty} AS qty"   if po_qty  else "NULL AS qty"),
+                (f"{po_px} AS price"  if po_px   else "NULL AS price"),
+                "'position_opened' AS src"
+            ]
+            sql = "SELECT " + ", ".join(sel) + f" FROM position_opened WHERE date({po_ts})=? ORDER BY {po_ts} ASC"
+            cur.execute(sql, (date_arg,))
+            buys_po = [dict(r) for r in cur.fetchall()]
+
+        # Secondary source (manual reimport days): trades action='BUY'
+        tr_cols = table_cols(cur, "trades")
+        tr_ts   = pick(tr_cols, "ts_utc", "ts_et", "ts", "time_utc", "time_et", "created_at")
+        tr_sym  = pick(tr_cols, "symbol", "ticker")
+        tr_name = pick(tr_cols, "name", "company_name")
+        tr_qty  = pick(tr_cols, "qty", "quantity", "shares")
+        tr_px   = pick(tr_cols, "price", "fill_price", "avg_price", "entry_price")
+        tr_act  = pick(tr_cols, "action", "side", "type", "transactionType", "transaction_type")
+
+        buys_tr = []
+        if tr_ts and tr_sym and tr_act:
+            sel = [
+                f"{tr_ts} AS ts",
+                f"{tr_sym} AS symbol",
+                (f"{tr_name} AS name" if tr_name else "'' AS name"),
+                (f"{tr_qty} AS qty"   if tr_qty  else "NULL AS qty"),
+                (f"{tr_px} AS price"  if tr_px   else "NULL AS price"),
+                "'trades' AS src"
+            ]
+            sql = (
+                "SELECT " + ", ".join(sel) +
+                f" FROM trades WHERE date({tr_ts})=? AND {tr_act} IN ('BUY','Buy','B','Bought','Open') ORDER BY {tr_ts} ASC"
+            )
+            cur.execute(sql, (date_arg,))
+            buys_tr = [dict(r) for r in cur.fetchall()]
+
+        # Merge + de-dupe (prefer position_opened for same (symbol, ts))
+        merged = []
+        seen = set()  # (symbol, ts)
+        for r in buys_po:
+            k = (str(r.get('symbol','')), str(r.get('ts','')))
+            if k in seen: continue
+            seen.add(k)
+            merged.append(r)
+        for r in buys_tr:
+            k = (str(r.get('symbol','')), str(r.get('ts','')))
+            if k in seen: continue
+            seen.add(k)
+            merged.append(r)
+
+        buys = merged
+
+
+        # ---------- SELLS ----------
+        rt_cols = table_cols(cur, "realized_trades")
+        rt_ts   = pick(rt_cols, "close_date", "closed_utc", "ts_utc", "ts", "time_utc")
+        rt_sym  = pick(rt_cols, "symbol", "ticker")
+        rt_name = pick(rt_cols, "name", "company_name")
+        rt_qty  = pick(rt_cols, "qty", "quantity", "shares")
+        rt_open = pick(rt_cols, "open_price", "entry_price", "buy_price", "avg_open", "cost_basis")
+        rt_close= pick(rt_cols, "close_price", "exit_price", "sell_price", "avg_close")
+        rt_gain = pick(rt_cols, "gain", "pnl", "pl", "profit")
+        rt_gpct = pick(rt_cols, "gain_pct", "pnl_pct", "pl_pct", "profit_pct")
+
+        if not rt_ts or not rt_sym:
+            sells = []
+        else:
+            sel = [
+                f"{rt_ts} AS ts",
+                f"{rt_sym} AS symbol",
+            ]
+            if rt_name: sel.append(f"{rt_name} AS name")
+            else:       sel.append("'' AS name")
+            if rt_qty:  sel.append(f"{rt_qty} AS qty")
+            else:       sel.append("NULL AS qty")
+            if rt_open: sel.append(f"{rt_open} AS open_price")
+            else:       sel.append("NULL AS open_price")
+            if rt_close:sel.append(f"{rt_close} AS close_price")
+            else:       sel.append("NULL AS close_price")
+            if rt_gain: sel.append(f"{rt_gain} AS gain")
+            else:       sel.append("NULL AS gain")
+            if rt_gpct: sel.append(f"{rt_gpct} AS gain_pct")
+            else:       sel.append("NULL AS gain_pct")
+
+            cur.execute(f"""
+                SELECT {", ".join(sel)}
+                FROM realized_trades
+                WHERE date({rt_ts})=?
+                ORDER BY {rt_ts} ASC
+            """, (date_arg,))
+            sells = [dict(r) for r in cur.fetchall()]
+
+        return jsonify({
+            "date": date_arg,
+            "buys": buys,
+            "sells": sells,
+            "counts": {"buys": len(buys), "sells": len(sells)},
+            "meta": {
+                "db": str(db_path),
+                "position_opened_ts": po_ts,
+                "realized_trades_ts": rt_ts
+            }
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "date": date_arg
+        }), 500
     finally:
-        try: con.close()
-        except Exception: pass
-
-# --- /MM_REGIME_ANALYTICS_OUTCOMES_EXITS_V1 ---
+        con.close()
 
 
 
+
+
+# --- SELL_ANALYTICS_API_V1 (LIVE_DB sell_events) ---
+@app.get("/api/analytics/sell")
+def api_analytics_sell():
+    """
+    Sell Analytics (LIVE_DB-only)
+    - exit_reason_breakdown: sell_events where event='FILLED'
+    - execution_outcomes: sell_events all events
+    - hold_buckets: realized_trades open_date/close_date (best-effort)
+    """
+    try:
+        import sqlite3
+        from datetime import datetime, timedelta, timezone
+        from collections import Counter
+
+        bucket = (request.args.get("bucket") or "7d").lower().strip()
+        # Support bucket=today (midnight ET -> now, converted to UTC epoch)
+        start_epoch_today = None
+        try:
+            from zoneinfo import ZoneInfo
+            etz = ZoneInfo("America/New_York")
+            now_et = datetime.now(etz)
+            mid_et = now_et.replace(hour=0, minute=0, second=0, microsecond=0)
+            start_epoch_today = int(mid_et.astimezone(timezone.utc).timestamp())
+        except Exception:
+            start_epoch_today = None
+
+        days_map = {"today": 0, "7d": 7, "30d": 30, "all": None}
+        days = days_map.get(bucket, 7)
+
+        now_utc = datetime.now(timezone.utc)
+        start_epoch = start_epoch_today if bucket=="today" else (int((now_utc - timedelta(days=days)).timestamp()) if days else None)
+
+        # HARD-PIN the DB path (no ambiguity)
+        db_path = r"C:\TradeAlerts\live.db"
+
+        con = sqlite3.connect(db_path, timeout=30)
+        try:
+            con.execute("PRAGMA journal_mode=WAL;")
+
+            # ---- outcomes ----
+            if start_epoch is None:
+                rows = con.execute("SELECT event FROM sell_events").fetchall()
+            else:
+                rows = con.execute("SELECT event FROM sell_events WHERE ts_utc >= ?", (start_epoch,)).fetchall()
+            outcomes = Counter([r[0] for r in rows if r and r[0]])
+
+            # ---- exit reasons (FILLED only) ----
+            if start_epoch is None:
+                rows2 = con.execute("SELECT reason FROM sell_events WHERE event='FILLED'").fetchall()
+            else:
+                rows2 = con.execute("SELECT reason FROM sell_events WHERE event='FILLED' AND ts_utc >= ?", (start_epoch,)).fetchall()
+            reasons = Counter([(r[0] or "UNKNOWN") for r in rows2])
+
+            # ---- hold-time buckets (realized_trades) ----
+            def _parse_dt(s):
+                if not s:
+                    return None, "missing"
+                s = str(s).strip()
+                # ISO first
+                try:
+                    d = datetime.fromisoformat(s.replace("Z","+00:00"))
+                    if d.tzinfo is None:
+                        return d, "naive_ok"
+                    return d.astimezone(timezone.utc).replace(tzinfo=None), "aware_ok"
+                except Exception:
+                    pass
+                for f in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                    try:
+                        d = datetime.strptime(s, f)
+                        return d, ("date_only" if f == "%Y-%m-%d" else "naive_ok")
+                    except Exception:
+                        continue
+                return None, "bad"
+
+            rt = con.execute("SELECT symbol, action, open_date, close_date FROM realized_trades").fetchall()
+
+            buckets = [
+                ("<5m",     0,    5),
+                ("5?15m",   5,   15),
+                ("15?30m", 15,   30),
+                ("30?60m", 30,   60),
+                ("1?2h",   60,  120),
+                ("2?4h",  120,  240),
+                (">4h",   240,  10**9),
+            ]
+            hold_counts = Counter()
+            unknown = 0
+
+            for sym, act, od, cd in rt:
+                if not cd:
+                    continue
+                if act and str(act).upper() in ("BUY","B"):
+                    continue
+
+                odt, of = _parse_dt(od)
+                cdt, cf = _parse_dt(cd)
+                if odt is None or cdt is None or of != "naive_ok" or cf != "naive_ok":
+                    unknown += 1
+                    continue
+
+                try:
+                    # interpret naive as UTC (consistent); used only for duration
+                    mins = (cdt - odt).total_seconds() / 60.0
+                    if mins < 0:
+                        unknown += 1
+                        continue
+                except Exception:
+                    unknown += 1
+                    continue
+
+                placed = False
+                for name, lo, hi in buckets:
+                    if mins >= lo and mins < hi:
+                        hold_counts[name] += 1
+                        placed = True
+                        break
+                if not placed:
+                    unknown += 1
+
+            if unknown:
+                hold_counts["UNKNOWN"] += int(unknown)
+
+            order = ["<5m","5?15m","15?30m","30?60m","1?2h","2?4h",">4h","UNKNOWN"]
+            hold_buckets = [{"bucket": k, "ct": int(v)} for k, v in hold_counts.items()]
+            hold_buckets.sort(key=lambda x: order.index(x["bucket"]) if x["bucket"] in order else 999)
+
+            dbg = {
+                "sell_events_total": int(con.execute("SELECT COUNT(*) FROM sell_events").fetchone()[0]),
+                "realized_trades_total": int(con.execute("SELECT COUNT(*) FROM realized_trades").fetchone()[0]),
+            }
+
+        finally:
+            con.close()
+
+        return jsonify({
+            "meta": {"bucket": bucket, "start_epoch": start_epoch, "db_path": db_path},
+            "exit_reason_breakdown": dict(reasons),
+            "execution_outcomes": dict(outcomes),
+            "hold_buckets": hold_buckets,
+            "debug": dbg,
+            "v": "SELL_ANALYTICS_API_V1",
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e), "v": "SELL_ANALYTICS_API_V1"}), 500
+
+# --- /SELL_ANALYTICS_API_V1 ---
+
+# ------------------------------------------------------------
+# Chart view (required by /trade_review redirects)
+# ------------------------------------------------------------
+
+@app.route("/chart_img/<symbol>")
+def chart_img_symbol(symbol):
+    """
+    Trade Review chart IMAGE endpoint (for <img src=...>).
+
+    Delegates to the existing PNG chart endpoint (/chart?symbol=...),
+    so we keep ONE chart renderer and avoid referrer/symbol ambiguity.
+    """
+    from flask import request, redirect
+    from urllib.parse import quote
+
+    sym  = (symbol or "").strip().upper()
+    ts   = (request.args.get("ts") or "").strip()
+    date = (request.args.get("date") or "").strip()
+
+    # Explicit symbol in querystring = no referrer hacks
+    url = f"/chart?symbol={quote(sym)}"
+    if ts:
+        url += f"&ts={quote(ts)}"
+    if date:
+        url += f"&date={quote(date)}"
+    return redirect(url, code=302)
+
+@app.route("/chart/<symbol>")
+def chart_symbol(symbol):
+    from flask import request, redirect, url_for
+    ts = (request.args.get("ts") or "").strip()
+    date = (request.args.get("date") or "").strip()
+
+    # Chart route is an alias for Trade Review (single source of truth for rendering)
+    if ts and date:
+        return redirect(f"/trade_review?symbol={symbol}&date={date}&ts={ts}", code=302)
+    if ts:
+        return redirect(f"/trade_review?symbol={symbol}&ts={ts}", code=302)
+    if date:
+        return redirect(f"/trade_review?symbol={symbol}&date={date}", code=302)
+    return redirect(f"/trade_review?symbol={symbol}", code=302)
+
+
+# ------------------------------------------------------------
+# Dev server entrypoint (added to ensure dashboard starts)
+# ------------------------------------------------------------
 if __name__ == "__main__":
-    try:
-        # NOTE: use_reloader=False prevents duplicate listener/zombie issues on Windows.
-        app.run(host="0.0.0.0", port=5001, debug=True, use_reloader=False)
-    except TypeError:
-        # Fallback for older Flask that may not accept use_reloader here
-        app.run(host="0.0.0.0", port=5001, debug=True)
+    # NOTE: keep reloader OFF on Windows to avoid duplicate listeners
+    app.run(host="0.0.0.0", port=5001, debug=True, use_reloader=False)
 
