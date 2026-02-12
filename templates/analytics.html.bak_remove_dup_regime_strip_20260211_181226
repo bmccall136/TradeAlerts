@@ -1,0 +1,337 @@
+{% extends "layout.html" %}
+{% block analytics_regime_strip %}{% endblock %}
+{% block content %}
+
+<style>
+/* AX_DARK_CARDS_V1 */
+.ax-card, .ax-panel, .card, .mm-card {
+  background: #0f1118 !important;
+  border: 1px solid #222531 !important;
+  color: #e8e8e8 !important;
+}
+.ax-card .card-body, .card .card-body { background: transparent !important; }
+.ax-muted { opacity: .82; }
+
+/* Date picker to match button vibe */
+.ax-date-wrap { display:flex; align-items:center; gap:8px; }
+.ax-date-input {
+  background: transparent;
+  border: 1px solid #6c757d;
+  color: #e8e8e8;
+  border-radius: 6px;
+  padding: 4px 8px;
+  height: 31px; /* matches btn-sm */
+}
+.ax-date-input:focus { outline: none; box-shadow: none; border-color: #8b94a3; }
+
+
+</style>
+
+<div class="container-fluid py-3">
+
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <div class="d-flex align-items-center gap-2">
+      <img src="/static/Max.png" style="height:36px;width:36px;border-radius:8px;" alt="Max"/>
+      <div>
+        <div class="h4 mb-0">Daily Analytics</div>
+        <div class="text-secondary small" id="ax-date">Loading…</div>
+      </div>
+
+
+
+    </div>
+
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+      <a class="btn btn-sm btn-outline-info" href="/analytics/buy">Buy Analytics</a>
+      <a class="btn btn-sm btn-outline-info" href="/analytics/sell">Sell Analytics</a>
+
+      <div class="ax-date-wrap">
+        <a class="btn btn-sm btn-outline-warning" id="ax-yesterday" href="#">Yesterday</a>
+
+        <input
+          type="date"
+          class="ax-date-input"
+          id="ax-datepick"
+          value="{{ request.args.get('date','') }}"
+          aria-label="Select date"
+        />
+
+        <a class="btn btn-sm btn-outline-warning" id="ax-datego" href="#">Go</a>
+      </div>
+
+      <a class="btn btn-sm btn-outline-secondary" id="ax-live" href="/analytics">Live</a>
+    </div>
+  </div>
+
+  <!-- Regime history strip (centered under the global current regime badge) -->
+  
+  </div>
+
+  <div id="ax-errors" class="mb-3"></div>
+
+  <div class="row g-3">
+    <div class="col-12 col-xxl-6">
+      <div class="card mm-card">
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <div class="fw-bold text-success">BUYS</div>
+          <div class="small text-secondary" id="ax-buy-count">0 rows</div>
+        </div>
+        <div class="card-body">
+          <div id="ax-buy-col" class="text-secondary small">loading…</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-xxl-6">
+      <div class="card mm-card">
+        <div class="card-header d-flex align-items-center justify-content-between">
+          <div class="fw-bold text-danger">SELLS</div>
+          <div class="small text-secondary" id="ax-sell-count">0 rows</div>
+        </div>
+        <div class="card-body">
+          <div id="ax-sell-col" class="text-secondary small">loading…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-3 small text-secondary" id="ax-files"></div>
+</div>
+
+<script>
+(function(){
+  function pad2(n){ return String(n).padStart(2,'0'); }
+  function fmtDate(d){
+    return d.getFullYear() + "-" + pad2(d.getMonth()+1) + "-" + pad2(d.getDate());
+  }
+  function setUrlDate(dateStr){
+    if (!dateStr) return;
+    const u = new URL(window.location.href);
+    u.searchParams.set("date", dateStr);
+    window.location.href = u.toString();
+  }
+
+  const yBtn = document.getElementById("ax-yesterday");
+  const pick = document.getElementById("ax-datepick");
+  const go   = document.getElementById("ax-datego");
+
+  // Yesterday button -> ?date=YYYY-MM-DD
+  if (yBtn){
+    const yd = new Date();
+    yd.setDate(yd.getDate() - 1);
+    yBtn.href = (function(){
+      const u = new URL(window.location.href);
+      u.searchParams.set("date", fmtDate(yd));
+      return u.toString();
+    })();
+  }
+
+  // Go button uses picker value
+  if (go){
+    go.addEventListener("click", function(e){
+      e.preventDefault();
+      setUrlDate(pick ? pick.value : "");
+    });
+  }
+
+  // Optional: hitting Enter on date picker triggers Go
+  if (pick){
+    pick.addEventListener("keydown", function(e){
+      if (e.key === "Enter") setUrlDate(pick.value);
+    });
+  }
+})();
+
+// Live button highlight logic
+(function(){
+  const liveBtn = document.getElementById("ax-live");
+  if (!liveBtn) return;
+
+  const u = new URL(window.location.href);
+  const cur = (u.searchParams.get("date") || "").trim();
+
+  const pad2 = (n) => String(n).padStart(2,'0');
+  const now = new Date();
+  const today = now.getFullYear() + "-" + pad2(now.getMonth()+1) + "-" + pad2(now.getDate());
+
+  liveBtn.href = "/analytics"; // no date param = today
+  const onToday = (!cur) || (cur === today);
+  const canJump = !onToday;
+
+  liveBtn.classList.remove("btn-outline-secondary","btn-outline-warning");
+  liveBtn.classList.add(canJump ? "btn-outline-warning" : "btn-outline-secondary");
+})();
+
+</script>
+
+
+<script>
+if(!document.querySelector("#mm-regime-strip")) { /* strip removed: layout owns regime strip */ }
+
+/* MM_REGIME_STRIP_PAGE_RENDER_V1
+   - Fetches /api/market_regime_timeline with ?date=YYYY-MM-DD (from URL param)
+   - If buckets empty (e.g., market not open yet), fills entire strip with DEAD
+*/
+(function(){
+  function q(sel, root){ return (root||document).querySelector(sel); }
+
+  function parseHM(s){
+    // "09:30" -> minutes since midnight
+    if(!s) return null;
+    var m = String(s).match(/^(\d{1,2}):(\d{2})$/);
+    if(!m) return null;
+    var hh = parseInt(m[1],10), mm = parseInt(m[2],10);
+    return hh*60 + mm;
+  }
+
+  function colorFor(reg){
+    reg = String(reg||"").toUpperCase();
+    if(reg === "TREND") return "#00d26a";
+    if(reg === "CHOP")  return "#ffd400";
+    return "#ff4a4a"; // DEAD default
+  }
+
+  function renderStrip(data){
+    var wrap  = q("#mm-regime-strip");
+    if(!wrap) return;
+
+    var bar   = q(".mm-regime-bar", wrap);
+    var hours = q(".mm-regime-hours", wrap);
+    if(!bar || !hours) return;
+
+    bar.innerHTML = "";
+    hours.innerHTML = "";
+
+    var buckets = (data && Array.isArray(data.buckets)) ? data.buckets : [];
+    var start_et = (data && data.start_et) ? data.start_et : "09:30";
+    var end_et   = (data && data.end_et)   ? data.end_et   : "16:00";
+
+    // If empty, fill full width with DEAD (prevents "empty scaffold" confusion)
+    if(buckets.length === 0){
+      buckets = [{ r:"DEAD", c:0, t:start_et }];
+    }
+
+    // Group consecutive same-regime buckets -> segments
+    var segs = [];
+    for(var i=0;i<buckets.length;i++){
+      var r = String(buckets[i].r || "DEAD").toUpperCase();
+      if(!segs.length || segs[segs.length-1].r !== r){
+        segs.push({ r:r, n:1 });
+      } else {
+        segs[segs.length-1].n += 1;
+      }
+    }
+
+    // Build bar segments (flex)
+    bar.style.display = "flex";
+    bar.style.width = "100%";
+    segs.forEach(function(s){
+      var d = document.createElement("div");
+      d.className = "mm-regime-seg mm-regime-" + s.r.toLowerCase();
+      d.style.flex = String(s.n) + " 0 0";
+      d.style.background = colorFor(s.r);
+      d.style.height = "12px";
+      d.title = s.r + " (" + s.n + ")";
+      bar.appendChild(d);
+    });
+
+    // Hour labels aligned to time window
+    var startMin = parseHM(start_et);
+    var endMin   = parseHM(end_et);
+    if(startMin == null) startMin = 9*60+30;
+    if(endMin == null) endMin = 16*60;
+
+    var span = Math.max(1, endMin - startMin);
+    hours.style.position = "relative";
+    hours.style.height = "18px";
+    hours.style.marginTop = "6px";
+
+    // label every whole hour inside window (e.g., 10..16)
+    var firstHour = Math.ceil(startMin/60);
+    var lastHour  = Math.floor(endMin/60);
+    for(var h=firstHour; h<=lastHour; h++){
+      var xMin = h*60;
+      var left = ((xMin - startMin) / span) * 100;
+      var lab = document.createElement("div");
+      lab.className = "mm-regime-hour";
+      lab.textContent = String(h);
+      lab.style.position = "absolute";
+      lab.style.left = left.toFixed(4) + "%";
+      lab.style.transform = "translateX(-50%)";
+      lab.style.fontSize = "12px";
+      lab.style.opacity = "0.85";
+      lab.style.userSelect = "none";
+      hours.appendChild(lab);
+    }
+  }
+
+  function fetchAndRender(){
+    var u = new URL(window.location.href);
+    var date = (u.searchParams.get("date") || "").trim();
+    var url = "/api/market_regime_timeline" + (date ? ("?date=" + encodeURIComponent(date)) : "");
+    fetch(url, { cache: "no-store" })
+      .then(function(r){ return r.json(); })
+      .then(function(j){ renderStrip(j); })
+      .catch(function(){ renderStrip({ buckets: [] }); });
+  }
+
+  if(document.readyState === "loading"){
+    document.addEventListener("DOMContentLoaded", fetchAndRender);
+  } else {
+    fetchAndRender();
+  }
+})();
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="/static/js/analytics.js?v={{ (config.get('BUILD_ID') or '') }}"></script>
+
+<script>
+/* PL_COLORIZE_V1 */
+(function () {
+  function norm(s){ return (s||"").replace(/\s+/g," ").trim().toLowerCase(); }
+  function asNum(s){
+    if (s == null) return NaN;
+    var x = String(s).replace(/[$,%\s]/g,"").replace(/,/g,"");
+    return parseFloat(x);
+  }
+  function paintCell(td, v){
+    td.classList.remove("pl-pos","pl-neg","pl-zero");
+    if (!isFinite(v) || v === 0) td.classList.add("pl-zero");
+    else if (v > 0) td.classList.add("pl-pos");
+    else td.classList.add("pl-neg");
+  }
+  function colorizeTable(tbl){
+    var ths = Array.from(tbl.querySelectorAll("thead th"));
+    if (!ths.length) return;
+
+    var idxPL  = -1;
+    var idxPLP = -1;
+    ths.forEach(function(th,i){
+      var t = norm(th.textContent);
+      if (t === "p/l" || t === "pl" || t === "p&l") idxPL = i;
+      if (t === "p/l %" || t === "pl %" || t === "p&l %") idxPLP = i;
+    });
+
+    if (idxPL < 0 && idxPLP < 0) return;
+
+    Array.from(tbl.querySelectorAll("tbody tr")).forEach(function(tr){
+      var tds = tr.querySelectorAll("td");
+      if (idxPL >= 0 && tds[idxPL])  paintCell(tds[idxPL],  asNum(tds[idxPL].textContent));
+      if (idxPLP >= 0 && tds[idxPLP]) paintCell(tds[idxPLP], asNum(tds[idxPLP].textContent));
+    });
+  }
+
+  function run(){
+    document.querySelectorAll("table").forEach(colorizeTable);
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run);
+  else run();
+
+  var mo = new MutationObserver(function(){ run(); });
+  mo.observe(document.documentElement, {subtree:true, childList:true});
+})();
+</script>
+
+{% endblock %}

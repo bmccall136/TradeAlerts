@@ -448,6 +448,50 @@ var conf = (j.confidence != null ? j.confidence : (j.conf != null ? j.conf : j.s
       }
       // --- /MM_REGIME_HOURS_FALLBACK_V1 ---
 const buckets = j.buckets || [];
+
+// MM_REGIME_CLIP_TO_NOW_V3
+try {
+  const _nowUtc = Math.floor(Date.now() / 1000);
+  const _bucketSecs = (typeof j !== 'undefined' && j && j.bucket_secs) ? j.bucket_secs : 300;
+  const _startUtc  = (typeof j !== 'undefined' && j && j.start_ts_utc) ? j.start_ts_utc : null;
+
+  if (Array.isArray(buckets) && buckets.length && _startUtc) {
+    const currentIndex = Math.floor((_nowUtc - _startUtc) / _bucketSecs);
+    if (currentIndex >= 0 && currentIndex < buckets.length) {
+      buckets = buckets.slice(0, currentIndex + 1);
+    }
+  }
+} catch(e) {}
+// /MM_REGIME_CLIP_TO_NOW_V3
+
+    // MM_REGIME_CLIP_TO_NOW_V1
+    // For TODAY only, do NOT carry-forward fill into the future.
+    try {
+      const dateEt = (j && (j.date_et || j.date)) ? String(j.date_et || j.date) : "";
+      const now = new Date();
+      const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year:"numeric", month:"2-digit", day:"2-digit" });
+      const todayEt = fmt.format(now); // YYYY-MM-DD
+
+      if (dateEt && todayEt && dateEt === todayEt && Array.isArray(buckets) && buckets.length) {
+        // Buckets are 5-min from market open (9:30 ET). Clip anything after "now ET".
+        const nowEt = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+        const mins = (nowEt.getHours() * 60 + nowEt.getMinutes());
+        const openMins = (9 * 60 + 30);
+        let idx = Math.floor((mins - openMins) / 5);
+        if (idx < 0) idx = -1;
+        if (idx >= buckets.length) idx = buckets.length - 1;
+
+        for (let i = idx + 1; i < buckets.length; i++) {
+          // Mark as future: render blank
+          buckets[i].regime = "";
+          buckets[i].conf = 0;
+          buckets[i].is_future = true;
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+    // /MM_REGIME_CLIP_TO_NOW_V1
       if (!buckets.length) return;
 
       const segs = compressBuckets(buckets);
