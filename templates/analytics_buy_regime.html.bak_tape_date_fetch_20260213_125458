@@ -169,14 +169,7 @@
 
   async function tick(){
     try{
-      const res = await /* MM_TAPE_DATE_FETCH_V1 */
-      (function(){
-      const u0 = new URL(window.location.href);
-      const d0 = (u0.searchParams.get("date") || "").trim();
-      const api = d0 ? ("/api/market_regime_timeline?date=" + encodeURIComponent(d0))
-                     : "/api/market_regime_timeline?bucket=today";
-      return fetch(api, { cache:"no-store" });
-    })();
+      const res = await fetch("/api/market_regime_timeline?bucket=today", { cache:"no-store" });
       if (!res.ok){ dbg("api not ok"); return; }
       const j = await res.json();
       const pts = (j.points && j.points.length) ? j.points : (j.buckets || []);
