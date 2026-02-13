@@ -1808,7 +1808,6 @@ def mm_log_regime_sample(ts_utc: int, regime: str, conf: int, reason: str):
     Schema: (id INTEGER PK, ts_utc INTEGER, regime TEXT, conf INTEGER, reason TEXT)
     """
     try:
-        ts_utc = int(ts_utc) - (int(ts_utc) % 300)  # 5-min bucket
         import sqlite3
         # LIVE_DB is already used elsewhere; fall back if not present
         db_path = globals().get("LIVE_DB") or globals().get("DB_PATH") or r"C:\TradeAlerts\live.db"
@@ -3899,9 +3898,9 @@ def api_market_regime():
             now = int(time.time())
             bucket_ts = now - (now % 300)
             # Use common local var names if present; otherwise fall back to JSON fields later
-            _reg = locals().get("label") or locals().get("regime") or locals().get("reg") or None
+            _reg = locals().get("regime") or locals().get("reg") or None
             _conf = locals().get("confidence") or locals().get("conf") or None
-            _reason = locals().get("reason") or locals().get("regime_reason") or locals().get("detail_reason") or ""
+            _reason = locals().get("reason") or locals().get("regime_reason") or ""
             if _reg is not None and _conf is not None:
                 mm_log_regime_sample(bucket_ts, _reg, int(_conf), str(_reason))
         except Exception:
@@ -6625,59 +6624,6 @@ def api_market_regime_timeline():
             points = buckets
     except Exception:
         pass
-
-    # MM_REGIME_TIMELINE_BUCKETREAD_V1
-    # Bucket+dedupe points/buckets to 5-min bins on READ (DB may have noisy samples).
-    try:
-        _pts = points if isinstance(points, list) else []
-        if not _pts and isinstance(buckets, list):
-            _pts = buckets
-
-        best = {}  # bucket_ts -> point
-        for p in _pts:
-            try:
-                t = int(p.get("ts_utc") or 0)
-            except Exception:
-                continue
-            if t <= 0:
-                continue
-            bt = t - (t % 300)
-            # keep the latest sample in that bucket (or higher confidence if tie)
-            prev = best.get(bt)
-            if not prev:
-                best[bt] = dict(p, ts_utc=bt)
-            else:
-                try:
-                    prev_conf = int(prev.get("conf") or 0)
-                except Exception:
-                    prev_conf = 0
-                try:
-                    cur_conf = int(p.get("conf") or 0)
-                except Exception:
-                    cur_conf = 0
-                # prefer the later original ts_utc (or higher conf)
-                prev_raw = int(prev.get("_raw_ts") or bt)
-                cur_raw = int(p.get("ts_utc") or 0)
-                cur_entry = dict(p, ts_utc=bt, _raw_ts=cur_raw)
-                if (cur_raw >= prev_raw) or (cur_conf > prev_conf):
-                    best[bt] = cur_entry
-                else:
-                    # ensure prev has _raw_ts
-                    if "_raw_ts" not in prev:
-                        prev["_raw_ts"] = prev_raw
-
-        dedup = [best[k] for k in sorted(best.keys())]
-        # strip helper field
-        for p in dedup:
-            if "_raw_ts" in p:
-                del p["_raw_ts"]
-
-        points = dedup
-        buckets = dedup
-        pts = len(dedup)
-    except Exception:
-        pass
-
 
     return jsonify({"pts": len(points) if isinstance(points, list) else 0, "points": points if isinstance(points, list) else [], "buckets": buckets, "window": {"since_ts_utc": since_ts_utc, "until_ts_utc": until_ts_utc}})
 @app.route('/analytics/buy_regime')
