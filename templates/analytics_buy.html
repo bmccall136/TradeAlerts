@@ -131,6 +131,24 @@
 </div>
 
 <script>
+// --- MM_CANDIDATE_UI_SHIM_V1 ---
+// Some backends return only {counts:{signal_fires,trigger_fires}} for candidate_fires.
+// The BUY Analytics template historically expects cand/req/strict/buyable/bought/strict_n.
+// This shim fills those from counts when missing so the UI doesn't show "?".
+function mmNormCandidatePayload(j){
+  j = j || {};
+  const counts = j.counts || {};
+  const out = Object.assign({}, j);
+  out.cand = (out.cand !== undefined) ? out.cand : (counts.signal_fires !== undefined ? counts.signal_fires : 0);
+  out.req  = (out.req  !== undefined) ? out.req  : (counts.trigger_fires !== undefined ? counts.trigger_fires : 0);
+  out.strict   = (out.strict   !== undefined) ? out.strict   : 0;
+  out.buyable  = (out.buyable  !== undefined) ? out.buyable  : 0;
+  out.bought   = (out.bought   !== undefined) ? out.bought   : 0;
+  out.strict_n = (out.strict_n !== undefined) ? out.strict_n : 0;
+  return out;
+}
+// --- /MM_CANDIDATE_UI_SHIM_V1 ---
+
 // --- MM_BUCKET_NORMALIZE_V1 ---
 function mmNormBucket(b) {
   if (!b) return "today";

@@ -178,6 +178,44 @@
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<!-- MM_DAILY_LOADING_FIX_V1 -->
+<script>
+(function(){
+  function showErr(msg){
+    try{
+      var el=document.getElementById('ax-errors');
+      if(el){ el.style.display='block'; el.textContent=msg; }
+    }catch(e){}
+  }
+  window.addEventListener('error', function(ev){
+    var m = (ev && ev.message) ? ev.message : 'Unknown JS error';
+    showErr('Daily Analytics JS error: ' + m);
+  });
+  window.addEventListener('unhandledrejection', function(ev){
+    var m = (ev && ev.reason) ? (ev.reason.message || String(ev.reason)) : 'Unknown promise rejection';
+    showErr('Daily Analytics promise error: ' + m);
+  });
+
+  document.addEventListener('DOMContentLoaded', function(){
+    // Call whichever exists
+    try{
+      if (typeof window.loadDaily === 'function') {
+        window.loadDaily();
+        return;
+      }
+      if (window.MM && typeof window.MM.loadDaily === 'function') {
+        window.MM.loadDaily();
+        return;
+      }
+      showErr('Daily Analytics: loadDaily() not found (analytics.js not loaded or not exporting).');
+    }catch(e){
+      showErr('Daily Analytics bootstrap failed: ' + (e.message || String(e)));
+    }
+  });
+})();
+</script>
+
 <script src="/static/js/analytics.js?v={{ (config.get('BUILD_ID') or '') }}"></script>
 
 <script>

@@ -330,193 +330,125 @@ var conf = (j.confidence != null ? j.confidence : (j.conf != null ? j.conf : j.s
 
 
 <script>
-/* MM_REGIME_STRIP_RENDERER_V1 */
+/* MM_REGIME_STRIP_RENDERER_V4_TODAY_ONLY */
 (function(){
-  function q(sel){ return document.querySelector(sel); }
-
-  function getAnalyticsDate(){
-    // Prefer analytics page date input if present
-    const di = q('input[type="date"], input[name="date"], #date, #analytics-date');
-    if (di && di.value) return di.value;
-    // Fall back: try to parse the visible "YYYY-MM-DD" under Daily Analytics
-    const el = q('.page-subtitle, .subtitle, .ax-date, .analytics-date');
-    if (el){
-      const m = (el.textContent||'').match(/(\d{4}-\d{2}-\d{2})/);
-      if (m) return m[1];
-    }
-    return "";
+  function colorFor(reg){
+    const r = (reg||"").toUpperCase();
+    if (r === "TREND") return "rgba(0, 255, 140, 0.70)";
+    if (r === "CHOP")  return "rgba(255, 220, 0, 0.75)";
+    if (r === "DEAD")  return "rgba(255, 70, 70, 0.65)";
+    return "rgba(160,160,160,0.55)";
   }
 
-  function compressBuckets(buckets){
-    // buckets: [{t:"HH:MM", r:"TREND|CHOP|DEAD", ...}, ...]
-    if (!buckets || !buckets.length) return [];
-    const segs = [];
-    let cur = buckets[0].r, start = 0;
-    for (let i=1;i<buckets.length;i++){
-      if (buckets[i].r !== cur){
-        segs.push({r: cur, n: i - start});
-        cur = buckets[i].r;
-        start = i;
+  function host(){
+    return document.querySelector("#mm-regime-strip") || document.querySelector(".mm-regime-strip-wrap");
+  }
+
+  function barEl(h){
+    return (h && (h.querySelector(".mm-regime-bar") || h.querySelector(".regime-bar") || h.querySelector(".ax-regime-bar"))) || null;
+  }
+
+  function legendEl(h){
+    return (h && (h.querySelector(".mm-regime-legend") || h.querySelector(".regime-legend") || h.querySelector(".ax-regime-legend"))) || null;
+  }
+
+  function compress(points){
+    const out = [];
+    let last = null;
+    for (const p of (points||[])){
+      const ts = Number(p.ts_utc || p.ts || 0);
+      const reg = (p.regime || p.label || "UNKNOWN");
+      const confRaw = (p.conf ?? p.regime_conf ?? p.confidence);
+      const conf = Number.isFinite(Number(confRaw)) ? Number(confRaw) : 50;
+      if (!ts) continue;
+
+      if (last && last.regime === reg && last.conf === conf){
+        if (ts - last.ts_utc < 120) continue; // collapse spam
+      }
+      const row = {ts_utc: ts, regime: reg, conf: conf};
+      out.push((typeof row !== "undefined") ? row : "");
+      last = row;
+    }
+    out.sort((a,b)=>a.ts_utc-b.ts_utc);
+    return out;
+  }
+
+  function drawEmpty(bar, leg){
+    if (!bar) return;
+    bar.innerHTML = "";
+    const seg = document.createElement("div");
+    seg.style.width = "100%";
+    seg.style.background = "rgba(160,160,160,0.18)";
+    seg.title = "No regime samples for TODAY yet";
+    bar.appendChild(seg);
+
+    if (leg){
+      // keep your colored legend but append a small status note
+      if (!leg.querySelector(".mm-regime-nodata")){
+        const note = document.createElement("span");
+        note.className = "mm-regime-nodata";
+        note.style.marginLeft = "10px";
+        note.style.opacity = "0.75";
+        note.style.fontSize = "12px";
+        note.textContent = "? NO SAMPLES (TODAY)";
+        leg.appendChild(note);
       }
     }
-    segs.push({r: cur, n: buckets.length - start});
-    return segs;
   }
 
-  function colorFor(r){
-    r = (r||'').toUpperCase();
-    if (r === 'TREND') return '#00d26a';
-    if (r === 'CHOP')  return '#ffd400';
-    if (r === 'DEAD')  return '#ff4a4a';
-    return 'rgba(255,255,255,0.12)';
+  function clearNoDataNote(leg){
+    const n = leg && leg.querySelector(".mm-regime-nodata");
+    if (n) n.remove();
+  }
+
+  function draw(bar, pts, leg){
+    if (!bar) return;
+    bar.innerHTML = "";
+    clearNoDataNote(leg);
+
+    const minT = pts[0].ts_utc;
+    const maxT = pts[pts.length-1].ts_utc;
+    const span = Math.max(1, maxT - minT);
+
+    for (let i=0; i<pts.length; i++){
+      const a = pts[i];
+      const nxt = pts[i+1];
+      const t1 = a.ts_utc;
+      const t2 = nxt ? nxt.ts_utc : (maxT + 1);
+      const w = Math.max(0.004, (t2 - t1) / span);
+
+      const seg = document.createElement("div");
+      seg.style.width = (w*100).toFixed(3) + "%";
+      seg.style.background = colorFor(a.regime);
+      seg.title = `${String(a.regime||"UNKNOWN").toUpperCase()} ${Math.round(a.conf||0)}%`;
+      bar.appendChild(seg);
+    }
+  }
+
+  async function fetchToday(){
+    const res = await fetch(`/api/market_regime_timeline?bucket=today`, { cache:"no-store" });
+    if (!res.ok) return [];
+    const j = await res.json();
+    return compress(j.points || j.buckets || []);
   }
 
   async function render(){
-    const host = q('#mm-regime-strip');
-    try{ host.setAttribute('data-painted','1'); }catch(e){}
-    if (!host) return;
+    const h = host();
+    const bar = barEl(h);
+    const leg = legendEl(h);
+    if (!h || !bar) return;
 
-    const bar = q('.mm-regime-bar') || q('.ax-regime-bar') || q('.regime-bar');
-    if (!bar) return;
-
-    // wipe bar
-    bar.innerHTML = '';
-
-    const date = getAnalyticsDate();
-    const url = date ? ('/api/market_regime_timeline?date=' + encodeURIComponent(date)) : '/api/market_regime_timeline';
-
-    try{
-      const r = await fetch(url, {cache:'no-store'});
-      if (!r.ok) return;
-      const j = await r.json();
-            // --- MM_REGIME_HOURS_FALLBACK_V1 ---
-      // Ensure the hours row exists and is visible; if tick builder fails or is overridden, we still show hours.
-      const labels = document.querySelector('#mm-regime-strip .mm-regime-hours');
-      if (labels){
-        labels.style.display = 'block';
-        labels.style.position = 'relative';
-        labels.style.height = '16px';
-        labels.style.width = (j && j.width_px ? (String(j.width_px) + 'px') : labels.style.width) || labels.style.width;
-
-        // Clear + rebuild hour labels from start_et/end_et when needed.
-        const ensureHours = () => {
-          if (labels.querySelector('.mm-hour')) return; // already has labels
-          const start = (j && j.start_et) ? j.start_et : '09:30';
-          const end   = (j && j.end_et)   ? j.end_et   : '16:00';
-
-          // Compute hour marks (10..16) within the session, place them proportionally.
-          // Session in minutes (handles 09:30 start cleanly).
-          const toMin = (hhmm) => {
-            const m = String(hhmm||'').match(/^(\d{1,2}):(\d{2})$/);
-            if (!m) return None;
-            return (int(m[1]) * 60) + int(m[2]);
-          };
-
-          // JS version inline (avoid python replacement complexity)
-        };
-
-        // We run this after a short delay too (in case other code wipes labels)
-        setTimeout(() => {
-          if (labels.querySelector('.mm-hour')) return;
-          labels.innerHTML = '';
-
-          const parse = (hhmm) => {
-            const m = String(hhmm||'').match(/^(\d{1,2}):(\d{2})$/);
-            if (!m) return null;
-            return (parseInt(m[1],10)*60) + parseInt(m[2],10);
-          };
-
-          const startMin = parse((j && j.start_et) ? j.start_et : '09:30') || (9*60+30);
-          const endMin   = parse((j && j.end_et)   ? j.end_et   : '16:00') || (16*60);
-
-          const span = Math.max(1, endMin - startMin);
-
-          // Label hours 10..16 (display 10,11,12,1,2,3,4)
-          const hours = [10,11,12,13,14,15,16];
-          for (const h of hours){
-            const t = h*60;
-            if (t < startMin || t > endMin) continue;
-            const pct = ((t - startMin) / span) * 100;
-
-            const sp = document.createElement('span');
-            sp.className = 'mm-hour';
-            sp.style.left = pct.toFixed(3) + '%';
-            sp.textContent = (h <= 12) ? String(h) : String(h-12);
-            labels.appendChild(sp);
-          }
-        }, 50);
-      }
-      // --- /MM_REGIME_HOURS_FALLBACK_V1 ---
-const buckets = j.buckets || [];
-
-// MM_REGIME_CLIP_TO_NOW_V3
-try {
-  const _nowUtc = Math.floor(Date.now() / 1000);
-  const _bucketSecs = (typeof j !== 'undefined' && j && j.bucket_secs) ? j.bucket_secs : 300;
-  const _startUtc  = (typeof j !== 'undefined' && j && j.start_ts_utc) ? j.start_ts_utc : null;
-
-  if (Array.isArray(buckets) && buckets.length && _startUtc) {
-    const currentIndex = Math.floor((_nowUtc - _startUtc) / _bucketSecs);
-    if (currentIndex >= 0 && currentIndex < buckets.length) {
-      buckets = buckets.slice(0, currentIndex + 1);
+    const pts = await fetchToday();
+    if (!pts.length){
+      drawEmpty(bar, leg);
+      return;
     }
-  }
-} catch(e) {}
-// /MM_REGIME_CLIP_TO_NOW_V3
-
-    // MM_REGIME_CLIP_TO_NOW_V1
-    // For TODAY only, do NOT carry-forward fill into the future.
-    try {
-      const dateEt = (j && (j.date_et || j.date)) ? String(j.date_et || j.date) : "";
-      const now = new Date();
-      const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year:"numeric", month:"2-digit", day:"2-digit" });
-      const todayEt = fmt.format(now); // YYYY-MM-DD
-
-      if (dateEt && todayEt && dateEt === todayEt && Array.isArray(buckets) && buckets.length) {
-        // Buckets are 5-min from market open (9:30 ET). Clip anything after "now ET".
-        const nowEt = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
-        const mins = (nowEt.getHours() * 60 + nowEt.getMinutes());
-        const openMins = (9 * 60 + 30);
-        let idx = Math.floor((mins - openMins) / 5);
-        if (idx < 0) idx = -1;
-        if (idx >= buckets.length) idx = buckets.length - 1;
-
-        for (let i = idx + 1; i < buckets.length; i++) {
-          // Mark as future: render blank
-          buckets[i].regime = "";
-          buckets[i].conf = 0;
-          buckets[i].is_future = true;
-        }
-      }
-    } catch (e) {
-      // ignore
-    }
-    // /MM_REGIME_CLIP_TO_NOW_V1
-      if (!buckets.length) return;
-
-      const segs = compressBuckets(buckets);
-      const total = buckets.length;
-
-      for (const s of segs){
-        const div = document.createElement('div');
-        div.style.flex = String(s.n);
-        div.style.background = colorFor(s.r);
-        div.title = s.r + ' (' + s.n + ' buckets)';
-        bar.appendChild(div);
-      }
-    }catch(e){
-      // silent
-    }
+    draw(bar, pts, leg);
   }
 
-  // render on load + after a short delay (in case analytics date input populates late)
-  if (document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', ()=>{ render(); setTimeout(render, 600); });
-  } else {
-    render(); setTimeout(render, 600);
-  }
-})();
-</script>
+  render().catch(()=>{});
+  setInterval(()=>render().catch(()=>{}), 30000);
+})();</script>
 
 </body>
 

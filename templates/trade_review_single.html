@@ -1,3 +1,4 @@
+<!-- MM_TRADE_REVIEW_ROUTE_CANONICAL_TRADE_ID_V1 -->
 
 <style>
 
@@ -89,16 +90,27 @@
   </div>
 
   <div class="trade-chart-wrap tr-chart-wrap">
-    <img class="tr-chart trade-chart-img"
-         src="/chart_img/{{ symbol }}?ts={{ ts|urlencode }}"
+    <!-- MM_TRV_CHART_BUY_SELL_PARAMS_V1 -->
+{% set _buy_ts = '' %}
+{% set _sell_ts = '' %}
+
+{% if buy_triggers and (buy_triggers|length) > 0 %}
+  {% set _b0 = buy_triggers[0] %}
+  {% set _buy_ts = (_b0.ts_et or _b0.time_et or '') %}
+{% endif %}
+
+{% if sell_triggers and (sell_triggers|length) > 0 %}
+  {% set _s0 = sell_triggers[0] %}
+  {% set _sell_ts = (_s0.ts_et or _s0.time_et or '') %}
+{% endif %}
+<!-- /MM_TRV_CHART_BUY_SELL_PARAMS_V1 -->
+<img class="tr-chart trade-chart-img"
+         src="/trade_review/chart?symbol={{ symbol if symbol is defined else (trade.symbol if trade is defined and trade else '') }}&v={{ (trade.ts_utc if trade is defined and trade and trade.ts_utc else (trade_id if trade_id else 0)) }}"
          alt="Trade chart {{ trade.symbol }}{% if name %} ? {{ name }}{% endif %}">
 
   <!-- --- Inline Trade Review chart (BUY/SELL marked) --- -->
   <div class="trade-chart-wrap tr-chart-wrap">
-    <img class="tr-chart trade-chart-img"
-         src="/trade_review/chart?symbol={{ trade.symbol|urlencode }}&name={{ (name or trade.name or '')|urlencode }}&buy_ts={{ trade.buy_time|urlencode }}&sell_ts={{ trade.sell_time|urlencode }}&ts={{ ts|urlencode }}&v={{ ts|urlencode }}"
-         alt="Trade chart {{ symbol }}{% if name %} - {{ name }}{% endif %}">
-  </div>
+    </div>
   <!-- --- end chart --- -->
 
     <div class="tr-legend">
@@ -110,7 +122,24 @@
 
   <div class="tr-grid">
     <section class="tr-col">
-      <h3>Buy Triggers</h3>
+      <h3>Buy Triggers
+<!-- MM_TRV_TEMPLATE_RENDER_DB_TRIGGERS_V1:BUY -->
+<div class="tr-triggers-block">
+  {% if buy_triggers and (buy_triggers|length) > 0 %}
+    <ul class="tr-trigger-list">
+    {% for t in buy_triggers %}
+      <li class="tr-trigger">
+        <span class="tr-ts">{{ t.ts_et or t.time_et or "" }}</span>
+        <span class="tr-msg">{{ t.signals_pretty or t.detail or t.notes or "" }}</span>
+      </li>
+    {% endfor %}
+    </ul>
+  {% else %}
+    <div class="tr-empty">No buy triggers found.</div>
+  {% endif %}
+</div>
+<!-- /MM_TRV_TEMPLATE_RENDER_DB_TRIGGERS_V1:BUY -->
+</h3>
 {% if buy_groups %}
 <div class="mm-triggers">
   {% for g in buy_groups %}
@@ -147,7 +176,24 @@
 {% else %}
 <div class="mm-muted">No buy triggers found.</div>
 {% endif %}
-<h3>Sell Triggers</h3>
+<h3>Sell Triggers
+<!-- MM_TRV_TEMPLATE_RENDER_DB_TRIGGERS_V1:SELL -->
+<div class="tr-triggers-block">
+  {% if sell_triggers and (sell_triggers|length) > 0 %}
+    <ul class="tr-trigger-list">
+    {% for t in sell_triggers %}
+      <li class="tr-trigger">
+        <span class="tr-ts">{{ t.ts_et or "" }}</span>
+        <span class="tr-msg">{{ t.reason or t.detail or t.event or "" }}</span>
+      </li>
+    {% endfor %}
+    </ul>
+  {% else %}
+    <div class="tr-empty">No sell triggers found.</div>
+  {% endif %}
+</div>
+<!-- /MM_TRV_TEMPLATE_RENDER_DB_TRIGGERS_V1:SELL -->
+</h3>
 {% if sell_groups %}
 <div class="mm-triggers">
   {% for g in sell_groups %}

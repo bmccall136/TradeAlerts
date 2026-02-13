@@ -1,9 +1,7 @@
 @echo off
-REM — Switch console to UTF‑8
-chcp 65001 >nul
+setlocal
+cd /d "%~dp0"
 
-REM — Set the window title (with an emoji)
-title 📊 TradeAlerts Dashboard
-
-REM — Launch PowerShell, stay open, cd into this folder, and run the dashboard
-powershell -NoExit -ExecutionPolicy Bypass -Command "cd '%~dp0'; python .\dashboard.py"
+REM Launch the standard PowerShell launcher (venv + crash log)
+powershell -ExecutionPolicy Bypass -File "%~dp0Start-Dashboard.ps1"
+endlocal

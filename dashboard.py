@@ -1836,14 +1836,20 @@ def api_market_regime_sample():
     return ('', 204)
 
 
-@app.route('/chart/<symbol>')
+@app.route("/chart/<symbol>")
 def chart(symbol):
-    # Accept ts query param (may be blank). Redirect to Trade Review.
-    ts = (request.args.get('ts') or '').strip()
-    if ts:
-        return redirect('/trade_review?symbol=' + str(symbol) + '&ts=' + str(ts))
-    return redirect('/trade_review?symbol=' + str(symbol))
+    # --- MM_CHART_VIEWER_V2 ---
+    ts_raw = request.args.get("ts", "")
+    ts_raw = (ts_raw or "").strip()
+    ts_utc = None
+    try:
+        if ts_raw.isdigit():
+            ts_utc = int(ts_raw)
+    except Exception:
+        ts_utc = None
 
+    sym = (symbol or "").upper().strip()
+    return render_template("chart_viewer.html", symbol=sym, ts_utc=ts_utc)
 
 @app.route("/news/latest")
 @always_json
@@ -3466,6 +3472,46 @@ def live_data():
             except Exception:
                 pass
         pass
+    # --- MM_FIX_REALIZED_YEAR_YTD_V4 ---
+    # True YTD (Jan 1 ET -> now) from realized_trades.close_ts_utc, applied to realized_obj (the returned object)
+    try:
+        import sqlite3
+        import datetime as _dt
+        from zoneinfo import ZoneInfo as _ZoneInfo
+
+        _now_et = _dt.datetime.now(_ZoneInfo('America/New_York'))
+        _jan1_et = _dt.datetime(_now_et.year, 1, 1, 0, 0, 0, tzinfo=_ZoneInfo('America/New_York'))
+        _since_utc = int(_jan1_et.astimezone(_dt.timezone.utc).timestamp())
+
+        _dbp = LIVE_DB if 'LIVE_DB' in globals() else DB_PATH if 'DB_PATH' in globals() else None
+        if _dbp and isinstance(locals().get('realized_obj'), dict):
+            _con = sqlite3.connect(_dbp)
+            _cur = _con.cursor()
+            _row = _cur.execute(
+                'SELECT COALESCE(SUM(gain),0) FROM realized_trades WHERE close_ts_utc >= ?',
+                (_since_utc,)
+            ).fetchone()
+            _con.close()
+            _ytd = float(_row[0] or 0.0)
+
+            _pct = 0.0
+            try:
+                _pct = float((realized_obj.get('year') or {}).get('pct') or 0.0)
+            except Exception:
+                _pct = 0.0
+
+            realized_obj['year'] = {'pnl': round(_ytd, 2), 'pct': _pct}
+
+            # debug stamp (only if debug_raw exists)
+            try:
+                if locals().get('debug') and isinstance(locals().get('debug_raw'), dict):
+                    debug_raw['mm_realized_year_ytd'] = round(_ytd, 2)
+                    debug_raw['mm_realized_year_since_utc'] = _since_utc
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     return {
         "ok": True,
         "etrade_ok": etrade_ok,
@@ -4324,22 +4370,6 @@ def api_analytics_daily():
         if best_abs is not None and best_abs <= max_delta_sec:
             return best
         return None
-    def _nearest_trade(sym: str, tsu: int, mp: dict, max_delta_sec: int = 6*60*60):
-        # Find the nearest trade ts within +/- max_delta_sec for a symbol
-        d = mp.get(sym) or {}
-        if not d:
-            return None
-        best = None
-        best_abs = None
-        for k, rec in d.items():
-            delta = abs(int(k) - int(tsu))
-            if best_abs is None or delta < best_abs:
-                best_abs = delta
-                best = rec
-        if best_abs is not None and best_abs <= max_delta_sec:
-            return best
-        return None
-
 
     def fmt_et(tsu: int) -> str:
         try:
@@ -4595,6 +4625,112 @@ def api_analytics_daily():
             out.setdefault("errors", []).append("MM_DAILY_BUYS_FROM_TRADES_FINAL_V1: " + str(e))
         except Exception:
             pass
+    # --- MM_DAILY_ADD_TRADE_ID_V1 ---
+    # Attach trades.id so frontend can link to /trade_review/trade/<id>.
+    try:
+        import sqlite3
+        con = sqlite3.connect(LIVE_DB)
+        cur = con.cursor()
+        cols = [r[1] for r in cur.execute("PRAGMA table_info(trades)").fetchall()]
+        have_id = ("id" in cols)
+        have_sym = ("symbol" in cols)
+        have_ts_utc = ("ts_utc" in cols)
+        have_ts_et = ("ts_et" in cols)
+
+        if have_id and have_sym and (have_ts_utc or have_ts_et):
+            # Build fast lookup keyed by (SYM, time_et) when possible
+            # time_et in payload is like "YYYY-MM-DD HH:MM:SS"
+            def _attach_trade_id(items):
+                if not isinstance(items, list):
+                    return
+                for it in items:
+                    try:
+                        if not isinstance(it, dict):
+                            continue
+                        if it.get("trade_id"):
+                            continue
+                        sym = str(it.get("symbol") or "").upper().strip()
+                        time_et = str(it.get("time_et") or "").strip()
+                        if not sym or not time_et:
+                            continue
+                        # match by ts_et if present; else approximate via ts_utc window not available here
+                        if have_ts_et:
+                            row = cur.execute(
+                                "SELECT id FROM trades WHERE UPPER(symbol)=? AND ts_et=? ORDER BY id DESC LIMIT 1",
+                                (sym, time_et)
+                            ).fetchone()
+                            if row and row[0] is not None:
+                                it["trade_id"] = int(row[0])
+                                continue
+                        # fallback: latest for symbol
+                        row = cur.execute(
+                            "SELECT id FROM trades WHERE UPPER(symbol)=? ORDER BY id DESC LIMIT 1",
+                            (sym,)
+                        ).fetchone()
+                        if row and row[0] is not None:
+                            it["trade_id"] = int(row[0])
+                    except Exception:
+                        pass
+
+            _attach_trade_id(buys)
+            _attach_trade_id(sells)
+
+        con.close()
+    except Exception:
+        pass
+    # --- /MM_DAILY_ADD_TRADE_ID_V1 ---
+
+
+
+
+    # --- MM_DAILY_ADD_SELL_TRADE_ID_V3 ---
+    # Ensure sells[] include trade_id so UI can link by trade (not just symbol/time).
+    # sells[].time_et is already 'YYYY-MM-DD HH:MM:SS' (per API), so use it directly.
+    try:
+        import sqlite3
+        db_path = LIVE_DB if "LIVE_DB" in globals() else (DB_PATH if "DB_PATH" in globals() else r"C:\TradeAlerts\live.db")
+        con = sqlite3.connect(db_path)
+        cur = con.cursor()
+
+        for s in (sells or []):
+            if not isinstance(s, dict):
+                continue
+            if s.get("trade_id") is not None:
+                continue
+
+            sym = (s.get("symbol") or "").upper().strip()
+            sell_ts_et = (s.get("time_et") or "").strip()  # 'YYYY-MM-DD HH:MM:SS'
+            if not sym or not sell_ts_et:
+                continue
+
+            row = cur.execute(
+                """
+                SELECT id
+                FROM trades
+                WHERE action='SELL'
+                  AND UPPER(symbol)=?
+                  AND ts_et IS NOT NULL
+                ORDER BY ABS(julianday(ts_et) - julianday(?)) ASC
+                LIMIT 1
+                """,
+                (sym, sell_ts_et)
+            ).fetchone()
+            if row:
+                s["trade_id"] = int(row[0])
+
+        con.close()
+    except Exception:
+        pass
+
+
+    # --- MM_DAILY_RESPONSE_STAMP_V1 ---
+    try:
+        # If you can see this in the API response, the running server is using this file.
+        if isinstance(payload, dict):
+            payload["__mm_daily_build"] = "STAMP_20260212_222039"
+    except Exception:
+        pass
+
     return jsonify(out)
 
 
@@ -5116,1184 +5252,55 @@ def _tr__yahoo_intraday_series(symbol, interval="5m"):
     except Exception:
         return []
 
-@app.route("/api/trade_review")
+@app.route('/api/trade_review')
 def api_trade_review():
-    realized = {}  # default (avoid NameError on branches that don't compute realized)
-    # --- TRV4 safety init ---
-    sym = None
-    anchor_ts = None
-    buy_triggers = []
-    sell_triggers = []
-    buy_price = None
-    buy_qty = None
-    buy_name = ''
-    buy_symbol = None
-    buy_ts_utc = None
-    buy_time = None
-    buy_date = None
-    ts_arg = request.args.get('ts')
-    if ts_arg:
-        try:
-            anchor_ts = ts_arg
-        except Exception:
-            anchor_ts = None
-    # --- TRV4 SAFETY INIT (prevents UnboundLocalError on sym/buy_triggers/etc.) ---
-    sym = (request.args.get('symbol') or request.args.get('sym') or '').strip().upper()
-    ts_arg = (request.args.get('ts') or '').strip()
-    date_arg = (request.args.get('date') or '').strip()  # optional
-    anchor_ts = ts_arg  # keep original string for downstream
-    ts = anchor_ts  # legacy variable used by older TRV4 payload keys
-    buy_triggers = []
-    sell_triggers = []
-    buys_out = []
-    sells_out = []
-    meta = {}
-    # --- end TRV4 SAFETY INIT ---
-    # --- TRV4 safety: ensure locals always defined (prevents NameError on early returns) ---
-    buy_triggers = []
-    sell_triggers = []
-    buys_out = []
-    sells_out = []
-    meta = {}
-    # --- end safety block ---
-
-    import os
+    out = {"buys": [], "sells": [], "errors": [], "meta": {}}
     try:
-        limit = int(request.args.get("limit", "5"))
-    except Exception:
-        limit = 5
-    interval = (request.args.get("interval") or "5m").strip()
-
-    buy_path = _tr__latest_log_path("triggers")
-    sell_path = _tr__latest_log_path("sell_triggers")
-
-    if not buy_path and not sell_path:
-        pass
-    # --- TRV4 locals guard (prevents NameError on partial paths) ---
-    try:
-        _anchor = anchor_ts
-    except Exception:
-        _anchor = (request.args.get('ts') or '').strip()
-    # define common TRV4 payload fields if missing
-    if 'buy_qty'   not in locals(): buy_qty   = ''
-    if 'buy_time'  not in locals(): buy_time  = _anchor
-    if 'buy_triggers' not in locals(): buy_triggers = []
-    if 'sell_triggers' not in locals(): sell_triggers = []
-    # keep sym defined for payload safety
-    if 'sym' not in locals(): sym = (request.args.get('symbol') or request.args.get('sym') or '').strip().upper()
-    # --- end TRV4 locals guard ---
-
-    buy_rows = _tr__read_csv_rows(buy_path) if buy_path else []
-    sell_rows = _tr__read_csv_rows(sell_path) if sell_path else []
-
-    # pick events
-    recent_buys = _tr__pick_last_events(buy_rows, want_action="BUY", want_event="ORDER_PLACED", limit=limit)
-
-    # If trigger logs don't include BUY ORDER_PLACED events, fall back to position_opened (today)
-    if not recent_buys:
-        try:
-            from datetime import datetime as _dt
-            from zoneinfo import ZoneInfo as _ZI
-            _ET = _ZI("America/New_York")
-            _con = sqlite3.connect(LIVE_DB)
-            _con.row_factory = sqlite3.Row
-            _cur = _con.cursor()
-            _rows = _cur.execute(
-                "SELECT symbol, opened_at_et, opened_epoch FROM position_opened "
-                "WHERE opened_at_et IS NOT NULL AND date(opened_at_et)=date('now','localtime') "
-                "ORDER BY opened_epoch DESC LIMIT ?",
-                (limit,)
-            ).fetchall()
-            _con.close()
-    
-            # Build pseudo trigger-like rows so build_buy_item() can render cards
-            _pseudo = []
-            for r in _rows:
-                sym = (r["symbol"] or "").strip().upper()
-                oat = (r["opened_at_et"] or "").strip()
-                ts_et = None
-                if oat:
-                    try:
-                        d = _dt.strptime(oat, "%Y-%m-%d %H:%M:%S").replace(tzinfo=_ET)
-                        ts_et = d.isoformat()
-                    except Exception:
-                        ts_et = oat.replace(" ", "T")
-                _pseudo.append({
-                    "symbol": sym,
-                    "ts_et": ts_et,
-                    "action": "BUY",
-                    "event": "OPENED_DB",
-                    "qty": "",
-                    "reason": "position_opened",
-                    "entry_price": "",
-                    "last_price": ""
-                })
-    
-            recent_buys = _pseudo
-        except Exception:
-            pass
-
-
-    # for sells: prefer POSITION_CLOSED, fallback ORDER_PLACED if none
-    recent_sells = _tr__pick_last_events(sell_rows, want_action="SELL", want_event="POSITION_CLOSED", limit=limit)
-    if not recent_sells:
-        recent_sells = _tr__pick_last_events(sell_rows, want_action="SELL", want_event="ORDER_PLACED", limit=limit)
-
-    # Combine all rows for details panel search
-    all_rows = []
-    # keep roughly time order by concatenating (they're different files; we filter by ts anyway)
-    all_rows.extend(buy_rows)
-    all_rows.extend(sell_rows)
-
-    def build_buy_item(row):
-        sym = (row.get("symbol") or "").upper().strip()
-        ts_et = row.get("ts_et")
-        qty = row.get("qty") or ""
-        reason = row.get("reason") or ""
-        entry = row.get("entry_price") or ""
-        lastp = row.get("last_price") or ""
-
-        buy_dt = _tr__parse_iso(ts_et)
-        detail_rows = _tr__rows_in_window(all_rows, sym, buy_dt, None)
-
-        series = _tr__yahoo_intraday_series(sym, interval=interval)
-
-        title = f"Entry: {entry}  Last: {lastp}".strip()
-        shade = {"from": ts_et, "to": (series[-1]["t"] if series else ts_et), "color": "rgba(33,208,122,0.16)"}
-
-        return {
-            "symbol": sym,
-            "ts_et": ts_et,
-            "qty": qty,
-            "reason": reason,
-            "title_line": title,
-            "pnl_pct": None,
-            "buy_ts_et": ts_et,
-            "sell_ts_et": None,
-            "series": series,
-            "shade": shade,
-            "detail_rows": detail_rows[-40:] if len(detail_rows) > 40 else detail_rows,
-        }
-
-    def build_sell_item(row):
-        sym = (row.get("symbol") or "").upper().strip()
-        sell_ts = row.get("ts_et")
-        qty = row.get("qty") or ""
-        reason = row.get("reason") or ""
-
-        sell_dt = _tr__parse_iso(sell_ts)
-
-        buy_row, buy_dt = _tr__find_last_buy_for_symbol(buy_rows, sym, sell_dt)
-
-        buy_ts = buy_row.get("ts_et") if buy_row else None
-
-        # compute pnl from prices if available
-        def f(x):
-            try:
-                return float(x)
-            except Exception:
-                return None
-
-        entry_px = f(buy_row.get("entry_price")) if buy_row else None
-        # sell log may have last_price; else try last_price in row
-        exit_px = f(row.get("last_price")) or f(row.get("limit_price")) or None
-
-        pnl_pct = None
-        if entry_px and exit_px:
-            try:
-                pnl_pct = ((exit_px - entry_px) / entry_px) * 100.0
-            except Exception:
-                pnl_pct = None
-
-        # details rows window buy->sell if buy exists; else last 60 mins worth around sell
-        if buy_dt:
-            start_dt = buy_dt
-        else:
-            from datetime import timedelta
-            start_dt = sell_dt - timedelta(minutes=90) if sell_dt else None
-
-        detail_rows = _tr__rows_in_window(all_rows, sym, start_dt, sell_dt)
-
-        series = _tr__yahoo_intraday_series(sym, interval=interval)
-
-        # shade buy->sell if known; else sell->sell
-        shade_color = "rgba(33,208,122,0.16)" if (pnl_pct is not None and pnl_pct >= 0) else "rgba(255,92,92,0.16)"
-        shade = None
-        if buy_ts and sell_ts:
-            shade = {"from": buy_ts, "to": sell_ts, "color": shade_color}
-
-        title = ""
-        if entry_px and exit_px:
-            title = f"Buy: {entry_px:.2f}  Sell: {exit_px:.2f}"
-
-        return {
-            "symbol": sym,
-            "ts_et": sell_ts,
-            "qty": qty,
-            "reason": reason,
-            "title_line": title,
-            "pnl_pct": pnl_pct,
-            "buy_ts_et": buy_ts,
-            "sell_ts_et": sell_ts,
-            "series": series,
-            "shade": shade,
-            "detail_rows": detail_rows[-40:] if len(detail_rows) > 40 else detail_rows,
-        }
-
-    buys_out = [build_buy_item(r) for r in recent_buys]
-    sells_out = [build_sell_item(r) for r in recent_sells]
-
-    # --- TRV4 sell_events: backfill ts_et/time_et from ts_utc (epoch or iso) ---
-    try:
-        if isinstance(sells_out, list):
-            for row in sells_out:
-                try:
-                    if not isinstance(row, dict):
-                        continue
-                    ts_et = (row.get('ts_et') or '').strip()
-                    time_et = (row.get('time_et') or '').strip()
-                    if ts_et and time_et:
-                        continue
-                    v = row.get('ts_utc') or row.get('ts_et') or row.get('time_et')
-                    ts_et2, time_et2, ts_utc_iso = _tr__normalize_ts(v)
-                    if (not ts_et) and ts_et2:
-                        row['ts_et'] = ts_et2
-                    if (not time_et) and time_et2:
-                        row['time_et'] = time_et2
-                    try:
-                        cur = str(row.get('ts_utc') or '').strip()
-                        if ts_utc_iso and (cur.isdigit() or not cur):
-                            row['ts_utc'] = ts_utc_iso
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
-    except Exception:
-        pass
-
-    # --- TRADE REVIEW: strict symbol filter + CSV fallback (v2) ---
-
-    import datetime as _dt
-
-    from pathlib import Path as _Path
-
-
-    def _tr__parse_ts_date(_s):
-
-        if not _s:
-
-            return None
-
-        s = str(_s).strip().replace(" ", "T")
-
-        try:
-
-            d = _dt.datetime.fromisoformat(s)
-
-        except Exception:
-
-            return None
-
-        # If tz-aware, try convert to ET date; else treat as ET already
-
-        try:
-
-            if d.tzinfo is not None:
-
-                try:
-
-                    from zoneinfo import ZoneInfo as _ZoneInfo
-
-                    d = d.astimezone(_ZoneInfo("America/New_York"))
-
-                except Exception:
-
-                    pass
-
-        except Exception:
-
-            pass
-
-        return d.date().isoformat()
-
-
-
-    def _tr__load_buy_triggers_for_day(_day, _sym):
-        """
-        DB-first loader for BUY triggers for a given ET day and symbol.
-        Reads live.db.trigger_fires (side=BUY), filtered by day_et + symbol.
-        Falls back to triggers_YYYY-MM-DD.csv if DB is empty for that day/sym.
-        Returns list[dict] rows shaped like CSV reader output.
-        """
-        try:
-            if not _day or not _sym:
-                return []
-            _sym = str(_sym).strip().upper()
-            _day = str(_day).strip()
-
-            import os, sqlite3, csv
-            from pathlib import Path as _Path
-            from datetime import datetime, timezone
-            try:
-                from zoneinfo import ZoneInfo
-                _ET = ZoneInfo("America/New_York")
-            except Exception:
-                _ET = None
-
-            root = os.path.abspath(os.path.dirname(__file__))
-            live_db = os.path.join(root, "live.db")
-
-            out = []
-            try:
-                con = sqlite3.connect(live_db)
-                try:
-                    con.row_factory = sqlite3.Row
-                    cur = con.execute(
-                        """
-                        SELECT ts_utc, symbol, price, source, notes, signals_pretty, time_et, day_et, mode, detail, stage
-                        FROM trigger_fires
-                        WHERE side='BUY' AND symbol=? AND day_et=?
-                        ORDER BY ts_utc ASC
-                        """,
-                        (_sym, _day),
-                    )
-                    for r in cur:
-                        ts_utc = (r["ts_utc"] or "")
-                        ts_et = ""
-                        time_et = (r["time_et"] or "")
-                        day_et = (r["day_et"] or _day)
-
-                        # Derive ET timestamps if missing
-                        try:
-                            if ts_utc:
-                                dtu = datetime.fromisoformat(ts_utc.replace("Z","")).replace(tzinfo=timezone.utc)
-                                if _ET:
-                                    dte = dtu.astimezone(_ET)
-                                    ts_et = dte.strftime("%Y-%m-%d %H:%M:%S")
-                                    if not time_et:
-                                        time_et = dte.strftime("%H:%M:%S")
-                                    if not day_et:
-                                        day_et = dte.strftime("%Y-%m-%d")
-                        except Exception:
-                            pass
-
-                        out.append({
-                            "symbol": _sym,
-                            "price": r["price"],
-                            "source": r["source"] or "",
-                            "notes": r["notes"] or "",
-                            "signals_pretty": r["signals_pretty"] or "",
-                            "time_et": time_et or "",
-                            "day_et": day_et or _day,
-                            "ts_utc": ts_utc or "",
-                            "ts_et": ts_et or "",
-                            "mode": r["mode"] or "",
-                            "detail": r["detail"] or "",
-                            "stage": r["stage"] or "",
-                        })
-                finally:
-                    con.close()
-            except Exception:
-                out = []
-
-            # Fallback to CSV only if DB returned nothing
-            if out:
-                return out
-
-            path = _Path(r"C:\TradeAlerts\logs") / ("triggers_" + str(_day) + ".csv")
-            if not path.exists():
-                return []
-
-            with open(path, "r", encoding="utf-8", newline="") as f:
-                r = csv.DictReader(f)
-                for row in r:
-                    if (row.get("symbol") or "").strip().upper() != _sym:
-                        continue
-                    out.append(row)
-            return out
-        except Exception:
-            return []
-    def _tr__parse_ts_date(_s):
-
-
-        if not _s:
-
-
-            return None
-
-
-        s = str(_s).strip().replace(" ", "T")
-
-
-        try:
-
-
-            d = _dt.datetime.fromisoformat(s)
-
-
-        except Exception:
-
-
-            return None
-
-
-        try:
-
-
-            if d.tzinfo is not None:
-
-
-                try:
-
-
-                    from zoneinfo import ZoneInfo as _ZoneInfo
-
-
-                    d = d.astimezone(_ZoneInfo("America/New_York"))
-
-
-                except Exception:
-
-
-                    pass
-
-
-        except Exception:
-
-
-            pass
-
-
-        return d.date().isoformat()
-
-
-
-
-    def _tr__load_buy_triggers_for_day(_day, _sym):
-        """
-        DB-first loader for BUY triggers for a given ET day and symbol.
-        Reads live.db.trigger_fires (side=BUY), filtered by day_et + symbol.
-        Falls back to triggers_YYYY-MM-DD.csv if DB is empty for that day/sym.
-        Returns list[dict] rows shaped like CSV reader output.
-        """
-        try:
-            if not _day or not _sym:
-                return []
-            _sym = str(_sym).strip().upper()
-            _day = str(_day).strip()
-
-            import os, sqlite3, csv
-            from pathlib import Path as _Path
-            from datetime import datetime, timezone
-            try:
-                from zoneinfo import ZoneInfo
-                _ET = ZoneInfo("America/New_York")
-            except Exception:
-                _ET = None
-
-            root = os.path.abspath(os.path.dirname(__file__))
-            live_db = os.path.join(root, "live.db")
-
-            out = []
-            try:
-                con = sqlite3.connect(live_db)
-                try:
-                    con.row_factory = sqlite3.Row
-                    cur = con.execute(
-                        """
-                        SELECT ts_utc, symbol, price, source, notes, signals_pretty, time_et, day_et, mode, detail, stage
-                        FROM trigger_fires
-                        WHERE side='BUY' AND symbol=? AND day_et=?
-                        ORDER BY ts_utc ASC
-                        """,
-                        (_sym, _day),
-                    )
-                    for r in cur:
-                        ts_utc = (r["ts_utc"] or "")
-                        ts_et = ""
-                        time_et = (r["time_et"] or "")
-                        day_et = (r["day_et"] or _day)
-
-                        # Derive ET timestamps if missing
-                        try:
-                            if ts_utc:
-                                dtu = datetime.fromisoformat(ts_utc.replace("Z","")).replace(tzinfo=timezone.utc)
-                                if _ET:
-                                    dte = dtu.astimezone(_ET)
-                                    ts_et = dte.strftime("%Y-%m-%d %H:%M:%S")
-                                    if not time_et:
-                                        time_et = dte.strftime("%H:%M:%S")
-                                    if not day_et:
-                                        day_et = dte.strftime("%Y-%m-%d")
-                        except Exception:
-                            pass
-
-                        out.append({
-                            "symbol": _sym,
-                            "price": r["price"],
-                            "source": r["source"] or "",
-                            "notes": r["notes"] or "",
-                            "signals_pretty": r["signals_pretty"] or "",
-                            "time_et": time_et or "",
-                            "day_et": day_et or _day,
-                            "ts_utc": ts_utc or "",
-                            "ts_et": ts_et or "",
-                            "mode": r["mode"] or "",
-                            "detail": r["detail"] or "",
-                            "stage": r["stage"] or "",
-                        })
-                finally:
-                    con.close()
-            except Exception:
-                out = []
-
-            # Fallback to CSV only if DB returned nothing
-            if out:
-                return out
-
-            path = _Path(r"C:\TradeAlerts\logs") / ("triggers_" + str(_day) + ".csv")
-            if not path.exists():
-                return []
-
-            with open(path, "r", encoding="utf-8", newline="") as f:
-                r = csv.DictReader(f)
-                for row in r:
-                    if (row.get("symbol") or "").strip().upper() != _sym:
-                        continue
-                    out.append(row)
-            return out
-        except Exception:
-            return []
-    def _sym_ok(_x):
-
-
-        try:
-
-
-            return str(_x.get("symbol","")).strip().upper()
-
-
-        except Exception:
-
-
-            return ""
-
-
-
-    try:
-
-
-        if _tr_req_sym:
-
-
-            # 1) Filter sells (both names)
-
-
-            if isinstance(locals().get("sells_out"), list):
-
-
-                sells_out = [s for s in sells_out if _sym_ok(s) == _tr_req_sym]
-
-
-            if isinstance(locals().get("sells"), list):
-
-
-                sells = [s for s in sells if _sym_ok(s) == _tr_req_sym]
-
-
-            # 2) If buys are empty, load day CSV and set (both names)
-
-
-            _day = _tr__parse_ts_date(_tr_req_ts)
-
-
-            if isinstance(locals().get("buys_out"), list) and len(buys_out) == 0:
-
-
-                _csv_buys = _tr__load_buy_triggers_for_day(_day, _tr_req_sym)
-
-
-                if _csv_buys:
-
-
-                    buys_out = _csv_buys
-
-
-            if isinstance(locals().get("buys"), list) and len(buys) == 0:
-
-
-                _csv_buys2 = _tr__load_buy_triggers_for_day(_day, _tr_req_sym)
-
-
-                if _csv_buys2:
-
-
-                    buys = _csv_buys2
-
-
-    except Exception:
-
-
-        pass
-
-
-
-    # --- TRADE REVIEW wiring fix (TRV4): filter + CSV fallback applied to *_out vars ---
-    tr_patch = "TRV4"
-
-    # --- TRV4 out-var init (ensure fallbacks can run even if sells_out/buys_out weren't created earlier) ---
-    try:
-        if "buys_out" not in locals():
-            _b = locals().get("buys")
-            buys_out = _b if isinstance(_b, list) else []
-        if "sells_out" not in locals():
-            _s = locals().get("sells")
-            sells_out = _s if isinstance(_s, list) else []
-    except Exception:
-        pass
-    # --- end TRV4 out-var init ---
-    try:
-        _tr_req_sym = (request.args.get("symbol") or request.args.get("sym") or request.args.get("ticker") or "").strip().upper()
-        _tr_req_ts  = (request.args.get("ts") or "").strip()
-    except Exception:
-        _tr_req_sym, _tr_req_ts = "", ""
-
-    def _tr__day_from_ts(ts_str: str):
-        if not ts_str:
-            return None
-        s = str(ts_str).strip().replace(" ", "T")
-        try:
-            d = dt.datetime.fromisoformat(s)
-        except Exception:
-            return None
-        try:
-            if d.tzinfo is not None:
-                try:
-                    from zoneinfo import ZoneInfo
-                    d = d.astimezone(ZoneInfo("America/New_York"))
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        return d.date().isoformat()
-
-
-    def _tr__load_buy_triggers_csv(day_ymd: str, sym: str):
-        """
-        Back-compat name: now DB-first.
-        Reads live.db.trigger_fires (side=BUY) by (day_et, symbol), falls back to triggers_YYYY-MM-DD.csv.
-        """
-        try:
-            return _tr__load_buy_triggers_for_day(day_ymd, sym)
-        except Exception:
-            return []
-    def _tr__load_sell_triggers_csv(day_ymd: str, sym: str):
-        if not day_ymd or not sym:
-            return []
-        path = Path(r"C:\TradeAlerts\logs") / ("sell_triggers_" + str(day_ymd) + ".csv")
-        if not path.exists():
-            return []
-        out = []
-        try:
-            import csv
-            with path.open("r", encoding="utf-8", errors="ignore", newline="") as f:
-                r = csv.DictReader(f)
-                for row in r:
-                    rs = (row.get("symbol") or "").strip().upper()
-                    if rs != sym:
-                        continue
-                    # sell file often has ts_utc + ts_et; sometimes time_et exists; keep both
-                    ts_et = (row.get("ts_et") or row.get("time_et") or row.get("time") or "").strip()
-                    # price field name varies by writer; try common ones
-                    px = row.get("price") or row.get("fill_price") or row.get("last_price") or row.get("px") or ""
-                    # human reason / notes field name varies too
-                    reason = row.get("reason") or row.get("exit_reason") or row.get("notes") or row.get("signals_pretty") or row.get("signals") or ""
-                    out.append({
-                        "symbol": rs,
-                        "time_et": ts_et,
-                        "price": px,
-                        "signals_pretty": reason,
-                        "source": row.get("source") or "sell_trigger_csv",
-                        "ts_et": row.get("ts_et") or ts_et,
-                        "ts_utc": row.get("ts_utc") or "",
-                    })
-        except Exception:
-            return []
-        return out
-
-    def _tr__load_sell_events_for_day(day_ymd: str, sym: str, limit: int = 800):
-        """
-        Read sell triggers/events from live.db table sell_events.
-        Handles ts_utc stored as ISO string OR unix epoch seconds.
-        Filters by *ET date* (day_ymd) in Python (reliable across ts formats).
-        Returns trigger-panel shaped rows.
-        """
-        if not day_ymd or not sym:
-            return []
-        try:
-            import os, sqlite3
-            from datetime import datetime, timezone
-            try:
-                from zoneinfo import ZoneInfo
-                _ET = ZoneInfo("America/New_York")
-            except Exception:
-                _ET = None
-
-            db_path = globals().get("LIVE_DB") or globals().get("DB_PATH") or r"C:\TradeAlerts\live.db"
-            if not os.path.exists(db_path):
-                return []
-
-            def _parse_any(x):
-                if x is None:
-                    return None
-                s = str(x).strip()
-                if not s:
-                    return None
-
-                # epoch seconds?
-                if s.isdigit():
-                    try:
-                        sec = int(s)
-                        # guard against weird ms timestamps (13 digits)
-                        if sec > 10_000_000_000:
-                            sec = int(sec / 1000)
-                        return datetime.fromtimestamp(sec, tz=timezone.utc)
-                    except Exception:
-                        return None
-
-                # ISO-ish string
-                if s.endswith("Z"):
-                    s = s[:-1] + "+00:00"
-                try:
-                    d = datetime.fromisoformat(s)
-                    if d.tzinfo is None:
-                        d = d.replace(tzinfo=timezone.utc)
-                    return d.astimezone(timezone.utc)
-                except Exception:
-                    try:
-                        d = datetime.fromisoformat(s[:19])
-                        d = d.replace(tzinfo=timezone.utc)
-                        return d
-                    except Exception:
-                        return None
-
-            def _to_et_str(dtobj):
-                try:
-                    if not dtobj:
-                        return ""
-                    if _ET and dtobj.tzinfo is not None:
-                        dtobj = dtobj.astimezone(_ET)
-                    return dtobj.strftime("%Y-%m-%d %H:%M:%S")
-                except Exception:
-                    return ""
-
-            con = sqlite3.connect(db_path)
-            cur = con.cursor()
-
-            symU = str(sym).strip().upper()
-
-            # Pull recent rows for symbol, then filter by ET day in Python.
-            cur.execute(
-                "SELECT ts_utc, symbol, event, reason, detail, order_id, price, qty, mode "
-                "FROM sell_events WHERE symbol=? ORDER BY id DESC LIMIT ?",
-                (symU, int(limit)),
-            )
-            rows = cur.fetchall() or []
-            con.close()
-
-            out = []
-            for ts_utc, symbol, event, reason, detail, order_id, price, qty, mode in rows:
-                dtu = _parse_any(ts_utc)
-                ts_et = _to_et_str(dtu)
-                if not ts_et.startswith(str(day_ymd)):
-                    continue
-
-                pretty = ""
-                if event:
-                    pretty = str(event)
-                if reason:
-                    pretty = (pretty + " | " if pretty else "") + str(reason)
-                if detail:
-                    pretty = (pretty + " | " if pretty else "") + str(detail)
-                if order_id:
-                    pretty = (pretty + " | " if pretty else "") + f"oid={order_id}"
-                if qty not in (None, "", 0, "0"):
-                    pretty = (pretty + " | " if pretty else "") + f"qty={qty}"
-                if mode:
-                    pretty = (pretty + " | " if pretty else "") + f"mode={mode}"
-
-                out.append({
-                    "symbol": (symbol or symU),
-                    "time_et": ts_et,
-                    "price": price if price is not None else "",
-                    "signals_pretty": pretty,
-                    "source": "live_db:sell_events",
-                    "ts_et": ts_et,
-                    "ts_utc": str(ts_utc or ""),
-                })
-
-            out = list(reversed(out))  # chronological
-            return out
-        except Exception:
-            return []
-
-    def _tr__load_sell_events_recent(sym: str, limit: int = 50):
-        """
-        Most recent sells for symbol (ts_utc may be ISO or epoch seconds).
-        """
-        if not sym:
-            return []
-        try:
-            import os, sqlite3
-            from datetime import datetime, timezone
-            try:
-                from zoneinfo import ZoneInfo
-                _ET = ZoneInfo("America/New_York")
-            except Exception:
-                _ET = None
-
-            db_path = globals().get("LIVE_DB") or globals().get("DB_PATH") or r"C:\TradeAlerts\live.db"
-            if not os.path.exists(db_path):
-                return []
-
-            def _parse_any(x):
-                if x is None:
-                    return None
-                s = str(x).strip()
-                if not s:
-                    return None
-
-                if s.isdigit():
-                    try:
-                        sec = int(s)
-                        if sec > 10_000_000_000:
-                            sec = int(sec / 1000)
-                        return datetime.fromtimestamp(sec, tz=timezone.utc)
-                    except Exception:
-                        return None
-
-                if s.endswith("Z"):
-                    s = s[:-1] + "+00:00"
-                try:
-                    d = datetime.fromisoformat(s)
-                    if d.tzinfo is None:
-                        d = d.replace(tzinfo=timezone.utc)
-                    return d.astimezone(timezone.utc)
-                except Exception:
-                    try:
-                        d = datetime.fromisoformat(s[:19])
-                        d = d.replace(tzinfo=timezone.utc)
-                        return d
-                    except Exception:
-                        return None
-
-            def _to_et_str(dtobj):
-                try:
-                    if not dtobj:
-                        return ""
-                    if _ET and dtobj.tzinfo is not None:
-                        dtobj = dtobj.astimezone(_ET)
-                    return dtobj.strftime("%Y-%m-%d %H:%M:%S")
-                except Exception:
-                    return ""
-
-            con = sqlite3.connect(db_path)
-            cur = con.cursor()
-
-            symU = str(sym).strip().upper()
-            cur.execute(
-                "SELECT ts_utc, symbol, event, reason, detail, order_id, price, qty, mode "
-                "FROM sell_events WHERE symbol=? ORDER BY id DESC LIMIT ?",
-                (symU, int(limit)),
-            )
-            rows = cur.fetchall() or []
-            con.close()
-
-            out = []
-            for ts_utc, symbol, event, reason, detail, order_id, price, qty, mode in reversed(rows):
-                dtu = _parse_any(ts_utc)
-                ts_et = _to_et_str(dtu)
-
-                pretty = ""
-                if event:
-                    pretty = str(event)
-                if reason:
-                    pretty = (pretty + " | " if pretty else "") + str(reason)
-                if detail:
-                    pretty = (pretty + " | " if pretty else "") + str(detail)
-                if order_id:
-                    pretty = (pretty + " | " if pretty else "") + f"oid={order_id}"
-                if qty not in (None, "", 0, "0"):
-                    pretty = (pretty + " | " if pretty else "") + f"qty={qty}"
-                if mode:
-                    pretty = (pretty + " | " if pretty else "") + f"mode={mode}"
-
-                out.append({
-                    "symbol": (symbol or symU),
-                    "time_et": ts_et,
-                    "price": price if price is not None else "",
-                    "signals_pretty": pretty,
-                    "source": "live_db:sell_events",
-                    "ts_et": ts_et,
-                    "ts_utc": str(ts_utc or ""),
-                })
-            return out
-        except Exception:
-            return []
-
-
-        except Exception:
-            return []
-
-    # 1) strict symbol filter on sells_out (prevents RJF/NSC/UNP bleed)
-    try:
-        if _tr_req_sym and isinstance(locals().get("sells_out"), list):
-            sells_out = [s for s in sells_out if str(s.get("symbol","")).strip().upper() == _tr_req_sym]
-    except Exception:
-        pass
-
-    # 2) if buys_out empty, fall back to whole-day trigger CSV for that day/symbol
-    try:
-        if _tr_req_sym and isinstance(locals().get("buys_out"), list) and len(buys_out) == 0:
-            _day = _tr__day_from_ts(_tr_req_ts)
-            _csv_buys = _tr__load_buy_triggers_csv(_day, _tr_req_sym)
-            if _csv_buys:
-                buys_out = _csv_buys
-    except Exception:
-        pass    # 3) if sells_out empty, fall back to whole-day SELL trigger CSV for that day/symbol
-    # 3) if sells_out empty, load sells from live.db (sell_events) first.
-    # If ts/day missing, fall back to most recent sells for that symbol.
-    try:
-        if _tr_req_sym and isinstance(locals().get("sells_out"), list) and len(sells_out) == 0:
-            _day = _tr__day_from_ts(_tr_req_ts)
-            _db_sells = _tr__load_sell_events_for_day(_day, _tr_req_sym) if _day else []
-            if not _db_sells:
-                _db_sells = _tr__load_sell_events_recent(_tr_req_sym, limit=50)
-            if not _db_sells and _day:
-                # last-ditch: old CSV file fallback
-                _db_sells = _tr__load_sell_triggers_csv(_day, _tr_req_sym)
-            if _db_sells:
-                sells_out = _db_sells
-    except Exception:
-        pass
-
-
-
-
-    def _tr__normalize_ts(v):
-        """Return (ts_et_iso, time_et_str, ts_utc_iso) from epoch/iso inputs."""
-        try:
-            if v is None:
-                return ("", "", "")
-            s = str(v).strip()
-            if not s or s.lower() == "none":
-                return ("", "", "")
-    
-            d_utc = None
-    
-            # epoch seconds/ms (string digits)
-            if re.fullmatch(r"\d+", s):
-                try:
-                    n = int(s)
-                    if len(s) >= 13:  # ms
-                        n = int(n / 1000)
-                    d_utc = dt.datetime.fromtimestamp(n, tz=dt.timezone.utc)
-                except Exception:
-                    d_utc = None
-    
-            # ISO-ish fallback
-            if d_utc is None:
-                ss = s.replace(" ", "T").replace("Z", "+00:00")
-                try:
-                    d = dt.datetime.fromisoformat(ss)
-                except Exception:
-                    d = None
-                if d is None:
-                    return ("", "", "")
-                if d.tzinfo is None:
-                    d_utc = d.replace(tzinfo=dt.timezone.utc)
-                else:
-                    d_utc = d.astimezone(dt.timezone.utc)
-    
-            try:
-                from zoneinfo import ZoneInfo
-                d_et = d_utc.astimezone(ZoneInfo("America/New_York"))
-            except Exception:
-                d_et = d_utc
-    
-            ts_utc_iso = d_utc.isoformat()
-            ts_et_iso  = d_et.isoformat()
-            time_et = d_et.strftime("%Y-%m-%d %H:%M:%S")
-            return (ts_et_iso, time_et, ts_utc_iso)
-        except Exception:
-            return ("", "", "")
-    def _trv_parse_dt_et(val: str):
-        try:
-            if not val:
-                return None
-            s = str(val).strip()
-            if not s:
-                return None
-            # normalize
-            s = s.replace("T", " ").replace("Z", "")
-            # full datetime
-            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-                try:
-                    return dt.datetime.strptime(s[:19], fmt)
-                except Exception:
-                    pass
-            # time-only: combine with ts date if available
-            if ts:
-                try:
-                    base = str(ts).strip()
-                    base = base.replace("T", " ").replace("Z", "")
-                    d = None
-                    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-                        try:
-                            d = dt.datetime.strptime(base[:19], fmt)
-                            break
-                        except Exception:
-                            pass
-                    if d:
-                        hhmmss = s
-                        # accept HH:MM or HH:MM:SS
-                        if re.match(r"^\d{2}:\d{2}:\d{2}$", hhmmss):
-                            t = dt.datetime.strptime(hhmmss, "%H:%M:%S").time()
-                        elif re.match(r"^\d{2}:\d{2}$", hhmmss):
-                            t = dt.datetime.strptime(hhmmss, "%H:%M").time()
-                        else:
-                            return None
-                        return dt.datetime.combine(d.date(), t)
-                except Exception:
-                    return None
-            return None
-        except Exception:
-            return None
-
-    def _trv_anchor_dt():
-        return _trv_parse_dt_et(ts)
-
-    def _trv_mark_anchor(rows):
-        # mark the closest row to anchor time
-        try:
-            a = _trv_anchor_dt()
-            if not a or not rows:
-                return rows
-            best_i = None
-            best_d = None
-            for i, r in enumerate(rows):
-                t = _trv_parse_dt_et(r.get("ts_et") or r.get("time_et") or "")
-                if not t:
-                    continue
-                d = abs((t - a).total_seconds())
-                if best_d is None or d < best_d:
-                    best_d = d
-                    best_i = i
-            if best_i is not None:
-                for i, r in enumerate(rows):
-                    r["_is_anchor"] = (i == best_i)
-            return rows
-        except Exception:
-            return rows
-
-    def _trv_group_rows(rows, window_sec=120):
-        # Group consecutive rows within +/- window_sec into bursts
-        try:
-            rows = list(rows or [])
-            rows = _trv_mark_anchor(rows)
-
-            def row_dt(r):
-                return _trv_parse_dt_et(r.get("ts_et") or r.get("time_et") or "")
-
-            # sort by dt if possible
-            rows_sorted = sorted(rows, key=lambda r: row_dt(r) or dt.datetime.min)
-
-            groups = []
-            cur = None
-            for r in rows_sorted:
-                t = row_dt(r)
-                if cur is None:
-                    cur = {"start": t, "end": t, "rows": [r]}
-                    continue
-                # if missing dt, just append to current group
-                if t is None or cur["end"] is None:
-                    cur["rows"].append(r)
-                    cur["end"] = t or cur["end"]
-                    continue
-                gap = (t - cur["end"]).total_seconds()
-                if gap <= window_sec:
-                    cur["rows"].append(r)
-                    cur["end"] = t
-                else:
-                    groups.append(cur)
-                    cur = {"start": t, "end": t, "rows": [r]}
-            if cur is not None:
-                groups.append(cur)
-
-            # prettify group labels
-            out = []
-            for g in groups:
-                st = g.get("start")
-                en = g.get("end")
-                if st and en and st != en:
-                    label = st.strftime("%H:%M:%S") + " ? " + en.strftime("%H:%M:%S")
-                elif st:
-                    label = st.strftime("%H:%M:%S")
-                else:
-                    label = "?"
-                out.append({
-                    "label": label,
-                    "count": len(g["rows"]),
-                    "rows": g["rows"],
-                    "has_anchor": any(bool(rr.get("_is_anchor")) for rr in g["rows"]),
-                })
-            return out
-        except Exception:
-            return []
-
-    buy_groups = _trv_group_rows(buy_triggers, window_sec=120) if buy_triggers else []
-    sell_groups = _trv_group_rows(sell_triggers, window_sec=120) if sell_triggers else []
-    # ---- END TRV UI POLISH ----
-
-
-    # --- TRV4 safe sell_price (avoid locals()/NameError weirdness) ---
-    sell_price_safe = None
-    try:
-        sell_price_safe = sell_price  # may not exist
-    except Exception:
-        sell_price_safe = None
-    # --- end safe sell_price ---
-    trade = {
-        "symbol": sym,
-        "name": sym,
-        "buy_time": anchor_ts,
-        "sell_time": None,
-        "buy_price": locals().get("buy_price"),
-        "sell_price": sell_price_safe,
-        "__sig": "TRV4_SIG_20260208_180120",
-        "pnl": None,
-        "pnl_pct": None,
-        "qty": None,
-    }
-
-    return render_template(
-        "trade_review_single.html",
-        trade=trade,
-        symbol=sym,
-        ts=ts,
-        buy_ts=ts,
-        sell_ts=None,
-        buy_log=locals().get("buy_log"),
-        sell_log=locals().get("sell_log"),
-        buy_triggers=locals().get("buy_triggers") or [],
-        buy_groups=locals().get("buy_groups") or [],
-        sell_triggers=locals().get("sell_triggers") or [],
-        sell_groups=locals().get("sell_groups") or [],
-    )
-
-
-
-
+        import sqlite3
+        db_path = LIVE_DB if 'LIVE_DB' in globals() else r'C:\\TradeAlerts\\live.db'
+        con = sqlite3.connect(db_path)
+        con.row_factory = sqlite3.Row
+        cur = con.cursor()
+        cols = [r['name'] for r in cur.execute('PRAGMA table_info(trades)').fetchall()]
+        need = {'id','symbol'}
+        if not need.issubset(set(cols)):
+            out['errors'].append('trades missing: ' + str(sorted(list(need - set(cols)))))
+            return jsonify(out)
+        has = lambda c: (c in cols)
+        sel = ['id','symbol']
+        if has('action'): sel.append('action')
+        if has('ts_et'): sel.append('ts_et')
+        if has('ts_utc'): sel.append('ts_utc')
+        if has('name'): sel.append('name')
+        if has('qty'): sel.append('qty')
+        if has('price'): sel.append('price')
+        q = 'SELECT ' + ', '.join(sel) + ' FROM trades ORDER BY id DESC LIMIT 400'
+        rows = cur.execute(q).fetchall()
+        for rr in rows:
+            r = dict(rr)
+            sym = (r.get('symbol') or '').strip().upper()
+            if not sym: continue
+            act = (r.get('action') or '').strip().upper()
+            tid = r.get('id')
+            rec = {
+                'trade_id': int(tid) if tid is not None else None,
+                'symbol': sym,
+                'name': r.get('name') or '',
+                'qty': (float(r['qty']) if r.get('qty') is not None else None),
+                'price': (float(r['price']) if r.get('price') is not None else None),
+                'time_et': (r.get('ts_et') or ''),
+                'ts_utc': (r.get('ts_utc') or ''),
+                'side': act,
+            }
+            if act == 'BUY' and len(out['buys']) < 40: out['buys'].append(rec)
+            if act == 'SELL' and len(out['sells']) < 40: out['sells'].append(rec)
+        out['meta']['buy_ct'] = len(out['buys'])
+        out['meta']['sell_ct'] = len(out['sells'])
+        try: con.close()
+        except Exception: pass
+    except Exception as e:
+        out['errors'].append('api_trade_review exception: ' + str(e))
+    return jsonify(out)
 @app.route("/__fingerprint")
 def __fingerprint():
     from flask import jsonify
@@ -6597,371 +5604,339 @@ def healthz():
 # Trade Review Routes (moved to bottom)
 # =========================
 
-@app.route("/trade_review")
-def trade_review():
-    """
-    Single-trade review page.
-    Source of truth = local DB (realized_trades).
-    Logs are used ONLY for trigger explanations.
-    """
-    def _dt_from_any(v):
-        try:
-            if v is None: return None
-            s = str(v).strip()
-            if not s: return None
-            from datetime import datetime
-            try:
-                return datetime.fromisoformat(s.replace('Z','+00:00'))
-            except Exception:
-                pass
-            for fmt in ('%Y-%m-%d %H:%M:%S','%Y-%m-%d %H:%M'):
-                try: return datetime.strptime(s, fmt)
-                except Exception: pass
-            return None
-        except Exception:
-            return None
+@app.route("/trade_review/trade/<trade_id>")
+def trade_review_trade(trade_id):
+    # --- MM_TRADE_REVIEW_TRADE_PASS_TRADE_V2_FLEX ---
+    # Template expects `trade` ? always provide a dict (even on miss).
+    try:
+        tid = int(trade_id)
+    except Exception:
+        tid = None
 
+    trade = None
+    sym = None
 
-    # --- BUY anchor fix (open_date == close_date) ---
-    # If realized_trades open_date == close_date, anchor BUY triggers using latest triggers_YYYY-MM-DD.csv row for that symbol.
-    def _tr__parse_dt_loose(s):
-        try:
-            from datetime import datetime
-            return datetime.strptime(str(s).strip(), "%Y-%m-%d %H:%M:%S")
-        except Exception:
-            return None
+    try:
+        db_path = LIVE_DB if "LIVE_DB" in globals() else (DB_PATH if "DB_PATH" in globals() else r"C:\TradeAlerts\live.db")
+        import sqlite3
+        con = sqlite3.connect(db_path)
+        con.row_factory = sqlite3.Row
+        cur = con.cursor()
 
-    def _tr__best_buy_ts_from_triggers(sym, ymd, log_dir):
-        try:
-            from pathlib import Path
-            import csv
-            fp = Path(log_dir) / f"triggers_{ymd}.csv"
-            if not fp.exists():
-                return None
-            best = None
-            with fp.open("r", encoding="utf-8", newline="") as f:
-                r = csv.DictReader(f)
-                for row in r:
-                    if (row.get("symbol","").strip().upper() != sym):
-                        continue
-                    ts = (row.get("time_et") or row.get("ts_et") or row.get("ts_utc") or "").strip()
-                    dtv = _tr__parse_dt_loose(ts)
-                    if dtv and (best is None or dtv > best):
-                        best = dtv
-            return best
-        except Exception:
-            return None
+        if tid is not None:
+            row = cur.execute(
+                "SELECT id, ts_utc, ts_et, symbol, name, qty, price, price_paid, pnl, pnl_pct, action "
+                "FROM trades WHERE id=? LIMIT 1",
+                (tid,)
+            ).fetchone()
+            if row:
+                trade = dict(row)
+                sym = (trade.get("symbol") or "").upper().strip() or None
 
-
-
-    def _dt_from_any(s):
-        if not s:
-            return None
-        s = str(s).strip()
-        if not s or s.lower() == "none":
-            return None
-        try:
-            return datetime.fromisoformat(s)
-        except Exception:
-            pass
-        try:
-            return datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
-        except Exception:
-            return None
-
-    def _trade_buy_anchor_et(tr):
-        if not isinstance(tr, dict):
-            return None
-        for k in (
-            "opened_et","open_et","buy_time_et","entry_time_et",
-            "open_time_et","opened","open_date","entry_time"
-        ):
-            dt = _dt_from_any(tr.get(k))
-            if dt:
-                return dt
-        for k in (
-            "opened_utc","open_utc","buy_time_utc","entry_time_utc",
-            "open_time_utc","open_date_utc"
-        ):
-            dt = _dt_from_any(tr.get(k))
-            if dt:
-                return dt
-        return None
-    # ---- end helpers ----
-
-    from flask import request, abort
-    import sqlite3
-    from datetime import datetime, timedelta
-    from pathlib import Path
-    LOG_DIR = Path(r"C:\\TradeAlerts\\logs")
-    import csv
-
-
-
-    def _dt_from_any(s: str):
-        if not s:
-            return None
-        s = str(s).strip()
-        if not s or s.lower() == "none":
-            return None
-        # Try ISO first (handles 2026-02-03T09:32:37-05:00)
-        try:
-            return datetime.fromisoformat(s)
-        except Exception:
-            pass
-        # Try common "time_et" format (handles 2026-02-03 09:32:37)
-        try:
-            return datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
-        except Exception:
-            return None
-
-    def _pick_ts(row: dict) -> str:
-        for k in ("ts_et", "time_et", "ts_utc"):
-            v = (row.get(k) or "").strip()
-            if v and v.lower() != "none":
-                return v
-        return ""
-
-    def _trade_buy_anchor_et(tr: dict):
-        """
-        Best-effort BUY anchor:
-        prefer explicit opened/entry timestamps from trade dict, else None.
-        """
-        if not isinstance(tr, dict):
-            return None
-        for k in ("opened_et","open_et","buy_time_et","entry_time_et","open_time_et","opened","open_date","entry_time"):
-            dt = _dt_from_any(tr.get(k))
-            if dt:
-                return dt
-        # sometimes we only have UTC; still better than nothing
-        for k in ("opened_utc","open_utc","buy_time_utc","entry_time_utc","open_time_utc","open_date_utc"):
-            dt = _dt_from_any(tr.get(k))
-            if dt:
-                return dt
-        return None
-
-    def _pick_ts(row: dict) -> str:
-        """
-        Prefer ts_et (ISO), else time_et (space format), else ts_utc.
-        Returns '' if none present.
-        """
-        for k in ("ts_et", "time_et", "ts_utc"):
-            v = (row.get(k) or "").strip()
-            if v and v.lower() != "none":
-                return v
-        return ""
-
-    trade_id = request.args.get("trade_id")
-
-    # analytics links may call /trade_review?symbol=XXX&ts=... (no trade_id)
-    sym = (request.args.get("symbol") or "").strip().upper()
-    ts  = (request.args.get("ts") or "").strip()
-
-    # If no trade_id but we have symbol+ts, send to chart view (open trades / pseudo-buys)
-    if (not trade_id) and sym and ts:
-        # NOTE: do NOT redirect to /chart here (prevents redirect loop)
+        con.close()
+    except Exception:
         pass
-    # --- fallback: allow /trade_review?symbol=XYZ&ts_et=... (resolve to a realized trade_id) ---
-    if not trade_id:
-        symbol = (request.args.get("symbol") or "").strip().upper()
-        ts_et = (request.args.get("ts_et") or request.args.get("sell_ts_et") or "").strip()
-        if symbol:
-            try:
-                import sqlite3
-                db = LIVE_DB if "LIVE_DB" in globals() else "live.db"
-                conn = sqlite3.connect(db)
-                conn.row_factory = sqlite3.Row
-    
-                target = ts_et.replace("Z","") if ts_et else None
-    
-                if target:
-                    row = conn.execute(
-                        "SELECT id, close_date FROM realized_trades "
-                        "WHERE symbol=? AND close_date IS NOT NULL "
-                        "ORDER BY ABS(strftime('%s', close_date) - strftime('%s', ?)) ASC "
-                        "LIMIT 1",
-                        (symbol, target)
-                    ).fetchone()
-                else:
-                    row = conn.execute(
-                        "SELECT id, close_date FROM realized_trades "
-                        "WHERE symbol=? AND close_date IS NOT NULL "
-                        "ORDER BY close_date DESC "
-                        "LIMIT 1",
-                        (symbol,)
-                    ).fetchone()
-    
-                conn.close()
-    
-                if row:
-                    return redirect(url_for("trade_review", trade_id=row["id"]))
-                return redirect(f"/chart/{(request.args.get('symbol') or '').strip().upper()}?ts={(request.args.get('ts') or '').strip()}")
-            except Exception as e:
-                return (f"Bad Request\ntrade_id missing and resolve failed: {e}\n", 400)
 
-    chart_name = (request.args.get("name") or "").strip() or None
-    # --- fallback: allow /trade_review?symbol=XXX&ts=... (analytics links) ---
-    if not trade_id:
-        sym = (request.args.get("symbol") or "").strip().upper()
-        ts  = (request.args.get("ts") or "").strip()
-        if sym and ts:
-            # Best-effort lookup:
-            # 1) realized_trades: close_date startswith(ts) (handles your ISO timestamps)
-            # 2) if not found, try exact match after normalizing ":" encoding
-            try:
-                con = sqlite3.connect(LIVE_DB)
-                con.row_factory = sqlite3.Row
-                cur = con.cursor()
-
-                # try startswith match
-                cur.execute(
-                    "SELECT trade_id FROM realized_trades WHERE symbol=? AND close_date LIKE ? ORDER BY close_date DESC LIMIT 1",
-                    (sym, ts + "%")
-                )
-                r = cur.fetchone()
-                if not r:
-                    # some callers might pass url-decoded vs stored string formats
-                    cur.execute(
-                        "SELECT trade_id FROM realized_trades WHERE symbol=? ORDER BY close_date DESC LIMIT 1",
-                        (sym,)
-                    )
-                    r = cur.fetchone()
-
-                con.close()
-
-                if r and r["trade_id"]:
-                    return redirect(url_for("trade_review", trade_id=r["trade_id"]))
-            except Exception:
-                pass
-        return render_template("trade_review.html", error="missing trade_id")
-    conn = sqlite3.connect(LIVE_DB)
-    conn.row_factory = sqlite3.Row
-    trade = conn.execute(
-
-        "SELECT * FROM realized_trades WHERE id = ?",
-        (trade_id,)
-    ).fetchone()
-    conn.close()
-
-
-    # --- Anchor timestamps ---
-    open_raw  = trade.get('open_date') if isinstance(trade, dict) else trade['open_date']
-    close_raw = trade.get('close_date') if isinstance(trade, dict) else trade['close_date']
-    sell_anchor_dt = _dt_from_any(close_raw)
-    buy_anchor_dt = None
-    if open_raw and close_raw and str(open_raw).strip() and str(close_raw).strip() and str(open_raw).strip() != str(close_raw).strip():
-        buy_anchor_dt = _dt_from_any(open_raw)
-    if buy_anchor_dt is None:
-        ymd_local = None
+    if not sym:
         try:
-            if close_raw: ymd_local = str(close_raw).strip().split(' ')[0]
+            sym = (request.args.get("symbol", "") or "").upper().strip() or None
         except Exception:
-            ymd_local = None
-        if not ymd_local:
-            try: ymd_local = _now_et().strftime('%Y-%m-%d')
-            except Exception:
-                from datetime import datetime
-                ymd_local = datetime.now().strftime('%Y-%m-%d')
-        # --- ensure buy-anchor helper exists (avoid NameError) ---
-        _bb = locals().get('_best_buy_anchor_from_logs') or globals().get('_best_buy_anchor_from_logs')
-        if _bb is None:
-            def _best_buy_anchor_from_logs(*_a, **_k):
-                return None
-        else:
-            _best_buy_anchor_from_logs = _bb
+            sym = None
 
-        buy_anchor_dt = _best_buy_anchor_from_logs(sym, sell_anchor_dt, LOG_DIR)
-    if buy_anchor_dt is None:
-        buy_anchor_dt = sell_anchor_dt
-    buy_anchor_str  = buy_anchor_dt.strftime('%Y-%m-%d %H:%M:%S') if buy_anchor_dt else ''
-    sell_anchor_str = sell_anchor_dt.strftime('%Y-%m-%d %H:%M:%S') if sell_anchor_dt else ''
-
-    if not trade:
-        abort(404, "trade not found")
-
-    symbol = (trade["symbol"] or "").strip().upper()
-
-    # --- company name (best-effort, no placeholders) ---
-    name = None  # company name
+    if trade is None:
+        trade = {
+            "id": tid,
+            "symbol": sym or "",
+            "name": "",
+            "qty": None,
+            "price": None,
+            "price_paid": None,
+            "pnl": None,
+            "pnl_pct": None,
+            "action": None,
+            "ts_utc": None,
+            "ts_et": None,
+        }
+    # --- MM_TRV_TRADE_PASS_TRIGGERS_V1 ---
+    buy_triggers = []
+    sell_triggers = []
     try:
-        import yfinance as yf
-        info = yf.Ticker(symbol).info or {}
-        name = (info.get("shortName") or info.get("longName") or "").strip() or None
+        with app.test_client() as c:
+            rr = c.get(f"/api/trade_review?trade_id={int(trade_id)}")
+            if rr.status_code == 200:
+                j = rr.get_json(silent=True) or {}
+                buy_triggers = j.get("buy_triggers") or j.get("buys") or []
+                sell_triggers = j.get("sell_triggers") or j.get("sells") or []
     except Exception:
-        name = None
+        pass
+    # --- /MM_TRV_TRADE_PASS_TRIGGERS_V1 ---
+            # --- MM_TRV_TRADE_DB_TRIGGERS_V4 ---
+    # DB-backed triggers for Trade Review
+    # BUY triggers from trigger_fires (ts_utc epoch)
+    # SELL triggers from sell_events (ts_utc epoch)
+    buy_triggers = []
+    sell_triggers = []
+    buy_ts_et = ""
+    sell_ts_et = ""
 
-    buy_time_s = (trade["open_date"] or "").strip()
-    sell_time_s = (trade["close_date"] or "").strip()
+    def _safe_str(x):
+        try:
+            return "" if x is None else str(x)
+        except Exception:
+            return ""
 
-    def _parse_dt(s):
-        # expected: 'YYYY-MM-DD HH:MM:SS'
-        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+    def _epoch_to_et_str(epoch):
+        try:
+            import datetime as _dt
+            from zoneinfo import ZoneInfo
+            et = ZoneInfo("America/New_York")
+            return _dt.datetime.fromtimestamp(int(epoch), tz=_dt.timezone.utc).astimezone(et).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return ""
+
+    def _norm_side(s):
+        s = _safe_str(s).strip().upper()
+        if s in ("BUY","BOT","B","OPEN","ENTRY"):
+            return "BUY"
+        if s in ("SELL","SOLD","S","CLOSE","EXIT"):
+            return "SELL"
+        return s
+
+    def _parse_ts_utc_any(v):
+        # Accept:
+        # - int/float epoch seconds
+        # - numeric string
+        # - ISO string like "2026-02-12T09:38:39-05:00"
+        try:
+            if v is None:
+                return None
+            s = _safe_str(v).strip()
+            if not s:
+                return None
+
+            # numeric?
             try:
-                return datetime.strptime(s[:19], fmt)
+                fv = float(s)
+                if fv > 0 and fv < 10_000_000_000:   # epoch seconds
+                    return int(fv)
+                if fv >= 10_000_000_000:            # maybe ms
+                    return int(fv // 1000)
             except Exception:
                 pass
-        return None
 
-    buy_dt = _parse_dt(buy_time_s)
-    sell_dt = _parse_dt(sell_time_s)
+            # ISO?
+            import datetime as _dt
+            # normalize "Z"
+            s2 = s.replace("Z", "+00:00")
+            d = _dt.datetime.fromisoformat(s2)
+            if d.tzinfo is None:
+                # assume ET if missing tz (rare for ts_utc)
+                from zoneinfo import ZoneInfo
+                d = d.replace(tzinfo=ZoneInfo("America/New_York"))
+            return int(d.astimezone(_dt.timezone.utc).timestamp())
+        except Exception:
+            return None
 
-    # Determine win/loss from gain
-    gain = trade["gain"]
     try:
-        gain_f = float(gain)
+        import sqlite3
+        tid = int(trade_id)
+
+        con = sqlite3.connect(LIVE_DB)
+        cur = con.cursor()
+
+        cols = [r[1] for r in cur.execute("PRAGMA table_info(trades)").fetchall()]
+        idx = {c:i for i,c in enumerate(cols)}
+
+        action_col = "action" if "action" in idx else ("side" if "side" in idx else None)
+
+        sym_u = ""
+        this_ts_utc = None
+        this_side = ""
+
+        row = cur.execute("SELECT * FROM trades WHERE id=? LIMIT 1", (tid,)).fetchone()
+        if row:
+            sym_u = (_safe_str(row[idx.get("symbol")]) if "symbol" in idx else "").strip().upper()
+            if "ts_utc" in idx:
+                this_ts_utc = _parse_ts_utc_any(row[idx["ts_utc"]])
+
+            this_side = _norm_side(_safe_str(row[idx.get(action_col)]) if action_col else "")
+
+            # Prefer showing ET from epoch when possible (so chart + anchors line up)
+            if this_ts_utc:
+                if this_side == "BUY":
+                    buy_ts_et = _epoch_to_et_str(this_ts_utc)
+                elif this_side == "SELL":
+                    sell_ts_et = _epoch_to_et_str(this_ts_utc)
+
+        # Anchor epochs (no ET parsing needed)
+        buy_anchor = None
+        sell_anchor = None
+
+        if sym_u and this_ts_utc:
+            if this_side == "BUY":
+                buy_anchor = this_ts_utc
+                buy_ts_et = buy_ts_et or _epoch_to_et_str(buy_anchor)
+
+            elif this_side == "SELL":
+                sell_anchor = this_ts_utc
+                sell_ts_et = sell_ts_et or _epoch_to_et_str(sell_anchor)
+
+            else:
+                buy_anchor = this_ts_utc
+                sell_anchor = this_ts_utc
+                buy_ts_et = _epoch_to_et_str(this_ts_utc)
+                sell_ts_et = _epoch_to_et_str(this_ts_utc)
+
+        # BUY triggers around buy_anchor ? 45m
+        if sym_u and buy_anchor:
+            lo = int(buy_anchor - 45*60)
+            hi = int(buy_anchor + 45*60)
+            rows = cur.execute(
+                "SELECT ts_utc, symbol, side, stage, source, price, signals_pretty, notes, time_et, mode, detail, day_et "
+                "FROM trigger_fires "
+                "WHERE UPPER(symbol)=? AND ts_utc BETWEEN ? AND ? "
+                "ORDER BY ts_utc ASC",
+                (sym_u, lo, hi)
+            ).fetchall()
+
+            for (tsu, symbol, side, stage, source, price, signals_pretty, notes, time_et, mode, detail, day_et) in rows:
+                buy_triggers.append({
+                    "ts_et": _epoch_to_et_str(tsu),
+                    "time_et": _safe_str(time_et),
+                    "day_et": _safe_str(day_et),
+                    "side": _safe_str(side),
+                    "stage": _safe_str(stage),
+                    "source": _safe_str(source),
+                    "price": price,
+                    "signals_pretty": _safe_str(signals_pretty),
+                    "notes": _safe_str(notes),
+                    "mode": _safe_str(mode),
+                    "detail": _safe_str(detail),
+                })
+
+        # SELL triggers around sell_anchor ? 60m (open trades won't have these yet)
+        if sym_u and sell_anchor:
+            lo2 = int(sell_anchor - 60*60)
+            hi2 = int(sell_anchor + 60*60)
+            rows = cur.execute(
+                "SELECT ts_utc, symbol, event, reason, detail, order_id, price, qty, mode "
+                "FROM sell_events "
+                "WHERE UPPER(symbol)=? AND ts_utc BETWEEN ? AND ? "
+                "ORDER BY ts_utc ASC",
+                (sym_u, lo2, hi2)
+            ).fetchall()
+
+            for (tsu, symbol, event, reason, detail, order_id, price, qty, mode) in rows:
+                sell_triggers.append({
+                    "ts_et": _epoch_to_et_str(tsu),
+                    "event": _safe_str(event),
+                    "reason": _safe_str(reason),
+                    "detail": _safe_str(detail),
+                    "order_id": _safe_str(order_id),
+                    "price": price,
+                    "qty": qty,
+                    "mode": _safe_str(mode),
+                })
+
+        con.close()
+
     except Exception:
-        gain_f = 0.0
-    is_win = gain_f >= 0.0
+        pass
+    # --- /MM_TRV_TRADE_DB_TRIGGERS_V4 ---
 
-    log_dir = Path(__file__).resolve().parent / "logs"
 
-    def _file_for_day(prefix, dt):
-        if not dt:
-            return None
-        fname = f"{prefix}{dt.strftime('%Y-%m-%d')}.csv"
-        f = log_dir / fname
-        return f if f.exists() else None
 
-    buy_file = _file_for_day("triggers_", buy_dt) or (max(log_dir.glob("triggers_*.csv"), default=None) if log_dir.exists() else None)
-    sell_file = _file_for_day("sell_triggers_", sell_dt) or (max(log_dir.glob("sell_triggers_*.csv"), default=None) if log_dir.exists() else None)
 
-    def _row_time_dt(row):
-        t = ((row.get("time_et") or _pick_ts(row) or row.get("ts_utc")) or _pick_ts(row) or row.get("ts_utc") or row.get("timestamp") or row.get("time") or "").strip()
-        if not t:
-            return None
-        return _parse_dt(t)
+    return render_template("trade_review_single.html", trade=trade, trade_id=tid, symbol=(sym or trade.get("symbol", buy_triggers=buy_triggers, sell_triggers=sell_triggers) or ""))
+@app.route("/trade_review")
+@app.route('/trade_review')
+def trade_review():
+    # --- MM_CANONICAL_TRADE_REVIEW_REDIRECT_V1 ---
+    # If a trade_id is provided via querystring, redirect ONCE to canonical route.
+    _qid = request.args.get('trade_id') or request.args.get('id')
+    if _qid:
+        try:
+            _tid = int(str(_qid).strip())
+            return redirect(f"/trade_review/trade/{_tid}", code=302)
+        except Exception:
+            pass
+    
+    # If a symbol is provided, resolve latest trade id and redirect to canonical route.
+    _sym = (request.args.get('symbol') or '').strip().upper()
+    if _sym:
+        try:
+            import sqlite3
+            con = sqlite3.connect(LIVE_DB)
+            cur = con.cursor()
+            cols = [r[1] for r in cur.execute("PRAGMA table_info(trades)").fetchall()]
+            if "id" in cols and "symbol" in cols:
+                # Prefer ts_utc if available; else fallback to id desc
+                order_col = "ts_utc" if "ts_utc" in cols else ("ts_et" if "ts_et" in cols else "id")
+                row = cur.execute(f"SELECT id FROM trades WHERE UPPER(symbol)=? ORDER BY {order_col} DESC LIMIT 1", (_sym,)).fetchone()
+                if row and row[0] is not None:
+                    con.close()
+                    return redirect(f"/trade_review/trade/{int(row[0])}", code=302)
+            con.close()
+        except Exception:
+            pass
+    # --- /MM_CANONICAL_TRADE_REVIEW_REDIRECT_V1 ---
+    # Canonical: /trade_review?trade_id=<id>
+    trade_id = request.args.get('trade_id', type=int)
+    symbol = (request.args.get('symbol') or '').strip().upper()
+    # Optional hints
+    side = (request.args.get('side') or '').strip().upper()  # 'BUY'/'SELL' if provided by caller
+    ts = (request.args.get('ts') or '').strip()              # optional timestamp hint
 
-    def _load_matches(path, target_dt, window_sec=120):
-        if not path or not path.exists() or not target_dt:
-            return []
-        rows = []
-        with path.open("r", encoding="utf-8", newline="") as f:
-            r = csv.DictReader(f)
-            for row in r:
-                if (row.get("symbol") or "").strip().upper() != symbol:
-                    continue
-                rt = _row_time_dt(row)
-                if not rt:
-                    continue
-                if abs((rt - target_dt).total_seconds()) <= window_sec:
-                    rows.append(row)
-        return rows
+    # If we already have trade_id, render directly (no redirect).
+    if trade_id:
+        try:
+            # Existing renderer should already support trade_id; keep your current logic below via helper if present.
+            return trade_review_single(trade_id=trade_id) if 'trade_review_single' in globals() else render_template('trade_review_single.html', trade_id=trade_id)
+        except Exception:
+            # Fallback: if your code uses a different function name, let the original block handle it.
+            pass
 
-    buy_triggers = _load_matches(buy_file, buy_dt, 180)
-    sell_triggers = _load_matches(sell_file, sell_dt, 180)
+    # If called with symbol only, resolve -> best trade_id and redirect ONCE to canonical URL.
+    if symbol:
+        try:
+            import sqlite3
+            db_path = LIVE_DB if 'LIVE_DB' in globals() else r'C:\TradeAlerts\live.db'
+            con = sqlite3.connect(db_path)
+            con.row_factory = sqlite3.Row
+            cur = con.cursor()
+            # trades table is the best universal join-point for trade_review
+            # Prefer SELL when side hints SELL; else take most recent trade for that symbol.
+            if side == 'SELL':
+                row = cur.execute("""
+                    SELECT id FROM trades
+                    WHERE symbol = ? AND (action='SELL' OR side='SELL')
+                    ORDER BY id DESC LIMIT 1
+                """, (symbol,)).fetchone()
+            elif side == 'BUY':
+                row = cur.execute("""
+                    SELECT id FROM trades
+                    WHERE symbol = ? AND (action='BUY' OR side='BUY')
+                    ORDER BY id DESC LIMIT 1
+                """, (symbol,)).fetchone()
+            else:
+                row = cur.execute("""
+                    SELECT id FROM trades
+                    WHERE symbol = ?
+                    ORDER BY id DESC LIMIT 1
+                """, (symbol,)).fetchone()
+            con.close()
+            if row and row['id']:
+                return redirect(url_for('trade_review', trade_id=int(row['id'])))
+        except Exception:
+            try:
+                con.close()
+            except Exception:
+                pass
+        # No match: render a simple not-found page (NO redirect loops).
+        return render_template('trade_review.html', error=f'No trade_id found for {symbol}')
 
-    return render_template(
-        "trade_review_single.html",
-        trade=trade,
-        buy_triggers=locals().get("buy_triggers") or [],
-        sell_triggers=locals().get("sell_triggers") or [],
-        buy_file=str(buy_file) if buy_file else None,
-        sell_file=str(sell_file) if sell_file else None,
-        is_win=is_win,
-        name=name,
-    )
-
-# --- tz-safe datetime helper (Trade Review) ---
+    # Nothing to do
+    return render_template('trade_review.html', error='Missing trade_id or symbol')
 def _tz_naive_dt(x):
     """
     Convert x to pandas datetime and strip timezone if present.
@@ -7222,6 +6197,19 @@ def trade_review_chart():
 # =========================
 # inserted: 2026-01-31 00:06:59
 
+
+
+@app.route("/chart_img/<symbol>")
+def chart_img(symbol):
+    # --- MM_CHART_IMG_PROXY_V1 ---
+    # Proxy to existing chart image endpoint used by Trade Review
+    ts_raw = request.args.get("ts", "")
+    ts_raw = (ts_raw or "").strip()
+    qs = "symbol=" + (symbol or "").upper().strip()
+    if ts_raw.isdigit():
+        qs += "&ts=" + ts_raw
+    return redirect("/trade_review/chart?" + qs, code=302)
+
 @app.route("/__whoami")
 def __whoami():
     # Tiny proof route: shows which file+pid is actually serving, and what trade_review routes exist.
@@ -7319,15 +6307,18 @@ def api_analytics_fires():
     except Exception as e:
         return jsonify(ok=False, error=str(e), bucket=bucket, total=0, items=[])
 
-@app.route("/api/analytics/candidate_fires")
-
 
 # --- MM_REGIME_ANALYTICS_ENDPOINTS_V1 ---
 
 # Regime analytics summary endpoints for Buy/Sell Analytics.
 # Reads LIVE_DB tables and adapts to whatever schema exists (PRAGMA table_info).
 
-def _mm_bucket_since_epoch(bucket: str) -> int:
+def _mm_bucket_since_epoch( bucket: str = "today") -> int:
+    bucket = (request.args.get('bucket') or 'today').strip().lower()
+    if bucket in ('7d','7day','7days'): bucket = '7d'
+    elif bucket in ('30d','30day','30days'): bucket = '30d'
+    elif bucket in ('all',): bucket = 'all'
+    elif bucket in ('today','tod','t'): bucket = 'today'
     """
     Bucket start as UTC epoch, but anchored to America/New_York midnight.
     Fixes the ~7pm ET "today becomes tomorrow" UTC flip.
@@ -7367,6 +6358,13 @@ def _mm_bucket_since_epoch(bucket: str) -> int:
 # --- MM_MARKET_REGIME_TIMELINE_API_V1 ---
 @app.route("/api/market_regime_timeline")
 def api_market_regime_timeline():
+    from flask import request as flask_request
+    bucket = (flask_request.args.get('bucket') or 'today').strip().lower()
+    # normalize common UI buckets
+    if bucket in ('7d','7day','7days'): bucket = '7d'
+    elif bucket in ('30d','30day','30days'): bucket = '30d'
+    elif bucket in ('all',): bucket = 'all'
+    elif bucket in ('today','tod','t'): bucket = 'today'
     """
     Market regime timeline in ET window -> UTC epoch.
     Primary: market_regime_samples(ts_utc, regime, conf)
@@ -7374,6 +6372,43 @@ def api_market_regime_timeline():
     """
     from flask import request, jsonify
     import sqlite3, datetime as dt
+
+
+
+    # ---- ET bucket window (America/New_York) ----
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("America/New_York")
+    except Exception:
+        tz = None
+
+    now_utc = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc)
+
+    def et_midnight_utc_epoch(days_ago=0):
+        if tz is None:
+            d = (now_utc - dt.timedelta(days=days_ago)).date()
+            return int(dt.datetime(d.year, d.month, d.day, tzinfo=dt.timezone.utc).timestamp())
+        now_et = now_utc.astimezone(tz)
+        d = (now_et.date() - dt.timedelta(days=days_ago))
+        et0 = dt.datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=tz)
+        return int(et0.astimezone(dt.timezone.utc).timestamp())
+
+    bucket = (request.args.get("bucket") or "today").strip().lower()
+
+    if bucket in ("today","0d"):
+        since_ts_utc = et_midnight_utc_epoch(0)
+        until_ts_utc = int((now_utc + dt.timedelta(days=1)).timestamp())
+    elif bucket in ("7d","7","week"):
+        since_ts_utc = et_midnight_utc_epoch(6)
+        until_ts_utc = int((now_utc + dt.timedelta(days=1)).timestamp())
+    elif bucket in ("30d","30","month"):
+        since_ts_utc = et_midnight_utc_epoch(29)
+        until_ts_utc = int((now_utc + dt.timedelta(days=1)).timestamp())
+    else:
+        since_ts_utc = et_midnight_utc_epoch(0)
+        until_ts_utc = int((now_utc + dt.timedelta(days=1)).timestamp())
+    # ---------------------------------------------
+
 
     try:
         from zoneinfo import ZoneInfo
@@ -7406,9 +6441,6 @@ def api_market_regime_timeline():
         since_date = base_date - dt.timedelta(days=365)  # safe cap
     else:
         since_date = base_date
-
-    since_ts_utc = to_utc_epoch(et_midnight(since_date))
-    until_ts_utc = to_utc_epoch(et_midnight(base_date + dt.timedelta(days=1)))
 
     db_path = globals().get("LIVE_DB") or globals().get("DB_PATH") or globals().get("db_path") or "live.db"
 
@@ -7444,10 +6476,102 @@ def api_market_regime_timeline():
         try: con.close()
         except Exception: pass
 
-    return jsonify({"buckets": buckets, "window": {"since_ts_utc": since_ts_utc, "until_ts_utc": until_ts_utc}})
 
+    # --- MM: dedupe regime timeline buckets by ts_utc (prevents zero-width segments) ---
+    try:
+        # locate the list to dedupe (common names: buckets, out["buckets"], payload["buckets"])
+        _b = None
+        for _name in ("buckets",):
+            if _name in locals() and isinstance(locals().get(_name), list):
+                _b = locals().get(_name)
+                break
+        if _b is None:
+            for _name in ("out","payload","resp","data","j"):
+                _obj = locals().get(_name)
+                if isinstance(_obj, dict) and isinstance(_obj.get("buckets"), list):
+                    _b = _obj["buckets"]
+                    break
+        if isinstance(_b, list) and _b:
+            _by_ts = {}
+            for _row in _b:
+                if not isinstance(_row, dict):
+                    continue
+                try:
+                    _tsu = int(_row.get("ts_utc") or 0)
+                except Exception:
+                    _tsu = 0
+                if not _tsu:
+                    continue
+                _prev = _by_ts.get(_tsu)
+                if _prev is None or int(_row.get("conf") or 0) >= int(_prev.get("conf") or 0):
+                    _by_ts[_tsu] = _row
+            _uniq = [_by_ts[k] for k in sorted(_by_ts.keys())]
+            # write back to wherever buckets came from
+            if "buckets" in locals() and isinstance(locals().get("buckets"), list):
+                buckets = _uniq
+            for _name in ("out","payload","resp","data","j"):
+                _obj = locals().get(_name)
+                if isinstance(_obj, dict) and isinstance(_obj.get("buckets"), list):
+                    _obj["buckets"] = _uniq
+    except Exception:
+        pass
+
+    # MM_REGIME_TIMELINE_POINTS_FIX_V1
+    # Force-build points from rows in-window (samples first, then sell_events)
+    points = []
+    try:
+        _rows = cur.execute(
+            "SELECT ts_utc, regime, conf FROM market_regime_samples WHERE ts_utc >= ? AND ts_utc < ? ORDER BY ts_utc ASC",
+            (since_ts_utc, until_ts_utc)
+        ).fetchall()
+    except Exception as e:
+        _rows = []
+        try:
+            if isinstance(dbg, dict) and not dbg.get('err_primary'):
+                dbg['err_primary'] = str(e)
+        except Exception:
+            pass
+    if _rows:
+        try:
+            points = [{'ts_utc': int(r[0]), 'regime': str(r[1] or 'UNKNOWN'), 'conf': int(r[2] or 0)} for r in _rows]
+        except Exception:
+            # sqlite Row case
+            points = [{'ts_utc': int(r['ts_utc']), 'regime': str(r['regime'] or 'UNKNOWN'), 'conf': int(r['conf'] or 0)} for r in _rows]
+    else:
+        try:
+            _rows2 = cur.execute(
+                "SELECT ts_utc, regime, COALESCE(regime_conf,0) FROM sell_events WHERE ts_utc >= ? AND ts_utc < ? AND COALESCE(regime,'') != '' ORDER BY ts_utc ASC",
+                (since_ts_utc, until_ts_utc)
+            ).fetchall()
+        except Exception as e:
+            _rows2 = []
+            try:
+                if isinstance(dbg, dict) and not dbg.get('err_fallback'):
+                    dbg['err_fallback'] = str(e)
+            except Exception:
+                pass
+        if _rows2:
+            try:
+                points = [{'ts_utc': int(r[0]), 'regime': str(r[1] or 'UNKNOWN'), 'conf': int(r[2] or 0)} for r in _rows2]
+            except Exception:
+                points = [{'ts_utc': int(r['ts_utc']), 'regime': str(r['regime'] or 'UNKNOWN'), 'conf': int(r[2] if len(r)>2 else 0)} for r in _rows2]
+    # Also set common alias name if the return uses it
+    try:
+        pts = points
+    except Exception:
+        pass
+
+    # MM_REGIME_POINTS_FALLBACK_TO_BUCKETS_V1
+    try:
+        if (not isinstance(points, list) or len(points) == 0) and isinstance(buckets, list) and buckets:
+            points = buckets
+    except Exception:
+        pass
+
+    return jsonify({"pts": len(points) if isinstance(points, list) else 0, "points": points if isinstance(points, list) else [], "buckets": buckets, "window": {"since_ts_utc": since_ts_utc, "until_ts_utc": until_ts_utc}})
+@app.route('/analytics/buy_regime')
 def analytics_buy_regime_page():
-    return render_template("analytics_buy_regime.html")
+    return render_template('analytics_buy_regime.html')
 
 @app.route("/analytics/sell_regime")
 def analytics_sell_regime_page():
@@ -7490,285 +6614,329 @@ def _mm_regime_agg_by_regime(con, table_name: str, since_ts_utc: int):
 
 @app.route("/api/analytics/buy_regime")
 def api_analytics_buy_regime():
-    bucket = (request.args.get("bucket") or "today").strip().lower()
-    since_ts_utc = _mm_bucket_since_epoch(bucket)
-
-    con = sqlite3.connect(LIVE_DB)
+    # --- MM_BUY_REGIME_FROM_BUY_EVENTS_V1 ---
+    # Source of truth: buy_events (already regime-stamped via Option A)
     try:
-        items = _mm_regime_agg_by_regime(con, "buy_events", since_ts_utc)
-        total = sum(i.get("count", 0) for i in items)
-        return jsonify(ok=True, bucket=bucket, since_ts_utc=int(since_ts_utc), total=int(total), by_regime=items)
-    finally:
-        try: con.close()
-        except Exception: pass
-
-
-@app.route("/api/analytics/sell_regime")
-def api_analytics_sell_regime():
-    bucket = (request.args.get("bucket") or "today").strip().lower()
-    since_ts_utc = _mm_bucket_since_epoch(bucket)
-
-    con = sqlite3.connect(LIVE_DB)
-    try:
-        items = _mm_regime_agg_by_regime(con, "sell_events", since_ts_utc)
-        total = sum(i.get("count", 0) for i in items)
-        return jsonify(ok=True, bucket=bucket, since_ts_utc=int(since_ts_utc), total=int(total), by_regime=items)
-    finally:
-        try: con.close()
-        except Exception: pass
-
-# --- /MM_REGIME_ANALYTICS_ENDPOINTS_V2_RESTORE ---
-
-# --- MM_REGIME_ANALYTICS_OUTCOMES_EXITS_V1 ---
-
-def _mm_parse_ts_to_epoch_any(x):
-    import datetime as dt
-    from zoneinfo import ZoneInfo
-    if x is None:
-        return None
-    if isinstance(x, (int, float)):
-        try: return int(float(x))
-        except Exception: return None
-    s = str(x).strip()
-    if not s:
-        return None
-    if re.fullmatch(r"\d+(\.\d+)?", s):
-        try: return int(float(s))
-        except Exception: return None
-    et = ZoneInfo("America/New_York")
-    utc = ZoneInfo("UTC")
-    if s.endswith("Z"):
-        s2 = s[:-1] + "+00:00"
-    else:
-        s2 = s
-    try:
-        d = dt.datetime.fromisoformat(s2)
-        if d.tzinfo is None:
-            d = d.replace(tzinfo=et)
-        return int(d.astimezone(utc).timestamp())
-    except Exception:
-        pass
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        import time
+        bucket = (request.args.get('bucket') or 'today').strip().lower()
+        since_ts_utc = None
         try:
-            d = dt.datetime.strptime(s, fmt).replace(tzinfo=et)
-            return int(d.astimezone(utc).timestamp())
+            if '_mm_bucket_since_epoch' in globals():
+                since_ts_utc = int(_mm_bucket_since_epoch(bucket))
+            elif 'mm_bucket_since_epoch' in globals():
+                since_ts_utc = int(mm_bucket_since_epoch(bucket))
         except Exception:
-            continue
-    return None
+            since_ts_utc = None
+        if since_ts_utc is None:
+            since_ts_utc = int(time.time()) - 86400
+        until_ts_utc = int(time.time())
+    
+        conn = sqlite3.connect(LIVE_DB, timeout=30)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+    
+        cur.execute(
+            "SELECT COALESCE(regime,'UNKNOWN') AS regime, COUNT(*) AS ct "
+            "FROM buy_events "
+            "WHERE ts_utc >= ? AND ts_utc < ? "
+            "  AND COALESCE(symbol,'') <> '' "
+            "GROUP BY COALESCE(regime,'UNKNOWN') "
+            "ORDER BY ct DESC",
+            (int(since_ts_utc), int(until_ts_utc))
+        )
+        by = []
+        total = 0
+        for r in cur.fetchall():
+            reg = (r['regime'] if 'regime' in r.keys() else r[0]) or 'UNKNOWN'
+            ct  = int(r['ct'] if 'ct' in r.keys() else r[1])
+            total += ct
+            by.append({'regime': reg, 'count': ct})
+        conn.close()
+    
+        return jsonify({
+            'by_regime': by,
+            'total_events': total,
+            'window': {
+                'bucket': bucket,
+                'since_ts_utc': int(since_ts_utc),
+                'until_ts_utc': int(until_ts_utc)
+            },
+            'errors': []
+        })
+    except Exception as e:
+        return jsonify({'by_regime': [], 'errors': ['EXC: ' + repr(e)]})
+    # --- /MM_BUY_REGIME_FROM_BUY_EVENTS_V1 ---
+@app.route("/api/analytics/candidate_fires")
+def api_analytics_candidate_fires():
+    """
+    Candidate Fires endpoint used by analytics_buy.html when source=candidate.
 
-def _mm_quantiles(values):
-    if not values:
-        return (None, None)
-    v = sorted(float(x) for x in values)
-    avg = sum(v) / len(v)
-    n = len(v)
-    med = v[n//2] if (n % 2 == 1) else (v[n//2 - 1] + v[n//2]) / 2.0
-    return (avg, med)
+    Returns BOTH:
+      - counts: {signal_fires, trigger_fires}
+      - funnel-style keys expected by analytics_buy.html:
+          cand, req, strict, buyable, bought, strict_n
+    """
+    bucket = (flask_request.args.get("bucket") or "today").strip().lower()
+    if bucket in ("7d","7day","7days"): bucket = "7d"
+    elif bucket in ("30d","30day","30days"): bucket = "30d"
+    elif bucket in ("all",): bucket = "all"
+    elif bucket in ("today","tod","t"): bucket = "today"
 
-def _mm_regime_for_sell(con, symbol: str, close_ts_utc: int):
-    cur = con.cursor()
-    try:
-        row = cur.execute("""
-          SELECT regime, regime_conf, event, ts_utc
-          FROM sell_events
-          WHERE symbol = ?
-            AND regime IS NOT NULL AND TRIM(regime) <> ''
-          ORDER BY ABS(ts_utc - ?) ASC
-          LIMIT 1
-        """, (symbol, int(close_ts_utc))).fetchone()
-        if not row:
-            return (None, None, None, None)
-        return (row[0], row[1], row[2], row[3])
-    except Exception:
-        return (None, None, None, None)
-
-def _mm_regime_for_buy(con, symbol: str, opened_ts_utc: int):
-    cur = con.cursor()
-    try:
-        w = 6 * 3600
-        row = cur.execute("""
-          SELECT regime, regime_conf, ts_utc
-          FROM buy_events
-          WHERE symbol = ?
-            AND ts_utc BETWEEN ? AND ?
-            AND regime IS NOT NULL AND TRIM(regime) <> ''
-          ORDER BY ABS(ts_utc - ?) ASC
-          LIMIT 1
-        """, (symbol, int(opened_ts_utc - w), int(opened_ts_utc + w), int(opened_ts_utc))).fetchone()
-        if not row:
-            return (None, None, None)
-        return (row[0], row[1], row[2])
-    except Exception:
-        return (None, None, None)
-
-@app.route("/api/analytics/sell_regime_exits")
-def api_analytics_sell_regime_exits():
-    bucket = (request.args.get("bucket") or "today").strip().lower()
     since_ts_utc = _mm_bucket_since_epoch(bucket)
-    con = sqlite3.connect(LIVE_DB)
+
+    out = {
+        "ok": True,
+        "bucket": bucket,
+        "since_ts_utc": int(since_ts_utc or 0),
+        "rows": [],
+        "counts": {
+            "signal_fires": 0,
+            "trigger_fires": 0,
+        },
+
+        # funnel keys expected by templates/analytics_buy.html
+        "cand": 0,
+        "req": 0,
+        "strict": 0,
+        "buyable": 0,
+        "bought": 0,
+        "strict_n": 0,
+    }
+
     try:
-        cur = con.cursor()
-        cols = {r[1] for r in cur.execute("PRAGMA table_info(sell_events)").fetchall()}
-        if "ts_utc" not in cols or "regime" not in cols or "event" not in cols:
-            return jsonify(ok=True, bucket=bucket, since_ts_utc=int(since_ts_utc), by_regime=[], note="sell_events missing fields")
+        import sqlite3
+        db_path = Path(r"C:\TradeAlerts\live.db")
+        if db_path.exists():
+            con = sqlite3.connect(str(db_path))
+            con.row_factory = sqlite3.Row
+            cur = con.cursor()
 
-        rows = cur.execute("""
-          SELECT regime, event, COUNT(*) AS ct
-          FROM sell_events
-          WHERE ts_utc >= ?
-            AND regime IS NOT NULL AND TRIM(regime) <> ''
-          GROUP BY regime, event
-          ORDER BY ct DESC
-        """, (int(since_ts_utc),)).fetchall()
-
-        agg = {}
-        for regime, event, ct in rows:
-            r = agg.setdefault(str(regime), {"regime": str(regime), "total": 0, "events": []})
-            r["total"] += int(ct or 0)
-            r["events"].append({"event": str(event), "count": int(ct or 0)})
-
-        conf_rows = cur.execute("""
-          SELECT regime, AVG(regime_conf) AS avg_conf
-          FROM sell_events
-          WHERE ts_utc >= ?
-            AND regime IS NOT NULL AND TRIM(regime) <> ''
-            AND regime_conf IS NOT NULL
-          GROUP BY regime
-        """, (int(since_ts_utc),)).fetchall()
-
-        for regime, avg_conf in conf_rows:
-            if str(regime) in agg:
-                agg[str(regime)]["avg_conf"] = int(round(float(avg_conf)))
-
-        out = sorted(agg.values(), key=lambda x: x.get("total", 0), reverse=True)
-        return jsonify(ok=True, bucket=bucket, since_ts_utc=int(since_ts_utc), by_regime=out)
-    finally:
-        try: con.close()
-        except Exception: pass
-
-@app.route("/api/analytics/sell_regime_outcomes")
-def api_analytics_sell_regime_outcomes():
-    bucket = (request.args.get("bucket") or "today").strip().lower()
-    since_ts_utc = _mm_bucket_since_epoch(bucket)
-    con = sqlite3.connect(LIVE_DB)
-    try:
-        cur = con.cursor()
-        cols = {r[1] for r in cur.execute("PRAGMA table_info(realized_trades)").fetchall()}
-        if "gain" not in cols or "close_date" not in cols or "symbol" not in cols:
-            return jsonify(ok=True, bucket=bucket, since_ts_utc=int(since_ts_utc), by_regime=[], note="realized_trades missing symbol/gain/close_date")
-
-        rows = cur.execute("SELECT symbol, gain, close_date FROM realized_trades").fetchall()
-        by = {}
-        for symbol, gain, close_date in rows:
-            close_ts = _mm_parse_ts_to_epoch_any(close_date)
-            if close_ts is None or close_ts < int(since_ts_utc):
-                continue
+            # signal_fires (exists)
             try:
-                g = float(gain)
+                n_signal = cur.execute(
+                    "SELECT COUNT(1) AS n FROM signal_fires WHERE ts_utc >= ?",
+                    (since_ts_utc,)
+                ).fetchone()["n"]
+                out["counts"]["signal_fires"] = int(n_signal or 0)
             except Exception:
-                continue
-            regime, _, _, _ = _mm_regime_for_sell(con, str(symbol), int(close_ts))
-            if not regime:
-                regime = "UNKNOWN"
-            a = by.setdefault(str(regime), {"regime": str(regime), "n": 0, "wins": 0, "sum_gain": 0.0, "gains": []})
-            a["n"] += 1
-            a["wins"] += (1 if g > 0 else 0)
-            a["sum_gain"] += g
-            a["gains"].append(g)
+                pass
 
-        out = []
-        for regime, a in by.items():
-            avg_gain, med_gain = _mm_quantiles(a["gains"])
-            win_rate = (a["wins"] / a["n"]) if a["n"] else 0.0
-            out.append({
-                "regime": regime,
-                "count": int(a["n"]),
-                "win_rate": round(100.0 * win_rate, 1),
-                "sum_gain": round(float(a["sum_gain"]), 2),
-                "avg_gain": (None if avg_gain is None else round(float(avg_gain), 2)),
-                "median_gain": (None if med_gain is None else round(float(med_gain), 2)),
-            })
-        out.sort(key=lambda x: x.get("count", 0), reverse=True)
-        return jsonify(ok=True, bucket=bucket, since_ts_utc=int(since_ts_utc), by_regime=out, total=sum(x["count"] for x in out))
-    finally:
-        try: con.close()
-        except Exception: pass
-
-@app.route("/api/analytics/buy_regime_outcomes")
-def api_analytics_buy_regime_outcomes():
-    bucket = (request.args.get("bucket") or "today").strip().lower()
-    since_ts_utc = _mm_bucket_since_epoch(bucket)
-    con = sqlite3.connect(LIVE_DB)
-    try:
-        cur = con.cursor()
-        rcols = {r[1] for r in cur.execute("PRAGMA table_info(realized_trades)").fetchall()}
-        pcols = {r[1] for r in cur.execute("PRAGMA table_info(position_opened)").fetchall()}
-        if "symbol" not in rcols or "gain" not in rcols or "close_date" not in rcols:
-            return jsonify(ok=True, bucket=bucket, since_ts_utc=int(since_ts_utc), by_regime=[], note="realized_trades missing symbol/gain/close_date")
-        if "symbol" not in pcols or ("opened_ts_utc" not in pcols and "opened_utc" not in pcols):
-            return jsonify(ok=True, bucket=bucket, since_ts_utc=int(since_ts_utc), by_regime=[], note="position_opened missing opened_ts")
-
-        opened_field = "opened_ts_utc" if "opened_ts_utc" in pcols else "opened_utc"
-        rows = cur.execute("SELECT symbol, gain, close_date FROM realized_trades").fetchall()
-
-        by = {}
-        for symbol, gain, close_date in rows:
-            close_ts = _mm_parse_ts_to_epoch_any(close_date)
-            if close_ts is None:
-                continue
-            # map to nearest opened time
-            opened_row = cur.execute(f"""
-              SELECT {opened_field}
-              FROM position_opened
-              WHERE symbol = ?
-              ORDER BY ABS(COALESCE({opened_field},0) - ?) ASC
-              LIMIT 1
-            """, (str(symbol), int(close_ts))).fetchone()
-            if not opened_row:
-                continue
-            opened_ts = _mm_parse_ts_to_epoch_any(opened_row[0])
-            if opened_ts is None or int(opened_ts) < int(since_ts_utc):
-                continue
+            # trigger_fires (may exist)
             try:
-                g = float(gain)
+                n_trig = cur.execute(
+                    "SELECT COUNT(1) AS n FROM trigger_fires WHERE ts_utc >= ?",
+                    (since_ts_utc,)
+                ).fetchone()["n"]
+                out["counts"]["trigger_fires"] = int(n_trig or 0)
             except Exception:
-                continue
-            regime, _, _ = _mm_regime_for_buy(con, str(symbol), int(opened_ts))
-            if not regime:
-                regime = "UNKNOWN"
-            a = by.setdefault(str(regime), {"regime": str(regime), "n": 0, "wins": 0, "sum_gain": 0.0, "gains": []})
-            a["n"] += 1
-            a["wins"] += (1 if g > 0 else 0)
-            a["sum_gain"] += g
-            a["gains"].append(g)
+                pass
 
-        out = []
-        for regime, a in by.items():
-            avg_gain, med_gain = _mm_quantiles(a["gains"])
-            win_rate = (a["wins"] / a["n"]) if a["n"] else 0.0
-            out.append({
-                "regime": regime,
-                "count": int(a["n"]),
-                "win_rate": round(100.0 * win_rate, 1),
-                "sum_gain": round(float(a["sum_gain"]), 2),
-                "avg_gain": (None if avg_gain is None else round(float(avg_gain), 2)),
-                "median_gain": (None if med_gain is None else round(float(med_gain), 2)),
-            })
-        out.sort(key=lambda x: x.get("count", 0), reverse=True)
-        return jsonify(ok=True, bucket=bucket, since_ts_utc=int(since_ts_utc), by_regime=out, total=sum(x["count"] for x in out))
-    finally:
-        try: con.close()
-        except Exception: pass
+            con.close()
 
-# --- /MM_REGIME_ANALYTICS_OUTCOMES_EXITS_V1 ---
+        # Map counts into funnel keys to eliminate '?' in UI
+        out["cand"] = int(out["counts"].get("signal_fires") or 0)
+        out["req"]  = int(out["counts"].get("trigger_fires") or 0)
 
+    except Exception as e:
+        out["warn"] = str(e)
 
+    return out
+def api_analytics_sell():
+    """
+    Backing API for templates/analytics_sell.html (Sell Analytics page).
+    Schema-adaptive: does NOT assume sell_events has 'outcome' column.
+    Returns:
+      - by_reason: counts from sell_events where event='FILLED' grouped by reason
+      - outcomes:  counts from ALL sell_events in bucket grouped by outcome if present else event
+      - hold_buckets: distribution of hold time (FILLED only) if we can map to position_opened.opened_ts_utc
+    """
+    bucket = (request.args.get("bucket") or "today").strip().lower()
+    debug  = (request.args.get("debug") or "").strip() in ("1","true","yes","y")
 
+    # bucket window (ET-midnight anchored)
+    since_ts_utc = _mm_bucket_since_epoch(bucket)
+    until_ts_utc = int(time.time())
+
+    out = {
+        "by_reason": [],
+        "outcomes": [],
+        "hold_buckets": [],
+        "window": {"bucket": bucket, "since_ts_utc": since_ts_utc, "until_ts_utc": until_ts_utc},
+    }
+    dbg = {}
+
+    try:
+        con = sqlite3.connect(LIVE_DB)
+        con.row_factory = sqlite3.Row
+        cur = con.cursor()
+
+        # sell_events cols
+        cur.execute("PRAGMA table_info(sell_events)")
+        se_cols = [r[1] for r in cur.fetchall()]
+        ts_col = "ts_utc" if "ts_utc" in se_cols else ("ts" if "ts" in se_cols else None)
+        if not ts_col:
+            raise RuntimeError(f"sell_events missing ts column (have: {se_cols})")
+
+        has_reason  = "reason" in se_cols
+        has_event   = "event" in se_cols
+        has_outcome = "outcome" in se_cols
+        has_symbol  = "symbol" in se_cols
+
+        dbg["sell_events_cols"] = se_cols
+        dbg["sell_events_ts_col"] = ts_col
+
+        # --- Exit reason breakdown (FILLED only) ---
+        if has_reason and has_event:
+            cur.execute(
+                f"""
+                SELECT COALESCE(reason,'(none)') AS k, COUNT(*) AS n
+                FROM sell_events
+                WHERE event='FILLED'
+                  AND {ts_col} >= ? AND {ts_col} <= ?
+                GROUP BY k
+                ORDER BY n DESC
+                """,
+                (since_ts_utc, until_ts_utc),
+            )
+            out["by_reason"] = [{"reason": r["k"], "count": int(r["n"])} for r in cur.fetchall()]
+        else:
+            out["by_reason"] = []
+            dbg["by_reason_note"] = "sell_events missing reason/event columns"
+
+        # --- Execution outcomes (ALL rows) ---
+        group_col = "outcome" if has_outcome else ("event" if has_event else None)
+        if group_col:
+            cur.execute(
+                f"""
+                SELECT COALESCE({group_col},'(none)') AS k, COUNT(*) AS n
+                FROM sell_events
+                WHERE {ts_col} >= ? AND {ts_col} <= ?
+                GROUP BY k
+                ORDER BY n DESC
+                """,
+                (since_ts_utc, until_ts_utc),
+            )
+            out["outcomes"] = [{"outcome": r["k"], "count": int(r["n"])} for r in cur.fetchall()]
+        else:
+            out["outcomes"] = []
+            dbg["outcomes_note"] = "sell_events missing outcome/event columns"
+
+        # --- Hold-time buckets (FILLED only) ---
+        # Requires position_opened.opened_ts_utc and symbol mapping.
+        hold_rows = []
+        try:
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='position_opened'")
+            if cur.fetchone() and has_symbol and has_event:
+                cur.execute("PRAGMA table_info(position_opened)")
+                po_cols = [r[1] for r in cur.fetchall()]
+                opened_col = "opened_ts_utc" if "opened_ts_utc" in po_cols else ("opened_utc" if "opened_utc" in po_cols else None)
+                dbg["position_opened_cols"] = po_cols
+                dbg["position_opened_opened_col"] = opened_col
+
+                if opened_col:
+                    # Pull FILLED sells in window (keep small-ish)
+                    cur.execute(
+                        f"""
+                        SELECT {ts_col} AS sell_ts, symbol
+                        FROM sell_events
+                        WHERE event='FILLED'
+                          AND {ts_col} >= ? AND {ts_col} <= ?
+                        ORDER BY {ts_col} DESC
+                        LIMIT 5000
+                        """,
+                        (since_ts_utc, until_ts_utc),
+                    )
+                    sells = cur.fetchall()
+
+                    # For each sell, find most recent open <= sell_ts
+                    # (fast enough for typical daily counts; capped above)
+                    holds_sec = []
+                    for s in sells:
+                        sym = (s["symbol"] or "").strip()
+                        if not sym:
+                            continue
+                        sell_ts = int(s["sell_ts"] or 0)
+                        if sell_ts <= 0:
+                            continue
+                        cur.execute(
+                            f"""
+                            SELECT {opened_col} AS open_ts
+                            FROM position_opened
+                            WHERE symbol=?
+                              AND {opened_col} > 0
+                              AND {opened_col} <= ?
+                            ORDER BY {opened_col} DESC
+                            LIMIT 1
+                            """,
+                            (sym, sell_ts),
+                        )
+                        row = cur.fetchone()
+                        if not row:
+                            continue
+                        open_ts = int(row["open_ts"] or 0)
+                        if open_ts <= 0:
+                            continue
+                        holds_sec.append(max(0, sell_ts - open_ts))
+
+                    dbg["hold_samples"] = len(holds_sec)
+
+                    # bucketize
+                    buckets = [
+                        ("<5m", 0, 5*60),
+                        ("5-15m", 5*60, 15*60),
+                        ("15-60m", 15*60, 60*60),
+                        ("1-4h", 60*60, 4*60*60),
+                        ("4-24h", 4*60*60, 24*60*60),
+                        (">=24h", 24*60*60, 10**18),
+                    ]
+                    counts = {name: 0 for name,_,_ in buckets}
+                    for sec in holds_sec:
+                        for name, a, b in buckets:
+                            if a <= sec < b:
+                                counts[name] += 1
+                                break
+
+                    out["hold_buckets"] = [{"bucket": k, "count": int(v)} for k, v in counts.items() if v > 0]
+                else:
+                    dbg["hold_note"] = "position_opened missing opened_ts_utc/opened_utc"
+            else:
+                dbg["hold_note"] = "position_opened not present or sell_events missing symbol/event"
+        except Exception as e:
+            dbg["hold_err"] = str(e)
+            out["hold_buckets"] = []
+
+        con.close()
+
+    except Exception as e:
+        out["error"] = str(e)
+        dbg["err"] = str(e)
+
+    if debug:
+        out["debug"] = dbg
+
+    return jsonify(out)
+# --- /MM_SELL_ANALYTICS_API_V1 ---
+# ---------------------------
+# $$Machine entrypoint
+# ---------------------------
 if __name__ == "__main__":
-    try:
-        # NOTE: use_reloader=False prevents duplicate listener/zombie issues on Windows.
-        app.run(host="0.0.0.0", port=5001, debug=True, use_reloader=False)
-    except TypeError:
-        # Fallback for older Flask that may not accept use_reloader here
-        app.run(host="0.0.0.0", port=5001, debug=True)
+    import os, sys
 
+    # Default port (matches your usual 5001); override with PORT env var if needed.
+    try:
+        port = int(os.environ.get("PORT", "5001"))
+    except Exception:
+        port = 5001
+
+    host = os.environ.get("HOST", "0.0.0.0")
+
+    # IMPORTANT on Windows: avoid reloader double-spawn / zombie listeners
+    debug = os.environ.get("FLASK_DEBUG", "1") == "1"
+    use_reloader = False
+
+    # If app isn't defined for some reason, fail loudly.
+    if "app" not in globals():
+        raise RuntimeError("dashboard.py: Flask 'app' not found in globals().")
+
+    print("Launching $$Machine dashboard on http://127.0.0.1:%s (host=%s)" % (port, host))
+    app.run(host=host, port=port, debug=debug, use_reloader=use_reloader)

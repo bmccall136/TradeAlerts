@@ -10,6 +10,64 @@ import sqlite3
 import time
 from typing import Any, Dict, Optional, Tuple
 
+
+# --- MM_BUY_EVENTS_REGIME_STAMP_V1 ---
+import time as _mm_time
+
+def _mm_sqlite_has_col(conn, table, col):
+    try:
+        cur = conn.cursor()
+        cur.execute(f"PRAGMA table_info({table})")
+        cols = [r[1] for r in cur.fetchall()]
+        return col in cols
+    except Exception:
+        return False
+
+def _mm_buy_events_ensure_regime_cols(conn):
+    # Idempotent: add columns if missing
+    try:
+        cur = conn.cursor()
+        if not _mm_sqlite_has_col(conn, "buy_events", "regime"):
+            cur.execute("ALTER TABLE buy_events ADD COLUMN regime TEXT")
+        if not _mm_sqlite_has_col(conn, "buy_events", "regime_conf"):
+            cur.execute("ALTER TABLE buy_events ADD COLUMN regime_conf INTEGER")
+        if not _mm_sqlite_has_col(conn, "buy_events", "regime_reason"):
+            cur.execute("ALTER TABLE buy_events ADD COLUMN regime_reason TEXT")
+        conn.commit()
+    except Exception:
+        # Never break BUY logging because schema alter failed
+        try: conn.rollback()
+        except Exception: pass
+
+def _mm_regime_for_ts(conn, ts_utc):
+    # Prefer nearest <= ts_utc; fallback latest; else UNKNOWN
+    try:
+        cur = conn.cursor()
+        # nearest at/before ts_utc
+        cur.execute(
+            "SELECT regime, conf, reason, ts_utc "
+            "FROM market_regime_samples "
+            "WHERE ts_utc IS NOT NULL AND ts_utc <= ? "
+            "ORDER BY ts_utc DESC LIMIT 1",
+            (int(ts_utc),)
+        )
+        row = cur.fetchone()
+        if row and row[0]:
+            return (row[0], int(row[1] or 0), row[2] or "")
+        # fallback: latest
+        cur.execute(
+            "SELECT regime, conf, reason "
+            "FROM market_regime_samples "
+            "WHERE ts_utc IS NOT NULL "
+            "ORDER BY ts_utc DESC LIMIT 1"
+        )
+        row = cur.fetchone()
+        if row and row[0]:
+            return (row[0], int(row[1] or 0), row[2] or "")
+    except Exception:
+        pass
+    return ("UNKNOWN", 0, "")
+# --- /MM_BUY_EVENTS_REGIME_STAMP_V1 ---
 def _default_db_path() -> str:
     # Prefer LIVE_DB env if present; else project-root live.db
     p = os.environ.get("LIVE_DB")
@@ -187,7 +245,38 @@ def log_buy_event(
             INSERT INTO buy_events (
                 ts_utc, symbol, event, mode, price, qty, note,
                 regime, regime_conf, regime_reason, overlay_json
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+            ) 
+        # --- MM_BUY_EVENTS_REGIME_STAMP_APPLY_V1 ---
+        try:
+            _mm_buy_events_ensure_regime_cols(conn)
+                # Prefer the inserted row's own ts_utc for regime lookup
+    _mm_ts_utc = None
+    try:
+        if _mm_rowid:
+            _mm_cur2 = conn.cursor()
+            _mm_cur2.execute('SELECT ts_utc FROM buy_events WHERE rowid=?', (int(_mm_rowid),))
+            _mm_r = _mm_cur2.fetchone()
+            if _mm_r and _mm_r[0] is not None:
+                _mm_ts_utc = int(_mm_r[0])
+    except Exception:
+        _mm_ts_utc = None
+    if _mm_ts_utc is None:
+        _mm_ts_utc = int(_mm_time.time())
+            _mm_reg, _mm_conf, _mm_reason = _mm_regime_for_ts(conn, _mm_ts_utc)
+            _mm_rowid = getattr(cur, "lastrowid", None)
+            if _mm_rowid:
+                cur.execute(
+                    "UPDATE buy_events SET regime=?, regime_conf=?, regime_reason=? WHERE rowid=?",
+                    (_mm_reg, int(_mm_conf or 0), _mm_reason or "", int(_mm_rowid))
+                )
+                try: conn.commit()
+                except Exception: pass
+        except Exception:
+            # never break BUY logging
+            try: conn.rollback()
+            except Exception: pass
+        # --- /MM_BUY_EVENTS_REGIME_STAMP_APPLY_V1 ---
+VALUES (?,?,?,?,?,?,?,?,?,?,?)
         """, (
             ts, sym, ev, md,
             float(price) if price is not None else None,
