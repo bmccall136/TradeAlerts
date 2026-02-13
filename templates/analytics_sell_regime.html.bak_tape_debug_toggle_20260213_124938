@@ -70,12 +70,7 @@
   if (!el || !ticksEl || !linesEl) return;
 
   function dbg(msg){
-    try{
-      if(!dbgEl) return;
-      const u = new URL(window.location.href);
-      const on = (u.searchParams.get("tape_debug") || "").trim() === "1";
-      dbgEl.textContent = on ? msg : "";
-    }catch(e){}
+    try{ if(dbgEl){ dbgEl.textContent = msg; } }catch(e){}
   }
 
   function colorFor(reg){
