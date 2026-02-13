@@ -36,62 +36,7 @@
 </head>
 <body>
 
-<!-- MM_ANALYTICS_TOOLBAR_V1 -->
-<div class="mm-axbar" id="mm-axbar">
-  <div class="mm-axbar-row">
-    <div class="mm-axbar-links">
-      <a class="mm-axlink" href="/analytics">Daily</a>
-      <a class="mm-axlink" href="/analytics/buy">Buy</a>
-      <a class="mm-axlink" href="/analytics/sell">Sell</a>
-      <a class="mm-axlink" href="/analytics/buy_regime">Buy Regime</a>
-      <a class="mm-axlink" href="/analytics/sell_regime">Sell Regime</a>
-    </div>
-
-    <div class="mm-axbar-right">
-      <label class="mm-axbar-label" for="mm-ax-bucket">Bucket</label>
-      <select id="mm-ax-bucket" class="mm-axbar-select">
-        <option value="today">Today</option>
-        <option value="7d">7D</option>
-        <option value="30d">30D</option>
-        <option value="all">All</option>
-      </select>
-    </div>
-  </div>
-</div>
-
-<style>
-  .mm-axbar{margin:12px 0 14px 0;padding:10px 12px;border:1px solid rgba(255,255,255,.10);border-radius:12px;background:rgba(255,255,255,.04)}
-  .mm-axbar-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-  .mm-axbar-links{display:flex;gap:10px;flex-wrap:wrap}
-  .mm-axlink{display:inline-block;padding:6px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);text-decoration:none}
-  .mm-axlink:hover{border-color:rgba(255,255,255,.25)}
-  .mm-axbar-right{display:flex;align-items:center;gap:8px}
-  .mm-axbar-label{opacity:.85}
-  .mm-axbar-select{padding:6px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.25);color:inherit}
-</style>
-
-<script>
-  // MM_ANALYTICS_TOOLBAR_V1
-  (function(){
-    const sel = document.getElementById("mm-ax-bucket");
-    if (!sel) return;
-
-    const u = new URL(window.location.href);
-    const bucket = (u.searchParams.get("bucket") || u.searchParams.get("range") || "").toLowerCase();
-    const v = (bucket === "today" || bucket === "7d" || bucket === "30d" || bucket === "all") ? bucket : "7d";
-    sel.value = v;
-
-    sel.addEventListener("change", () => {
-      const u2 = new URL(window.location.href);
-      u2.searchParams.set("bucket", sel.value);
-      // keep date= on Daily, keep anything else you already have
-      window.location.href = u2.toString();
-    });
-  })();
-</script>
-
-
-  <div class="mm-wrap">
+<div class="mm-wrap">
     <div class="mm-top">
       <div>
         <div class="mm-title">Sell Regime Analytics</div>
@@ -325,22 +270,4 @@ load();
 </div>
 {% endblock %}
 
-
-<script>
-  // MM_ANALYTICS_TOOLBAR_ACTIVE_V1
-  (function(){
-    const path = (window.location.pathname || "").toLowerCase();
-    const links = document.querySelectorAll("#mm-axbar a.mm-axlink");
-    links.forEach(a => {
-      const href = (a.getAttribute("href") || "").toLowerCase();
-      if (!href) return;
-      // exact match preferred; also handle /analytics as prefix for daily
-      const isActive = (href === path) || (href === "/analytics" && (path === "/analytics" || path === "/analytics/"));
-      if (isActive) a.classList.add("mm-axlink-active");
-    });
-  })();
-</script>
-<style>
-  .mm-axlink-active{border-color:rgba(255,255,255,.40);background:rgba(255,255,255,.06)}
-</style>
 
