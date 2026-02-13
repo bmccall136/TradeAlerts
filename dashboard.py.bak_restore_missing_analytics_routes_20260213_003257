@@ -6358,8 +6358,8 @@ def _mm_bucket_since_epoch( bucket: str = "today") -> int:
 # --- MM_MARKET_REGIME_TIMELINE_API_V1 ---
 @app.route("/api/market_regime_timeline")
 def api_market_regime_timeline():
-    from flask import request as request
-    bucket = (request.args.get('bucket') or 'today').strip().lower()
+    from flask import request as flask_request
+    bucket = (flask_request.args.get('bucket') or 'today').strip().lower()
     # normalize common UI buckets
     if bucket in ('7d','7day','7days'): bucket = '7d'
     elif bucket in ('30d','30day','30days'): bucket = '30d'
@@ -6666,8 +6666,8 @@ def api_analytics_buy_regime():
     except Exception as e:
         return jsonify({'by_regime': [], 'errors': ['EXC: ' + repr(e)]})
     # --- /MM_BUY_REGIME_FROM_BUY_EVENTS_V1 ---
-@app.route("/api/analytics/candidate_fires__old")
-def api_analytics_candidate_fires__old():
+@app.route("/api/analytics/candidate_fires")
+def api_analytics_candidate_fires():
     """
     Candidate Fires endpoint used by analytics_buy.html when source=candidate.
 
@@ -6676,7 +6676,7 @@ def api_analytics_candidate_fires__old():
       - funnel-style keys expected by analytics_buy.html:
           cand, req, strict, buyable, bought, strict_n
     """
-    bucket = (request.args.get("bucket") or "today").strip().lower()
+    bucket = (flask_request.args.get("bucket") or "today").strip().lower()
     if bucket in ("7d","7day","7days"): bucket = "7d"
     elif bucket in ("30d","30day","30days"): bucket = "30d"
     elif bucket in ("all",): bucket = "all"
@@ -6919,259 +6919,6 @@ def api_analytics_sell():
 # ---------------------------
 # $$Machine entrypoint
 # ---------------------------
-### MM_ANALYTICS_ROUTES_RESTORE_V1 ###
-# Restores missing analytics API routes and hardens candidate_fires so pages don't hang on "Loading".
-# Source of truth: LIVE_DB (C:\TradeAlerts\live.db)
-
-from flask import jsonify as _mm_jsonify, request as request
-
-def _mm_live_db_path():
-    try:
-        return LIVE_DB  # preferred if your app defines LIVE_DB
-    except Exception:
-        return r"C:\TradeAlerts\live.db"
-
-def _mm_bucket_norm(b):
-    b = (b or "today").strip().lower()
-    if b in ("7day","7days"): return "7d"
-    if b in ("30day","30days"): return "30d"
-    if b in ("tod","t"): return "today"
-    if b in ("all",): return "all"
-    if b in ("7d","30d","today"): return b
-    return "today"
-
-@app.route("/api/analytics/candidate_fires")
-def api_analytics_candidate_fires():
-    bucket = _mm_bucket_norm(request.args.get("bucket") or "today")
-    try:
-        since_ts_utc = _mm_bucket_since_epoch(bucket)
-    except Exception as e:
-        return _mm_jsonify({"ok": False, "bucket": bucket, "error": f"_mm_bucket_since_epoch failed: {e}"}), 200
-
-    out = {
-        "ok": True,
-        "bucket": bucket,
-        "since_ts_utc": since_ts_utc,
-        "counts": {},
-        # funnel fields expected by analytics_buy.html
-        "cand": 0, "req": 0, "strict": 0, "buyable": 0, "bought": 0,
-        "strict_n": None,
-        "rows": []
-    }
-
-    # strict_n (best-effort from settings if present)
-    try:
-        # common settings keys
-        out["strict_n"] = int(globals().get("STRICT_BUY_SIGNALS", 0) or 0) or None
-    except Exception:
-        pass
-
-    try:
-        import sqlite3
-        db_path = _mm_live_db_path()
-        con = sqlite3.connect(db_path)
-        con.row_factory = sqlite3.Row
-        cur = con.cursor()
-
-        # counts from signal_fires / trigger_fires (if present)
-        try:
-            n = cur.execute("SELECT COUNT(1) AS n FROM signal_fires WHERE ts_utc >= ?", (since_ts_utc,)).fetchone()["n"]
-            out["counts"]["signal_fires"] = int(n or 0)
-        except Exception as e:
-            out["counts"]["signal_fires_error"] = str(e)
-
-        try:
-            n = cur.execute("SELECT COUNT(1) AS n FROM trigger_fires WHERE ts_utc >= ?", (since_ts_utc,)).fetchone()["n"]
-            out["counts"]["trigger_fires"] = int(n or 0)
-        except Exception as e:
-            out["counts"]["trigger_fires_error"] = str(e)
-
-        # very simple funnel (until we wire real candidate->gate->buy path)
-        out["cand"] = int(out["counts"].get("trigger_fires") or 0)
-        out["req"] = out["cand"]
-        out["strict"] = 0
-        out["buyable"] = 0
-        out["bought"] = 0
-
-        con.close()
-    except Exception as e:
-        out["ok"] = False
-        out["error"] = str(e)
-
-    return _mm_jsonify(out), 200
-
-@app.route("/api/analytics/buy_funnel")
-def api_analytics_buy_funnel():
-    # For now, mirror candidate_fires funnel fields so the page renders.
-    bucket = _mm_bucket_norm(request.args.get("bucket") or "today")
-    j, code = api_analytics_candidate_fires()
-    try:
-        data = j.get_json()  # type: ignore
-    except Exception:
-        return _mm_jsonify({"ok": False, "bucket": bucket, "error": "buy_funnel failed to read candidate_fires"}), 200
-    data["endpoint"] = "buy_funnel"
-    return _mm_jsonify(data), 200
-
-@app.route("/api/analytics/sell")
-def api_analytics_sell():
-    bucket = _mm_bucket_norm(request.args.get("bucket") or "today")
-    since_ts_utc = _mm_bucket_since_epoch(bucket)
-
-    out = {
-        "ok": True,
-        "bucket": bucket,
-        "since_ts_utc": since_ts_utc,
-        "reasons": [],
-        "outcomes": [],
-        "hold_buckets": [],
-    }
-
-    try:
-        import sqlite3
-        db_path = _mm_live_db_path()
-        con = sqlite3.connect(db_path)
-        con.row_factory = sqlite3.Row
-        cur = con.cursor()
-
-        # Reasons: sell_events.reason where event='FILLED'
-        try:
-            rows = cur.execute("""
-                SELECT COALESCE(reason,'(none)') AS reason, COUNT(1) AS ct
-                FROM sell_events
-                WHERE ts_utc >= ? AND event='FILLED'
-                GROUP BY COALESCE(reason,'(none)')
-                ORDER BY ct DESC
-            """, (since_ts_utc,)).fetchall()
-            out["reasons"] = [{"reason": r["reason"], "ct": int(r["ct"])} for r in rows]
-        except Exception as e:
-            out["reasons_error"] = str(e)
-
-        # Outcomes: all sell_events.event counts
-        try:
-            rows = cur.execute("""
-                SELECT COALESCE(event,'(none)') AS event, COUNT(1) AS ct
-                FROM sell_events
-                WHERE ts_utc >= ?
-                GROUP BY COALESCE(event,'(none)')
-                ORDER BY ct DESC
-            """, (since_ts_utc,)).fetchall()
-            out["outcomes"] = [{"event": r["event"], "ct": int(r["ct"])} for r in rows]
-        except Exception as e:
-            out["outcomes_error"] = str(e)
-
-        # Hold buckets: use hold_bucket if present, else placeholder
-        try:
-            rows = cur.execute("""
-                SELECT COALESCE(hold_bucket,'(none)') AS bucket, COUNT(1) AS ct
-                FROM sell_events
-                WHERE ts_utc >= ? AND event='FILLED'
-                GROUP BY COALESCE(hold_bucket,'(none)')
-                ORDER BY ct DESC
-            """, (since_ts_utc,)).fetchall()
-            out["hold_buckets"] = [{"bucket": r["bucket"], "ct": int(r["ct"])} for r in rows]
-        except Exception as e:
-            out["hold_buckets_error"] = str(e)
-
-        con.close()
-    except Exception as e:
-        out["ok"] = False
-        out["error"] = str(e)
-
-    return _mm_jsonify(out), 200
-
-@app.route("/api/analytics/sell_regime")
-def api_analytics_sell_regime():
-    bucket = _mm_bucket_norm(request.args.get("bucket") or "today")
-    since_ts_utc = _mm_bucket_since_epoch(bucket)
-    out = {"ok": True, "bucket": bucket, "since_ts_utc": since_ts_utc, "by_regime": []}
-
-    try:
-        import sqlite3
-        con = sqlite3.connect(_mm_live_db_path())
-        con.row_factory = sqlite3.Row
-        cur = con.cursor()
-        rows = cur.execute("""
-            SELECT COALESCE(regime,'(none)') AS regime,
-                   COUNT(1) AS count,
-                   AVG(COALESCE(regime_conf,0)) AS avg_conf
-            FROM sell_events
-            WHERE ts_utc >= ?
-            GROUP BY COALESCE(regime,'(none)')
-            ORDER BY count DESC
-        """, (since_ts_utc,)).fetchall()
-        out["by_regime"] = [{"regime": r["regime"], "count": int(r["count"]), "avg_conf": r["avg_conf"]} for r in rows]
-        con.close()
-    except Exception as e:
-        out["ok"] = False
-        out["error"] = str(e)
-
-    return _mm_jsonify(out), 200
-
-@app.route("/api/analytics/sell_regime_outcomes")
-def api_analytics_sell_regime_outcomes():
-    bucket = _mm_bucket_norm(request.args.get("bucket") or "today")
-    since_ts_utc = _mm_bucket_since_epoch(bucket)
-    out = {"ok": True, "bucket": bucket, "since_ts_utc": since_ts_utc, "rows": []}
-
-    try:
-        import sqlite3
-        con = sqlite3.connect(_mm_live_db_path())
-        con.row_factory = sqlite3.Row
-        cur = con.cursor()
-        rows = cur.execute("""
-            SELECT COALESCE(regime,'(none)') AS regime,
-                   COALESCE(event,'(none)') AS event,
-                   COUNT(1) AS ct
-            FROM sell_events
-            WHERE ts_utc >= ?
-            GROUP BY COALESCE(regime,'(none)'), COALESCE(event,'(none)')
-            ORDER BY ct DESC
-        """, (since_ts_utc,)).fetchall()
-        out["rows"] = [{"regime": r["regime"], "event": r["event"], "ct": int(r["ct"])} for r in rows]
-        con.close()
-    except Exception as e:
-        out["ok"] = False
-        out["error"] = str(e)
-
-    return _mm_jsonify(out), 200
-
-@app.route("/api/analytics/sell_regime_reasons")
-def api_analytics_sell_regime_reasons():
-    bucket = _mm_bucket_norm(request.args.get("bucket") or "today")
-    since_ts_utc = _mm_bucket_since_epoch(bucket)
-    out = {"ok": True, "bucket": bucket, "since_ts_utc": since_ts_utc, "rows": []}
-
-    try:
-        import sqlite3
-        con = sqlite3.connect(_mm_live_db_path())
-        con.row_factory = sqlite3.Row
-        cur = con.cursor()
-        rows = cur.execute("""
-            SELECT COALESCE(regime,'(none)') AS regime,
-                   COALESCE(reason,'(none)') AS reason,
-                   COUNT(1) AS ct
-            FROM sell_events
-            WHERE ts_utc >= ? AND event='FILLED'
-            GROUP BY COALESCE(regime,'(none)'), COALESCE(reason,'(none)')
-            ORDER BY ct DESC
-        """, (since_ts_utc,)).fetchall()
-        out["rows"] = [{"regime": r["regime"], "reason": r["reason"], "ct": int(r["ct"])} for r in rows]
-        con.close()
-    except Exception as e:
-        out["ok"] = False
-        out["error"] = str(e)
-
-    return _mm_jsonify(out), 200
-
-@app.route("/api/analytics/buy_regime_outcomes")
-def api_analytics_buy_regime_outcomes():
-    # Placeholder to stop 404/Loading until we wire realized->entry regime mapping
-    bucket = _mm_bucket_norm(request.args.get("bucket") or "today")
-    since_ts_utc = _mm_bucket_since_epoch(bucket)
-    return _mm_jsonify({"ok": True, "bucket": bucket, "since_ts_utc": since_ts_utc, "rows": []}), 200
-
-### END MM_ANALYTICS_ROUTES_RESTORE_V1 ###
-
 if __name__ == "__main__":
     import os, sys
 

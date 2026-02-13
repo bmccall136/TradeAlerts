@@ -342,23 +342,3 @@ async function load(){
 {% endblock %}
 '@ | Set-Content -Encoding UTF8 C:\TradeAlerts\templates\analytics_buy.html
 
-
-
-<script>
-  // MM_ANALYTICS_TOOLBAR_ACTIVE_V1
-  (function(){
-    const path = (window.location.pathname || "").toLowerCase();
-    const links = document.querySelectorAll("#mm-axbar a.mm-axlink");
-    links.forEach(a => {
-      const href = (a.getAttribute("href") || "").toLowerCase();
-      if (!href) return;
-      // exact match preferred; also handle /analytics as prefix for daily
-      const isActive = (href === path) || (href === "/analytics" && (path === "/analytics" || path === "/analytics/"));
-      if (isActive) a.classList.add("mm-axlink-active");
-    });
-  })();
-</script>
-<style>
-  .mm-axlink-active{border-color:rgba(255,255,255,.40);background:rgba(255,255,255,.06)}
-</style>
-

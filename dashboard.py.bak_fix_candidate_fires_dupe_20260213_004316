@@ -6358,8 +6358,8 @@ def _mm_bucket_since_epoch( bucket: str = "today") -> int:
 # --- MM_MARKET_REGIME_TIMELINE_API_V1 ---
 @app.route("/api/market_regime_timeline")
 def api_market_regime_timeline():
-    from flask import request as request
-    bucket = (request.args.get('bucket') or 'today').strip().lower()
+    from flask import request as flask_request
+    bucket = (flask_request.args.get('bucket') or 'today').strip().lower()
     # normalize common UI buckets
     if bucket in ('7d','7day','7days'): bucket = '7d'
     elif bucket in ('30d','30day','30days'): bucket = '30d'
@@ -6666,8 +6666,8 @@ def api_analytics_buy_regime():
     except Exception as e:
         return jsonify({'by_regime': [], 'errors': ['EXC: ' + repr(e)]})
     # --- /MM_BUY_REGIME_FROM_BUY_EVENTS_V1 ---
-@app.route("/api/analytics/candidate_fires__old")
-def api_analytics_candidate_fires__old():
+@app.route("/api/analytics/candidate_fires")
+def api_analytics_candidate_fires():
     """
     Candidate Fires endpoint used by analytics_buy.html when source=candidate.
 
@@ -6676,7 +6676,7 @@ def api_analytics_candidate_fires__old():
       - funnel-style keys expected by analytics_buy.html:
           cand, req, strict, buyable, bought, strict_n
     """
-    bucket = (request.args.get("bucket") or "today").strip().lower()
+    bucket = (flask_request.args.get("bucket") or "today").strip().lower()
     if bucket in ("7d","7day","7days"): bucket = "7d"
     elif bucket in ("30d","30day","30days"): bucket = "30d"
     elif bucket in ("all",): bucket = "all"
@@ -6923,7 +6923,7 @@ def api_analytics_sell():
 # Restores missing analytics API routes and hardens candidate_fires so pages don't hang on "Loading".
 # Source of truth: LIVE_DB (C:\TradeAlerts\live.db)
 
-from flask import jsonify as _mm_jsonify, request as request
+from flask import jsonify as _mm_jsonify, request as flask_request
 
 def _mm_live_db_path():
     try:
@@ -6942,7 +6942,7 @@ def _mm_bucket_norm(b):
 
 @app.route("/api/analytics/candidate_fires")
 def api_analytics_candidate_fires():
-    bucket = _mm_bucket_norm(request.args.get("bucket") or "today")
+    bucket = _mm_bucket_norm(flask_request.args.get("bucket") or "today")
     try:
         since_ts_utc = _mm_bucket_since_epoch(bucket)
     except Exception as e:
@@ -7003,7 +7003,7 @@ def api_analytics_candidate_fires():
 @app.route("/api/analytics/buy_funnel")
 def api_analytics_buy_funnel():
     # For now, mirror candidate_fires funnel fields so the page renders.
-    bucket = _mm_bucket_norm(request.args.get("bucket") or "today")
+    bucket = _mm_bucket_norm(flask_request.args.get("bucket") or "today")
     j, code = api_analytics_candidate_fires()
     try:
         data = j.get_json()  # type: ignore
@@ -7014,7 +7014,7 @@ def api_analytics_buy_funnel():
 
 @app.route("/api/analytics/sell")
 def api_analytics_sell():
-    bucket = _mm_bucket_norm(request.args.get("bucket") or "today")
+    bucket = _mm_bucket_norm(flask_request.args.get("bucket") or "today")
     since_ts_utc = _mm_bucket_since_epoch(bucket)
 
     out = {
@@ -7081,7 +7081,7 @@ def api_analytics_sell():
 
 @app.route("/api/analytics/sell_regime")
 def api_analytics_sell_regime():
-    bucket = _mm_bucket_norm(request.args.get("bucket") or "today")
+    bucket = _mm_bucket_norm(flask_request.args.get("bucket") or "today")
     since_ts_utc = _mm_bucket_since_epoch(bucket)
     out = {"ok": True, "bucket": bucket, "since_ts_utc": since_ts_utc, "by_regime": []}
 
@@ -7109,7 +7109,7 @@ def api_analytics_sell_regime():
 
 @app.route("/api/analytics/sell_regime_outcomes")
 def api_analytics_sell_regime_outcomes():
-    bucket = _mm_bucket_norm(request.args.get("bucket") or "today")
+    bucket = _mm_bucket_norm(flask_request.args.get("bucket") or "today")
     since_ts_utc = _mm_bucket_since_epoch(bucket)
     out = {"ok": True, "bucket": bucket, "since_ts_utc": since_ts_utc, "rows": []}
 
@@ -7137,7 +7137,7 @@ def api_analytics_sell_regime_outcomes():
 
 @app.route("/api/analytics/sell_regime_reasons")
 def api_analytics_sell_regime_reasons():
-    bucket = _mm_bucket_norm(request.args.get("bucket") or "today")
+    bucket = _mm_bucket_norm(flask_request.args.get("bucket") or "today")
     since_ts_utc = _mm_bucket_since_epoch(bucket)
     out = {"ok": True, "bucket": bucket, "since_ts_utc": since_ts_utc, "rows": []}
 
@@ -7166,7 +7166,7 @@ def api_analytics_sell_regime_reasons():
 @app.route("/api/analytics/buy_regime_outcomes")
 def api_analytics_buy_regime_outcomes():
     # Placeholder to stop 404/Loading until we wire realized->entry regime mapping
-    bucket = _mm_bucket_norm(request.args.get("bucket") or "today")
+    bucket = _mm_bucket_norm(flask_request.args.get("bucket") or "today")
     since_ts_utc = _mm_bucket_since_epoch(bucket)
     return _mm_jsonify({"ok": True, "bucket": bucket, "since_ts_utc": since_ts_utc, "rows": []}), 200
 
