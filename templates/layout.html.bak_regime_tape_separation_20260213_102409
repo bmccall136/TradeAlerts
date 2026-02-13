@@ -322,6 +322,176 @@
 
 
 {% if request.path.startswith('/analytics') %}
+<!-- MM_REGIME_TAPE_V2 -->
+<div id="mm-regime-tape-wrap" style="margin:10px 14px 0 14px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 6px 2px;">
+    <div style="font-size:12px;opacity:.75;">Regime tape (today 09:30?16:00 ET)</div>
+    <div id="mm-regime-tape-status" style="font-size:12px;opacity:.65;"></div>
+  </div>
+
+  <div style="position:relative;height:16px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.04)">
+    <div id="mm-regime-tape" style="position:absolute;inset:0;"></div>
+    <div id="mm-regime-tape-ticks" style="position:absolute;inset:0;pointer-events:none;"></div>
+  </div>
+
+  <div id="mm-regime-tape-labels" style="position:relative;height:16px;margin-top:6px;opacity:.65;font-size:11px;"></div>
+</div>
+
+<script>
+  // MM_REGIME_TAPE_V2
+  (function(){
+    const bar = document.getElementById("mm-regime-tape");
+    const ticks = document.getElementById("mm-regime-tape-ticks");
+    const labels = document.getElementById("mm-regime-tape-labels");
+    const status = document.getElementById("mm-regime-tape-status");
+    if (!bar || !ticks || !labels) return;
+
+    function colorFor(reg){
+      reg = (reg||"").toUpperCase();
+      if (reg === "TREND") return "rgba(0, 200, 120, .95)";
+      if (reg === "CHOP")  return "rgba(240, 200, 0, .95)";
+      if (reg === "DEAD")  return "rgba(220, 60, 60, .95)";
+      return "rgba(160,160,160,.75)";
+    }
+
+    // ET market window: 09:30?16:00
+    function etMarketWindowUtc(){
+      const now = new Date();
+      // convert "today" in ET without heavy libs: use Intl with America/New_York
+      const fmt = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/New_York",
+        year: "numeric", month: "2-digit", day: "2-digit"
+      });
+      const parts = fmt.formatToParts(now).reduce((a,p)=>{ a[p.type]=p.value; return a; }, {});
+      const y = parts.year, mo = parts.month, d = parts.day;
+
+      function toUtcEpoch(hh, mm){
+        // build an ISO string interpreted as ET by formatting a Date from UTC and offsetting via Intl is messy;
+        // instead: create a Date from a string with explicit -05/-04 by using the current ET offset.
+        // We'll compute offset at that local time by asking Intl for the GMT offset.
+        const tmp = new Date(`${y}-${mo}-${d}T${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}:00`);
+        // tmp is local machine time; we need ET. Use timeZoneName: 'shortOffset' to parse.
+        const offFmt = new Intl.DateTimeFormat("en-US", { timeZone:"America/New_York", timeZoneName:"shortOffset" });
+        const off = offFmt.formatToParts(tmp).find(p=>p.type==="timeZoneName")?.value || "GMT-05:00";
+        // off like "GMT-05:00" / "GMT-04:00"
+        const sign = off.includes("-") ? -1 : 1;
+        const hm = off.replace("GMT","").replace("+","").replace("-","").split(":");
+        const offMin = sign * (parseInt(hm[0],10)*60 + parseInt(hm[1]||"0",10));
+
+        // Make a Date as if it were UTC, then subtract ET offset minutes to get UTC epoch.
+        const asUtc = Date.UTC(parseInt(y,10), parseInt(mo,10)-1, parseInt(d,10), hh, mm, 0);
+        return Math.floor((asUtc - offMin*60*1000)/1000);
+      }
+
+      const open = toUtcEpoch(9, 30);
+      const close = toUtcEpoch(16, 0);
+      return { open, close };
+    }
+
+    function buildBins(openUtc, closeUtc){
+      const start = openUtc - (openUtc % 300);
+      const end = closeUtc - (closeUtc % 300);
+      const bins = [];
+      for (let t = start; t <= end; t += 300) bins.push(t);
+      return bins;
+    }
+
+    function buildSegments(points, openUtc, closeUtc){
+      const bins = buildBins(openUtc, closeUtc);
+
+      const map = new Map();
+      (points||[]).forEach(p => {
+        const t = (p.ts_utc||0);
+        const bt = t - (t % 300);
+        map.set(bt, { regime: p.regime, conf: p.conf });
+      });
+
+      let last = null;
+      const segs = [];
+      for (let i=0;i<bins.length;i++){
+        const b = bins[i];
+        if (map.has(b)) last = map.get(b);
+        segs.push({ ts:b, regime: last?.regime || "UNKNOWN", conf: last?.conf ?? null });
+      }
+      return segs;
+    }
+
+    function renderTicksAndLabels(openUtc, closeUtc){
+      const bins = buildBins(openUtc, closeUtc);
+      const total = bins.length;
+      // ticks every 30 minutes => 6 bins
+      const step = 6;
+
+      let tHtml = "";
+      for (let i=0;i<total;i+=step){
+        const left = (i/(total-1))*100;
+        tHtml += `<div style="position:absolute;left:${left}%;top:0;bottom:0;width:1px;background:rgba(255,255,255,.10)"></div>`;
+      }
+      ticks.innerHTML = tHtml;
+
+      // labels: 9:30, 10, 12, 2, 4
+      const labelTimes = [
+        { h:9, m:30, text:"9:30" },
+        { h:10, m:0, text:"10" },
+        { h:12, m:0, text:"12" },
+        { h:14, m:0, text:"2" },
+        { h:16, m:0, text:"4" },
+      ];
+
+      // map label time -> percent position by minutes since open
+      const openMin = 9*60+30;
+      const closeMin = 16*60;
+      const span = closeMin - openMin;
+
+      let lHtml = "";
+      for (const lt of labelTimes){
+        const mins = (lt.h*60+lt.m) - openMin;
+        const pct = Math.max(0, Math.min(100, (mins/span)*100));
+        lHtml += `<div style="position:absolute;left:${pct}%;transform:translateX(-50%);white-space:nowrap;">${lt.text}</div>`;
+      }
+      labels.innerHTML = lHtml;
+    }
+
+    function render(segs, openUtc, closeUtc){
+      if (!segs.length) {
+        bar.innerHTML = '<div style="padding:2px 8px;font-size:12px;opacity:.7;">(no samples yet)</div>';
+        if (status) status.textContent = "";
+        return;
+      }
+      const w = 100 / segs.length;
+      let html = "";
+      for (const s of segs){
+        html += `<div title="${s.regime}${s.conf!=null ? " ("+s.conf+"%)" : ""}" style="float:left;height:100%;width:${w}%;background:${colorFor(s.regime)}"></div>`;
+      }
+      bar.innerHTML = html + '<div style="clear:both"></div>';
+
+      // status: show last sample time progress
+      const nowUtc = Math.floor(Date.now()/1000);
+      const pct = Math.max(0, Math.min(100, ((nowUtc-openUtc)/(closeUtc-openUtc))*100));
+      if (status) status.textContent = `progress: ${pct.toFixed(0)}%`;
+    }
+
+    async function tick(){
+      try{
+        const { open, close } = etMarketWindowUtc();
+        renderTicksAndLabels(open, close);
+
+        const res = await fetch("/api/market_regime_timeline?bucket=today", { cache:"no-store" });
+        const ct = (res.headers.get("content-type")||"").toLowerCase();
+        if (!res.ok || !ct.includes("application/json")) return;
+        const j = await res.json();
+        const pts = (j.points && j.points.length) ? j.points : (j.buckets || []);
+        const segs = buildSegments(pts, open, close);
+        render(segs, open, close);
+      } catch(e) {
+        // ignore
+      }
+    }
+
+    tick();
+    setInterval(tick, 60*1000);
+  })();
+</script>
 {% endif %}
 <span class="mm-regime-name" id="mm-regime-name">?</span>
   <span class="mm-regime-conf" id="mm-regime-conf"></span>

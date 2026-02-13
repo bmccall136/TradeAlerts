@@ -23,31 +23,51 @@
 </div>
 
 <script>
-/* MM_ANALYTICS_TAPE_SCRIPT_CLEAN_V1 */
 (function(){
   const el = document.getElementById("mm-ax-tape");
   const ticksEl = document.getElementById("mm-ax-ticks");
   const linesEl = document.getElementById("mm-ax-ticklines");
   const metaEl = document.getElementById("mm-ax-tape-meta");
-  const dbgEl  = document.getElementById("mm-ax-tape-debug");
-  if (!el || !ticksEl || !linesEl) return;
-
-  function dbg(msg){
-    try{ if(dbgEl){ dbgEl.textContent = msg; } }catch(e){}
-  }
+  
+  const dbgEl = document.getElementById("mm-ax-tape-debug");if (!el || !ticksEl || !linesEl) return;
 
   function colorFor(reg){
     reg = (reg||"").toUpperCase();
     if (reg === "TREND") return "rgba(0, 200, 120, .95)";
     if (reg === "CHOP")  return "rgba(240, 200, 0, .95)";
     if (reg === "DEAD")  return "rgba(220, 60, 60, .95)";
-    return "rgba(160,160,160,.35)"; // unknown
+    return "rgba(160,160,160,.75)";
   }
 
-  function buildBins(openTs, closeTs){
+  function hhmmETFromTs(tsu){
+    try{
+      const d = new Date(tsu * 1000);
+      const fmt = new Intl.DateTimeFormat("en-US", { timeZone:"America/New_York", hour:"numeric", minute:"2-digit" }
+
+  function etMinutesFromTs(tsu){
+    try{
+      const d = new Date(tsu * 1000);
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone:'America/New_York', hour:'2-digit', minute:'2-digit', hour12:false
+      }).formatToParts(d);
+      const hh = parseInt((parts.find(p=>p.type==='hour')||{}).value||'0', 10);
+      const mm = parseInt((parts.find(p=>p.type==='minute')||{}).value||'0', 10);
+      return (hh*60) + mm;
+    }catch(e){ return -1; }
+  }
+);
+      return fmt.format(d);
+    }catch(e){ return ""; }
+  }
+
+  function build5mBins(win){
+    const since = win?.since_ts_utc || null;
+    const until = win?.until_ts_utc || null;
+    if (!since || !until || until <= since) return [];
+    // bin from since->until in 5m steps
+    const start = since - (since % 300);
+    const end   = until - (until % 300);
     const bins = [];
-    const start = openTs - (openTs % 300);
-    const end   = closeTs - (closeTs % 300);
     for (let t = start; t <= end; t += 300) bins.push(t);
     return bins;
   }
@@ -64,97 +84,161 @@
     const segs = [];
     for (const b of bins){
       if (map.has(b)) last = map.get(b);
-      segs.push({ ts:b, regime: last?.regime || "UNKNOWN", conf: (last?.conf ?? null) });
+      segs.push({ ts:b, regime: last?.regime || "UNKNOWN", conf: last?.conf ?? null });
     }
     return segs;
   }
 
-  function render(segs, openTs, closeTs){
-    // base bar always visible
-    el.innerHTML = "";
-    ticksEl.innerHTML = "";
-    linesEl.innerHTML = "";
-    if (metaEl) metaEl.textContent = "";
-
-    if (!segs || !segs.length){
-      dbg("no segs");
+  function render(segs){
+    if (!segs.length){
+      el.innerHTML = '<div style="padding:2px 8px;font-size:12px;opacity:.7;">(no samples yet)</div>';
+      ticksEl.innerHTML = '';
+      linesEl.innerHTML = '';
+      if (metaEl) metaEl.textContent = '';
       return;
     }
 
-    // progress-only: paint only up to NOW; future stays gray
-    const nowTs = Math.floor(Date.now()/1000);
-    const paintUntil = Math.max(openTs, Math.min(closeTs, nowTs));
-
-    let n = 0;
-    for (let i=0; i<segs.length; i++){
-      if (segs[i].ts <= paintUntil) n = i+1;
-      else break;
+    // tape segments    const nowTs = Math.floor(Date.now()/1000);
+    const nowM  = etMinutesFromTs(nowTs);
+    let paintN;
+    if (nowM >= 0) {
+      paintN = segs.findIndex(s => etMinutesFromTs(s.ts) > nowM);
+    } else {
+      // Fallback: compare raw UTC seconds if ET minutes failed
+      paintN = segs.findIndex(s => (s.ts||0) > nowTs);
     }
-    if (n === 0) n = 1; // show at least first slot
-
+    let n = (paintN === -1) ? segs.length : paintN;
+    // Safety: avoid rendering an empty bar when we have segs
+    if (n === 0 && segs.length) n = 1;
     const w = 100 / segs.length;
     let html = "";
-    for (let i=0; i<n; i++){
+    for (let i = 0; i < n; i++){
       const s = segs[i];
-      html += `<div style="float:left;height:100%;width:${w}%;background:${colorFor(s.regime)}"></div>`;
+      html += `<div title="${hhmmETFromTs(s.ts)}  ${s.regime}${s.conf!=null ? " ("+s.conf+"%)" : ""}"
+                    style="float:left;height:100%;width:${w}%;background:${colorFor(s.regime)}"></div>`;
     }
     el.innerHTML = html + '<div style="clear:both"></div>';
 
-    // tick marks at 9:30, 10:30, 12:00, 14:00, 16:00 ET
+    // tick marks: 09:30, 10:30, 12:00, 14:00, 16:00 ET
+    const startTs = segs[0].ts;
+    const endTs = segs[segs.length-1].ts + 300;
+
     const mk = [
-      { ts: openTs,               label:"9:30"  },
-      { ts: openTs + 60*60,       label:"10:30" },
-      { ts: openTs + 150*60,      label:"12"    },
-      { ts: openTs + 270*60,      label:"2"     },
-      { ts: closeTs,              label:"4"     },
+      { h:9,  m:30, label:"9:30" },
+      { h:10, m:30, label:"10:30" },
+      { h:12, m:0,  label:"12" },
+      { h:14, m:0,  label:"2" },
+      { h:16, m:0,  label:"4" },
     ];
+
+    function etToUtcTs(h,m){
+      // Build "today ET" based on startTs day in ET
+      try{
+        const d0 = new Date(startTs * 1000);
+        const parts = new Intl.DateTimeFormat("en-US", { timeZone:"America/New_York", year:"numeric", month:"2-digit", day:"2-digit" }).formatToParts(d0);
+        const y = parts.find(p=>p.type==="year").value;
+        const mo = parts.find(p=>p.type==="month").value;
+        const da = parts.find(p=>p.type==="day").value;
+        const iso = `${y}-${mo}-${da}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`;
+        // interpret iso as ET by using Date + timezone conversion trick:
+        // create as UTC then adjust by actual ET offset at that time via Intl (good enough for our usage)
+        const asLocal = new Date(iso);
+        // fallback: just return startTs if this fails
+        return Math.floor(asLocal.getTime()/1000);
+      }catch(e){ return startTs; }
+    }
+
+    // render ticks/lines only if they fall in window
 
     let tHtml = "";
     let lHtml = "";
-    for (const t of mk){
-      if (t.ts < openTs || t.ts > closeTs) continue;
-      const pct = ((t.ts - openTs) / (closeTs - openTs)) * 100;
+    const sessionMins = 390; // 9:30 -> 16:00
+    const mk2 = [
+      { min: 0,   label:"9:30" },
+      { min: 60,  label:"10:30" },
+      { min: 150, label:"12" },
+      { min: 270, label:"2" },
+      { min: 390, label:"4" },
+    ];
+
+    for (const t of mk2){
+      const pct = (t.min / sessionMins) * 100;
       tHtml += `<div style="position:absolute;left:calc(${pct}% - 14px);top:0;width:28px;text-align:center;">${t.label}</div>`;
       lHtml += `<div style="position:absolute;left:${pct}%;top:0;bottom:0;width:1px;background:rgba(255,255,255,.10)"></div>`;
     }
     ticksEl.innerHTML = tHtml;
     linesEl.innerHTML = lHtml;
-
-    // meta progress
-    const prog = Math.max(0, Math.min(1, (paintUntil - openTs) / (closeTs - openTs)));
-    if (metaEl) metaEl.textContent = `progress: ${(prog*100).toFixed(0)}%`;
+    // meta: show progress in market session (ET 09:30->16:00)
+    try{
+      const nowTs = Math.floor(Date.now()/1000);
+      const nowM  = etMinutesFromTs(nowTs);
+      const openM = 9*60 + 30;
+      const closeM= 16*60;
+      const prog = Math.max(0, Math.min(1, (nowM - openM) / (closeM - openM)));
+      if (metaEl) metaEl.textContent = `progress: ${(prog*100).toFixed(0)}%`;
+    }catch(e){}
   }
 
   async function tick(){
     try{
+      if (dbgEl) dbgEl.textContent = "TAPE DEBUG: starting fetch?";
       const res = await fetch("/api/market_regime_timeline?bucket=today", { cache:"no-store" });
-      if (!res.ok){ dbg("api not ok"); return; }
+      const ct = (res.headers.get("content-type")||"").toLowerCase();
+      const status = res.status;
+
+      if (!res.ok){
+        const body = await res.text().catch(()=>"(no body)");
+        if (dbgEl) dbgEl.textContent = `TAPE DEBUG: HTTP=${status} ct=${ct} body=${body.slice(0,160)}`;
+        return;
+      }
+      if (!ct.includes("application/json")){
+        const body = await res.text().catch(()=>"(no body)");
+        if (dbgEl) dbgEl.textContent = `TAPE DEBUG: HTTP=${status} NON-JSON ct=${ct} body=${body.slice(0,160)}`;
+        return;
+      }
+
       const j = await res.json();
       const pts = (j.points && j.points.length) ? j.points : (j.buckets || []);
-      const win = j.window || {};
-      const since = win.since_ts_utc || 0;
-      if (!since){ dbg("no window.since_ts_utc"); return; }
-
-      // since is ET-midnight UTC epoch (your server does ET-midnight->UTC)
-      // market hours: 09:30?16:00 ET
-      const openTs  = since + (9*3600) + (30*60);
-      const closeTs = since + (16*3600);
-
-      const bins = buildBins(openTs, closeTs);
+      const bins = build5mBins(j.window || {});
       const segs = carryForward(pts, bins);
 
-      dbg(`pts=${pts.length} bins=${bins.length} segs=${segs.length} open=${openTs} close=${closeTs}`);
-      render(segs, openTs, closeTs);
+      // market-hours filter (already in your templates); keep it, but report counts
+      const MKT_OPEN = 9*60 + 30;
+      const MKT_CLOSE = 16*60;
+      const segs_mkt = (segs||[]).filter(s => {
+        const mins = etMinutesFromTs(s.ts);
+        return (mins >= MKT_OPEN) && (mins <= MKT_CLOSE);
+      });
+
+      // paint gate diagnostics
+      const nowTs = Math.floor(Date.now()/1000);
+      const nowM  = etMinutesFromTs(nowTs);
+      const firstTs = (segs_mkt && segs_mkt.length) ? segs_mkt[0].ts : 0;
+      const firstM  = firstTs ? etMinutesFromTs(firstTs) : -1;
+
+      if (dbgEl) dbgEl.textContent = `TAPE DEBUG: HTTP=${status} ct=${ct} pts=${(pts||[]).length} bins=${bins.length} segs=${segs.length} mkt=${segs_mkt.length} nowM=${nowM} firstM=${firstM}`;
+
+      if (!segs_mkt.length){
+        el.innerHTML = "";
+        return;
+      }
+
+      render(segs_mkt);
     }catch(e){
-      dbg("tick err: " + (e && e.message ? e.message : String(e)));
+      if (dbgEl) dbgEl.textContent = "TAPE DEBUG: exception: " + (e.message || String(e));
     }
+  }
+
+
+      render(segs_mkt);
+      return;
+}catch(e){}
   }
 
   tick();
   setInterval(tick, 60*1000);
 })();
 </script>
-
 
 
 {% extends "layout.html" %}
@@ -291,7 +375,7 @@ function mmNormBucket(b) {
     const order = ["TARGET","STOP","TIMEOUT","PROTECT","AI","MANUAL","UNKNOWN"];
     const items = order.filter(k => k in map).map(k => [k, map[k]]).concat(
       keys.filter(k => !order.includes(k)).sort().map(k => [k, map[k]])
-
+    );
     el.innerHTML = items.map(([k,v]) => pill(k, v)).join("");
   }
 
@@ -315,7 +399,7 @@ function mmNormBucket(b) {
     const order = ["ATTEMPTED","PLACED","FILLED","SKIPPED","FAILED","RAW"];
     const items = order.filter(k => k in map).map(k => [k, map[k]]).concat(
       keys.filter(k => !order.includes(k)).sort().map(k => [k, map[k]])
-
+    );
     el.innerHTML = items.map(([k,v]) => pill(k, v)).join("");
   }
 
