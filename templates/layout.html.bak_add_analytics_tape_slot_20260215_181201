@@ -523,10 +523,6 @@ var conf = (j.confidence != null ? j.confidence : (j.conf != null ? j.conf : j.s
   setInterval(()=>render().catch(()=>{}), 30000);
 })();</script>
 
-
-<!-- MM_ANALYTICS_TAPE_SLOT_V1 -->
-{% block analytics_tape %}{% endblock %}
-<!-- /MM_ANALYTICS_TAPE_SLOT_V1 -->
 </body>
 
 </html>

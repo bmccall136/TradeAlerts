@@ -1,0 +1,111 @@
+{# templates/_analytics_toolbar.html #}
+{# MM_ANALYTICS_TOOLBAR_DAILY_STYLE_V1 #}
+
+{% macro mmAnalyticsToolbar(title, subtitle="", controls_html="") %}
+<style>
+/* MM_ANALYTICS_TOOLBAR_DAILY_STYLE_V1 */
+.mm-axbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:12px 14px;
+  margin:10px 0 14px 0;
+  border-radius:14px;
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.10);
+}
+.mm-axbar-left{ display:flex; align-items:center; gap:10px; min-width:260px; }
+.mm-axbar-left img{ height:36px; width:36px; border-radius:8px; }
+.mm-axbar-title{ font-size:26px; font-weight:800; margin:0; line-height:1.1; }
+.mm-axbar-sub{ font-size:12px; opacity:.75; margin-top:2px; }
+
+.mm-axbar-mid{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center; flex:1; }
+.mm-axbar-right{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end; min-width:320px; }
+
+.mm-axnav{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  padding:6px 10px;
+  border-radius:12px;
+  background:rgba(0,0,0,.20);
+  border:1px solid rgba(255,255,255,.10);
+}
+.mm-axnav a{
+  display:inline-flex;
+  align-items:center;
+  padding:7px 10px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(0,0,0,.18);
+  color:#eaeaea;
+  text-decoration:none;
+  font-size:13px;
+  font-weight:700;
+}
+.mm-axnav a:hover{ border-color: rgba(255,215,0,.55); color:#ffcc00; }
+.mm-axnav a.active{
+  border-color:#f5d400;
+  box-shadow: 0 0 0 1px rgba(245,212,0,.20) inset;
+}
+
+.mm-axbar .ax-date-wrap { display:flex; align-items:center; gap:8px; }
+.mm-axbar .ax-date-input {
+  background: transparent;
+  border: 1px solid #6c757d;
+  color: #e8e8e8;
+  border-radius: 6px;
+  padding: 4px 8px;
+  height: 31px;
+}
+.mm-axbar .ax-date-input:focus { outline: none; box-shadow: none; border-color: #8b94a3; }
+</style>
+
+<div class="mm-axbar">
+  <div class="mm-axbar-left">
+    <img src="/static/Max.png" alt="Max"/>
+    <div>
+      <div class="mm-axbar-title">{{ title }}</div>
+      {% if subtitle %}
+        <div class="mm-axbar-sub">{{ subtitle }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="mm-axbar-mid">
+    {# unified analytics nav #}
+    <div class="mm-axnav">
+      <a href="/analytics" data-mm-ax="daily">Daily</a>
+      <a href="/analytics/buy" data-mm-ax="buy">Buy</a>
+      <a href="/analytics/sell" data-mm-ax="sell">Sell</a>
+      <a href="/analytics/buy_regime" data-mm-ax="buy_regime">Buy Regime</a>
+      <a href="/analytics/sell_regime" data-mm-ax="sell_regime">Sell Regime</a>
+    </div>
+  </div>
+
+  <div class="mm-axbar-right">
+    {{ controls_html | safe }}
+  </div>
+</div>
+
+<script>
+/* MM_ANALYTICS_TOOLBAR_ACTIVE_V1 */
+(function(){
+  function pickKey(){
+    const p = (window.location.pathname || "").toLowerCase();
+    if (p === "/analytics" || p === "/analytics/") return "daily";
+    if (p.indexOf("/analytics/buy_regime") === 0) return "buy_regime";
+    if (p.indexOf("/analytics/sell_regime") === 0) return "sell_regime";
+    if (p.indexOf("/analytics/buy") === 0) return "buy";
+    if (p.indexOf("/analytics/sell") === 0) return "sell";
+    return "";
+  }
+  const k = pickKey();
+  if(!k) return;
+  document.querySelectorAll('.mm-axnav a[data-mm-ax]').forEach(a=>{
+    a.classList.toggle('active', (a.getAttribute('data-mm-ax')||"") === k);
+  });
+})();
+</script>
+{% endmacro %}

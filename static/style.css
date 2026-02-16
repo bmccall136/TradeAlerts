@@ -1339,4 +1339,33 @@ td.pl-zero, td .pl-zero { color: #9e9e9e !important; font-weight: 700 !important
   margin-left: auto !important;
   margin-right: auto !important;
 }
+/* MM_ANALYTICS_TOOLBAR_V1 */
+.mm-ax-toolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 14px;
+  margin:12px 14px 16px 14px;
+  border-radius:14px;
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.10);
+}
+
+.mm-ax-left{ display:flex; align-items:center; gap:10px; min-width:220px; }
+.mm-ax-title{ font-size:26px; font-weight:800; letter-spacing:.3px; }
+
+.mm-ax-mid{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:center; flex:1; }
+.mm-ax-btn{
+  display:inline-flex; align-items:center; justify-content:center;
+  padding:8px 14px;
+  border-radius:12px;
+  text-decoration:none;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(0,0,0,.25);
+  color:#eaeaea;
+}
+.mm-ax-btn:hover{ border-color: rgba(255,215,0,.55); }
+
+.mm-ax-right{ display:flex; align-items:center; gap:10px; justify-content:flex-end; min-width:320px; }
 

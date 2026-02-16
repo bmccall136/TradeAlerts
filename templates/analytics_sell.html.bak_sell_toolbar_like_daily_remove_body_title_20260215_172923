@@ -173,22 +173,13 @@
 {% block content %}
 
 <!-- MM_ANALYTICS_TOOLBAR_GLOBAL_V1 -->
-<div class="d-flex align-items-center justify-content-between mb-2">
-  <div class="d-flex align-items-center gap-2">
-    <img src="/static/Max.png" style="height:36px;width:36px;border-radius:8px;" alt="Max"/>
-    <div>
-      <div class="h4 mb-0">Sell Analytics</div>
-      <div class="text-secondary small" id="ax-date">Loading?</div>
-    </div>
-  </div>
+<div class="d-flex align-items-center justify-content-end mb-2" style="gap:12px; flex-wrap:wrap;">
+  <a class="btn btn-sm btn-outline-info" href="/analytics/buy">Buy Analytics</a>
+  <a class="btn btn-sm btn-outline-info" href="/analytics/sell">Sell Analytics</a>
+  <a class="btn btn-sm btn-outline-info" href="/analytics/buy_regime">Buy Regime</a>
+  <a class="btn btn-sm btn-outline-info" href="/analytics/sell_regime">Sell Regime</a>
 
-  <div class="d-flex align-items-center gap-3 flex-wrap">
-    <a class="btn btn-sm btn-outline-info" href="/analytics">Daily</a>
-    <a class="btn btn-sm btn-outline-info" href="/analytics/buy">Buy Analytics</a>
-    <a class="btn btn-sm btn-outline-info" href="/analytics/sell">Sell Analytics</a>
-    <a class="btn btn-sm btn-outline-info" href="/analytics/buy_regime">Buy Regime</a>
-    <a class="btn btn-sm btn-outline-info" href="/analytics/sell_regime">Sell Regime</a>
-
+  <div class="d-flex align-items-center" style="gap:8px;">
     <a class="btn btn-sm btn-outline-warning" id="ax-yesterday" href="#">Yesterday</a>
 
     <input
@@ -200,9 +191,9 @@
     />
 
     <a class="btn btn-sm btn-outline-warning" id="ax-datego" href="#">Go</a>
-
-    <a class="btn btn-sm btn-outline-secondary" id="ax-live" href="/analytics">Live</a>
   </div>
+
+  <a class="btn btn-sm btn-outline-secondary" id="ax-live" href="/analytics">Live</a>
 </div>
 
 <script>
@@ -222,16 +213,6 @@
   const yBtn = document.getElementById("ax-yesterday");
   const pick = document.getElementById("ax-datepick");
   const go   = document.getElementById("ax-datego");
-  const axDate = document.getElementById("ax-date");
-
-  /* MM_AX_DATE_SETTER_V1 */
-  try{
-    if(axDate){
-      const u0 = new URL(window.location.href);
-      const cur0 = (u0.searchParams.get("date") || "").trim();
-      axDate.textContent = cur0 ? cur0 : "Today";
-    }
-  }catch(e){}
 
   // Yesterday button -> ?date=YYYY-MM-DD
   if (yBtn){
@@ -281,23 +262,7 @@
 
 
 <style>
-  
-  /* MM_AX_DATE_INPUT_STYLE_V1 */
-  .ax-date-input{
-    background:#0b0d14 !important;
-    color:#e9edf6 !important;
-    border:1px solid #262a38 !important;
-    border-radius:8px !important;
-    padding:6px 10px !important;
-    height:34px !important;
-    min-width:155px !important;
-  }
-  .ax-date-input:focus{
-    outline:none !important;
-    border-color:#f0d000 !important;
-    box-shadow:0 0 0 2px rgba(240,208,0,.15) !important;
-  }
-.mm-wrap { max-width: 1180px; margin: 0 auto; }
+  .mm-wrap { max-width: 1180px; margin: 0 auto; }
   .mm-h1 { font-size: 28px; font-weight: 800; margin: 6px 0 10px; }
   .mm-sub { opacity: .85; margin-bottom: 14px; }
   .mm-row { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
@@ -320,7 +285,7 @@
 </style>
 
 <div class="mm-wrap">
-  
+  <div class="mm-h1">Sell Analytics</div>
   <div class="mm-sub">
     This page focuses on <b>exit reasons</b>, <b>execution outcomes</b>, and <b>time-in-position</b>.
     (Counts stay off the SELL Settings page.)

@@ -216,14 +216,8 @@
     </div>
 
     <div class="d-flex align-items-center gap-3 flex-wrap">
-      <a class="btn btn-sm btn-outline-info" href="/analytics">Daily</a>
-  <a class="btn btn-sm btn-outline-info" href="/analytics/buy">Buy Analytics</a>
+      <a class="btn btn-sm btn-outline-info" href="/analytics/buy">Buy Analytics</a>
       <a class="btn btn-sm btn-outline-info" href="/analytics/sell">Sell Analytics</a>
-    <!-- MM_DAILY_TOOLBAR_REGIME_LINKS_V1 -->
-    <a class="btn btn-sm btn-outline-info" href="/analytics/buy_regime">Buy Regime</a>
-    <a class="btn btn-sm btn-outline-info" href="/analytics/sell_regime">Sell Regime</a>
-    <!-- /MM_DAILY_TOOLBAR_REGIME_LINKS_V1 -->
-    
 
       <div class="ax-date-wrap">
         <a class="btn btn-sm btn-outline-warning" id="ax-yesterday" href="#">Yesterday</a>
