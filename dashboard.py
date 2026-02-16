@@ -5113,6 +5113,149 @@ def api_analytics_daily():
     except Exception:
         pass
     return jsonify(out)
+
+        # --- MM_DAILY_ENRICH_SELLS_FROM_REALIZED_V3 ---
+    try:
+        import sqlite3 as _sqlite3
+        import datetime as _dt
+        from zoneinfo import ZoneInfo as _ZoneInfo
+    
+        def _mm_sf(x):
+            try:
+                if x is None: return None
+                s = str(x).strip()
+                if not s: return None
+                return float(s)
+            except Exception:
+                return None
+    
+        def _mm_epoch_from_time_et(s):
+            try:
+                if not s: return None
+                t = str(s).strip().replace('T',' ').replace('Z','')
+                t = t.split('.')[0].strip()
+                d = _dt.datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
+                d = d.replace(tzinfo=_ZoneInfo("America/New_York"))
+                return int(d.timestamp())
+            except Exception:
+                return None
+    
+        # Date for realized_trades lookup: prefer date_et, else _d
+        _date = None
+        try:
+            _date = (locals().get("date_et") or "").strip()
+        except Exception:
+            _date = None
+        if not _date:
+            try:
+                _date = (locals().get("_d") or "").strip()
+            except Exception:
+                _date = None
+    
+        # Sells list: could be local sells, or out['sells'], or _ret['sells']
+        _sells_ref = None
+        try:
+            if "sells" in locals() and isinstance(locals().get("sells"), list):
+                _sells_ref = locals().get("sells")
+        except Exception:
+            pass
+        if _sells_ref is None:
+            try:
+                _o = locals().get("out")
+                if isinstance(_o, dict) and isinstance(_o.get("sells"), list):
+                    _sells_ref = _o.get("sells")
+            except Exception:
+                pass
+        if _sells_ref is None:
+            try:
+                _r = locals().get("_ret")
+                if isinstance(_r, dict) and isinstance(_r.get("sells"), list):
+                    _sells_ref = _r.get("sells")
+            except Exception:
+                pass
+    
+        if _date and isinstance(_sells_ref, list) and _sells_ref:
+            # DB path
+            if "LIVE_DB" in globals():
+                _db = LIVE_DB
+            elif "DB_PATH" in globals():
+                _db = DB_PATH
+            else:
+                _db = r"C:\TradeAlerts\live.db"
+    
+            _con = _sqlite3.connect(_db)
+            _con.row_factory = _sqlite3.Row
+            _cur = _con.cursor()
+    
+            _has = _cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='realized_trades'").fetchone() is not None
+            if _has:
+                def _pick(d, *ks):
+                    for k in ks:
+                        if k in d and d.get(k) is not None and str(d.get(k)).strip() != "":
+                            return d.get(k)
+                    return None
+    
+                _rt_by_sym = {}
+                _rows = _cur.execute("SELECT * FROM realized_trades WHERE time_et LIKE ? ORDER BY time_et ASC", (_date + "%",)).fetchall()
+                for _r in _rows:
+                    _dct = dict(_r)
+                    _sym = str(_dct.get("symbol") or "").strip().upper()
+                    if not _sym:
+                        continue
+                    _rt_by_sym.setdefault(_sym, []).append({
+                        "ts": _mm_epoch_from_time_et(_dct.get("time_et")),
+                        "time_et": _dct.get("time_et"),
+                        "open": _mm_sf(_pick(_dct, "open","open_price","entry_price","buy_price")),
+                        "close": _mm_sf(_pick(_dct, "close","close_price","exit_price","price")),
+                        "pnl": _mm_sf(_pick(_dct, "pnl","gain","pl","profit")),
+                        "pnl_pct": _mm_sf(_pick(_dct, "pnl_pct","gain_pct","pl_pct","profit_pct")),
+                    })
+    
+                def _nearest(sym, ts_utc, max_delta=7200):
+                    try:
+                        ts_utc = int(ts_utc)
+                    except Exception:
+                        return None
+                    best = None
+                    bestd = None
+                    for x in (_rt_by_sym.get(sym) or []):
+                        if x.get("ts") is None:
+                            continue
+                        d = abs(ts_utc - int(x["ts"]))
+                        if bestd is None or d < bestd:
+                            bestd = d
+                            best = x
+                    if best is not None and bestd is not None and bestd <= max_delta:
+                        return best
+                    return None
+    
+                for s in _sells_ref:
+                    if not isinstance(s, dict):
+                        continue
+                    sym = str(s.get("symbol") or "").strip().upper()
+                    if not sym:
+                        continue
+                    s.setdefault("open", None)
+                    s.setdefault("close", None)
+                    s.setdefault("pnl_pct", None)
+                    if s.get("close") is None and s.get("price") is not None:
+                        s["close"] = s.get("price")
+                    if s.get("close") is None or s.get("pnl") is None:
+                        r = _nearest(sym, s.get("ts_utc"))
+                        if r:
+                            if s.get("open") is None: s["open"] = r.get("open")
+                            if s.get("close") is None:
+                                s["close"] = r.get("close")
+                                if s.get("price") is None:
+                                    s["price"] = r.get("close")
+                            if s.get("pnl") is None: s["pnl"] = r.get("pnl")
+                            if s.get("pnl_pct") is None: s["pnl_pct"] = r.get("pnl_pct")
+                            s.setdefault("time_et_realized", r.get("time_et"))
+    
+            _con.close()
+    except Exception:
+        pass
+    # --- /MM_DAILY_ENRICH_SELLS_FROM_REALIZED_V3 ---
 @app.route("/analytics")
 def analytics_page():
     # --- analytics date override ---
