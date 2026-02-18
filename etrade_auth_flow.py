@@ -1,4 +1,4 @@
-import json
+﻿import json
 import os
 import webbrowser
 
@@ -22,13 +22,14 @@ CONSUMER_KEY = os.getenv("ETRADE_API_KEY")
 CONSUMER_SECRET = os.getenv("ETRADE_API_SECRET")
 
 if not CONSUMER_KEY or not CONSUMER_SECRET:
-    print("⚠️  You must have ETRADE_API_KEY and ETRADE_API_SECRET in your .env first.")
+    print("âš ï¸  You must have ETRADE_API_KEY and ETRADE_API_SECRET in your .env first.")
     exit(1)
 
 # -------------------------------------------------------------------
 # STEP 3: Define E*TRADE OAuth endpoints
 # -------------------------------------------------------------------
-BASE_URL = "https://api.etrade.com"
+ETRADE_ENV = (os.getenv("ETRADE_ENV") or "production").strip().lower()
+BASE_URL = "https://apisb.etrade.com" if ETRADE_ENV.startswith("sand") else "https://api.etrade.com"
 REQUEST_TOKEN_URL = f"{BASE_URL}/oauth/request_token"
 ACCESS_TOKEN_URL = f"{BASE_URL}/oauth/access_token"
 AUTHORIZE_URL = "https://us.etrade.com/e/t/etws/authorize"
@@ -41,7 +42,7 @@ oauth = OAuth1Session(CONSUMER_KEY, client_secret=CONSUMER_SECRET, callback_uri=
 try:
     fetch_response = oauth.fetch_request_token(REQUEST_TOKEN_URL)
 except Exception as e:
-    print(f"❌ Failed to fetch request token: {e}")
+    print(f"âŒ Failed to fetch request token: {e}")
     exit(1)
 
 resource_owner_key = fetch_response.get("oauth_token")
@@ -51,8 +52,8 @@ resource_owner_secret = fetch_response.get("oauth_token_secret")
 # STEP 5: Direct user to authorize in browser
 # -------------------------------------------------------------------
 auth_url = f"{AUTHORIZE_URL}?key={CONSUMER_KEY}&token={resource_owner_key}"
-print("\n🔑 Opening browser to authorize E*TRADE access…")
-print(f"👉 If nothing opens automatically, visit this URL:\n{auth_url}\n")
+print("\nðŸ”‘ Opening browser to authorize E*TRADE accessâ€¦")
+print(f"ðŸ‘‰ If nothing opens automatically, visit this URL:\n{auth_url}\n")
 webbrowser.open(auth_url)
 
 # -------------------------------------------------------------------
@@ -73,14 +74,14 @@ oauth = OAuth1Session(
 try:
     tokens = oauth.fetch_access_token(ACCESS_TOKEN_URL)
 except Exception as e:
-    print(f"❌ Failed to fetch access token: {e}")
+    print(f"âŒ Failed to fetch access token: {e}")
     exit(1)
 
 access_token = tokens.get("oauth_token")
 access_token_secret = tokens.get("oauth_token_secret")
 
 if not access_token or not access_token_secret:
-    print("❌ Received invalid tokens from E*TRADE.")
+    print("âŒ Received invalid tokens from E*TRADE.")
     exit(1)
 
 # -------------------------------------------------------------------
@@ -94,7 +95,9 @@ set_key(ENV_PATH, KEY_OAUTH_TOKEN_SECRET, access_token_secret)
 with open(TOKEN_FILE, "w") as f:
     json.dump(tokens, f, indent=2)
 
-print("\n✅ OAuth tokens saved into .env:")
+print("\nâœ… OAuth tokens saved into .env:")
 print(f"   {KEY_OAUTH_TOKEN}        = {access_token}")
 print(f"   {KEY_OAUTH_TOKEN_SECRET} = {access_token_secret}")
-print(f"\n🔒 A copy was also written to {TOKEN_FILE} for backup.\n")
+print(f"\nðŸ”’ A copy was also written to {TOKEN_FILE} for backup.\n")
+
+
