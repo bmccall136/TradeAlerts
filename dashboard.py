@@ -7639,6 +7639,81 @@ def api_analytics_sell_regime():
 
     return _mm_jsonify(out), 200
 
+
+
+# --- MM_API_SELL_EXIT_REASONS_V1 ---
+@app.route("/api/analytics/sell_exit_reasons")
+@always_json
+def api_analytics_sell_exit_reasons():
+    import time, sqlite3, os
+    try:
+        bucket = (request.args.get("bucket") or "today").strip().lower()
+        now_ts = int(time.time())
+
+        # Prefer canonical bucket helper if present
+        since_ts = None
+        try:
+            if "_mm_bucket_since_epoch" in globals():
+                since_ts = int(_mm_bucket_since_epoch(bucket))
+        except Exception:
+            since_ts = None
+
+        if since_ts is None:
+            # fallback windows
+            if bucket == "all":
+                since_ts = 0
+            elif bucket == "30d":
+                since_ts = now_ts - 30*24*3600
+            elif bucket == "7d":
+                since_ts = now_ts - 7*24*3600
+            else:
+                # today fallback (UTC day) ? main codebase already uses ET-midnight helper;
+                # this only runs if helper missing.
+                since_ts = now_ts - 24*3600
+
+        db_path = globals().get("LIVE_DB") or os.path.join(os.path.dirname(__file__), "live.db")
+
+        con = sqlite3.connect(db_path)
+        con.row_factory = sqlite3.Row
+        cur = con.cursor()
+
+        # regime lookup: last sample <= sell ts_utc
+        q = """
+        SELECT
+          COALESCE(
+            (SELECT m.regime
+               FROM market_regime_samples m
+              WHERE CAST(m.ts_utc AS INTEGER) <= CAST(s.ts_utc AS INTEGER)
+              ORDER BY CAST(m.ts_utc AS INTEGER) DESC
+              LIMIT 1
+            ),
+            'UNKNOWN'
+          ) AS regime,
+          COALESCE(NULLIF(TRIM(s.reason),''), 'UNKNOWN') AS reason,
+          COUNT(*) AS ct
+        FROM sell_events s
+        WHERE CAST(s.ts_utc AS INTEGER) >= ?
+          AND CAST(s.ts_utc AS INTEGER) <= ?
+        GROUP BY regime, reason
+        ORDER BY ct DESC
+        """
+        rows = [dict(r) for r in cur.execute(q, (since_ts, now_ts)).fetchall()]
+        con.close()
+
+        return jsonify({
+            "ok": True,
+            "bucket": bucket,
+            "since_ts_utc": since_ts,
+            "until_ts_utc": now_ts,
+            "rows": rows,
+        })
+    except Exception as e:
+        try:
+            return jsonify({"ok": False, "error": str(e)}), 500
+        except Exception:
+            return ("", 500)
+# --- /MM_API_SELL_EXIT_REASONS_V1 ---
+
 @app.route("/api/analytics/sell_regime_outcomes")
 def api_analytics_sell_regime_outcomes():
     bucket = _mm_bucket_norm(request.args.get("bucket") or "today")

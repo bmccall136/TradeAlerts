@@ -1,4 +1,29 @@
 {% extends "layout.html" %}
+<!-- MM_SELL_ANALYTICS_CENTER_CARDS_V1_START -->
+<style>
+/* SELL ANALYTICS ? true centering */
+
+#mm-sell-analytics-root {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 12px;
+}
+
+/* Neutralize Bootstrap container-fluid on this page only */
+#mm-sell-analytics-root .container-fluid {
+  max-width: 100% !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* Ensure panels/cards respect root width */
+#mm-sell-analytics-root .mm-ax-card,
+#mm-sell-analytics-root .card,
+#mm-sell-analytics-root .mm-panel {
+  width: 100%;
+}
+</style>
+<!-- MM_SELL_ANALYTICS_CENTER_CARDS_V1_END -->
 {% block analytics_tape %}
 <div id="mm-ax-tape-wrap" style="margin:10px 14px 14px 14px;">
   <div style="display:flex;align-items:flex-end;justify-content:space-between;margin:0 0 6px 2px;">
@@ -7,9 +32,9 @@
 
 {% block content %}
 
+<div id="mm-sell-analytics-root">
 <!-- ====== REGIME TAPE (Analytics pages only) ====== -->
 <div id="mm-ax-tape-meta" style="font-size:12px;opacity:.70;"></div>
-  </div>
   <div style="position:relative;">
     <div id="mm-ax-ticks" style="position:absolute;left:0;top:-16px;right:0;height:14px;font-size:11px;opacity:.65;pointer-events:none;"></div>
     <div id="mm-ax-tape"
@@ -76,7 +101,7 @@
   .ax-date-input:focus { outline: none; box-shadow: none; border-color: #8b94a3; }
 </style>
 
-<div class="container-fluid py-2" style="padding-top:0;">
+<div class="mm-ax-container" style="padding-top:0;">
   <div class="d-flex align-items-center justify-content-between mb-2">
     <div class="d-flex align-items-center gap-2">
       <img src="/static/Max.png" style="height:36px;width:36px;border-radius:8px;" alt="Max"/>
@@ -209,4 +234,5 @@
 
 <script src="/static/js/analytics_sell.js"></script>
 
+</div>
 {% endblock %}
