@@ -1,0 +1,21 @@
+Traceback (most recent call last):
+  File "<stdin>", line 11, in <module>
+  File "C:\TradeAlerts\.venv\Lib\site-packages\flask\templating.py", line 150, in render_template
+    return _render(app, template, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\TradeAlerts\.venv\Lib\site-packages\flask\templating.py", line 131, in _render
+    rv = template.render(context)
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\TradeAlerts\.venv\Lib\site-packages\jinja2\environment.py", line 1295, in render
+    self.environment.handle_exception()
+  File "C:\TradeAlerts\.venv\Lib\site-packages\jinja2\environment.py", line 942, in handle_exception
+    raise rewrite_traceback_stack(source=source)
+  File "C:\TradeAlerts\templates\analytics_sell.html", line 1, in top-level template code
+    {% extends "layout.html" %}
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\TradeAlerts\templates\layout.html", line 22, in top-level template code
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\TradeAlerts\.venv\Lib\site-packages\flask\app.py", line 1090, in url_for
+    raise RuntimeError(
+RuntimeError: Unable to build URLs outside an active request without 'SERVER_NAME' configured. Also configure 'APPLICATION_ROOT' and 'PREFERRED_URL_SCHEME' as needed.

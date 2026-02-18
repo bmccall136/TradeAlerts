@@ -1,0 +1,111 @@
+{# --- MM_ANALYTICS_TOOLBAR_PARTIAL_V3 --- #}
+<div class="mm-ax-toolbar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 14px 14px 14px;">
+  <div style="display:flex;gap:10px;flex-wrap:wrap;">
+    <a class="mm-ax-btn" href="/analytics">Daily</a>
+    <a class="mm-ax-btn" href="/analytics/buy">Buy Analytics</a>
+    <a class="mm-ax-btn" href="/analytics/sell">Sell Analytics</a>
+    <a class="mm-ax-btn" href="/analytics/buy_regime">Buy Regime</a>
+    <a class="mm-ax-btn" href="/analytics/sell_regime">Sell Regime</a>
+  </div>
+
+  <div style="flex:1 1 auto;"></div>
+
+  <div class="mm-ax-buckets" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+    <button class="mm-ax-btn mm-ax-bucket" data-bucket="today" type="button">Today</button>
+    <button class="mm-ax-btn mm-ax-bucket" data-bucket="7d" type="button">7D</button>
+    <button class="mm-ax-btn mm-ax-bucket" data-bucket="30d" type="button">30D</button>
+    <button class="mm-ax-btn mm-ax-bucket" data-bucket="all" type="button">All</button>
+  </div>
+</div>
+
+<style>
+  .mm-ax-btn{
+    display:inline-block;
+    padding:10px 16px;
+    border-radius:10px;
+    border:1px solid rgba(0,255,255,.45);
+    color:#66f6ff;
+    text-decoration:none;
+    background:rgba(0,0,0,.20);
+    font-weight:700;
+    letter-spacing:.2px;
+  }
+  .mm-ax-btn:hover{ filter:brightness(1.15); }
+  .mm-ax-btn.mm-ax-active{
+    border-color: rgba(255,200,0,.85);
+    color:#ffd54a;
+    box-shadow: 0 0 0 1px rgba(255,200,0,.20) inset;
+  }
+</style>
+
+<script>
+(function(){
+  // ---- active page highlight (single best match) ----
+  try{
+    const p0 = (location.pathname || "").toLowerCase();
+    const p = p0.endsWith("/") ? p0.slice(0,-1) : p0;
+    const links = Array.from(document.querySelectorAll('.mm-ax-toolbar a.mm-ax-btn'));
+
+    let best = null;
+    let bestLen = -1;
+
+    for(const a of links){
+      const href0 = (a.getAttribute('href')||"").toLowerCase();
+      if(!href0) continue;
+      const href = href0.endsWith("/") ? href0.slice(0,-1) : href0;
+
+      let isMatch = false;
+      if(href === "/analytics" && p === "/analytics"){
+        isMatch = true;
+      } else if(href !== "/analytics" && (p === href || p.startsWith(href + "/"))){
+        isMatch = true;
+      }
+
+      if(isMatch && href.length > bestLen){
+        best = a;
+        bestLen = href.length;
+      }
+    }
+
+    links.forEach(a=>a.classList.remove('mm-ax-active'));
+    if(best) best.classList.add('mm-ax-active');
+  }catch(e){}
+
+  // ---- bucket buttons ----
+  function getQS(){
+    return new URLSearchParams(location.search || "");
+  }
+  function normBucket(b){
+    b = (b||"").toLowerCase().trim();
+    if(b==="today"||b==="7d"||b==="30d"||b==="all") return b;
+    return "today";
+  }
+  function getBucket(){
+    const q = getQS();
+    return normBucket(q.get("bucket"));
+  }
+  function setBucketActive(b){
+    document.querySelectorAll('.mm-ax-bucket').forEach(btn=>{
+      const bb = normBucket(btn.getAttribute("data-bucket"));
+      if(bb === b) btn.classList.add("mm-ax-active");
+      else btn.classList.remove("mm-ax-active");
+    });
+  }
+  function navWithBucket(b){
+    const q = getQS();
+    q.set("bucket", b);
+    location.assign(location.pathname + "?" + q.toString());
+  }
+
+  const b = getBucket();
+  setBucketActive(b);
+
+  document.querySelectorAll('.mm-ax-bucket').forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const bb = normBucket(btn.getAttribute("data-bucket"));
+      navWithBucket(bb);
+    });
+  });
+})();
+</script>
+{# --- /MM_ANALYTICS_TOOLBAR_PARTIAL_V3 --- #}

@@ -11,6 +11,21 @@ from requests_oauthlib import OAuth1Session
 ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
 load_dotenv(ENV_PATH)
 
+# --- MM CANONICAL: env-driven base URL + safe debug (no secrets) ---
+ETRADE_ENV = (os.getenv("ETRADE_ENV") or "production").strip().lower()
+BASE_URL = "https://apisb.etrade.com" if ETRADE_ENV.startswith("sand") else "https://api.etrade.com"
+
+def _mm_sig(x):
+    x = (x or "").strip()
+    return f"len={len(x)} head={x[:4]} tail={x[-4:]}" if x else "MISSING"
+
+print("[MMDBG] ENV_PATH=", ENV_PATH)
+print("[MMDBG] ETRADE_ENV=", ETRADE_ENV)
+print("[MMDBG] BASE_URL=", BASE_URL)
+print("[MMDBG] CONSUMER_KEY=", _mm_sig(os.getenv("ETRADE_API_KEY")))
+print("[MMDBG] CONSUMER_SECRET=", _mm_sig(os.getenv("ETRADE_API_SECRET")))
+# --- END DEBUG ---
+
 # Names of the variables we want to update
 KEY_OAUTH_TOKEN = "OAUTH_TOKEN"
 KEY_OAUTH_TOKEN_SECRET = "OAUTH_TOKEN_SECRET"
@@ -21,6 +36,17 @@ KEY_OAUTH_TOKEN_SECRET = "OAUTH_TOKEN_SECRET"
 CONSUMER_KEY = os.getenv("ETRADE_API_KEY")
 CONSUMER_SECRET = os.getenv("ETRADE_API_SECRET")
 
+# --- MM DEBUG (safe): prove env/baseurl/key shape without printing secrets ---
+def _mm_sig(x):
+    x = (x or "").strip()
+    return f"len={len(x)} head={x[:4]} tail={x[-4:]}" if x else "MISSING"
+print("[MMDBG] ENV_PATH=", ENV_PATH)
+print("[MMDBG] ETRADE_ENV=", ETRADE_ENV)
+print("[MMDBG] BASE_URL=", BASE_URL)
+print("[MMDBG] CONSUMER_KEY=", _mm_sig(CONSUMER_KEY))
+print("[MMDBG] CONSUMER_SECRET=", _mm_sig(CONSUMER_SECRET))
+# --- END DEBUG ---
+
 if not CONSUMER_KEY or not CONSUMER_SECRET:
     print("âš ï¸  You must have ETRADE_API_KEY and ETRADE_API_SECRET in your .env first.")
     exit(1)
@@ -28,8 +54,18 @@ if not CONSUMER_KEY or not CONSUMER_SECRET:
 # -------------------------------------------------------------------
 # STEP 3: Define E*TRADE OAuth endpoints
 # -------------------------------------------------------------------
-ETRADE_ENV = (os.getenv("ETRADE_ENV") or "production").strip().lower()
-BASE_URL = "https://apisb.etrade.com" if ETRADE_ENV.startswith("sand") else "https://api.etrade.com"
+
+# --- MM DEBUG (safe): prove env/baseurl/key shape without printing secrets ---
+def _mm_sig(x):
+    x = (x or "").strip()
+    return f"len={len(x)} head={x[:4]} tail={x[-4:]}" if x else "MISSING"
+
+print("[MMDBG] ENV_PATH=", ENV_PATH)
+print("[MMDBG] ETRADE_ENV=", ETRADE_ENV)
+print("[MMDBG] BASE_URL=", BASE_URL)
+print("[MMDBG] CONSUMER_KEY=", _mm_sig(os.getenv("ETRADE_API_KEY")))
+print("[MMDBG] CONSUMER_SECRET=", _mm_sig(os.getenv("ETRADE_API_SECRET")))
+# --- END DEBUG ---
 REQUEST_TOKEN_URL = f"{BASE_URL}/oauth/request_token"
 ACCESS_TOKEN_URL = f"{BASE_URL}/oauth/access_token"
 AUTHORIZE_URL = "https://us.etrade.com/e/t/etws/authorize"
@@ -99,5 +135,9 @@ print("\nâœ… OAuth tokens saved into .env:")
 print(f"   {KEY_OAUTH_TOKEN}        = {access_token}")
 print(f"   {KEY_OAUTH_TOKEN_SECRET} = {access_token_secret}")
 print(f"\nðŸ”’ A copy was also written to {TOKEN_FILE} for backup.\n")
+
+
+
+
 
 

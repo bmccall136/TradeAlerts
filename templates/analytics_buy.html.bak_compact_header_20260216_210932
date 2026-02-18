@@ -1,0 +1,372 @@
+{# templates/analytics_buy.html #}
+{% extends "layout.html" %}
+
+{% block content %}
+
+<!-- =========================
+     Regime tape (Analytics-only)
+     ========================= -->
+<div id="mm-ax-tape-wrap" style="margin:10px 14px 18px 14px;">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;margin:0 0 6px 2px;">
+    <div style="font-size:12px;opacity:.75;">Regime tape (today)</div>
+    <div id="mm-ax-tape-meta" style="font-size:12px;opacity:.70;"></div>
+  </div>
+
+  <div style="position:relative;">
+    <div id="mm-ax-ticks" style="position:absolute;left:0;top:-16px;right:0;height:14px;font-size:11px;opacity:.65;pointer-events:none;"></div>
+
+    <div id="mm-ax-tape"
+         style="height:14px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.10);
+                background:rgba(255,255,255,.04);">
+    </div>
+  </div>
+</div>
+
+<!-- =========================
+     Analytics toolbar (match analytics.html)
+     ========================= -->
+<div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin:8px 0 18px 0;">
+  <a class="mm-btn mm-btn-cyan" href="/analytics">Daily</a>
+  <a class="mm-btn mm-btn-cyan mm-btn-active" href="/analytics/buy">Buy Analytics</a>
+  <a class="mm-btn mm-btn-cyan" href="/analytics/sell">Sell Analytics</a>
+  <a class="mm-btn mm-btn-cyan" href="/analytics/buy_regime">Buy Regime</a>
+  <a class="mm-btn mm-btn-cyan" href="/analytics/sell_regime">Sell Regime</a>
+
+  <a class="mm-btn mm-btn-yellow" href="/analytics?date=yesterday">Yesterday</a>
+
+  <div style="width:18px;"></div>
+
+  <input id="ax-date-input" type="text" placeholder="mm/dd/yyyy"
+         style="width:150px;background:#111;border:1px solid rgba(255,255,255,.12);color:#eee;border-radius:8px;padding:8px 10px;">
+  <button id="ax-go" class="mm-btn mm-btn-yellow">Go</button>
+  <a class="mm-btn mm-btn-gray" href="/live">Live</a>
+</div>
+
+<!-- =========================
+     Page header
+     ========================= -->
+<div style="max-width:1200px;margin:0 auto;padding:0 18px 12px 18px;">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;">
+    <div>
+      <div style="font-size:44px;font-weight:900;line-height:1.05;margin-bottom:6px;">Buy Analytics</div>
+      <div style="opacity:.78;">
+        Fires are <b>pre-gate</b> and count even if later rejected by required/strict.
+        Use this to spot dead/noisy signals.
+      </div>
+    </div>
+    <div id="ax-date" style="opacity:.65;font-size:13px;">&nbsp;</div>
+  </div>
+
+  <!-- Controls row -->
+  <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-top:16px;">
+    <div style="min-width:280px;flex:1;">
+      <div style="font-size:13px;opacity:.70;margin:0 0 6px 2px;">Source</div>
+      <select id="ax-source"
+              style="width:100%;background:#0e0e0e;border:1px solid rgba(255,255,255,.14);
+                     color:#eee;border-radius:10px;padding:10px 12px;">
+        <option value="fires" selected>Pre-gate Fires</option>
+        <option value="candidate">Candidate Fires</option>
+      </select>
+    </div>
+
+    <div style="min-width:220px;">
+      <div style="font-size:13px;opacity:.70;margin:0 0 6px 2px;">Bucket</div>
+      <select id="ax-bucket"
+              style="width:100%;background:#0e0e0e;border:1px solid rgba(255,255,255,.14);
+                     color:#eee;border-radius:10px;padding:10px 12px;">
+        <option value="today">TODAY</option>
+        <option value="7d" selected>7D</option>
+        <option value="30d">30D</option>
+        <option value="all">ALL</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- =========================
+     Main content cards
+     ========================= -->
+<div style="max-width:1200px;margin:0 auto;padding:0 18px 30px 18px;">
+
+  <!-- Candidate Funnel (only when source=candidate) -->
+  <div id="cand-wrap" class="mm-panel" style="display:none;margin:14px 0 14px 0;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+      <div>
+        <div style="font-size:18px;font-weight:800;">Candidate Funnel</div>
+        <div style="opacity:.72;font-size:13px;margin-top:2px;">
+          Candidates are post-required gate. Strict-pass uses strict_buy_signals.
+        </div>
+      </div>
+      <div id="funnelMeta" style="opacity:.75;font-size:13px;"></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(5, minmax(0, 1fr));gap:10px;margin-top:12px;">
+      <div class="mm-card" style="padding:12px;">
+        <div class="mm-muted">Candidates</div>
+        <div id="fCand" style="font-size:26px;font-weight:900;margin-top:2px;">0</div>
+      </div>
+      <div class="mm-card" style="padding:12px;">
+        <div class="mm-muted">Required-pass</div>
+        <div id="fReq" style="font-size:26px;font-weight:900;margin-top:2px;">0</div>
+      </div>
+      <div class="mm-card" style="padding:12px;">
+        <div class="mm-muted">Strict-pass</div>
+        <div id="fStrict" style="font-size:26px;font-weight:900;margin-top:2px;">0</div>
+      </div>
+      <div class="mm-card" style="padding:12px;">
+        <div class="mm-muted">Buyable</div>
+        <div id="fBuyable" style="font-size:26px;font-weight:900;margin-top:2px;">0</div>
+      </div>
+      <div class="mm-card" style="padding:12px;">
+        <div class="mm-muted">Bought</div>
+        <div id="fBought" style="font-size:26px;font-weight:900;margin-top:2px;">0</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fires table -->
+  <div class="mm-panel" style="margin-top:12px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <div style="font-size:20px;font-weight:900;">Signal Fires</div>
+      <div id="ax-meta" style="opacity:.70;font-size:13px;"></div>
+    </div>
+
+    <div style="margin-top:12px;overflow:auto;">
+      <table class="mm-table" style="width:100%;">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:10px 10px;border-bottom:1px solid rgba(255,255,255,.08);">Indicator</th>
+            <th style="text-align:right;padding:10px 10px;border-bottom:1px solid rgba(255,255,255,.08);">Fires</th>
+            <th style="text-align:right;padding:10px 10px;border-bottom:1px solid rgba(255,255,255,.08);">Share</th>
+          </tr>
+        </thead>
+        <tbody id="ax-rows">
+          <tr>
+            <td colspan="3" style="padding:14px 10px;opacity:.65;">Loading…</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="opacity:.6;font-size:12px;margin-top:10px;">
+      Next upgrades (when you want): candidate-only fires, candidate→buy funnel, combos, hour-of-day heatmap.
+    </div>
+  </div>
+</div>
+
+<!-- =========================
+     Styles (match your mm theme)
+     ========================= -->
+<style>
+  .mm-btn{
+    display:inline-flex;align-items:center;justify-content:center;
+    padding:8px 14px;border-radius:8px;
+    border:1px solid rgba(255,255,255,.18);
+    background:rgba(255,255,255,.03);
+    color:#eaeaea;text-decoration:none;
+    font-weight:700;letter-spacing:.2px;
+  }
+  .mm-btn:hover{ background:rgba(255,255,255,.06); }
+  .mm-btn-cyan{ border-color:rgba(0,255,255,.35); color:#7ffcff; }
+  .mm-btn-yellow{ border-color:rgba(255,210,0,.55); color:#ffd200; }
+  .mm-btn-gray{ border-color:rgba(255,255,255,.14); color:#cfcfcf; }
+  .mm-btn-active{ background:rgba(0,255,255,.10); }
+
+  .mm-panel{
+    border:1px solid rgba(255,255,255,.10);
+    background:rgba(255,255,255,.02);
+    border-radius:16px;
+    padding:16px 16px;
+  }
+  .mm-card{
+    border:1px solid rgba(255,255,255,.10);
+    background:rgba(255,255,255,.02);
+    border-radius:14px;
+  }
+  .mm-muted{ opacity:.70;font-size:13px; }
+  .mm-table td, .mm-table th{ font-size:15px; }
+</style>
+
+<!-- =========================
+     JS
+     ========================= -->
+<script>
+/* MM_FMT_INT_V1
+   Safe int formatter:
+   - null/undefined/NaN -> "?"
+   - 0 -> "0"
+*/
+function mmFmtInt(v){
+  try{
+    if(v === null || v === undefined) return "?";
+    if(typeof v === "number"){
+      if(!isFinite(v)) return "?";
+      return Math.trunc(v).toLocaleString();
+    }
+    const s = String(v).trim();
+    if(!s) return "?";
+    const n = Number(s);
+    if(!isFinite(n)) return "?";
+    return Math.trunc(n).toLocaleString();
+  }catch(e){
+    return "?";
+  }
+}
+
+/* --- MM_CANDIDATE_UI_SHIM_V2 ---
+   Candidate Fires API returns:
+     { cand, req, strict, buyable, bought, strict_n:null, counts:{...}, rows:[] }
+   This normalizer guarantees numeric defaults (0 stays 0).
+*/
+function mmNormCandidatePayload(j){
+  j = j || {};
+  const counts = (j.counts && typeof j.counts === "object") ? j.counts : {};
+  function num(v, dflt){
+    try{
+      if(v === null || v === undefined) return dflt;
+      if(typeof v === "number") return isFinite(v) ? v : dflt;
+      const n = Number(String(v).trim());
+      return isFinite(n) ? n : dflt;
+    }catch(e){ return dflt; }
+  }
+  const out = {};
+  out.cand   = num(j.cand,   num(counts.trigger_fires, 0));
+  out.req    = num(j.req,    num(counts.trigger_fires, 0));
+  out.strict = num(j.strict, 0);
+  out.buyable= num(j.buyable,0);
+  out.bought = num(j.bought, 0);
+  out.strict_n = (j.strict_n === null || j.strict_n === undefined) ? null : num(j.strict_n, 0);
+  return out;
+}
+/* --- /MM_CANDIDATE_UI_SHIM_V2 --- */
+
+function mmPct(n, total){
+  if(!total) return "0.0%";
+  const p = (n / total) * 100;
+  return (Math.round(p * 10) / 10).toFixed(1) + "%";
+}
+
+async function axLoad(){
+  const source = document.getElementById("ax-source").value;
+  const bucket = document.getElementById("ax-bucket").value;
+
+  // Show/hide funnel
+  document.getElementById("cand-wrap").style.display = (source === "candidate") ? "" : "none";
+
+  // Load funnel KPIs (candidate only)
+  if(source === "candidate"){
+    await axLoadCandidateFunnel(bucket);
+  }
+
+  // Load table
+  const endpoint = (source === "candidate") ? "/api/analytics/candidate_fires" : "/api/analytics/fires";
+  const url = endpoint + "?bucket=" + encodeURIComponent(bucket);
+
+  const tbody = document.getElementById("ax-rows");
+  tbody.innerHTML = `<tr><td colspan="3" style="padding:14px 10px;opacity:.65;">Loading…</td></tr>`;
+
+  let j = null;
+  try{
+    const r = await fetch(url, { cache: "no-store" });
+    j = await r.json();
+  }catch(e){
+    tbody.innerHTML = `<tr><td colspan="3" style="padding:14px 10px;opacity:.75;">Error loading.</td></tr>`;
+    document.getElementById("ax-meta").textContent = "";
+    return;
+  }
+
+  // Fires endpoint shape: { ok, bucket, items:[{indicator,n}], total }
+  // candidate_fires shape: { ok, bucket, counts:{signal_fires,...}, rows:[] } (table is not meaningful here)
+  if(source === "candidate"){
+    // Table not used for candidate right now; keep it empty/clean
+    tbody.innerHTML = `<tr><td colspan="3" style="padding:14px 10px;opacity:.65;">No data in this view.</td></tr>`;
+    document.getElementById("ax-meta").textContent = `Bucket: ${bucket}`;
+    return;
+  }
+
+  const items = Array.isArray(j.items) ? j.items : [];
+  const total = (typeof j.total === "number") ? j.total : items.reduce((a,x)=>a+(x.n||0),0);
+
+  if(!items.length){
+    tbody.innerHTML = `<tr><td colspan="3" style="padding:14px 10px;opacity:.65;">No data in this bucket.</td></tr>`;
+    document.getElementById("ax-meta").textContent = `Rows: 0 • Bucket: ${bucket}`;
+    return;
+  }
+
+  let html = "";
+  for(const it of items){
+    const ind = (it.indicator || "").toString();
+    const n = Number(it.n || 0);
+    html += `
+      <tr>
+        <td style="padding:10px 10px;border-bottom:1px solid rgba(255,255,255,.06);font-weight:800;">${ind}</td>
+        <td style="padding:10px 10px;border-bottom:1px solid rgba(255,255,255,.06);text-align:right;">${mmFmtInt(n)}</td>
+        <td style="padding:10px 10px;border-bottom:1px solid rgba(255,255,255,.06);text-align:right;opacity:.85;">${mmPct(n,total)}</td>
+      </tr>
+    `;
+  }
+  tbody.innerHTML = html;
+  document.getElementById("ax-meta").textContent = `Rows: ${mmFmtInt(total)} • Bucket: ${bucket}`;
+}
+
+async function axLoadCandidateFunnel(bucket){
+  // Reset to 0 immediately (so no lingering '?')
+  document.getElementById("fCand").textContent = "0";
+  document.getElementById("fReq").textContent = "0";
+  document.getElementById("fStrict").textContent = "0";
+  document.getElementById("fBuyable").textContent = "0";
+  document.getElementById("fBought").textContent = "0";
+  document.getElementById("funnelMeta").textContent = "";
+
+  let j = null;
+  try{
+    const r = await fetch("/api/analytics/candidate_fires?bucket=" + encodeURIComponent(bucket), { cache:"no-store" });
+    j = await r.json();
+  }catch(e){
+    document.getElementById("funnelMeta").textContent = `Bucket: ${bucket} • error`;
+    return;
+  }
+
+  const p = mmNormCandidatePayload(j);
+
+  document.getElementById("fCand").textContent   = mmFmtInt(p.cand);
+  document.getElementById("fReq").textContent    = mmFmtInt(p.req);
+  document.getElementById("fStrict").textContent = mmFmtInt(p.strict);
+  document.getElementById("fBuyable").textContent= mmFmtInt(p.buyable);
+  document.getElementById("fBought").textContent = mmFmtInt(p.bought);
+
+  const strictTxt = (p.strict_n === null) ? "Strict: off" : ("Strict≥" + mmFmtInt(p.strict_n));
+  document.getElementById("funnelMeta").textContent = `Bucket: ${bucket} • ${strictTxt}`;
+}
+
+function axWire(){
+  // default date label (nice + stable)
+  const now = new Date();
+  const m = String(now.getMonth()+1).padStart(2,"0");
+  const d = String(now.getDate()).padStart(2,"0");
+  const y = String(now.getFullYear());
+  document.getElementById("ax-date").textContent = `${m}/${d}/${y}`;
+
+  document.getElementById("ax-source").addEventListener("change", axLoad);
+  document.getElementById("ax-bucket").addEventListener("change", axLoad);
+
+  document.getElementById("ax-go").addEventListener("click", () => {
+    const v = (document.getElementById("ax-date-input").value || "").trim();
+    if(!v) return;
+    // Accept mm/dd/yyyy -> forward to /analytics?date=YYYY-MM-DD
+    const mm = v.split(/[\/\-\.]/)[0];
+    const dd = v.split(/[\/\-\.]/)[1];
+    const yy = v.split(/[\/\-\.]/)[2];
+    if(mm && dd && yy){
+      const ymd = `${yy}-${String(mm).padStart(2,"0")}-${String(dd).padStart(2,"0")}`;
+      window.location.href = "/analytics?date=" + encodeURIComponent(ymd);
+    }
+  });
+
+  axLoad();
+}
+
+document.addEventListener("DOMContentLoaded", axWire);
+</script>
+
+{% endblock %}

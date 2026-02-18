@@ -1,0 +1,64 @@
+$PY="C:\TradeAlerts\.venv\Scripts\python.exe"
+@'
+import datetime as dt
+from pathlib import Path
+import py_compile
+
+ROOT = Path(r"C:\TradeAlerts")
+P = ROOT / "sitecustomize.py"
+TAG = "MM_SITECUSTOMIZE_LOAD_DOTENV_V1"
+
+src = f'''# {TAG}
+# Auto-load C:\\TradeAlerts\\.env into os.environ for all Python runs from this folder.
+# Python imports "sitecustomize" automatically at startup if it's on sys.path.
+
+import os
+from pathlib import Path
+
+def _mm_load_dotenv(env_path: Path) -> None:
+    try:
+        txt = env_path.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return
+    for ln in txt.splitlines():
+        s = ln.strip()
+        if not s or s.startswith("#") or "=" not in s:
+            continue
+        k, v = s.split("=", 1)
+        k = k.strip()
+        v = v.strip().strip('"').strip("'")
+        if not k:
+            continue
+        if k not in os.environ:
+            os.environ[k] = v
+
+try:
+    _mm_load_dotenv(Path(__file__).resolve().parent / ".env")
+
+    # Map token aliases commonly used across the codebase
+    if os.getenv("OAUTH_TOKEN") and not os.getenv("ETRADE_OAUTH_TOKEN"):
+        os.environ["ETRADE_OAUTH_TOKEN"] = os.getenv("OAUTH_TOKEN","")
+    if os.getenv("OAUTH_TOKEN_SECRET") and not os.getenv("ETRADE_OAUTH_TOKEN_SECRET"):
+        os.environ["ETRADE_OAUTH_TOKEN_SECRET"] = os.getenv("OAUTH_TOKEN_SECRET","")
+    if os.getenv("OAUTH_TOKEN") and not os.getenv("ETRADE_ACCESS_TOKEN"):
+        os.environ["ETRADE_ACCESS_TOKEN"] = os.getenv("OAUTH_TOKEN","")
+    if os.getenv("OAUTH_TOKEN_SECRET") and not os.getenv("ETRADE_ACCESS_SECRET"):
+        os.environ["ETRADE_ACCESS_SECRET"] = os.getenv("OAUTH_TOKEN_SECRET","")
+except Exception:
+    pass
+'''
+
+if P.exists():
+    existing = P.read_text(encoding="utf-8", errors="ignore")
+    if TAG in existing:
+        print("OK: already present:", P)
+        raise SystemExit(0)
+    ts = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    bak = P.with_suffix(f".py.bak_{TAG}_{ts}")
+    bak.write_text(existing, encoding="utf-8")
+    print("Backup ->", bak)
+
+P.write_text(src, encoding="utf-8")
+py_compile.compile(str(P), doraise=True)
+print("WROTE OK:", P)
+'@ | & $PY

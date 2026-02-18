@@ -4789,6 +4789,284 @@ def api_analytics_daily():
     except Exception:
         pass
 
+
+    # --- MM_DAILY_SELLS_FORCE_FROM_TRADES_V2FIX ---
+    try:
+        _mm_resp = out
+        if isinstance(_mm_resp, dict):
+            _mm_resp["mm_daily_override_ran"] = "1"
+            _mm_resp["mm_daily_sells_source"] = "trades"
+    
+            _mm_date_et = ""
+            try:
+                _mm_date_et = (request.args.get("date") or request.args.get("date_et") or "").strip()
+            except Exception:
+                _mm_date_et = ""
+            if not _mm_date_et:
+                try:
+                    _mm_date_et = (_mm_resp.get("date_et") or "").strip()
+                except Exception:
+                    _mm_date_et = ""
+            if not _mm_date_et:
+                try:
+                    from zoneinfo import ZoneInfo
+                    import datetime as _dt
+                    _mm_date_et = _dt.datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+                except Exception:
+                    pass
+    
+            import sqlite3
+            _mm_db = globals().get("LIVE_DB") or globals().get("DB_PATH") or r"C:\TradeAlerts\live.db"
+    
+            def _mm_cols(con, table_name):
+                try:
+                    return [r[1] for r in con.execute("PRAGMA table_info(%s)" % table_name).fetchall()]
+                except Exception:
+                    return []
+    
+            def _mm_pick(cols, *names):
+                for n in names:
+                    if n in cols:
+                        return n
+                return ""
+    
+            _mm_sells = []
+            _mm_sell_rows = 0
+            with sqlite3.connect(_mm_db) as _c:
+                _c.row_factory = sqlite3.Row
+                _cols = _mm_cols(_c, "trades")
+                if _cols:
+                    col_action = _mm_pick(_cols, "action")
+                    col_ts_et  = _mm_pick(_cols, "ts_et", "time_et", "time")
+                    col_ts_utc = _mm_pick(_cols, "ts_utc", "time_utc")
+                    col_sym    = _mm_pick(_cols, "symbol", "sym")
+                    col_name   = _mm_pick(_cols, "name")
+                    col_qty    = _mm_pick(_cols, "qty", "quantity")
+                    col_price  = _mm_pick(_cols, "price", "fill_price")
+                    col_pl     = _mm_pick(_cols, "pl", "pnl", "gain")
+                    col_plpct  = _mm_pick(_cols, "pl_pct", "pnl_pct", "gain_pct")
+                    col_tid    = _mm_pick(_cols, "trade_id", "id")
+    
+                    if col_ts_et:
+                        where_date = ("%s LIKE ?" % col_ts_et)
+                        date_arg = _mm_date_et + "%"
+                    elif col_ts_utc:
+                        where_date = ("%s LIKE ?" % col_ts_utc)
+                        date_arg = _mm_date_et + "%"
+                    else:
+                        where_date = "1=1"
+                        date_arg = "%"
+    
+                    q = "SELECT * FROM trades WHERE " + where_date
+                    args = [date_arg]
+                    if col_action:
+                        q += " AND %s=?" % col_action
+                        args.append("SELL")
+                    q += " ORDER BY rowid ASC"
+                    rows = _c.execute(q, args).fetchall()
+                    _mm_sell_rows = len(rows)
+    
+                    buy_by_tid = {}
+                    if col_tid and col_action:
+                        qb = "SELECT * FROM trades WHERE " + where_date + " AND %s=?" % col_action
+                        rb = _c.execute(qb, [date_arg, "BUY"]).fetchall()
+                        for r in rb:
+                            tid = str(r.get(col_tid) or "").strip()
+                            if tid and tid not in buy_by_tid:
+                                buy_by_tid[tid] = r
+    
+                    for r in rows:
+                        sym = (r.get(col_sym) if col_sym else "") or ""
+                        name = (r.get(col_name) if col_name else "") or ""
+                        qty = (r.get(col_qty) if col_qty else 0) or 0
+                        close_px = (r.get(col_price) if col_price else None)
+                        tid = (str(r.get(col_tid)) if col_tid and r.get(col_tid) is not None else "").strip()
+    
+                        t_et = ""
+                        if col_ts_et and r.get(col_ts_et):
+                            t_et = str(r.get(col_ts_et))
+                        elif col_ts_utc and r.get(col_ts_utc):
+                            t_et = str(r.get(col_ts_utc))
+    
+                        open_px = None
+                        if tid and tid in buy_by_tid:
+                            br = buy_by_tid[tid]
+                            open_px = (br.get(col_price) if col_price else None)
+                            if not name:
+                                try:
+                                    name = (br.get(col_name) if col_name else "") or name
+                                except Exception:
+                                    pass
+    
+                        pnl = (r.get(col_pl) if col_pl else None)
+                        pnl_pct = (r.get(col_plpct) if col_plpct else None)
+                        if pnl is None and (open_px is not None) and (close_px is not None):
+                            try:
+                                pnl = (float(close_px) - float(open_px)) * float(qty)
+                            except Exception:
+                                pass
+                        if pnl_pct is None and (open_px is not None) and (close_px is not None):
+                            try:
+                                op = float(open_px or 0.0)
+                                if op != 0.0:
+                                    pnl_pct = (float(close_px) - float(open_px)) / op * 100.0
+                            except Exception:
+                                pass
+    
+                        _mm_sells.append({
+                            "time_et": t_et,
+                            "symbol": sym,
+                            "name": name,
+                            "qty": qty,
+                            "open": open_px,
+                            "close": close_px,
+                            "pnl": pnl,
+                            "pnl_pct": pnl_pct,
+                            "trade_id": (tid if tid else None),
+                            "source": "trades"
+                        })
+    
+            _mm_resp["sells"] = _mm_sells
+            try:
+                _mm_resp.setdefault("sell", {})
+                if isinstance(_mm_resp.get("sell"), dict):
+                    _mm_resp["sell"]["rows"] = len(_mm_sells)
+            except Exception:
+                pass
+            _mm_resp["mm_daily_sells_trades_rows"] = _mm_sell_rows
+    except Exception as _mm_e:
+        try:
+            if isinstance(out, dict):
+                out["mm_daily_override_ran"] = "0"
+                out["mm_daily_sells_source"] = "error"
+                out["mm_daily_override_err"] = str(_mm_e)
+        except Exception:
+            pass
+    # --- /MM_DAILY_SELLS_FORCE_FROM_TRADES_V2FIX ---
+
+    # --- MM_DAILY_SELLS_FORCE_FROM_TRADES_V2FIX_ALL ---
+    try:
+        _mm_resp = out
+        if isinstance(_mm_resp, dict):
+            _mm_resp["mm_daily_override_ran"] = "1"
+            _mm_resp["mm_daily_sells_source"] = "trades"
+            _mm_resp["mm_daily_override_patch"] = "FORCE_SELLS_TRADES_V2FIX_ALL_20260217_214229"
+    
+            _mm_date_et = ""
+            try:
+                _mm_date_et = (request.args.get("date") or request.args.get("date_et") or "").strip()
+            except Exception:
+                _mm_date_et = ""
+            if not _mm_date_et:
+                try:
+                    _mm_date_et = (_mm_resp.get("date_et") or "").strip()
+                except Exception:
+                    _mm_date_et = ""
+    
+            import sqlite3
+            _mm_db = globals().get("LIVE_DB") or globals().get("DB_PATH") or r"C:\TradeAlerts\live.db"
+    
+            def _mm_cols(con, table_name):
+                try:
+                    return [r[1] for r in con.execute("PRAGMA table_info(%s)" % table_name).fetchall()]
+                except Exception:
+                    return []
+    
+            def _mm_pick(cols, *names):
+                for n in names:
+                    if n in cols:
+                        return n
+                return ""
+    
+            _mm_sells = []
+            _mm_sell_rows = 0
+            with sqlite3.connect(_mm_db) as _c:
+                _c.row_factory = sqlite3.Row
+                _cols = _mm_cols(_c, "trades")
+                if _cols:
+                    col_action = _mm_pick(_cols, "action")
+                    col_ts_et  = _mm_pick(_cols, "ts_et", "time_et", "time")
+                    col_sym    = _mm_pick(_cols, "symbol", "sym")
+                    col_name   = _mm_pick(_cols, "name")
+                    col_qty    = _mm_pick(_cols, "qty", "quantity")
+                    col_price  = _mm_pick(_cols, "price", "fill_price")
+                    col_pl     = _mm_pick(_cols, "pl", "pnl", "gain")
+                    col_plpct  = _mm_pick(_cols, "pl_pct", "pnl_pct", "gain_pct")
+                    col_tid    = _mm_pick(_cols, "trade_id", "id")
+    
+                    if col_ts_et and _mm_date_et:
+                        where_date = ("%s LIKE ?" % col_ts_et)
+                        date_arg = _mm_date_et + "%"
+                    else:
+                        where_date = "1=1"
+                        date_arg = "%"
+    
+                    q = "SELECT * FROM trades WHERE " + where_date
+                    args = [date_arg]
+                    if col_action:
+                        q += " AND %s=?" % col_action
+                        args.append("SELL")
+                    q += " ORDER BY rowid ASC"
+                    rows = _c.execute(q, args).fetchall()
+                    _mm_sell_rows = len(rows)
+    
+                    buy_by_tid = {}
+                    if col_tid and col_action:
+                        qb = "SELECT * FROM trades WHERE " + where_date + " AND %s=?" % col_action
+                        rb = _c.execute(qb, [date_arg, "BUY"]).fetchall()
+                        for r in rb:
+                            tid = str(r.get(col_tid) or "").strip()
+                            if tid and tid not in buy_by_tid:
+                                buy_by_tid[tid] = r
+    
+                    for r in rows:
+                        sym = (r.get(col_sym) if col_sym else "") or ""
+                        name = (r.get(col_name) if col_name else "") or ""
+                        qty = (r.get(col_qty) if col_qty else 0) or 0
+                        close_px = (r.get(col_price) if col_price else None)
+                        tid = (str(r.get(col_tid)) if col_tid and r.get(col_tid) is not None else "").strip()
+                        t_et = str(r.get(col_ts_et)) if col_ts_et and r.get(col_ts_et) else ""
+                        open_px = None
+                        if tid and tid in buy_by_tid:
+                            br = buy_by_tid[tid]
+                            open_px = (br.get(col_price) if col_price else None)
+                            if not name:
+                                try: name = (br.get(col_name) if col_name else "") or name
+                                except Exception: pass
+                        pnl = (r.get(col_pl) if col_pl else None)
+                        pnl_pct = (r.get(col_plpct) if col_plpct else None)
+                        if pnl is None and (open_px is not None) and (close_px is not None):
+                            try: pnl = (float(close_px) - float(open_px)) * float(qty)
+                            except Exception: pass
+                        if pnl_pct is None and (open_px is not None) and (close_px is not None):
+                            try:
+                                op=float(open_px or 0.0)
+                                if op!=0.0: pnl_pct=(float(close_px)-float(open_px))/op*100.0
+                            except Exception: pass
+                        _mm_sells.append({
+                            "time_et": t_et,
+                            "symbol": sym,
+                            "name": name,
+                            "qty": qty,
+                            "open": open_px,
+                            "close": close_px,
+                            "pnl": pnl,
+                            "pnl_pct": pnl_pct,
+                            "trade_id": (tid if tid else None),
+                            "source": "trades"
+                        })
+            _mm_resp["sells"] = _mm_sells
+            _mm_resp["mm_daily_sells_trades_rows"] = _mm_sell_rows
+    except Exception as _mm_e:
+        try:
+            if isinstance(out, dict):
+                out["mm_daily_override_ran"] = "0"
+                out["mm_daily_sells_source"] = "error"
+                out["mm_daily_override_err"] = str(_mm_e)
+                out["mm_daily_override_patch"] = "FORCE_SELLS_TRADES_V2FIX_ALL_20260217_214229"
+        except Exception:
+            pass
+    # --- /MM_DAILY_SELLS_FORCE_FROM_TRADES_V2FIX_ALL ---
     return jsonify(out)
 
 

@@ -1,11 +1,14 @@
 {% extends "layout.html" %}
-{% block content %}
-
-<!-- ====== REGIME TAPE (Analytics pages only) ====== -->
+{% block analytics_tape %}
 <div id="mm-ax-tape-wrap" style="margin:10px 14px 14px 14px;">
   <div style="display:flex;align-items:flex-end;justify-content:space-between;margin:0 0 6px 2px;">
     <div style="font-size:12px;opacity:.75;">Regime tape (today)</div>
-    <div id="mm-ax-tape-meta" style="font-size:12px;opacity:.70;"></div>
+{% endblock %}
+
+{% block content %}
+
+<!-- ====== REGIME TAPE (Analytics pages only) ====== -->
+<div id="mm-ax-tape-meta" style="font-size:12px;opacity:.70;"></div>
   </div>
   <div style="position:relative;">
     <div id="mm-ax-ticks" style="position:absolute;left:0;top:-16px;right:0;height:14px;font-size:11px;opacity:.65;pointer-events:none;"></div>

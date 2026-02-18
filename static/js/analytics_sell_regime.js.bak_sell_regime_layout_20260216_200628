@@ -1,0 +1,191 @@
+/* analytics_sell_regime.js (final)
+   - safe fetch (handles non-JSON/500 HTML)
+   - never leaves "Loading ?" on screen
+*/
+(function(){
+  const errBox = document.getElementById('mm-sellreg-err');
+
+  function showErr(msg){
+    if(!errBox) return;
+    errBox.style.display = 'block';
+    errBox.textContent = msg || 'Unknown error';
+  }
+  function clearErr(){
+    if(!errBox) return;
+    errBox.style.display = 'none';
+    errBox.textContent = '';
+  }
+
+  async function fetchJsonSafe(url){
+    const r = await fetch(url, {cache:'no-store'});
+    const ct = (r.headers.get('content-type') || '').toLowerCase();
+    const txt = await r.text();
+    if(!r.ok){
+      throw new Error(`HTTP ${r.status}\n${txt.slice(0,2000)}`);
+    }
+    if(ct.includes('application/json')){
+      try { return JSON.parse(txt); }
+      catch(e){ throw new Error(`JSON parse failed\n${txt.slice(0,2000)}`); }
+    }
+    throw new Error(`Non-JSON response\n${txt.slice(0,2000)}`);
+  }
+
+  function escapeHtml(s){
+    return (s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+  }
+
+  function setLoading(id, on){
+    const el = document.getElementById(id);
+    if(el) el.style.display = on ? 'block' : 'none';
+  }
+
+  function getParam(name){
+    try { return (new URL(window.location.href)).searchParams.get(name) || ''; }
+    catch(e){ return ''; }
+  }
+  function setParam(name, value){
+    try{
+      const u = new URL(window.location.href);
+      if(value) u.searchParams.set(name, value);
+      else u.searchParams.delete(name);
+      window.history.replaceState({}, '', u.toString());
+    }catch(e){}
+  }
+  function normalizeBucket(b){
+    b = (b || 'today').toLowerCase();
+    if(b === 'tod') b = 'today';
+    if(b === '7') b = '7d';
+    if(b === '30') b = '30d';
+    return b;
+  }
+
+  function renderRegimeTable(el, rows){
+    if(!el) return;
+    if(!rows || !rows.length){
+      el.innerHTML = '<div class="text-secondary small">No data in this bucket.</div>';
+      return;
+    }
+
+    // normalize -> {regime, count, avg_conf}
+    const norm = rows.map(r=>{
+      if(Array.isArray(r)) return {regime:String(r[0]||''), count:Number(r[1]||0), avg_conf:Number(r[2]||0)};
+      return {
+        regime: String(r.regime || r.mode || r.key || r.name || ''),
+        count: Number(r.count ?? r.ct ?? r.n ?? 0),
+        avg_conf: Number(r.avg_conf ?? r.conf ?? r.avg ?? 0)
+      };
+    }).filter(x=>x.regime);
+
+    norm.sort((a,b)=> (b.count||0)-(a.count||0));
+
+    const trs = norm.map(x=>{
+      const conf = (x.avg_conf != null && !isNaN(x.avg_conf)) ? (Math.round(x.avg_conf)) : '';
+      return `<tr>
+        <td class="k">${escapeHtml(x.regime)}</td>
+        <td class="v">${escapeHtml(String(x.count))}</td>
+        <td class="s">${escapeHtml(conf ? (conf + "%") : "")}</td>
+      </tr>`;
+    }).join('');
+
+    el.innerHTML = `
+      <table class="mm-t">
+        <tbody>
+          <tr><td class="k" style="opacity:.65;">Regime</td><td class="v" style="opacity:.65;">Count</td><td class="s" style="opacity:.65;">Avg conf</td></tr>
+          ${trs}
+        </tbody>
+      </table>`;
+  }
+
+  function renderPairs(el, obj){
+    if(!el) return;
+    const pairs = [];
+    if(obj && typeof obj === 'object'){
+      if(Array.isArray(obj)){
+        for(const x of obj){
+          if(x && typeof x === 'object'){
+            const k = x.key ?? x.k ?? x.name ?? x.outcome ?? x.reason ?? '';
+            const v = x.value ?? x.v ?? x.count ?? x.ct ?? x.n ?? '';
+            if(k) pairs.push([String(k), v]);
+          }
+        }
+      }else{
+        for(const k of Object.keys(obj)) pairs.push([k, obj[k]]);
+      }
+    }
+    if(!pairs.length){
+      el.innerHTML = '<div class="text-secondary small">No data in this bucket.</div>';
+      return;
+    }
+    pairs.sort((a,b)=> (Number(b[1])||0) - (Number(a[1])||0));
+    el.innerHTML = `<table class="mm-t"><tbody>` + pairs.map(([k,v]) =>
+      `<tr><td class="k">${escapeHtml(k)}</td><td class="v">${escapeHtml(String(v))}</td></tr>`
+    ).join('') + `</tbody></table>`;
+  }
+
+  async function loadSellRegime(bucket){
+    clearErr();
+    setLoading('mm-r1-loading', true);
+    setLoading('mm-r2-loading', true);
+
+    const date = getParam('date');
+    const qs = new URLSearchParams();
+    if(bucket) qs.set('bucket', bucket);
+    if(date) qs.set('date', date);
+
+    // 1) Primary endpoint (should exist)
+    const url1 = '/api/analytics/sell_regime?' + qs.toString();
+
+    // 2) Optional outcomes endpoint (may exist; handle 404 cleanly)
+    const url2 = '/api/analytics/sell_regime_outcomes?' + qs.toString();
+
+    const box1 = document.getElementById('mm-r1-box');
+    const box2 = document.getElementById('mm-r2-box');
+
+    try{
+      const j1 = await fetchJsonSafe(url1);
+
+      // Accept shapes: {by_regime:[...]} OR {rows:[...]} OR {data:[...]}
+      const rows = (j1.by_regime || j1.rows || j1.data || j1.regimes || []);
+      renderRegimeTable(box1, rows);
+    }catch(e){
+      showErr("sell_regime failed:\n" + (e && e.message ? e.message : String(e)));
+      renderRegimeTable(box1, []);
+    }finally{
+      setLoading('mm-r1-loading', false);
+    }
+
+    // outcomes is optional; don't spam global error if it fails
+    try{
+      const j2 = await fetchJsonSafe(url2);
+      // Accept shapes: {by_regime:{TREND:{...}}} OR {outcomes:{...}} OR {rows:[...]}
+      const data = j2.by_regime || j2.outcomes || j2.rows || j2.data || j2;
+      renderPairs(box2, data);
+    }catch(e){
+      // Render a friendly message in the card (no "Loading ?")
+      if(box2){
+        box2.innerHTML = '<div class="text-secondary small">Outcomes endpoint not available (or returned non-JSON). That?s OK ? base regime breakdown is working.</div>';
+      }
+    }finally{
+      setLoading('mm-r2-loading', false);
+    }
+  }
+
+  const sel = document.getElementById('mm-sellreg-bucket');
+  const initial = normalizeBucket(getParam('bucket') || (sel ? sel.value : 'today'));
+  if(sel){
+    sel.value = initial;
+    sel.addEventListener('change', ()=>{
+      const b = normalizeBucket(sel.value);
+      setParam('bucket', b);
+      loadSellRegime(b);
+    });
+  }
+  loadSellRegime(initial);
+
+  window.addEventListener('error', (ev)=>{
+    try{ showErr('JS error: ' + (ev.message || ev.error || 'unknown')); }catch(e){}
+  });
+  window.addEventListener('unhandledrejection', (ev)=>{
+    try{ showErr('Promise rejection: ' + (ev.reason && ev.reason.message ? ev.reason.message : String(ev.reason))); }catch(e){}
+  });
+})();
