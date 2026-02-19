@@ -52,30 +52,8 @@
 </div>
 {% endblock %}
 
-
 {% block content %}
 
-
-<!-- MM_SELL_ANALYTICS_CLAMP_IN_CONTENT_V1_START -->
-<style>
-/* Sell Analytics: clamp + center (inside content block, guaranteed to render) */
-#mm-sell-analytics-wrap {
-  max-width: 1200px !important;
-  width: 100% !important;
-  margin: 0 auto !important;
-  padding: 10px 14px 30px 14px !important;
-  box-sizing: border-box !important;
-}
-#mm-sell-analytics-root {
-  max-width: 1200px !important;
-  width: 100% !important;
-  margin: 0 auto !important;
-  box-sizing: border-box !important;
-}
-/* Hide any in-body tape; the real tape should be in the top analytics_tape slot */
-#mm-sell-analytics-root #mm-ax-tape-wrap { display:none !important; }
-</style>
-<!-- MM_SELL_ANALYTICS_CLAMP_IN_CONTENT_V1_END -->
 
 <div id="mm-sell-analytics-wrap" class="mm-ax-container">
 <style><!-- MM_SELL_ANALYTICS_CLAMP_V1 -->

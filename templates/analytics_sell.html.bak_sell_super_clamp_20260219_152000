@@ -53,29 +53,27 @@
 {% endblock %}
 
 
-{% block content %}
-
-
-<!-- MM_SELL_ANALYTICS_CLAMP_IN_CONTENT_V1_START -->
+<!-- MM_SELL_ANALYTICS_CENTER_FORCE_V4_START -->
 <style>
-/* Sell Analytics: clamp + center (inside content block, guaranteed to render) */
+/* Sell Analytics: clamp true outer wrap + prevent duplicate/in-body tape strip */
 #mm-sell-analytics-wrap {
   max-width: 1200px !important;
-  width: 100% !important;
   margin: 0 auto !important;
   padding: 10px 14px 30px 14px !important;
-  box-sizing: border-box !important;
 }
-#mm-sell-analytics-root {
-  max-width: 1200px !important;
-  width: 100% !important;
-  margin: 0 auto !important;
-  box-sizing: border-box !important;
-}
-/* Hide any in-body tape; the real tape should be in the top analytics_tape slot */
-#mm-sell-analytics-root #mm-ax-tape-wrap { display:none !important; }
+#mm-sell-analytics-root { width: 100% !important; }
+
+/* If a tape got rendered inside the page body, hide it.
+   The real tape should render in the top analytics_tape slot (outside root). */
+#mm-sell-analytics-root #mm-ax-tape-wrap { display: none !important; }
+
+/* Card spacing polish */
+#mm-sell-analytics-root .mm-card { width: 100% !important; }
 </style>
-<!-- MM_SELL_ANALYTICS_CLAMP_IN_CONTENT_V1_END -->
+<!-- MM_SELL_ANALYTICS_CENTER_FORCE_V4_END -->
+
+{% block content %}
+
 
 <div id="mm-sell-analytics-wrap" class="mm-ax-container">
 <style><!-- MM_SELL_ANALYTICS_CLAMP_V1 -->

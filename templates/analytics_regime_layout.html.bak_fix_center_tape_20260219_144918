@@ -19,7 +19,9 @@
 </style>
 
 <div class="mm-ax-toprow">
-  <div class="mm-ax-title">    <div>
+  <div class="mm-ax-title">
+    <img src="/static/max_badge.png" alt="" style="width:22px;height:22px;opacity:.95;">
+    <div>
       <div class="mm-h">{{ mm_page_title or "Regime Analytics" }}</div>
       {% if mm_page_subtitle %}<div class="mm-sub">{{ mm_page_subtitle }}</div>{% endif %}
     </div>
