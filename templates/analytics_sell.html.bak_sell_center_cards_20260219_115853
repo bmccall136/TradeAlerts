@@ -1,27 +1,6 @@
 {% extends "analytics_layout.html" %}
 <!-- MM_SELL_ANALYTICS_CENTER_CARDS_V1_START -->
 <style>
-
-<!-- MM_SELL_ANALYTICS_CENTER_CLAMP_V2_START -->
-<style>
-  /* Keep Sell Analytics content centered like the other analytics pages */
-  #mm-sell-analytics-root{
-    max-width: 1180px;
-    margin: 0 auto;
-    padding: 0 16px 24px 16px;
-  }
-
-  /* If any section cards are using full-width wrappers, clamp them too */
-  #mm-sell-analytics-root .mm-ax-card,
-  #mm-sell-analytics-root .card{
-    width: 100%;
-    max-width: 1180px;
-    margin-left: auto;
-    margin-right: auto;
-  }
-</style>
-<!-- MM_SELL_ANALYTICS_CENTER_CLAMP_V2_END -->
-
 /* SELL ANALYTICS ? true centering */
 
 #mm-sell-analytics-root {
@@ -47,19 +26,10 @@
 <!-- MM_SELL_ANALYTICS_CENTER_CARDS_V1_END -->
 {% block analytics_tape %}
   {% include "_analytics_tape.html" %}
-
-<!-- MM_SELL_ANALYTICS_WRAP_END -->
-</div>
 {% endblock %}
 
 {% block content %}
 
-
-<div id="mm-sell-analytics-wrap" class="mm-ax-container">
-<style><!-- MM_SELL_ANALYTICS_CLAMP_V1 -->
-#mm-sell-analytics-wrap{max-width:1200px;}
-</style>
-<!-- MM_SELL_ANALYTICS_WRAP_START -->
 <div id="mm-sell-analytics-root">
 <!-- ====== REGIME TAPE (Analytics pages only) ====== -->
 <div id="mm-ax-tape-meta" style="font-size:12px;opacity:.70;"></div>

@@ -5,7 +5,7 @@
 {% set mm_page_title = "Buy Regime" %}
 {% set mm_page_subtitle = "By market regime (entries)" %}
 {% block analytics_body %}
-<div id="mm-buy-regime-root">
+<div id="mm-buy-regime-root" class="mm-ax-container">
 
   <div class="mm-ax-card">
     <div class="d-flex align-items-center justify-content-between mb-2">

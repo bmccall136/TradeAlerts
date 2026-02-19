@@ -1,46 +1,52 @@
-<!-- MM_REGIME_LAYOUT_STAMP_20260219_114106 -->
-﻿{% extends "layout.html" %}
-
-{% block analytics_tape %}
-  <div id="mm-ax-tape-wrap" style="margin:0 14px 10px 14px;">
-    <div id="mm-ax-tape-inner"></div>
-  </div>
-{% endblock %}
+{% extends "layout.html" %}
+{# MM_REGIME_LAYOUT_NAV_AND_CENTER_V2_START
+   Regime analytics frame: navbar + centered container.
+   Children override block analytics_body.
+#}
 
 {% block content %}
-<div class="container-fluid py-3">
+<style>
+/* MM_REGIME_LAYOUT_NAV_AND_CENTER_V2_STYLE_START */
+.mm-ax-container { max-width: 1200px; margin: 0 auto; padding: 10px 14px 30px 14px; }
+.mm-ax-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 14px; box-shadow: 0 8px 22px rgba(0,0,0,0.35); }
+.mm-ax-toprow { display:flex; align-items:center; justify-content:space-between; gap:10px; margin: 10px 14px 0 14px; }
+.mm-ax-nav { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.mm-ax-nav a { text-decoration:none; }
+.mm-ax-title { display:flex; align-items:center; gap:10px; }
+.mm-ax-title .mm-h { font-size: 18px; font-weight: 800; }
+.mm-ax-title .mm-sub { font-size: 12px; opacity: .75; margin-top: 2px; }
+/* MM_REGIME_LAYOUT_NAV_AND_CENTER_V2_STYLE_END */
+</style>
 
-  <div class="d-flex align-items-center justify-content-between mb-2">
-    <div class="d-flex align-items-center gap-2">
-      <img src="/static/Max.png" style="height:36px;width:36px;border-radius:8px;" alt="Max"/>
-      <div>
-        <div class="h4 mb-0">{% block analytics_title %}Regime Analytics{% endblock %}</div>
-        <div class="text-secondary small">{% block analytics_subtitle %}Today{% endblock %}</div>
-      </div>
-    </div>
-
-    <div class="d-flex align-items-center gap-3 flex-wrap">
-      <a class="btn btn-sm btn-outline-info" href="/analytics">Daily</a>
-      <a class="btn btn-sm btn-outline-info" href="/analytics/buy">Buy Analytics</a>
-      <a class="btn btn-sm btn-outline-info" href="/analytics/sell">Sell Analytics</a>
-      <a class="btn btn-sm btn-outline-info" href="/analytics/buy_regime">Buy Regime</a>
-      <a class="btn btn-sm btn-outline-info" href="/analytics/sell_regime">Sell Regime</a>
-
-      {# Regime pages have buckets instead of date controls #}
-      <div class="d-flex align-items-center gap-2">
-        <a class="btn btn-sm btn-outline-warning" href="?bucket=today">Today</a>
-        <a class="btn btn-sm btn-outline-warning" href="?bucket=7d">7D</a>
-        <a class="btn btn-sm btn-outline-warning" href="?bucket=30d">30D</a>
-        <a class="btn btn-sm btn-outline-warning" href="?bucket=all">All</a>
-      </div>
+<div class="mm-ax-toprow">
+  <div class="mm-ax-title">
+    <img src="/static/max_badge.png" alt="" style="width:22px;height:22px;opacity:.95;">
+    <div>
+      <div class="mm-h">{{ mm_page_title or "Regime Analytics" }}</div>
+      {% if mm_page_subtitle %}<div class="mm-sub">{{ mm_page_subtitle }}</div>{% endif %}
     </div>
   </div>
 
-  <div class="d-flex justify-content-center">
-    <div style="width:100%; max-width:1180px;">
-      {% block analytics_body %}{% endblock %}
-    </div>
-  </div>
+  <div class="mm-ax-nav">
+    <a class="btn btn-sm btn-outline-info" href="/analytics">Daily</a>
+    <a class="btn btn-sm btn-outline-info" href="/analytics/buy">Buy Analytics</a>
+    <a class="btn btn-sm btn-outline-info" href="/analytics/sell">Sell Analytics</a>
+    <a class="btn btn-sm btn-outline-info" href="/analytics/buy_regime">Buy Regime</a>
+    <a class="btn btn-sm btn-outline-info" href="/analytics/sell_regime">Sell Regime</a>
 
+    {# regime bucket buttons (uses ?bucket=today/7d/30d/all) #}
+    {% set b = (request.args.get('bucket') or 'today')|lower %}
+    <a class="btn btn-sm {% if b=='today' %}btn-warning{% else %}btn-outline-warning{% endif %}" href="?bucket=today">Today</a>
+    <a class="btn btn-sm {% if b=='7d' %}btn-warning{% else %}btn-outline-warning{% endif %}" href="?bucket=7d">7D</a>
+    <a class="btn btn-sm {% if b=='30d' %}btn-warning{% else %}btn-outline-warning{% endif %}" href="?bucket=30d">30D</a>
+    <a class="btn btn-sm {% if b=='all' %}btn-warning{% else %}btn-outline-warning{% endif %}" href="?bucket=all">All</a>
+  </div>
 </div>
+
+<div class="mm-ax-container">
+  {% block analytics_body %}{% endblock %}
+</div>
+
 {% endblock %}
+
+{# MM_REGIME_LAYOUT_NAV_AND_CENTER_V2_END #}
