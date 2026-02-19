@@ -73,53 +73,26 @@
 }
 </style>
 <!-- MM_SELL_ANALYTICS_NAV_ALIGN_FIX_V1_END -->
-<!-- MM_SELL_ANALYTICS_CLAMP_IN_CONTENT_V2_START -->
+<!-- MM_SELL_ANALYTICS_CLAMP_IN_CONTENT_V1_START -->
 <style>
-/*
-  Sell Analytics:
-  - DO NOT clamp the header/nav row (so buttons can sit far-right like other analytics pages)
-  - DO clamp the content cards (so body stays centered/clean)
-*/
-
-  /* Let the Sell Analytics wrapper span the available container width */
-  #mm-sell-analytics-wrap{
-    max-width: none !important;
-    width: 100% !important;
-    margin: 0 auto !important;
-    padding: 10px 14px 30px 14px !important;
-    box-sizing: border-box !important;
-  }
-  #mm-sell-analytics-root{
-    max-width: none !important;
-    width: 100% !important;
-    margin: 0 auto !important;
-    box-sizing: border-box !important;
-  }
-
-  /* Clamp cards/panels (the ?body?) */
-  #mm-sell-analytics-root .mm-card,
-  #mm-sell-analytics-root .mm-mini,
-  #mm-sell-analytics-root .mm-panel,
-  #mm-sell-analytics-root .mm-ax-card,
-  #mm-sell-analytics-root .card{
-    max-width: 1200px !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
-  }
-
-  /* Also clamp the bucket row + description text so it doesn't stretch */
-  #mm-sell-analytics-root .text-secondary.small,
-  #mm-sell-analytics-root .d-flex.align-items-center.gap-2.flex-wrap{
-    max-width: 1200px !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
-  }
-
-  /* Hide any in-body tape; the real tape should be in the top analytics_tape slot */
-  #mm-sell-analytics-root #mm-ax-tape-wrap{ display:none !important; }
+/* Sell Analytics: clamp + center (inside content block, guaranteed to render) */
+#mm-sell-analytics-wrap {
+  max-width: 1200px !important;
+  width: 100% !important;
+  margin: 0 auto !important;
+  padding: 10px 14px 30px 14px !important;
+  box-sizing: border-box !important;
+}
+#mm-sell-analytics-root {
+  max-width: 1200px !important;
+  width: 100% !important;
+  margin: 0 auto !important;
+  box-sizing: border-box !important;
+}
+/* Hide any in-body tape; the real tape should be in the top analytics_tape slot */
+#mm-sell-analytics-root #mm-ax-tape-wrap { display:none !important; }
 </style>
-<!-- MM_SELL_ANALYTICS_CLAMP_IN_CONTENT_V2_END -->
-
+<!-- MM_SELL_ANALYTICS_CLAMP_IN_CONTENT_V1_END -->
 <!-- MM_SELL_ANALYTICS_NAV_FAR_RIGHT_IN_CONTENT_V1_START -->
 <style>
   /* Sell Analytics: push the nav button group to the far right (match other analytics pages) */
@@ -219,32 +192,6 @@
   .ax-date-input:focus { outline: none; box-shadow: none; border-color: #8b94a3; }
 </style>
 
-<!-- MM_SELL_BODY_CENTERED_OUTERCARD_V2_START -->
-<style>
-  /* Sell Analytics: make the BODY a centered big card (like Buy Analytics vibe) */
-  #mm-sell-outer-card{
-    max-width: 1100px !important;
-    margin: 14px auto 28px auto !important;
-    padding: 14px 14px !important;
-    border-radius: 16px !important;
-    background: rgba(255,255,255,.04) !important;
-    border: 1px solid rgba(255,255,255,.10) !important;
-    box-shadow: 0 10px 30px rgba(0,0,0,.35) !important;
-  }
-
-  /* Inside the big body card, make each section card flush/clean */
-  #mm-sell-outer-card .mm-card{
-    margin: 12px 0 !important;
-  }
-
-  /* Keep minis readable */
-  #mm-sell-outer-card .mm-mini{
-    background: rgba(0,0,0,.22) !important;
-  }
-</style>
-<!-- MM_SELL_BODY_CENTERED_OUTERCARD_V2_END -->
-
-
 <div class="mm-ax-container" style="padding-top:0;">
   <div class="d-flex align-items-center justify-content-between mb-2">
     <div class="d-flex align-items-center justify-content-between gap-2">
@@ -288,8 +235,6 @@
 </div>
 
 <div id="mm-sell-err" class="mm-err"></div>
-
-<div id="mm-sell-outer-card">
 
 <div class="mm-card">
   <h3>Exit reason breakdown</h3>
