@@ -1,0 +1,45 @@
+{# Shared Analytics toolbar: Regime pages use bucket controls here #}
+<div class="mm-ax-toolbar" style="margin:16px 0 14px 0;">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <a class="mm-ax-btn" href="/analytics">Daily</a>
+      <a class="mm-ax-btn" href="/analytics/buy">Buy Analytics</a>
+      <a class="mm-ax-btn" href="/analytics/sell">Sell Analytics</a>
+      <a class="mm-ax-btn" href="/analytics/buy_regime">Buy Regime</a>
+      <a class="mm-ax-btn" href="/analytics/sell_regime">Sell Regime</a>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div style="opacity:.85;font-size:12px;">Bucket</div>
+      {% set b = (request.args.get('bucket') or bucket or 'today') %}
+      <a class="mm-ax-bucket {{ 'is-active' if b in ['today','TODAY'] else '' }}" href="{{ request.path }}?bucket=today">TODAY</a>
+      <a class="mm-ax-bucket {{ 'is-active' if b in ['7d','7D'] else '' }}" href="{{ request.path }}?bucket=7d">7D</a>
+      <a class="mm-ax-bucket {{ 'is-active' if b in ['30d','30D'] else '' }}" href="{{ request.path }}?bucket=30d">30D</a>
+      <a class="mm-ax-bucket {{ 'is-active' if b in ['all','ALL'] else '' }}" href="{{ request.path }}?bucket=all">ALL</a>
+    </div>
+  </div>
+</div>
+
+<style>
+  .mm-ax-btn{
+    display:inline-flex;align-items:center;gap:6px;
+    padding:7px 12px;border-radius:10px;
+    border:1px solid rgba(255,255,255,.18);
+    text-decoration:none;color:#eee;background:rgba(255,255,255,.04);
+  }
+  .mm-ax-btn:hover{ background:rgba(255,255,255,.08); }
+
+  .mm-ax-bucket{
+    display:inline-flex;align-items:center;justify-content:center;
+    min-width:54px;padding:7px 10px;border-radius:10px;
+    border:1px solid rgba(255,215,0,.45);
+    text-decoration:none;color:#ffd54a;background:rgba(255,215,0,.07);
+    font-weight:700; letter-spacing:.2px;
+  }
+  .mm-ax-bucket:hover{ background:rgba(255,215,0,.12); }
+  .mm-ax-bucket.is-active{
+    background:rgba(255,215,0,.20);
+    border-color:rgba(255,215,0,.80);
+    box-shadow:0 0 0 1px rgba(255,215,0,.35) inset;
+  }
+</style>

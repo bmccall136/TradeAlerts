@@ -1,0 +1,298 @@
+{# templates/analytics_sell.html #}
+{% extends "layout.html" %}
+{% block content %}
+
+<!-- MM_SELL_ANALYTICS_LAYOUT_REWRITE_V1 -->
+<style>
+  /* Full width tape + full width analytics navbar row */
+  .mm-ax-tape-top{
+    margin: 0 14px 10px 14px;
+  }
+
+  /* Centered content area (cards live here) */
+  .mm-ax-narrow{
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 14px 24px 14px;
+  }
+
+  /* Navbar row that spans page */
+  .mm-ax-navrow{
+    margin: 0 14px 10px 14px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:14px;
+  }
+  .mm-ax-title{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    min-width: 260px;
+  }
+  .mm-ax-title img{
+    width:34px;height:34px;border-radius:50%;
+    border:1px solid rgba(255,215,0,.35);
+  }
+  .mm-ax-title .h1{
+    font-size:34px;
+    font-weight:800;
+    line-height:1.05;
+    margin:0;
+  }
+  .mm-ax-title .sub{
+    opacity:.70;
+    margin-top:2px;
+  }
+
+  /* Make date input visible on dark background */
+  .ax-date-input{
+    background: rgba(0,0,0,.35) !important;
+    color: rgba(255,255,255,.92) !important;
+    border: 1px solid rgba(255,215,0,.45) !important;
+    border-radius: 8px !important;
+    padding: 6px 10px !important;
+    color-scheme: dark;
+  }
+  .ax-date-input::-webkit-calendar-picker-indicator{
+    filter: invert(1);
+    opacity: .85;
+    cursor: pointer;
+  }
+
+  /* Card spacing like Buy Analytics */
+  .mm-card{
+    width:100%;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,.10);
+    background: rgba(255,255,255,.03);
+    box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    padding: 14px;
+    margin: 0 0 14px 0;
+  }
+  .mm-card h3{
+    margin: 0 0 6px 0;
+    font-size: 18px;
+    font-weight: 800;
+  }
+</style>
+
+<!-- Regime tape must be first thing on page -->
+<!-- MM_ANALYTICS_REGIME_TAPE_V1 -->
+<div class="mm-ax-tape-top">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;margin:0 0 6px 2px;">
+    <div style="font-size:12px;opacity:.75;">Regime tape (today)</div>
+    <div id="mm-ax-tape-meta" style="font-size:12px;opacity:.70;"></div>
+  </div>
+
+  <div style="position:relative;">
+    <div id="mm-ax-ticks" style="position:absolute;left:0;top:-16px;right:0;height:14px;font-size:11px;opacity:.65;pointer-events:none;"></div>
+    <div id="mm-ax-tape"
+         style="height:14px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.10);
+                background:rgba(255,255,255,.04);">
+    </div>
+  </div>
+</div>
+<!-- /MM_ANALYTICS_REGIME_TAPE_V1 -->
+
+<!-- Full-width analytics navbar row with title INSIDE it -->
+<div class="mm-ax-navrow">
+  <div class="mm-ax-title">
+    <img src="/static/Max.png" alt="Max" />
+    <div>
+      <div class="h1">Sell Analytics</div>
+      <div class="sub">Today</div>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
+    <a class="ax-btn ax-nav" href="/analytics">Daily</a>
+    <a class="ax-btn ax-nav" href="/analytics/buy">Buy Analytics</a>
+    <a class="ax-btn ax-nav ax-active" href="/analytics/sell">Sell Analytics</a>
+    <a class="ax-btn ax-nav" href="/analytics/buy_regime">Buy Regime</a>
+    <a class="ax-btn ax-nav" href="/analytics/sell_regime">Sell Regime</a>
+
+    <!-- Yesterday is intentionally removed -->
+
+    <input id="ax-datepick" class="ax-date-input" type="date" />
+    <button id="ax-go" class="ax-btn ax-go">Go</button>
+    <a class="ax-btn ax-live" href="/analytics/sell">Live</a>
+  </div>
+</div>
+
+<div class="mm-ax-narrow">
+
+  <div class="mm-card">
+    <div style="opacity:.70;">
+      This page focuses on exit reasons, execution outcomes, and time-in-position. (Counts stay off the SELL Settings page.)
+    </div>
+  </div>
+
+  <div class="mm-card">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;">
+      <div style="min-width:240px;">
+        <div style="font-weight:800;margin-bottom:6px;">Bucket</div>
+        <select id="ax-bucket" class="mm-input" style="width:100%;">
+          <option value="today">TODAY</option>
+          <option value="7d" selected>7D</option>
+          <option value="30d">30D</option>
+          <option value="all">ALL</option>
+        </select>
+      </div>
+      <div id="ax-meta" style="opacity:.75;font-size:12px;text-align:right;"></div>
+    </div>
+  </div>
+
+  <div class="mm-card">
+    <h3>Exit reason breakdown</h3>
+    <div style="opacity:.70;margin-bottom:10px;">
+      Reason counts come from <span style="color:#ff4fd8;">sell_events</span> where <span style="color:#ff4fd8;">event=FILLED</span>.
+    </div>
+    <div id="ax-reasons"></div>
+  </div>
+
+  <div class="mm-card">
+    <h3>Execution outcomes</h3>
+    <div style="opacity:.70;margin-bottom:10px;">
+      Outcomes come from all <span style="color:#ff4fd8;">sell_events</span> rows in the bucket.
+    </div>
+    <div id="ax-outcomes"></div>
+  </div>
+
+  <div class="mm-card">
+    <h3>Hold-time buckets</h3>
+    <div style="opacity:.70;margin-bottom:10px;">
+      Hold time is computed from open/close timestamps when available. Missing data shows as empty bucket.
+    </div>
+    <div id="ax-hold"></div>
+  </div>
+
+  <div id="ax-error" class="mm-card" style="display:none;border:1px solid rgba(255,0,0,.25);background:rgba(255,0,0,.08);">
+    <div style="font-weight:800;margin-bottom:6px;">Sell analytics failed</div>
+    <pre id="ax-error-pre" style="white-space:pre-wrap;margin:0;opacity:.9;"></pre>
+  </div>
+
+</div>
+
+
+<script>
+/* MM_SELL_ANALYTICS_JS_V1 */
+(function(){
+  function $(id){ return document.getElementById(id); }
+  function esc(s){
+    return String(s ?? "").replace(/[&<>"']/g, (c)=>({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[c]));
+  }
+  async function fetchJson(url){
+    const r = await fetch(url, { cache:"no-store" });
+    const txt = await r.text();
+    if(!r.ok){
+      const e = new Error("HTTP " + r.status);
+      e.status = r.status;
+      e.body = txt;
+      throw e;
+    }
+    try { return JSON.parse(txt); }
+    catch(e){
+      const x = new Error("Non-JSON response");
+      x.body = txt;
+      throw x;
+    }
+  }
+  function showErr(title, body){
+    const wrap = $("mm-sell-error");
+    const pre  = $("mm-sell-error-pre");
+    if(!wrap || !pre) return;
+    wrap.style.display = "block";
+    pre.textContent = (title ? String(title) : "Error") + "\n\n" + (body ? String(body) : "");
+  }
+  function clearErr(){
+    const wrap = $("mm-sell-error");
+    if(wrap) wrap.style.display = "none";
+  }
+
+  function renderKVList(elId, rows, keyName, valName){
+    const el = $(elId);
+    if(!el) return;
+    if(!rows || !rows.length){
+      el.innerHTML = '<div style="opacity:.65;">No data in this bucket.</div>';
+      return;
+    }
+    const html = rows.map(r=>{
+      const k = r[keyName] ?? r.event ?? r.reason ?? r.bucket ?? "(none)";
+      const v = r[valName] ?? r.count ?? r.ct ?? r.n ?? "";
+      return `
+        <div class="mm-card" style="padding:10px 12px; margin: 0 0 10px 0;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+            <div style="font-weight:700;">${esc(k)}</div>
+            <div style="font-weight:900;">${esc(v)}</div>
+          </div>
+        </div>
+      `;
+    }).join("");
+    el.innerHTML = html;
+  }
+
+  async function load(){
+    clearErr();
+    const bucket = ($("mm-sell-bucket") && $("mm-sell-bucket").value) ? $("mm-sell-bucket").value : "today";
+    const meta = $("mm-sell-meta");
+    if(meta) meta.textContent = "Loading…";
+
+    try{
+      const j = await fetchJson(`/api/analytics/sell?bucket=${encodeURIComponent(bucket)}`);
+
+      if(meta){
+        const since = j && j.since_ts_utc ? ("since_ts_utc=" + j.since_ts_utc) : "";
+        meta.textContent = `${bucket.toUpperCase()}${since ? " • " + since : ""}`;
+      }
+
+      const reasons = j.reasons || j.reason_breakdown || [];
+      renderKVList("mm-sell-reasons", reasons, "reason", "ct");
+
+      const outcomes = j.outcomes || [];
+      renderKVList("mm-sell-outcomes", outcomes, "event", "ct");
+
+      const hold = j.hold_buckets || j.hold_time_buckets || [];
+      renderKVList("mm-sell-hold", hold, "bucket", "count");
+
+    }catch(e){
+      const body = e && e.body ? e.body : (e && e.stack ? e.stack : String(e));
+      showErr("Sell Analytics failed: " + (e.status ? ("HTTP " + e.status) : ""), body);
+      if(meta) meta.textContent = "";
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", function(){
+    const b = $("mm-sell-bucket");
+    if(b) b.addEventListener("change", load);
+    load();
+  });
+})();
+</script>
+
+
+<script>
+/* MM_AX_REMOVE_YESTERDAY_V1 */
+(function(){
+  function killYesterday(){
+    try{
+      // remove any toolbar button whose visible text is "Yesterday"
+      document.querySelectorAll("a,button").forEach(function(el){
+        var t = (el.textContent || "").trim();
+        if(t === "Yesterday"){
+          el.remove();
+        }
+      });
+    }catch(e){}
+  }
+  document.addEventListener("DOMContentLoaded", killYesterday);
+})();
+</script>
+
+
+{% endblock %}
+
+
+{% endblock %}

@@ -1,0 +1,97 @@
+<!-- MM_AX_BUCKETS_STYLE_V1 -->
+<style>
+  .mm-ax-buckets{ display:flex; gap:10px; align-items:center; margin-left:14px; }
+  .mm-ax-bucket-btn{
+    display:inline-flex; align-items:center; justify-content:center;
+    padding:7px 12px;
+    border:1px solid rgba(80, 220, 255, .75);
+    border-radius:6px;
+    color:rgba(140, 240, 255, .95);
+    text-decoration:none;
+    font-weight:600;
+    font-size:14px;
+    line-height:1;
+    background:rgba(0,0,0,.15);
+  }
+  .mm-ax-bucket-btn:hover{
+    border-color: rgba(120, 235, 255, .95);
+    color: rgba(190, 255, 255, 1);
+    background: rgba(80, 220, 255, .08);
+  }
+  .mm-ax-bucket-btn.active{
+    border-color: rgba(245, 196, 0, .95);
+    color: rgba(245, 196, 0, 1);
+    background: rgba(245, 196, 0, .08);
+  }
+</style>
+{% extends "layout.html" %}
+{% block content %}
+
+<div id="mm-ax-tape-wrap" style="margin:10px 14px 14px 14px;">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;margin:0 0 6px 2px;">
+    <div style="font-size:12px;opacity:.75;">Regime tape (today)</div>
+    
+<div id="mm-ax-tape-meta" style="font-size:12px;opacity:.70;"></div>
+  </div>
+  <div style="position:relative;">
+    <div id="mm-ax-ticks" style="position:absolute;left:0;top:-16px;right:0;height:14px;font-size:11px;opacity:.65;pointer-events:none;"></div>
+    <div id="mm-ax-tape"
+         style="height:14px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.10);
+                background:rgba(255,255,255,.04);">
+    </div>
+  </div>
+</div>
+
+</div>
+
+<style>
+  .mm-ax-tab{
+    display:inline-flex;align-items:center;justify-content:center;
+    padding:8px 12px;border-radius:8px;text-decoration:none;
+    border:1px solid rgba(0,255,255,.45);
+    color:#bff; background: rgba(0,0,0,.25);
+    font-weight:600; font-size:14px;
+  }
+  .mm-ax-tab.active{ border-color: rgba(255,215,0,.85); color:#ffd700; }
+  .mm-card{
+    margin:10px 14px;
+    padding:14px 14px;
+    border-radius:14px;
+    background: rgba(255,255,255,.04);
+    border:1px solid rgba(255,255,255,.08);
+  }
+</style>
+
+<div class="mm-card">
+  <div style="font-size:30px;font-weight:800;">Sell Regime</div>
+  <div style="opacity:.7;margin-top:6px;">(Page content unchanged ? this just normalizes header + tape placement.)</div>
+</div>
+
+{% endblock %}
+
+
+<!-- MM_AX_BUCKETS_HILITE_V1 -->
+<script>
+(function(){
+  try{
+    const p = new URLSearchParams(location.search);
+    const bucket = (p.get("bucket") || "today").toLowerCase();
+
+    document.querySelectorAll(".mm-ax-bucket-btn").forEach(a => {
+      const b = (a.getAttribute("data-bucket") || "").toLowerCase();
+      if(b === bucket) a.classList.add("active");
+
+      // preserve any other query params when switching buckets
+      a.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        const url = new URL(location.href);
+        url.searchParams.set("bucket", b);
+        // strip daily-only params if present
+        url.searchParams.delete("date");
+        location.href = url.toString();
+      });
+    });
+  }catch(e){}
+})();
+</script>
+

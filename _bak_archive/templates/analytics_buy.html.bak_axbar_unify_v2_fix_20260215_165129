@@ -1,0 +1,398 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<!-- MM_ANALYTICS_REGIME_TAPE_V1 -->
+<div id="mm-ax-tape-wrap" style="margin:10px 14px 18px 14px;">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;margin:0 0 6px 2px;">
+    <div style="font-size:12px;opacity:.75;">Regime tape (today)</div>
+    <div id="mm-ax-tape-meta" style="font-size:12px;opacity:.70;"></div>
+    <div id="mm-ax-tape-debug" style="margin-top:4px;font-size:12px;opacity:.92;color:#ffcc00;"></div>
+  </div>
+
+  <div style="position:relative;">
+    <div id="mm-ax-ticks" style="position:absolute;left:0;top:-16px;right:0;height:14px;font-size:11px;opacity:.65;pointer-events:none;"></div>
+    <div id="mm-ax-tape"
+         style="height:14px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.10);
+                background:rgba(255,255,255,.04);">
+    </div>
+    <div id="mm-ax-ticklines" style="position:absolute;left:0;top:0;right:0;bottom:0;pointer-events:none;"></div>
+  </div>
+</div>
+
+<script>
+/* MM_ANALYTICS_TAPE_SCRIPT_CLEAN_V1 */
+(function(){
+  const el = document.getElementById("mm-ax-tape");
+  const ticksEl = document.getElementById("mm-ax-ticks");
+  const linesEl = document.getElementById("mm-ax-ticklines");
+  const metaEl = document.getElementById("mm-ax-tape-meta");
+  const dbgEl  = document.getElementById("mm-ax-tape-debug");
+  if (!el || !ticksEl || !linesEl) return;
+
+  function dbg(msg){
+    try{
+      if(!dbgEl) return;
+      const u = new URL(window.location.href);
+      const on = (u.searchParams.get("tape_debug") || "").trim() === "1";
+      dbgEl.textContent = on ? msg : "";
+    }catch(e){}
+  }
+
+  function colorFor(reg){
+    reg = (reg||"").toUpperCase();
+    if (reg === "TREND") return "rgba(0, 200, 120, .95)";
+    if (reg === "CHOP")  return "rgba(240, 200, 0, .95)";
+    if (reg === "DEAD")  return "rgba(220, 60, 60, .95)";
+    return "rgba(160,160,160,.35)";
+  }
+
+  function buildBins(openTs, closeTs){
+    const bins = [];
+    const start = openTs - (openTs % 300);
+    const end   = closeTs - (closeTs % 300);
+    for (let t = start; t <= end; t += 300) bins.push(t);
+    return bins;
+  }
+
+  function carryForward(points, bins){
+    const map = new Map();
+    (points||[]).forEach(p => {
+      const t = (p.ts_utc||0);
+      const bt = t - (t % 300);
+      map.set(bt, { regime: p.regime, conf: p.conf });
+    });
+
+    let last = null;
+    const segs = [];
+    for (const b of bins){
+      if (map.has(b)) last = map.get(b);
+      segs.push({ ts:b, regime: last?.regime || "UNKNOWN", conf: (last?.conf ?? null) });
+    }
+    return segs;
+  }
+
+  function render(segs, openTs, closeTs){
+    el.innerHTML = "";
+    ticksEl.innerHTML = "";
+    linesEl.innerHTML = "";
+    if (metaEl) metaEl.textContent = "";
+    if (!segs || !segs.length){ dbg("no segs"); return; }
+
+    const nowTs = Math.floor(Date.now()/1000);
+    const paintUntil = Math.max(openTs, Math.min(closeTs, nowTs));
+
+    let n = 0;
+    for (let i=0; i<segs.length; i++){
+      if (segs[i].ts <= paintUntil) n = i+1;
+      else break;
+    }
+    if (n === 0) n = 1;
+
+    const w = 100 / segs.length;
+    let html = "";
+    for (let i=0; i<n; i++){
+      const s = segs[i];
+      html += `<div style="float:left;height:100%;width:${w}%;background:${colorFor(s.regime)}"></div>`;
+    }
+    el.innerHTML = html + '<div style="clear:both"></div>';
+
+    const mk = [
+      { ts: openTs,               label:"9:30"  },
+      { ts: openTs + 60*60,       label:"10:30" },
+      { ts: openTs + 150*60,      label:"12"    },
+      { ts: openTs + 270*60,      label:"2"     },
+      { ts: closeTs,              label:"4"     },
+    ];
+
+    let tHtml = "";
+    let lHtml = "";
+    for (const t of mk){
+      if (t.ts < openTs || t.ts > closeTs) continue;
+      const pct = ((t.ts - openTs) / (closeTs - openTs)) * 100;
+      tHtml += `<div style="position:absolute;left:calc(${pct}% - 14px);top:0;width:28px;text-align:center;">${t.label}</div>`;
+      lHtml += `<div style="position:absolute;left:${pct}%;top:0;bottom:0;width:1px;background:rgba(255,255,255,.10)"></div>`;
+    }
+    ticksEl.innerHTML = tHtml;
+    linesEl.innerHTML = lHtml;
+
+    const prog = Math.max(0, Math.min(1, (paintUntil - openTs) / (closeTs - openTs)));
+    if (metaEl) metaEl.textContent = `progress: ${(prog*100).toFixed(0)}%`;
+  }
+
+  async function tick(){
+    try{
+      const res = await (function(){
+        const u0 = new URL(window.location.href);
+        const d0 = (u0.searchParams.get("date") || "").trim();
+        const api = d0 ? ("/api/market_regime_timeline?date=" + encodeURIComponent(d0))
+                       : "/api/market_regime_timeline?bucket=today";
+        return fetch(api, { cache:"no-store" });
+      })();
+      if (!res.ok){ dbg("api not ok"); return; }
+      const j = await res.json();
+      const pts = (j.points && j.points.length) ? j.points : (j.buckets || []);
+      const win = j.window || {};
+      const since = win.since_ts_utc || 0;
+      if (!since){ dbg("no window.since_ts_utc"); return; }
+
+      const openTs  = since + (9*3600) + (30*60);
+      const closeTs = since + (16*3600);
+
+      const bins = buildBins(openTs, closeTs);
+      const segs = carryForward(pts, bins);
+
+      dbg(`pts=${pts.length} bins=${bins.length} segs=${segs.length} open=${openTs} close=${closeTs}`);
+      render(segs, openTs, closeTs);
+    }catch(e){
+      dbg("tick err: " + (e && e.message ? e.message : String(e)));
+    }
+  }
+
+  tick();
+  setInterval(tick, 60*1000);
+})();
+</script>
+
+{% from "_analytics_toolbar.html" import mmAnalyticsToolbar %}
+
+{% set controls_html %}
+  <div class="mm-controls">
+    <span class="mm-muted">Source</span>
+    <select id="sourceSel" class="mm-select">
+      <option value="pregate" selected>Pre-gate Fires</option>
+      <option value="candidate">Candidate Fires</option>
+    </select>
+    <span class="mm-muted">Bucket</span>
+    <select id="bucketSel" class="mm-select">
+      <option value="today">TODAY</option>
+      <option value="7d" selected>7D</option>
+      <option value="30d">30D</option>
+      <option value="all">ALL</option>
+    </select>
+    <button id="refreshBtn">Refresh</button>
+  </div>
+{% endset %}
+
+<style>
+  /* --- Buy Analytics: make Source/Bucket selects look like true dropdowns --- */
+  .mm-select {
+    -webkit-appearance: menulist;
+    -moz-appearance: menulist;
+    appearance: menulist;
+    background: #0f1118;
+    border: 1px solid #222531;
+    color: #eaeaea;
+    border-radius: 10px;
+    padding: 8px 12px;
+    min-width: 190px;
+    line-height: 1.1;
+  }
+  .mm-select:focus { outline: none; border-color: #f0d000; box-shadow: 0 0 0 2px rgba(240,208,0,.15); }
+
+  .mm-card { background:#0f1118; border:1px solid #222531; border-radius:10px; }
+  .mm-muted { opacity:.82; }
+  .mm-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .mm-title { font-size:22px; font-weight:800; margin:18px 0 10px 0; }
+  .mm-sub { margin:0 0 12px 0; opacity:.9; }
+  .mm-controls { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .mm-table { width:100%; border-collapse:collapse; }
+  .mm-table th, .mm-table td { padding:10px 10px; border-bottom:1px solid #222531; }
+  .mm-table th { text-align:left; opacity:.9; font-weight:800; }
+  .mm-pill { display:inline-block; padding:2px 8px; border:1px solid #262a38; border-radius:999px; background:#0b0d14; }
+  .mm-note { font-size:12px; opacity:.82; margin-top:8px; }
+  select, button {
+    background:#0b0d14; color:#e9edf6;
+    border:1px solid #262a38; border-radius:8px;
+    padding:6px 10px;
+  }
+  button { cursor:pointer; }
+  button.primary { background:#f5d400; color:#121212; border-color:#f5d400; font-weight:800; }
+</style>
+
+<div id="settings-page" class="container-fluid" style="max-width:1100px;margin-left:auto;margin-right:auto;">
+
+  {{ mmAnalyticsToolbar("Buy Analytics", "Fires are pre-gate and count even if later rejected by required/strict.", controls_html) }}
+
+  <div class="card mm-card">
+    <div class="card-body">
+
+      <div id="funnelCard" class="mm-card" style="margin: 14px 0 14px 0; padding: 14px 16px; display:none;">
+        <div class="mm-row" style="margin-bottom:10px;">
+          <div>
+            <div style="font-size:18px; font-weight:700;">Candidate Funnel</div>
+            <div class="mm-muted" style="margin-top:2px;">
+              Candidates are from triggers_*.csv (post-required gate). Strict-pass uses strict_buy_signals.
+            </div>
+          </div>
+          <div class="mm-muted" id="funnelMeta" style="text-align:right;"></div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: repeat(5, minmax(160px, 1fr)); gap:10px;">
+          <div class="mm-card" style="padding:12px 12px;">
+            <div class="mm-muted">Candidates</div>
+            <div id="fCand" style="font-size:22px; font-weight:800; margin-top:4px;">?</div>
+          </div>
+          <div class="mm-card" style="padding:12px 12px;">
+            <div class="mm-muted">Required-pass</div>
+            <div id="fReq" style="font-size:22px; font-weight:800; margin-top:4px;">?</div>
+          </div>
+          <div class="mm-card" style="padding:12px 12px;">
+            <div class="mm-muted">Strict-pass</div>
+            <div id="fStrict" style="font-size:22px; font-weight:800; margin-top:4px;">?</div>
+          </div>
+          <div class="mm-card" style="padding:12px 12px;">
+            <div class="mm-muted">Buyable</div>
+            <div id="fBuyable" style="font-size:22px; font-weight:800; margin-top:4px;">?</div>
+          </div>
+          <div class="mm-card" style="padding:12px 12px;">
+            <div class="mm-muted">Bought</div>
+            <div id="fBought" style="font-size:22px; font-weight:800; margin-top:4px;">?</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mm-row" style="margin-bottom:10px;">
+        <div>
+          <div style="font-size:18px;font-weight:800;">Signal Fires</div>
+          <div class="mm-muted" id="metaText"></div>
+        </div>
+      </div>
+
+      <div style="overflow:auto;">
+        <table class="mm-table">
+          <thead>
+            <tr>
+              <th style="min-width:220px;">Indicator</th>
+              <th style="min-width:120px;">Fires</th>
+              <th style="min-width:140px;">Share</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+
+      <div class="mm-note">
+        Next upgrades (when you want): candidate-only fires, candidate→buy funnel, combos, hour-of-day heatmap.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  async function mmFetchJson(url) {
+    const res = await fetch(url, { cache: "no-store" });
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`HTTP ${res.status} ${res.statusText}\n${txt.slice(0, 1200)}`);
+    }
+    if (!ct.includes("application/json")) {
+      const txt = await res.text();
+      throw new Error(`Expected JSON but got: ${ct}\n${txt.slice(0, 1200)}`);
+    }
+    return await res.json();
+  }
+
+function mmNormBucket(b) {
+  if (!b) return "today";
+  const s = String(b).trim();
+  const u = s.toUpperCase();
+  if (u === "TODAY") return "today";
+  if (u === "7D") return "7d";
+  if (u === "30D") return "30d";
+  if (u === "ALL") return "all";
+  return s.toLowerCase();
+}
+
+(function(){
+  const $ = (id)=>document.getElementById(id);
+
+  function pct(n, d){
+    if (!d) return "0%";
+    return (100 * (n/d)).toFixed(1) + "%";
+  }
+
+  function esc(s){
+    return String(s ?? "").replace(/[&<>"]/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"
+    }[c]));
+  }
+
+  async function loadFunnel(bucket) {
+    try {
+      const r = await fetch(`/api/analytics/buy_funnel?bucket=${encodeURIComponent(bucket)}`, {cache:'no-store'});
+      const j = await r.json();
+      if (!j || !j.ok) return;
+      const fmtInt = (n) => (n==null ? '?' : Number(n).toLocaleString());
+      document.getElementById('fCand').textContent    = fmtInt(j.candidates);
+      document.getElementById('fReq').textContent     = fmtInt(j.required_pass);
+      document.getElementById('fStrict').textContent  = fmtInt(j.strict_pass);
+      document.getElementById('fBuyable').textContent = fmtInt(j.buyable);
+      document.getElementById('fBought').textContent  = fmtInt(j.bought);
+      document.getElementById('funnelMeta').textContent = `Bucket: ${j.bucket} • Strict>=${j.strict_n}`;
+    } catch(e) {}
+  }
+
+  function syncFunnelVisibility() {
+    try {
+      const sel = document.getElementById('sourceSel');
+      const source = (sel && sel.value) ? sel.value : 'pregate';
+      const el = document.getElementById('funnelCard');
+      if (!el) return;
+      el.style.display = (source === 'candidate') ? '' : 'none';
+    } catch(e) {}
+  }
+
+  async function load(){
+    if (typeof syncFunnelVisibility === 'function') syncFunnelVisibility();
+
+    const bucket = $("bucketSel").value || "7d";
+    $("metaText").textContent = "Loading...";
+    $("rows").innerHTML = "";
+
+    const source = (document.getElementById('sourceSel')?.value || 'pregate');
+    if (source === 'candidate') { await loadFunnel(bucket); }
+
+    const endpoint = (source === 'candidate') ? '/api/analytics/candidate_fires' : '/api/analytics/fires';
+    const r = await fetch(`${endpoint}?bucket=${encodeURIComponent(bucket)}`, {cache:"no-store"});
+    const j = await r.json();
+    if (!j || !j.ok){
+      $("metaText").textContent = "Load failed.";
+      return;
+    }
+
+    const items = j.items || [];
+    const total = j.total || 0;
+
+    $("metaText").textContent = `Rows: ${total} • Bucket: ${j.bucket || bucket}`;
+
+    if (!items.length){
+      $("rows").innerHTML = `<tr><td colspan="3" class="mm-muted">No data in this bucket.</td></tr>`;
+      return;
+    }
+
+    const frag = [];
+    for (const it of items){
+      const ind = esc(it.indicator);
+      const n = Number(it.n || 0);
+      frag.push(`
+        <tr>
+          <td><b>${ind}</b></td>
+          <td>${n.toLocaleString()}</td>
+          <td>${pct(n, total)}</td>
+        </tr>
+      `);
+    }
+    $("rows").innerHTML = frag.join("");
+  }
+
+  document.addEventListener("DOMContentLoaded", ()=>{
+    $("refreshBtn").addEventListener("click", load);
+    $("bucketSel").addEventListener("change", load);
+    $("sourceSel").addEventListener("change", load);
+    load();
+  });
+})();
+</script>
+
+{% endblock %}

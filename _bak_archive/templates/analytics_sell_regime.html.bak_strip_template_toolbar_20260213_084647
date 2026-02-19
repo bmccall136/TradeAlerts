@@ -1,0 +1,346 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="mm-page">
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>$$Machine - Sell Regime Analytics</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    .mm-wrap{max-width:1400px;margin:0 auto;padding:16px}
+    .mm-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .mm-title{font-size:22px;font-weight:700}
+    .mm-sub{opacity:.8;font-size:13px}
+    .mm-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .mm-btn{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.15);padding:8px 12px;border-radius:10px;text-decoration:none;color:inherit}
+    .mm-btn:hover{border-color:rgba(255,255,255,.35)}
+    .mm-card{border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:14px;background:rgba(255,255,255,.03)}
+    .mm-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}
+    .mm-col{flex:1 1 420px}
+    .mm-kpi{display:flex;gap:10px;align-items:baseline}
+    .mm-kpi .v{font-size:28px;font-weight:800}
+    .mm-kpi .l{opacity:.75;font-size:12px}
+    table{width:100%;border-collapse:collapse;margin-top:10px}
+    th,td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.10);text-align:left;font-size:13px}
+    .tag{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.04)}
+    .tag.chop{border-color:rgba(255,200,0,.35)}
+    .tag.trend{border-color:rgba(0,200,120,.35)}
+    .tag.dead{border-color:rgba(200,200,200,.25)}
+    .mm-muted{opacity:.75}
+    .mm-small{font-size:12px;opacity:.8}
+    .mm-error{white-space:pre-wrap;color:#ffb3b3}
+    .mm-select{border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.2);color:inherit;border-radius:10px;padding:8px 10px}
+  </style>
+</head>
+<body>
+
+<!-- MM_ANALYTICS_TOOLBAR_V1 -->
+<div class="mm-axbar" id="mm-axbar">
+  <div class="mm-axbar-row">
+    <div class="mm-axbar-links">
+      <a class="mm-axlink" href="/analytics">Daily</a>
+      <a class="mm-axlink" href="/analytics/buy">Buy</a>
+      <a class="mm-axlink" href="/analytics/sell">Sell</a>
+      <a class="mm-axlink" href="/analytics/buy_regime">Buy Regime</a>
+      <a class="mm-axlink" href="/analytics/sell_regime">Sell Regime</a>
+    </div>
+
+    <div class="mm-axbar-right">
+      <label class="mm-axbar-label" for="mm-ax-bucket">Bucket</label>
+      <select id="mm-ax-bucket" class="mm-axbar-select">
+        <option value="today">Today</option>
+        <option value="7d">7D</option>
+        <option value="30d">30D</option>
+        <option value="all">All</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<style>
+  .mm-axbar{margin:12px 0 14px 0;padding:10px 12px;border:1px solid rgba(255,255,255,.10);border-radius:12px;background:rgba(255,255,255,.04)}
+  .mm-axbar-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .mm-axbar-links{display:flex;gap:10px;flex-wrap:wrap}
+  .mm-axlink{display:inline-block;padding:6px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);text-decoration:none}
+  .mm-axlink:hover{border-color:rgba(255,255,255,.25)}
+  .mm-axbar-right{display:flex;align-items:center;gap:8px}
+  .mm-axbar-label{opacity:.85}
+  .mm-axbar-select{padding:6px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.25);color:inherit}
+</style>
+
+<script>
+  // MM_ANALYTICS_TOOLBAR_V1
+  (function(){
+    const sel = document.getElementById("mm-ax-bucket");
+    if (!sel) return;
+
+    const u = new URL(window.location.href);
+    const bucket = (u.searchParams.get("bucket") || u.searchParams.get("range") || "").toLowerCase();
+    const v = (bucket === "today" || bucket === "7d" || bucket === "30d" || bucket === "all") ? bucket : "7d";
+    sel.value = v;
+
+    sel.addEventListener("change", () => {
+      const u2 = new URL(window.location.href);
+      u2.searchParams.set("bucket", sel.value);
+      // keep date= on Daily, keep anything else you already have
+      window.location.href = u2.toString();
+    });
+  })();
+</script>
+
+
+  <div class="mm-wrap">
+    <div class="mm-top">
+      <div>
+        <div class="mm-title">Sell Regime Analytics</div>
+        <div class="mm-sub">Counts by market regime from <code>/api/analytics/sell_regime</code></div>
+      </div>
+      <div class="mm-actions">
+        <a class="mm-btn" href="/analytics">&larr; Analytics</a>
+        <a class="mm-btn" href="/analytics/buy">Buy Analytics</a>
+        <a class="mm-btn" href="/analytics/sell">Sell Analytics</a>
+        <a class="mm-btn" href="/analytics/buy_regime">Buy Regime</a>
+        <select id="bucket" class="mm-select" title="Bucket">
+          <option value="today">Today</option>
+          <option value="7d">7D</option>
+          <option value="30d">30D</option>
+          <option value="all">ALL</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="mm-row">
+      <div class="mm-col">
+        <div class="mm-card">
+          <div class="mm-kpi"><div class="v" id="kTotal">?</div><div class="l">Total events in bucket</div></div>
+          <div class="mm-small mm-muted" id="kSince">?</div>
+        </div>
+      </div>
+      <div class="mm-col">
+        <div class="mm-card">
+          <div class="mm-kpi"><div class="v" id="kTop">?</div><div class="l">Top regime</div></div>
+          <div class="mm-small mm-muted" id="kTop2">?</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mm-row">
+      <div class="mm-col" style="flex:1 1 100%">
+        <div class="mm-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+            <div style="font-weight:700">By Regime</div>
+            <div class="mm-small mm-muted">Shows count + avg confidence (if present)</div>
+          </div>
+          <div id="err" class="mm-error" style="display:none;margin-top:10px"></div>
+          <table>
+            <thead>
+              <tr>
+                <th>Regime</th>
+                <th style="text-align:right">Count</th>
+                <th style="text-align:right">Avg Conf</th>
+                <th style="text-align:right">Share</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+          <div class="mm-small mm-muted" style="margin-top:10px">
+            Next step (optional): add ?exit outcomes by regime? once buy_events are stamped with regime or we join to market_regime snapshots.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+
+  // MM_FETCH_JSON_V1: safe fetch wrapper (prevents JSON.parse crashes on HTML/500)
+  async function mmFetchJson(url) {
+    const res = await fetch(url, { cache: "no-store" });
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`HTTP ${res.status} ${res.statusText}\n${txt.slice(0, 1200)}`);
+    }
+    if (!ct.includes("application/json")) {
+      const txt = await res.text();
+      throw new Error(`Expected JSON but got: ${ct}\n${txt.slice(0, 1200)}`);
+    }
+    return await res.json();
+  }
+
+
+function mmNormBucket(b){
+  if(!b) return "today";
+  const s=String(b).trim();
+  const u=s.toUpperCase();
+  if(u==="TODAY") return "today";
+  if(u==="7D") return "7d";
+  if(u==="30D") return "30d";
+  if(u==="ALL") return "all";
+  return s.toLowerCase();
+}
+function tagClass(r){
+  const x=(r||"").toUpperCase();
+  if(x==="CHOP") return "tag chop";
+  if(x==="TREND") return "tag trend";
+  if(x==="DEAD") return "tag dead";
+  return "tag";
+}
+function fmt(n){ try { return Number(n).toLocaleString(); } catch(e){ return String(n); } }
+async function load(){
+  const b = mmNormBucket(document.getElementById("bucket").value);
+  const url = `/api/analytics/sell_regime?bucket=${encodeURIComponent(b)}`;
+  const err = document.getElementById("err");
+  err.style.display="none"; err.textContent="";
+  const rows = document.getElementById("rows");
+  rows.innerHTML = "";
+
+  let j=null;
+  try{
+    const r = await fetch(url, {cache:"no-store"});
+    j = await r.json();
+  }catch(e){
+    err.style.display="block";
+    err.textContent = `Fetch failed: ${e}`;
+    return;
+  }
+  if(!j || !j.ok){
+    err.style.display="block";
+    err.textContent = (j && j.error) ? j.error : "Unknown error";
+    return;
+  }
+
+  const by = j.by_regime || [];
+
+    // NEW: outcomes + exit reasons
+    try {
+      const o = await loadSellOutcomes(bucket);
+      renderOutcomesTable(document.getElementById('mm-outcomes-body'), o.by_regime || []);
+    } catch (e) {
+      document.getElementById('mm-outcomes-body').innerHTML = `<div class="muted">Outcomes error: ${e}</div>`;
+    }
+
+    try {
+      const x = await loadSellExits(bucket);
+      renderExitsTable(document.getElementById('mm-exits-body'), x.by_regime || []);
+    } catch (e) {
+      document.getElementById('mm-exits-body').innerHTML = `<div class="muted">Exits error: ${e}</div>`;
+    }
+  const total = by.reduce((a,x)=>a + (Number(x.count)||Number(x.total)||0), 0);
+document.getElementById("kTotal").textContent = fmt(total);
+  document.getElementById("kSince").textContent = j.since_ts_utc ? `since_ts_utc: ${j.since_ts_utc}` : "";
+
+  const top = [...by].sort((a,b)=>(Number(b.count)||0)-(Number(a.count)||0))[0];
+  document.getElementById("kTop").textContent = top ? (top.regime||"?") : "?";
+  document.getElementById("kTop2").textContent = top ? `count=${fmt(top.count)} avg_conf=${(top.avg_conf ?? "?")}` : "?";
+
+  for(const x of by){
+    const c = Number(x.count)||0;
+    const share = total ? (100*c/total) : 0;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><span class="${tagClass(x.regime)}">${x.regime||""}</span></td>
+      <td style="text-align:right">${fmt(c)}</td>
+      <td style="text-align:right">${(x.avg_conf ?? "?")}</td>
+      <td style="text-align:right">${share.toFixed(1)}%</td>
+    `;
+    rows.appendChild(tr);
+  }
+}
+document.getElementById("bucket").addEventListener("change", load);
+load();
+
+
+  async function loadSellOutcomes(bucket) {
+    const res = await fetch(`/api/analytics/sell_regime_outcomes?bucket=${encodeURIComponent(bucket)}`);
+    return res.json();
+  }
+  async function loadSellExits(bucket) {
+    const res = await fetch(`/api/analytics/sell_regime_exits?bucket=${encodeURIComponent(bucket)}`);
+    return res.json();
+  }
+
+
+  function renderOutcomesTable(el, rows) {
+    if (!rows || !rows.length) { el.innerHTML = '<div class="muted">No outcome rows.</div>'; return; }
+    const tr = rows.map(r => `
+      <tr>
+        <td><span class="pill">${r.regime}</span></td>
+        <td class="num">${r.count}</td>
+        <td class="num">${r.win_rate}%</td>
+        <td class="num">${r.sum_gain}</td>
+        <td class="num">${r.avg_gain ?? ''}</td>
+        <td class="num">${r.median_gain ?? ''}</td>
+        <td class="num">${r.median_hold_min ?? ''}</td>
+      </tr>
+    `).join('');
+    el.innerHTML = `
+      <table class="mm-table">
+        <thead>
+          <tr>
+            <th>Regime</th><th class="num">N</th><th class="num">Win%</th><th class="num">? P/L</th>
+            <th class="num">Avg</th><th class="num">Median</th><th class="num">Med Hold (min)</th>
+          </tr>
+        </thead>
+        <tbody>${tr}</tbody>
+      </table>`;
+  }
+
+  function renderExitsTable(el, rows) {
+    if (!rows || !rows.length) { el.innerHTML = '<div class="muted">No exit rows.</div>'; return; }
+    const tr = rows.map(r => {
+      const top = (r.events || []).slice(0, 8).map(e => `${e.event}(${e.count})`).join(', ');
+      return `
+        <tr>
+          <td><span class="pill">${r.regime}</span></td>
+          <td class="num">${r.total}</td>
+          <td class="num">${r.avg_conf ?? ''}</td>
+          <td>${top}</td>
+        </tr>`;
+    }).join('');
+    el.innerHTML = `
+      <table class="mm-table">
+        <thead><tr><th>Regime</th><th class="num">Events</th><th class="num">Avg Conf</th><th>Top exit events</th></tr></thead>
+        <tbody>${tr}</tbody>
+      </table>`;
+  }
+
+</script>
+
+  <div class="mm-card mm-regime-outcomes">
+    <div class="mm-card-title">Sell outcomes by regime</div>
+    <div id="mm-outcomes-body" class="mm-card-body muted">Loading?</div>
+  </div>
+
+  <div class="mm-card mm-regime-outcomes">
+    <div class="mm-card-title">Exit reasons by regime</div>
+    <div id="mm-exits-body" class="mm-card-body muted">Loading?</div>
+  </div>
+
+</body>
+</html>
+
+</div>
+{% endblock %}
+
+
+<script>
+  // MM_ANALYTICS_TOOLBAR_ACTIVE_V1
+  (function(){
+    const path = (window.location.pathname || "").toLowerCase();
+    const links = document.querySelectorAll("#mm-axbar a.mm-axlink");
+    links.forEach(a => {
+      const href = (a.getAttribute("href") || "").toLowerCase();
+      if (!href) return;
+      // exact match preferred; also handle /analytics as prefix for daily
+      const isActive = (href === path) || (href === "/analytics" && (path === "/analytics" || path === "/analytics/"));
+      if (isActive) a.classList.add("mm-axlink-active");
+    });
+  })();
+</script>
+<style>
+  .mm-axlink-active{border-color:rgba(255,255,255,.40);background:rgba(255,255,255,.06)}
+</style>
+

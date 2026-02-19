@@ -1,0 +1,509 @@
+{% extends "analytics_regime_layout.html" %}
+{% block analytics_tape %}
+<!-- MM_ANALYTICS_REGIME_TAPE_V1 -->
+<div id="mm-ax-tape-wrap" style="margin:10px 14px 18px 14px;">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;margin:0 0 6px 2px;">
+    <div style="font-size:12px;opacity:.75;">Regime tape (today)</div>
+    <div id="mm-ax-tape-meta" style="font-size:12px;opacity:.70;"></div>
+  </div>
+  <div id="mm-ax-tape-debug" style="margin-top:4px;font-size:12px;opacity:.92;color:#ffcc00;"></div>
+  <div id="mm-ax-tape-bar" style="margin-top:6px;height:8px;background:#101010;border:1px solid #222;border-radius:999px;overflow:hidden;">
+    <div id="mm-ax-tape-bar-inner" style="height:100%;width:0%;background:#2ecc71;"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- MM_SELL_REGIME_BUCKET_ROW_V3 -->
+<div id="mm-sell-regime-buckets" style="display:flex;gap:8px;justify-content:flex-end;margin:12px 0 16px 0;">
+  <a class="mm-ax-bucket-btn" data-bucket="today" href="?bucket=today">Today</a>
+  <a class="mm-ax-bucket-btn" data-bucket="7d" href="?bucket=7d">7D</a>
+  <a class="mm-ax-bucket-btn" data-bucket="30d" href="?bucket=30d">30D</a>
+  <a class="mm-ax-bucket-btn" data-bucket="all" href="?bucket=all">All</a>
+</div>
+<!-- /MM_SELL_REGIME_BUCKET_ROW_V3 -->
+<!-- MM_SELL_REGIME_BUCKET_STYLE_ACTIVE_V3 -->
+<style>
+/* Scoped to Sell Regime bucket row only */
+#mm-sell-regime-buckets a.mm-ax-bucket-btn{
+  display:inline-block;
+  background:#1e1e1e;
+  color:#ccc;
+  border:1px solid #333;
+  border-radius:6px;
+  padding:6px 12px;
+  font-size:13px;
+  text-decoration:none;
+  transition:all .15s ease;
+}
+#mm-sell-regime-buckets a.mm-ax-bucket-btn:hover{
+  border-color:#f5c542;
+  color:#f5c542;
+}
+#mm-sell-regime-buckets a.mm-ax-bucket-btn.is-active{
+  background:#f5c542;
+  color:#111;
+  border-color:#f5c542;
+  font-weight:600;
+}
+</style>
+<script>
+(function(){
+  function norm(b){
+    b = (b||"today").toLowerCase().trim();
+    if (b==="7d"||b==="30d"||b==="all"||b==="today") return b;
+    return "today";
+  }
+  const params = new URLSearchParams(window.location.search);
+  const bucket = norm(params.get("bucket"));
+  document.querySelectorAll('#mm-sell-regime-buckets a.mm-ax-bucket-btn').forEach(a=>{
+    const v = norm(a.getAttribute("data-bucket"));
+    a.classList.toggle("is-active", v===bucket);
+  });
+})();
+</script>
+<!-- /MM_SELL_REGIME_BUCKET_STYLE_ACTIVE_V3 -->
+
+
+<div class="mm-page">
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>$$Machine - Sell Regime Analytics</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    .mm-wrap{max-width:1400px;margin:0 auto;padding:16px}
+    .mm-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .mm-title{font-size:22px;font-weight:700}
+    .mm-sub{opacity:.8;font-size:13px}
+    .mm-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .mm-btn{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.15);padding:8px 12px;border-radius:10px;text-decoration:none;color:inherit}
+    .mm-btn:hover{border-color:rgba(255,255,255,.35)}
+    .mm-card{border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:14px;background:rgba(255,255,255,.03)}
+    .mm-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}
+    .mm-col{flex:1 1 420px}
+    .mm-kpi{display:flex;gap:10px;align-items:baseline}
+    .mm-kpi .v{font-size:28px;font-weight:800}
+    .mm-kpi .l{opacity:.75;font-size:12px}
+    table{width:100%;border-collapse:collapse;margin-top:10px}
+    th,td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.10);text-align:left;font-size:13px}
+    .tag{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.04)}
+    .tag.chop{border-color:rgba(255,200,0,.35)}
+    .tag.trend{border-color:rgba(0,200,120,.35)}
+    .tag.dead{border-color:rgba(200,200,200,.25)}
+    .mm-muted{opacity:.75}
+    .mm-small{font-size:12px;opacity:.8}
+    .mm-error{white-space:pre-wrap;color:#ffb3b3}
+    .mm-select{border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.2);color:inherit;border-radius:10px;padding:8px 10px}
+  </style>
+</head>
+<body>
+
+
+ style="margin:10px 14px 18px 14px;">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;margin:0 0 6px 2px;">
+    <div style="font-size:12px;opacity:.75;">Regime tape (today)</div>
+    <div id="mm-ax-tape-meta" style="font-size:12px;opacity:.70;"></div>
+    <div id="mm-ax-tape-debug" style="margin-top:4px;font-size:12px;opacity:.92;color:#ffcc00;"></div>
+  </div>
+
+  <div style="position:relative;">
+    <!-- tick labels -->
+    <div id="mm-ax-ticks" style="position:absolute;left:0;top:-16px;right:0;height:14px;font-size:11px;opacity:.65;pointer-events:none;"></div>
+
+    <!-- tape -->
+    <div id="mm-ax-tape"
+         style="height:14px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.10);
+                background:rgba(255,255,255,.04);">
+    </div>
+
+    <!-- tick lines overlay -->
+    <div id="mm-ax-ticklines" style="position:absolute;left:0;top:0;right:0;bottom:0;pointer-events:none;"></div>
+  </div>
+</div>
+
+<script>
+/* MM_ANALYTICS_TAPE_SCRIPT_CLEAN_V1 */
+(function(){
+  const el = document.getElementById("mm-ax-tape");
+  const ticksEl = document.getElementById("mm-ax-ticks");
+  const linesEl = document.getElementById("mm-ax-ticklines");
+  const metaEl = document.getElementById("mm-ax-tape-meta");
+  const dbgEl  = document.getElementById("mm-ax-tape-debug");
+  if (!el || !ticksEl || !linesEl) return;
+
+  function dbg(msg){
+    try{
+      if(!dbgEl) return;
+      const u = new URL(window.location.href);
+      const on = (u.searchParams.get("tape_debug") || "").trim() === "1";
+      dbgEl.textContent = on ? msg : "";
+    }catch(e){}
+  }
+
+  function colorFor(reg){
+    reg = (reg||"").toUpperCase();
+    if (reg === "TREND") return "rgba(0, 200, 120, .95)";
+    if (reg === "CHOP")  return "rgba(240, 200, 0, .95)";
+    if (reg === "DEAD")  return "rgba(220, 60, 60, .95)";
+    return "rgba(160,160,160,.35)"; // unknown
+  }
+
+  function buildBins(openTs, closeTs){
+    const bins = [];
+    const start = openTs - (openTs % 300);
+    const end   = closeTs - (closeTs % 300);
+    for (let t = start; t <= end; t += 300) bins.push(t);
+    return bins;
+  }
+
+  function carryForward(points, bins){
+    const map = new Map();
+    (points||[]).forEach(p => {
+      const t = (p.ts_utc||0);
+      const bt = t - (t % 300);
+      map.set(bt, { regime: p.regime, conf: p.conf });
+    });
+
+    let last = null;
+    const segs = [];
+    for (const b of bins){
+      if (map.has(b)) last = map.get(b);
+      segs.push({ ts:b, regime: last?.regime || "UNKNOWN", conf: (last?.conf ?? null) });
+    }
+    return segs;
+  }
+
+  function render(segs, openTs, closeTs){
+    // base bar always visible
+    el.innerHTML = "";
+    ticksEl.innerHTML = "";
+    linesEl.innerHTML = "";
+    if (metaEl) metaEl.textContent = "";
+
+    if (!segs || !segs.length){
+      dbg("no segs");
+      return;
+    }
+
+    // progress-only: paint only up to NOW; future stays gray
+    const nowTs = Math.floor(Date.now()/1000);
+    const paintUntil = Math.max(openTs, Math.min(closeTs, nowTs));
+
+    let n = 0;
+    for (let i=0; i<segs.length; i++){
+      if (segs[i].ts <= paintUntil) n = i+1;
+      else break;
+    }
+    if (n === 0) n = 1; // show at least first slot
+
+    const w = 100 / segs.length;
+    let html = "";
+    for (let i=0; i<n; i++){
+      const s = segs[i];
+      html += `<div style="float:left;height:100%;width:${w}%;background:${colorFor(s.regime)}"></div>`;
+    }
+    el.innerHTML = html + '<div style="clear:both"></div>';
+
+    // tick marks at 9:30, 10:30, 12:00, 14:00, 16:00 ET
+    const mk = [
+      { ts: openTs,               label:"9:30"  },
+      { ts: openTs + 60*60,       label:"10:30" },
+      { ts: openTs + 150*60,      label:"12"    },
+      { ts: openTs + 270*60,      label:"2"     },
+      { ts: closeTs,              label:"4"     },
+    ];
+
+    let tHtml = "";
+    let lHtml = "";
+    for (const t of mk){
+      if (t.ts < openTs || t.ts > closeTs) continue;
+      const pct = ((t.ts - openTs) / (closeTs - openTs)) * 100;
+      tHtml += `<div style="position:absolute;left:calc(${pct}% - 14px);top:0;width:28px;text-align:center;">${t.label}</div>`;
+      lHtml += `<div style="position:absolute;left:${pct}%;top:0;bottom:0;width:1px;background:rgba(255,255,255,.10)"></div>`;
+    }
+    ticksEl.innerHTML = tHtml;
+    linesEl.innerHTML = lHtml;
+
+    // meta progress
+    const prog = Math.max(0, Math.min(1, (paintUntil - openTs) / (closeTs - openTs)));
+    if (metaEl) metaEl.textContent = `progress: ${(prog*100).toFixed(0)}%`;
+  }
+
+  async function tick(){
+    try{
+      const res = await /* MM_TAPE_DATE_FETCH_V1 */
+      (function(){
+      const u0 = new URL(window.location.href);
+      const d0 = (u0.searchParams.get("date") || "").trim();
+      const api = d0 ? ("/api/market_regime_timeline?date=" + encodeURIComponent(d0))
+                     : "/api/market_regime_timeline?bucket=today";
+      return fetch(api, { cache:"no-store" });
+    })();
+      if (!res.ok){ dbg("api not ok"); return; }
+      const j = await res.json();
+      const pts = (j.points && j.points.length) ? j.points : (j.buckets || []);
+      const win = j.window || {};
+      const since = win.since_ts_utc || 0;
+      if (!since){ dbg("no window.since_ts_utc"); return; }
+
+      // since is ET-midnight UTC epoch (your server does ET-midnight->UTC)
+      // market hours: 09:30?16:00 ET
+      const openTs  = since + (9*3600) + (30*60);
+      const closeTs = since + (16*3600);
+
+      const bins = buildBins(openTs, closeTs);
+      const segs = carryForward(pts, bins);
+
+      dbg(`pts=${pts.length} bins=${bins.length} segs=${segs.length} open=${openTs} close=${closeTs}`);
+      render(segs, openTs, closeTs);
+    }catch(e){
+      dbg("tick err: " + (e && e.message ? e.message : String(e)));
+    }
+  }
+
+  tick();
+  setInterval(tick, 60*1000);
+})();
+</script>
+
+
+
+
+<div class="mm-wrap">
+    <div class="mm-top">
+      <div>
+        <div class="mm-title">Sell Regime Analytics</div>
+        <div class="mm-sub">Counts by market regime from <code>/api/analytics/sell_regime</code></div>
+      </div>
+      <div class="mm-actions">
+        <a class="mm-btn" href="/analytics">&larr; Analytics</a>
+        <a class="mm-btn" href="/analytics/buy">Buy Analytics</a>
+        <a class="mm-btn" href="/analytics/sell">Sell Analytics</a>
+        <a class="mm-btn" href="/analytics/buy_regime">Buy Regime</a>
+        <select id="bucket" class="mm-select" title="Bucket">
+          <option value="today">Today</option>
+          <option value="7d">7D</option>
+          <option value="30d">30D</option>
+          <option value="all">ALL</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="mm-row">
+      <div class="mm-col">
+        <div class="mm-card">
+          <div class="mm-kpi"><div class="v" id="kTotal">?</div><div class="l">Total events in bucket</div></div>
+          <div class="mm-small mm-muted" id="kSince">?</div>
+        </div>
+      </div>
+      <div class="mm-col">
+        <div class="mm-card">
+          <div class="mm-kpi"><div class="v" id="kTop">?</div><div class="l">Top regime</div></div>
+          <div class="mm-small mm-muted" id="kTop2">?</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mm-row">
+      <div class="mm-col" style="flex:1 1 100%">
+        <div class="mm-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+            <div style="font-weight:700">By Regime</div>
+            <div class="mm-small mm-muted">Shows count + avg confidence (if present)</div>
+          </div>
+          <div id="err" class="mm-error" style="display:none;margin-top:10px"></div>
+          <table>
+            <thead>
+              <tr>
+                <th>Regime</th>
+                <th style="text-align:right">Count</th>
+                <th style="text-align:right">Avg Conf</th>
+                <th style="text-align:right">Share</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+          <div class="mm-small mm-muted" style="margin-top:10px">
+            Next step (optional): add ?exit outcomes by regime? once buy_events are stamped with regime or we join to market_regime snapshots.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+
+  // MM_FETCH_JSON_V1: safe fetch wrapper (prevents JSON.parse crashes on HTML/500)
+  async function mmFetchJson(url) {
+    const res = await fetch(url, { cache: "no-store" });
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`HTTP ${res.status} ${res.statusText}\n${txt.slice(0, 1200)}`);
+    }
+    if (!ct.includes("application/json")) {
+      const txt = await res.text();
+      throw new Error(`Expected JSON but got: ${ct}\n${txt.slice(0, 1200)}`);
+    }
+    return await res.json();
+  }
+
+
+function mmNormBucket(b){
+  if(!b) return "today";
+  const s=String(b).trim();
+  const u=s.toUpperCase();
+  if(u==="TODAY") return "today";
+  if(u==="7D") return "7d";
+  if(u==="30D") return "30d";
+  if(u==="ALL") return "all";
+  return s.toLowerCase();
+}
+function tagClass(r){
+  const x=(r||"").toUpperCase();
+  if(x==="CHOP") return "tag chop";
+  if(x==="TREND") return "tag trend";
+  if(x==="DEAD") return "tag dead";
+  return "tag";
+}
+function fmt(n){ try { return Number(n).toLocaleString(); } catch(e){ return String(n); } }
+async function load(){
+  const b = mmNormBucket(document.getElementById("bucket").value);
+  const url = `/api/analytics/sell_regime?bucket=${encodeURIComponent(b)}`;
+  const err = document.getElementById("err");
+  err.style.display="none"; err.textContent="";
+  const rows = document.getElementById("rows");
+  rows.innerHTML = "";
+
+  let j=null;
+  try{
+    const r = await fetch(url, {cache:"no-store"});
+    j = await r.json();
+  }catch(e){
+    err.style.display="block";
+    err.textContent = `Fetch failed: ${e}`;
+    return;
+  }
+  if(!j || !j.ok){
+    err.style.display="block";
+    err.textContent = (j && j.error) ? j.error : "Unknown error";
+    return;
+  }
+
+  const by = j.by_regime || [];
+
+    // NEW: outcomes + exit reasons
+    try {
+      const o = await loadSellOutcomes(bucket);
+      renderOutcomesTable(document.getElementById('mm-outcomes-body'), o.by_regime || []);
+    } catch (e) {
+      document.getElementById('mm-outcomes-body').innerHTML = `<div class="muted">Outcomes error: ${e}</div>`;
+    }
+
+    try {
+      const x = await loadSellExits(bucket);
+      renderExitsTable(document.getElementById('mm-exits-body'), x.by_regime || []);
+    } catch (e) {
+      document.getElementById('mm-exits-body').innerHTML = `<div class="muted">Exits error: endpoint missing (404) ? disabled until API is added</div>`;
+    }
+  const total = by.reduce((a,x)=>a + (Number(x.count)||Number(x.total)||0), 0);
+document.getElementById("kTotal").textContent = fmt(total);
+  document.getElementById("kSince").textContent = j.since_ts_utc ? `since_ts_utc: ${j.since_ts_utc}` : "";
+
+  const top = [...by].sort((a,b)=>(Number(b.count)||0)-(Number(a.count)||0))[0];
+  document.getElementById("kTop").textContent = top ? (top.regime||"?") : "?";
+  document.getElementById("kTop2").textContent = top ? `count=${fmt(top.count)} avg_conf=${(top.avg_conf ?? "?")}` : "?";
+
+  for(const x of by){
+    const c = Number(x.count)||0;
+    const share = total ? (100*c/total) : 0;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><span class="${tagClass(x.regime)}">${x.regime||""}</span></td>
+      <td style="text-align:right">${fmt(c)}</td>
+      <td style="text-align:right">${(x.avg_conf ?? "?")}</td>
+      <td style="text-align:right">${share.toFixed(1)}%</td>
+    `;
+    rows.appendChild(tr);
+  }
+}
+document.getElementById("bucket").addEventListener("change", load);
+load();
+
+
+  async function loadSellOutcomes(bucket) {
+    const res = await fetch(`/api/analytics/sell_regime_outcomes?bucket=${encodeURIComponent(bucket)}`);
+    return res.json();
+  }
+  async function loadSellExits(bucket) {
+    const res = await fetch(`/api/analytics/sell_regime_exits/*MM_DISABLED_404*/?bucket=${encodeURIComponent(bucket)}`);
+    return res.json();
+  }
+
+
+  function renderOutcomesTable(el, rows) {
+    if (!rows || !rows.length) { el.innerHTML = '<div class="muted">No outcome rows.</div>'; return; }
+    const tr = rows.map(r => `
+      <tr>
+        <td><span class="pill">${r.regime}</span></td>
+        <td class="num">${r.count}</td>
+        <td class="num">${r.win_rate}%</td>
+        <td class="num">${r.sum_gain}</td>
+        <td class="num">${r.avg_gain ?? ''}</td>
+        <td class="num">${r.median_gain ?? ''}</td>
+        <td class="num">${r.median_hold_min ?? ''}</td>
+      </tr>
+    `).join('');
+    el.innerHTML = `
+      <table class="mm-table">
+        <thead>
+          <tr>
+            <th>Regime</th><th class="num">N</th><th class="num">Win%</th><th class="num">? P/L</th>
+            <th class="num">Avg</th><th class="num">Median</th><th class="num">Med Hold (min)</th>
+          </tr>
+        </thead>
+        <tbody>${tr}</tbody>
+      </table>`;
+  }
+
+  function renderExitsTable(el, rows) {
+    if (!rows || !rows.length) { el.innerHTML = '<div class="muted">No exit rows.</div>'; return; }
+    const tr = rows.map(r => {
+      const top = (r.events || []).slice(0, 8).map(e => `${e.event}(${e.count})`).join(', ');
+      return `
+        <tr>
+          <td><span class="pill">${r.regime}</span></td>
+          <td class="num">${r.total}</td>
+          <td class="num">${r.avg_conf ?? ''}</td>
+          <td>${top}</td>
+        </tr>`;
+    }).join('');
+    el.innerHTML = `
+      <table class="mm-table">
+        <thead><tr><th>Regime</th><th class="num">Events</th><th class="num">Avg Conf</th><th>Top exit events</th></tr></thead>
+        <tbody>${tr}</tbody>
+      </table>`;
+  }
+
+</script>
+
+  <div class="mm-card mm-regime-outcomes">
+    <div class="mm-card-title">Sell outcomes by regime</div>
+    <div id="mm-outcomes-body" class="mm-card-body muted">Loading?</div>
+  </div>
+
+  <div class="mm-card mm-regime-outcomes">
+    <div class="mm-card-title">Exit reasons by regime</div>
+    <div id="mm-exits-body" class="mm-card-body muted">Loading?</div>
+  </div>
+
+</body>
+</html>
+
+</div>
+{% endblock %}
+
+

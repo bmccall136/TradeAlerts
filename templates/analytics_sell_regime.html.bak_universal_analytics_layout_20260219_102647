@@ -1,0 +1,227 @@
+{% extends "analytics_regime_layout.html" %}
+
+{% block analytics_tape %}
+<div id="mm-ax-tape-wrap" style="margin:10px 14px 10px 14px;">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;margin:0 0 6px 2px;">
+    <div style="font-size:12px;opacity:.75;">Regime tape (today)</div>
+    <div style="font-size:12px;opacity:.65;" id="mm-ax-tape-status">loading?</div>
+  </div>
+  <div id="mm-ax-tape" style="height:10px;border-radius:8px;background:#111;border:1px solid rgba(255,255,255,.08);overflow:hidden;"></div>
+</div>
+{% endblock %}
+
+{% block analytics_body %}
+<div id="mm-sell-regime-root" class="mm-ax-container">
+  <div class="mm-ax-header">
+    <div>
+      <div class="mm-ax-title">Sell Regime Analytics</div>
+      <div class="mm-ax-sub">Counts by market regime from <span class="mm-mono">/api/analytics/sell_regime</span></div>
+    </div>
+    <div class="mm-ax-actions">
+      <a class="mm-btn" href="/analytics">? Analytics</a>
+      <a class="mm-btn" href="/analytics/buy">Buy Analytics</a>
+      <a class="mm-btn" href="/analytics/sell">Sell Analytics</a>
+      <a class="mm-btn" href="/analytics/buy_regime">Buy Regime</a>
+      <select id="mm-bucket" class="mm-select">
+        <option value="today">Today</option>
+        <option value="7d">7D</option>
+        <option value="30d">30D</option>
+        <option value="all">All</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="mm-ax-grid">
+    <div class="mm-ax-card">
+      <div class="mm-kpi">
+        <div class="mm-kpi-v" id="mm-kpi-total">?</div>
+        <div class="mm-kpi-l">Total events in bucket</div>
+      </div>
+      <div class="mm-small mm-muted">since_ts_utc: <span class="mm-mono" id="mm-since">?</span></div>
+      <div class="mm-small mm-muted" id="mm-debug"></div>
+    </div>
+
+    <div class="mm-ax-card">
+      <div class="mm-kpi">
+        <div class="mm-kpi-v" id="mm-kpi-top">?</div>
+        <div class="mm-kpi-l">Top regime</div>
+      </div>
+      <div class="mm-small mm-muted" id="mm-top-sub">?</div>
+    </div>
+  </div>
+
+  <div class="mm-ax-card" style="margin-top:12px;">
+    <div class="mm-ax-card-title">By Regime</div>
+    <div class="mm-small mm-muted" style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+      <div></div>
+      <div>Shows count + avg confidence (if present)</div>
+    </div>
+
+    <table class="mm-table">
+      <thead>
+        <tr>
+          <th>Regime</th>
+          <th style="text-align:right;">Count</th>
+          <th style="text-align:right;">Avg Conf</th>
+          <th style="text-align:right;">Share</th>
+        </tr>
+      </thead>
+      <tbody id="mm-by-regime"></tbody>
+    </table>
+
+    <div class="mm-small mm-muted" style="margin-top:8px;">
+      Next: add exit outcomes by regime once sell outcomes are fully populated.
+    </div>
+  </div>
+
+  <div class="mm-ax-card" style="margin-top:12px;">
+    <div class="mm-ax-card-title">Sell outcomes by regime</div>
+    <div class="mm-muted" id="mm-outcomes">No outcome rows.</div>
+  </div>
+
+  <div class="mm-ax-card" style="margin-top:12px;">
+    <div class="mm-ax-card-title">Exit reasons by regime</div>
+    <div class="mm-muted" id="mm-reasons">Disabled until API is added.</div>
+  </div>
+
+  <pre id="mm-error" class="mm-error" style="display:none;margin-top:12px;"></pre>
+</div>
+
+<style>
+  /* Scoped styling so we don?t bleed into other pages */
+  #mm-sell-regime-root.mm-ax-container{max-width:1400px;margin:0 auto;padding:16px;}
+  #mm-sell-regime-root .mm-ax-header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+  #mm-sell-regime-root .mm-ax-title{font-size:22px;font-weight:800;}
+  #mm-sell-regime-root .mm-ax-sub{font-size:13px;opacity:.8;}
+  #mm-sell-regime-root .mm-ax-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  #mm-sell-regime-root .mm-ax-grid{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;}
+  #mm-sell-regime-root .mm-ax-card{flex:1 1 520px;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:14px;background:rgba(255,255,255,.03);}
+  #mm-sell-regime-root .mm-ax-card-title{font-weight:800;margin-bottom:8px;}
+  #mm-sell-regime-root .mm-kpi{display:flex;gap:10px;align-items:baseline;}
+  #mm-sell-regime-root .mm-kpi-v{font-size:28px;font-weight:900;}
+  #mm-sell-regime-root .mm-kpi-l{font-size:12px;opacity:.75;}
+  #mm-sell-regime-root .mm-btn{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.15);padding:8px 12px;border-radius:10px;text-decoration:none;color:inherit;}
+  #mm-sell-regime-root .mm-btn:hover{border-color:rgba(255,255,255,.35);}
+  #mm-sell-regime-root .mm-select{border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.2);color:inherit;border-radius:10px;padding:8px 10px;}
+  #mm-sell-regime-root .mm-table{width:100%;border-collapse:collapse;margin-top:10px;}
+  #mm-sell-regime-root th,#mm-sell-regime-root td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.10);text-align:left;font-size:13px;}
+  #mm-sell-regime-root .mm-mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;}
+  #mm-sell-regime-root .mm-muted{opacity:.75;}
+  #mm-sell-regime-root .mm-small{font-size:12px;opacity:.8;}
+  #mm-sell-regime-root .mm-error{white-space:pre-wrap;color:#ffb3b3;}
+</style>
+
+<script>
+(function(){
+  const baseUrl = "/api/analytics/sell_regime";
+  const elBucket = document.getElementById("mm-bucket");
+  const elTotal  = document.getElementById("mm-kpi-total");
+  const elTop    = document.getElementById("mm-kpi-top");
+  const elTopSub = document.getElementById("mm-top-sub");
+  const elSince  = document.getElementById("mm-since");
+  const elTbody  = document.getElementById("mm-by-regime");
+  const elErr    = document.getElementById("mm-error");
+  const elDbg    = document.getElementById("mm-debug");
+
+  function getParam(name){
+    const u = new URL(window.location.href);
+    return u.searchParams.get(name);
+  }
+  function setParam(name, value){
+    const u = new URL(window.location.href);
+    if(value == null) u.searchParams.delete(name);
+    else u.searchParams.set(name, value);
+    window.history.replaceState({}, "", u.toString());
+  }
+  function fmtNum(n){
+    try { return Number(n).toLocaleString(); } catch(e){ return String(n); }
+  }
+  function fmtPct(x){
+    if(x == null || isNaN(x)) return "?";
+    return (100 * Number(x)).toFixed(1) + "%";
+  }
+
+  async function load(){
+    const bucket = (elBucket && elBucket.value) || "today";
+    const url = baseUrl + "?bucket=" + encodeURIComponent(bucket) + "&debug=1";
+
+    elErr.style.display = "none";
+    elErr.textContent = "";
+    elDbg.textContent = "";
+
+    let res, text;
+    try{
+      res = await fetch(url, {cache:"no-store"});
+      text = await res.text();
+    }catch(e){
+      elErr.style.display = "block";
+      elErr.textContent = "Fetch failed: " + (e && e.message ? e.message : String(e));
+      return;
+    }
+
+    if(!res.ok){
+      elErr.style.display = "block";
+      elErr.textContent = "HTTP " + res.status + " " + res.statusText + "\\n\\n" + text;
+      return;
+    }
+
+    let j;
+    try{
+      j = JSON.parse(text);
+    }catch(e){
+      elErr.style.display = "block";
+      elErr.textContent = "Non-JSON response.\\n\\n" + text;
+      return;
+    }
+
+    const rows = Array.isArray(j.by_regime) ? j.by_regime : [];
+    const total = rows.reduce((a,r)=>a + (Number(r.count)||0), 0);
+    elTotal.textContent = fmtNum(total);
+    elSince.textContent = j.since_ts_utc != null ? String(j.since_ts_utc) : "?";
+
+    if(rows.length){
+      const top = rows.slice().sort((a,b)=>(Number(b.count)||0)-(Number(a.count)||0))[0];
+      elTop.textContent = top.regime || "?";
+      elTopSub.textContent = "avg_conf: " + (top.avg_conf == null ? "?" : Number(top.avg_conf).toFixed(1)) + " (" + fmtNum(top.count) + ")";
+    }else{
+      elTop.textContent = "?";
+      elTopSub.textContent = "?";
+    }
+
+    elTbody.innerHTML = "";
+    const denom = total || 1;
+    rows.forEach(r=>{
+      const tr = document.createElement("tr");
+      const share = (Number(r.count)||0) / denom;
+      tr.innerHTML = `
+        <td><span class="mm-mono">${r.regime || ""}</span></td>
+        <td style="text-align:right;">${fmtNum(r.count || 0)}</td>
+        <td style="text-align:right;">${r.avg_conf == null ? "?" : Number(r.avg_conf).toFixed(1)}</td>
+        <td style="text-align:right;">${fmtPct(share)}</td>
+      `;
+      elTbody.appendChild(tr);
+    });
+
+    if(j.bucket){
+      elDbg.textContent = "bucket=" + j.bucket;
+    }
+  }
+
+  // init bucket from URL
+  const qBucket = (getParam("bucket") || "").toLowerCase();
+  if(elBucket && qBucket){
+    const opt = Array.from(elBucket.options).find(o => o.value === qBucket);
+    if(opt) elBucket.value = qBucket;
+  }
+
+  if(elBucket){
+    elBucket.addEventListener("change", ()=>{
+      setParam("bucket", elBucket.value);
+      load();
+    });
+  }
+
+  load();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "layout.html" %}
+
+{% block analytics_tape %}
+  <div id="mm-ax-tape-wrap" style="margin:0 14px 10px 14px;">
+    <div id="mm-ax-tape-inner"></div>
+  </div>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <div class="d-flex align-items-center gap-2">
+      <img src="/static/Max.png" style="height:36px;width:36px;border-radius:8px;" alt="Max"/>
+      <div>
+        <div class="h4 mb-0">{% block analytics_title %}Regime Analytics{% endblock %}</div>
+        <div class="text-secondary small">{% block analytics_subtitle %}Today{% endblock %}</div>
+      </div>
+    </div>
+
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+      <a class="btn btn-sm btn-outline-info" href="/analytics">Daily</a>
+      <a class="btn btn-sm btn-outline-info" href="/analytics/buy">Buy Analytics</a>
+      <a class="btn btn-sm btn-outline-info" href="/analytics/sell">Sell Analytics</a>
+      <a class="btn btn-sm btn-outline-info" href="/analytics/buy_regime">Buy Regime</a>
+      <a class="btn btn-sm btn-outline-info" href="/analytics/sell_regime">Sell Regime</a>
+
+      {# Regime pages have buckets instead of date controls #}
+      <div class="d-flex align-items-center gap-2">
+        <a class="btn btn-sm btn-outline-warning" href="?bucket=today">Today</a>
+        <a class="btn btn-sm btn-outline-warning" href="?bucket=7d">7D</a>
+        <a class="btn btn-sm btn-outline-warning" href="?bucket=30d">30D</a>
+        <a class="btn btn-sm btn-outline-warning" href="?bucket=all">All</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex justify-content-center">
+    <div style="width:100%; max-width:1180px;">
+      {% block analytics_body %}{% endblock %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

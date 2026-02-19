@@ -1,4 +1,4 @@
-{% extends "layout.html" %}
+{% extends "analytics_layout.html" %}
 <!-- MM_SELL_ANALYTICS_CENTER_CARDS_V1_START -->
 <style>
 /* SELL ANALYTICS ? true centering */
@@ -25,9 +25,7 @@
 </style>
 <!-- MM_SELL_ANALYTICS_CENTER_CARDS_V1_END -->
 {% block analytics_tape %}
-<div id="mm-ax-tape-wrap" style="margin:10px 14px 14px 14px;">
-  <div style="display:flex;align-items:flex-end;justify-content:space-between;margin:0 0 6px 2px;">
-    <div style="font-size:12px;opacity:.75;">Regime tape (today)</div>
+  {% include "_analytics_tape.html" %}
 {% endblock %}
 
 {% block content %}

@@ -1,0 +1,105 @@
+$PY="C:\TradeAlerts\.venv\Scripts\python.exe"
+
+
+T_CANON = ROOT / "templates" / "analytics_buy.html"
+
+TARGETS = [
+    ROOT / "templates" / "analytics_buy_regime.html",
+    ROOT / "templates" / "analytics_sell_regime.html",
+]
+
+    ts = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    bak = p.with_suffix(p.suffix + f".bak_{tag}_{ts}")
+    return bak
+
+    block = src[ms.start(): ms.start() + me.end()]
+    return block.strip() + "\n"
+
+
+# 1) Tape block = div#mm-ax-tape-wrap (whole wrapper)
+tape = extract_block(
+    canon,
+    r'<div[^>]+id=["\']mm-ax-tape-wrap["\'][^>]*>',
+    r'</div>\s*<!--\s*/?\s*MM_ANALYTICS_REGIME_TAPE[^>]*-->\s*|</div>\s*</div>\s*</div>',
+    "Regime Tape (mm-ax-tape-wrap)"
+)
+
+# If your canonical tape block does NOT end with a marker comment, fall back to a safer end:
+# (We keep the first match above; this is just a safety net for future edits.)
+if 'id="mm-ax-tape-wrap"' not in tape:
+
+# 2) Toolbar block = the top analytics nav strip.
+# We’ll find the first occurrence of the row of nav buttons (Daily/Buy/Sell/Buy Regime/Sell Regime)
+# and take the nearest wrapping container around it.
+toolbar = extract_block(
+    canon,
+    r'(<div[^>]+class=["\'][^"\']*(analytics|ax|toolbar)[^"\']*["\'][^>]*>.*?(Daily|Buy Analytics|Sell Analytics))',
+    r'</div>',
+    "Analytics Toolbar (top nav strip)"
+)
+
+    # Replace existing block if present
+    if m:
+        # Expand to include the whole wrapping div (best-effort)
+        start = m.start()
+        # Find the next closing </div> after start (not perfect nesting, but works for these templates)
+        endm = re.search(r'</div>', src[start:], flags=re.I|re.S)
+        if not endm:
+            raise SystemExit(f"ERROR: found {label} anchor but could not find a closing </div>")
+        end = start + endm.end()
+        return src[:start] + new_block + src[end:]
+    # If not present, insert just after the opening of the page content block (top-of-page)
+    ins = m2.end()
+    return src[:ins] + "\n\n" + new_block + "\n" + src[ins:]
+
+    # Kill any literal leaked fragment lines that look like the tape HTML but are outside real structure.
+    # Typical symptom: a line starting with "<div id="mm-ax-tape" style="height:14px..."
+    # We remove duplicate occurrences beyond the first proper wrap.
+    parts = src.split('id="mm-ax-tape-wrap"')
+    if len(parts) <= 2:
+        return src
+    # Keep first occurrence only; drop everything up to next content block after duplicates (simple + safe)
+    rebuilt = parts[0] + 'id="mm-ax-tape-wrap"' + parts[1]
+    tail = 'id="mm-ax-tape-wrap"'.join(parts[2:])
+    # Remove the duplicated tail chunk entirely (it’s almost always the “printed code” junk)
+    return rebuilt
+
+for T in TARGETS:
+    if not T.exists():
+        continue
+
+    bak = backup(T, "fix_regime_tape_top_and_toolbar_clean_V1")
+
+    # Remove obvious stray duplicates first
+    src = remove_stray_tape_text(src)
+
+    # Replace/insert Tape at top-of-page (analytics pages only)
+    src = replace_or_insert(
+        src,
+        "\n<!-- MM_ANALYTICS_REGIME_TAPE_V1 (CANON) -->\n" + tape + "<!-- /MM_ANALYTICS_REGIME_TAPE_V1 (CANON) -->\n",
+        r'id=["\']mm-ax-tape-wrap["\']',
+        "Tape"
+    )
+
+    # Replace/insert Toolbar immediately after Tape (still top-of-page)
+    # If toolbar exists, replace it; else insert after tape block
+        src = replace_or_insert(
+            src,
+            "\n<!-- MM_ANALYTICS_TOOLBAR_TOP_V1 (CANON) -->\n" + toolbar + "\n<!-- /MM_ANALYTICS_TOOLBAR_TOP_V1 (CANON) -->\n",
+            r'(Daily\s*</button>|>Daily<|Buy Analytics|Sell Analytics|Buy Regime|Sell Regime)',
+            "Toolbar"
+        )
+    else:
+        # Insert right after tape block marker if we can
+        m = re.search(r'<!-- /MM_ANALYTICS_REGIME_TAPE_V1 \(CANON\) -->', src)
+        if m:
+            src = src[:m.end()] + "\n" + "\n<!-- MM_ANALYTICS_TOOLBAR_TOP_V1 (CANON) -->\n" + toolbar + "\n<!-- /MM_ANALYTICS_TOOLBAR_TOP_V1 (CANON) -->\n" + src[m.end():]
+        else:
+            # Last resort: insert at top of content
+            src = replace_or_insert(
+                src,
+                "\n<!-- MM_ANALYTICS_TOOLBAR_TOP_V1 (CANON) -->\n" + toolbar + "\n<!-- /MM_ANALYTICS_TOOLBAR_TOP_V1 (CANON) -->\n",
+                "Toolbar"
+            )
+
+

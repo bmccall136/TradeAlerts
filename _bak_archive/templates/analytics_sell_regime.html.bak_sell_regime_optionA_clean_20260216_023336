@@ -1,0 +1,336 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<!-- ====== REGIME TAPE (Analytics pages only) ====== -->
+<div id="mm-ax-tape-wrap" style="margin:10px 14px 14px 14px;">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;margin:0 0 6px 2px;">
+    <div style="font-size:12px;opacity:.75;">Regime tape (today)</div>
+    <div id="mm-ax-tape-meta" style="font-size:12px;opacity:.70;"></div>
+  </div>
+  <div style="position:relative;">
+    <div id="mm-ax-ticks" style="position:absolute;left:0;top:-16px;right:0;height:14px;font-size:11px;opacity:.65;pointer-events:none;"></div>
+    <div id="mm-ax-tape"
+         style="height:14px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.10);
+                background:rgba(255,255,255,.04);">
+    </div>
+  </div>
+</div>
+
+<style>
+  /* MM_SELL_REGIME_FINAL_V1 */
+
+  .mm-err{
+    display:none;
+    margin:10px 14px;
+    padding:10px 12px;
+    border-radius:10px;
+    border:1px solid rgba(255,80,80,.35);
+    background: rgba(255,80,80,.10);
+    color:#ffb3b3;
+    white-space:pre-wrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size:12px;
+  }
+
+  .mm-card{
+    margin:14px 14px;
+    padding:14px 14px;
+    border-radius:14px;
+    background: rgba(255,255,255,.04);
+    border:1px solid rgba(255,255,255,.08);
+  }
+  .mm-card h3{ margin:0 0 10px 0; font-size:16px; }
+  .mm-row{ display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+  .mm-mini{
+    min-width:320px;
+    padding:10px 12px;border-radius:12px;
+    background: rgba(0,0,0,.22);
+    border:1px solid rgba(255,255,255,.08);
+  }
+
+  table.mm-t{ width:100%; border-collapse:collapse; }
+  table.mm-t td{ padding:6px 4px; border-bottom:1px solid rgba(255,255,255,.06); font-size:13px; }
+  table.mm-t td.k{ opacity:.85; }
+  table.mm-t td.v{ text-align:right; font-weight:800; }
+  table.mm-t td.s{ text-align:right; opacity:.85; }
+
+  #mm-sellreg-bucket.form-select.form-select-sm{
+    background-color: rgba(0,0,0,.15) !important;
+    color: #e8e8e8 !important;
+    border-color: rgba(255,255,255,.20) !important;
+    max-width: 260px;
+  }
+
+  .ax-date-wrap { display:flex; align-items:center; gap:8px; flex-wrap:nowrap; }
+  .ax-date-input {
+    background: transparent;
+    border: 1px solid #6c757d;
+    color: #e8e8e8;
+    border-radius: 6px;
+    padding: 4px 8px;
+    height: 31px;
+  }
+  .ax-date-input:focus { outline: none; box-shadow: none; border-color: #8b94a3; }
+</style>
+
+<div class="container-fluid py-2" style="padding-top:0;">
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <div class="d-flex align-items-center gap-2">
+      <img src="/static/Max.png" style="height:36px;width:36px;border-radius:8px;" alt="Max"/>
+      <div>
+        <div class="h4 mb-0">Sell Regime</div>
+        <div class="text-secondary small" id="mm-sellreg-sub">Today</div>
+      </div>
+    </div>
+
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <a class="btn btn-sm btn-outline-info" href="/analytics">Daily</a>
+      <a class="btn btn-sm btn-outline-info" href="/analytics/buy">Buy Analytics</a>
+      <a class="btn btn-sm btn-outline-info" href="/analytics/sell">Sell Analytics</a>
+      <a class="btn btn-sm btn-outline-info" href="/analytics/buy_regime">Buy Regime</a>
+      <a class="btn btn-sm btn-outline-info" href="/analytics/sell_regime">Sell Regime</a>
+
+      <div class="ax-date-wrap ms-2">
+        <a class="btn btn-sm btn-outline-warning" id="ax-yesterday" href="#">Yesterday</a>
+        <input type="date" class="ax-date-input" id="ax-datepick" value="{{ request.args.get('date','') }}" aria-label="Select date"/>
+        <a class="btn btn-sm btn-outline-warning" id="ax-datego" href="#">Go</a>
+      </div>
+
+      <a class="btn btn-sm btn-outline-secondary" id="ax-live" href="/analytics/sell_regime">Live</a>
+    </div>
+  </div>
+
+  <div class="text-secondary small" style="margin-top:2px;opacity:.82;">
+    This page breaks down SELL activity by market regime (TREND / CHOP / DEAD) and related outcomes.
+  </div>
+
+  <div class="d-flex align-items-center gap-2 flex-wrap" style="margin-top:10px;">
+    <div class="fw-bold" style="opacity:.8; min-width:70px;">Bucket</div>
+    <select id="mm-sellreg-bucket" class="form-select form-select-sm">
+      <option value="today">TODAY</option>
+      <option value="7d">7D</option>
+      <option value="30d">30D</option>
+      <option value="all">ALL</option>
+    </select>
+  </div>
+</div>
+
+<div id="mm-sellreg-err" class="mm-err"></div>
+
+<div class="mm-card">
+  <h3>Sells by regime</h3>
+  <div class="mm-row">
+    <div class="mm-mini">
+      <div class="text-secondary small" id="mm-r1-loading">Loading?</div>
+      <div id="mm-r1-box"></div>
+    </div>
+    <div class="text-secondary small" style="padding-top:6px;">
+      Source: <span style="color:#ff66cc;font-family:monospace;">sell_events</span> (or equivalent) stamped with <span style="color:#ff66cc;font-family:monospace;">regime</span>.
+    </div>
+  </div>
+</div>
+
+<div class="mm-card">
+  <h3>Outcomes by regime</h3>
+  <div class="mm-row">
+    <div class="mm-mini">
+      <div class="text-secondary small" id="mm-r2-loading">Loading?</div>
+      <div id="mm-r2-box"></div>
+    </div>
+    <div class="text-secondary small" style="padding-top:6px;">
+      If the outcomes endpoint is unavailable, this card will show a clear message (no ?Loading ??).
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  function pad2(n){ return String(n).padStart(2,'0'); }
+  function fmtDate(d){ return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); }
+  function setUrlDate(dateStr){
+    if(!dateStr) return;
+    const u = new URL(window.location.href);
+    u.searchParams.set("date", dateStr);
+    window.location.href = u.toString();
+  }
+
+  const yBtn = document.getElementById("ax-yesterday");
+  const pick = document.getElementById("ax-datepick");
+  const go   = document.getElementById("ax-datego");
+
+  if(yBtn){
+    const yd = new Date();
+    yd.setDate(yd.getDate()-1);
+    const u = new URL(window.location.href);
+    u.searchParams.set("date", fmtDate(yd));
+    yBtn.href = u.toString();
+  }
+  if(go){
+    go.addEventListener("click", function(e){
+      e.preventDefault();
+      setUrlDate(pick ? pick.value : "");
+    });
+  }
+  if(pick){
+    pick.addEventListener("keydown", function(e){
+      if(e.key === "Enter") setUrlDate(pick.value);
+    });
+  }
+
+  // live button accent when NOT on today
+  const liveBtn = document.getElementById("ax-live");
+  if(liveBtn){
+    const u = new URL(window.location.href);
+    const cur = (u.searchParams.get("date") || "").trim();
+    const now = new Date();
+    const today = now.getFullYear()+"-"+pad2(now.getMonth()+1)+"-"+pad2(now.getDate());
+    const onToday = (!cur) || (cur === today);
+    liveBtn.classList.remove("btn-outline-secondary","btn-outline-warning");
+    liveBtn.classList.add(onToday ? "btn-outline-secondary" : "btn-outline-warning");
+  }
+})();
+</script>
+
+<script src="/static/js/analytics_sell_regime.js"></script>
+
+{% endblock %}
+
+<!-- MM_SELL_REGIME_BUCKET_TOOLBAR_DOM_V1 -->
+<script>
+(function(){
+  function normBucket(b){
+    b = (b||"").toLowerCase().trim();
+    if(b==="today"||b==="7d"||b==="30d"||b==="all") return b;
+    return "today";
+  }
+  function getBucket(){
+    try{
+      const q = new URLSearchParams(location.search||"");
+      return normBucket(q.get("bucket"));
+    }catch(e){ return "today"; }
+  }
+  function setActive(container, b){
+    container.querySelectorAll(".mm-ax-bucket").forEach(btn=>{
+      const bb = normBucket(btn.getAttribute("data-bucket"));
+      btn.classList.toggle("mm-ax-active", bb === b);
+    });
+  }
+  function applyBucket(b){
+    b = normBucket(b);
+
+    // Prefer existing dropdown if present
+    const sel = document.querySelector('select[name="bucket"], select#bucket, select.bucket, select[data-bucket]');
+    if(sel){
+      const opts = Array.from(sel.options||[]);
+      const found = opts.find(o => normBucket(o.value) === b) || opts.find(o => normBucket(o.textContent) === b);
+      if(found){
+        sel.value = found.value;
+        try{ sel.dispatchEvent(new Event("change",{bubbles:true})); }catch(e){}
+        return;
+      }
+    }
+
+    // Fallback: URL param
+    try{
+      const q = new URLSearchParams(location.search||"");
+      q.set("bucket", b);
+      location.assign(location.pathname + "?" + q.toString());
+    }catch(e){}
+  }
+
+  function hideOldControls(toolbar){
+    // Hide the Daily-only junk by text/placeholder match (safe, no HTML surgery).
+    toolbar.querySelectorAll("button, a").forEach(el=>{
+      const t = (el.textContent||"").trim().toLowerCase();
+      if(t==="yesterday" || t==="go" || t==="live"){
+        el.style.display = "none";
+      }
+    });
+    toolbar.querySelectorAll("input").forEach(inp=>{
+      const ph = (inp.getAttribute("placeholder")||"").toLowerCase();
+      if(ph.includes("mm") && ph.includes("dd") && ph.includes("yyyy")){
+        inp.style.display = "none";
+      }
+    });
+  }
+
+  function ensureBucketButtons(toolbar){
+    // If already injected, don't duplicate
+    if(toolbar.querySelector(".mm-ax-buckets")) return;
+
+    // Spacer (push buckets to the right)
+    const spacer = document.createElement("div");
+    spacer.style.flex = "1 1 auto";
+
+    const wrap = document.createElement("div");
+    wrap.className = "mm-ax-buckets";
+    wrap.style.display = "flex";
+    wrap.style.gap = "10px";
+    wrap.style.alignItems = "center";
+    wrap.style.marginLeft = "auto";
+
+    const labels = [
+      ["today","Today"],
+      ["7d","7D"],
+      ["30d","30D"],
+      ["all","All"]
+    ];
+
+    labels.forEach(([k,lab])=>{
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "mm-ax-btn mm-ax-bucket";
+      btn.setAttribute("data-bucket", k);
+      btn.textContent = lab;
+      btn.addEventListener("click", ()=>applyBucket(k));
+      wrap.appendChild(btn);
+    });
+
+    // Minimal styling consistent with your theme
+    const style = document.createElement("style");
+    style.textContent = `
+      .mm-ax-btn{
+        display:inline-block;
+        padding:10px 16px;
+        border-radius:10px;
+        border:1px solid rgba(0,255,255,.45);
+        color:#66f6ff;
+        background:rgba(0,0,0,.20);
+        font-weight:700;
+        letter-spacing:.2px;
+        cursor:pointer;
+      }
+      .mm-ax-btn:hover{ filter:brightness(1.15); }
+      .mm-ax-btn.mm-ax-active{
+        border-color: rgba(255,200,0,.85);
+        color:#ffd54a;
+        box-shadow: 0 0 0 1px rgba(255,200,0,.20) inset;
+      }
+    `;
+    document.head.appendChild(style);
+
+    // Make sure toolbar is flex so spacer works
+    try{
+      toolbar.style.display = "flex";
+      toolbar.style.alignItems = "center";
+      toolbar.style.gap = toolbar.style.gap || "10px";
+      toolbar.style.flexWrap = toolbar.style.flexWrap || "wrap";
+    }catch(e){}
+
+    toolbar.appendChild(spacer);
+    toolbar.appendChild(wrap);
+
+    setActive(wrap, getBucket());
+  }
+
+  // Find the toolbar row by locating the "Yesterday" button and walking to its parent container.
+  const y = Array.from(document.querySelectorAll("button,a")).find(el => ((el.textContent||"").trim().toLowerCase()==="yesterday"));
+  const toolbar = y ? (y.closest("div") || y.parentElement) : null;
+
+  if(toolbar){
+    hideOldControls(toolbar);
+    ensureBucketButtons(toolbar);
+  }
+})();
+</script>
+<!-- /MM_SELL_REGIME_BUCKET_TOOLBAR_DOM_V1 -->

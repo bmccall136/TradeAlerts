@@ -1,0 +1,57 @@
+
+
+{# === MM_AX_CENTERING_V2_START === #}
+<style>
+  /* V2: brute-force center for analytics pages even if inner nodes try to right-rail */
+  .mm-ax-page{
+    width:100% !important;
+    display:flex !important;
+    justify-content:center !important;
+    align-items:stretch !important;
+  }
+  .mm-ax-container{
+    width:100% !important;
+    max-width:1180px !important;
+    margin:0 auto !important;
+    padding:0 14px 22px 14px !important;
+    box-sizing:border-box !important;
+  }
+
+  /* If some inner wrapper is forcing a narrow right panel, neutralize it */
+  .mm-ax-container > *{
+    width:100% !important;
+    max-width:1180px !important;
+    margin-left:0 !important;
+    margin-right:0 !important;
+  }
+
+  /* Kill common right-rail patterns inside analytics toolbars */
+  .mm-ax-container .mm-ax-right{
+    min-width:0 !important;
+    justify-content:flex-end;
+  }
+  .mm-ax-container [style*="margin-left: auto"],
+  .mm-ax-container [style*="margin-left:auto"]{
+    margin-left:0 !important;
+  }
+</style>
+{# === MM_AX_CENTERING_V2_END === #}
+
+﻿{% extends "layout.html" %}
+
+{# Analytics-only: keep tape at the VERY TOP by overriding layout.html's analytics_tape slot #}
+{% block analytics_tape %}
+  {# Default tape renderer (analytics pages). Child pages can override this block if needed. #}
+  <div id="mm-ax-tape-wrap" style="margin:0 14px 10px 14px;">
+    {# If your existing tape is rendered by JS, keep only the container. #}
+    <div id="mm-ax-tape-inner"></div>
+  </div>
+{% endblock %}
+
+<!-- MM_AX_LAYOUT_OUTER_WRAP_V2_START -->
+<div class="analytics-page"><div class="mm-ax-container">
+{% block content %}
+{% endblock %}
+</div></div>
+<!-- MM_AX_LAYOUT_OUTER_WRAP_V2_END -->
+

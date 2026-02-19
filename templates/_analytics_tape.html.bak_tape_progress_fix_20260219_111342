@@ -1,0 +1,60 @@
+{# MM_ANALYTICS_TAPE_PARTIAL_V1 #}
+<div id="mm-ax-tape-wrap" style="margin:0 0 10px 0;">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;margin:0 0 6px 2px;">
+    <div style="font-size:12px;opacity:.75;">Regime tape (today)</div>
+    <div id="mm-ax-tape-status" style="font-size:12px;opacity:.75;">loading?</div>
+  </div>
+
+  <div style="height:10px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;">
+    <div id="mm-ax-tape-bar" style="height:10px;width:0%;background:#f0c419;"></div>
+  </div>
+
+  <div id="mm-ax-tape-scale"
+       style="display:flex;justify-content:space-between;font-size:11px;opacity:.6;margin-top:4px;">
+    <span>9:30</span><span>10:30</span><span>12</span><span>2</span><span>4</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  const bar = document.getElementById('mm-ax-tape-bar');
+  const st  = document.getElementById('mm-ax-tape-status');
+  if(!bar || !st) return;
+
+  // Don?t double-run if layout reuses partial
+  if(window.__mmTapeRunning) return;
+  window.__mmTapeRunning = true;
+
+  function setStatus(s){ st.textContent = s; }
+
+  async function load(){
+    try{
+      setStatus('loading?');
+      const r = await fetch('/api/market_regime_timeline?bucket=today');
+      if(!r.ok){
+        const t = await r.text();
+        setStatus('tape error: ' + r.status);
+        console.warn('tape bad response', r.status, t);
+        return;
+      }
+      const j = await r.json();
+
+      // Expected shape: { ok:true, pts:[...], progress_pct: N, ... }
+      const pct = (j && (j.progress_pct ?? j.progress ?? 0)) || 0;
+      bar.style.width = Math.max(0, Math.min(100, pct)) + '%';
+
+      if(j && Array.isArray(j.pts) && j.pts.length){
+        setStatus('progress: ' + Math.round(pct) + '%');
+      } else {
+        setStatus('NO SAMPLES (TODAY)');
+      }
+    }catch(e){
+      console.warn('tape exception', e);
+      setStatus('tape error');
+    }
+  }
+
+  load();
+  setInterval(load, 30000);
+})();
+</script>

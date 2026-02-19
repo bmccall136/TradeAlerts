@@ -1,0 +1,76 @@
+{# analytics_regime_layout.html (clean, stable) #}
+{% extends "layout.html" %}
+
+{# Optional: pages can override analytics_tape to render tape at true top slot in layout.html #}
+{% block analytics_tape %}{% endblock %}
+
+{% block content %}
+
+<!-- MM_AX_REGIME_NAVBAR_V1_START -->
+<div class="mm-ax-toolbar" style="margin:12px 0 10px 0;">
+  <div class="mm-ax-left" style="min-width:220px;">
+    <div class="mm-ax-title" style="font-size:22px;">{{ mm_page_title or "Regime Analytics" }}</div>
+    {% if mm_page_subtitle %}
+      <div class="mm-ax-subtitle" style="font-size:12px;opacity:.75;margin-left:2px;">{{ mm_page_subtitle }}</div>
+    {% endif %}
+  </div>
+
+  <div class="mm-ax-mid" style="justify-content:center;">
+    <a class="mm-ax-btn" href="/analytics">Daily</a>
+    <a class="mm-ax-btn" href="/analytics/buy">Buy Analytics</a>
+    <a class="mm-ax-btn" href="/analytics/sell">Sell Analytics</a>
+    <a class="mm-ax-btn" href="/analytics/buy_regime">Buy Regime</a>
+    <a class="mm-ax-btn" href="/analytics/sell_regime">Sell Regime</a>
+  </div>
+
+  <div class="mm-ax-right" style="min-width:260px;">
+    <label style="font-size:12px;opacity:.75;margin-right:6px;">Bucket</label>
+    <select id="mm-ax-bucket" class="form-select form-select-sm" style="width:140px;background:#0f0f0f;color:#ddd;border:1px solid rgba(255,255,255,.15);">
+      {% set b = (request.args.get("bucket") or "today")|lower %}
+      <option value="today" {{ "selected" if b=="today" else "" }}>TODAY</option>
+      <option value="7d"    {{ "selected" if b=="7d" else "" }}>7D</option>
+      <option value="30d"   {{ "selected" if b=="30d" else "" }}>30D</option>
+      <option value="all"   {{ "selected" if b=="all" else "" }}>ALL</option>
+    </select>
+  </div>
+</div>
+
+<script>
+(function(){
+  const sel = document.getElementById("mm-ax-bucket");
+  if(!sel) return;
+  sel.addEventListener("change", function(){
+    const u = new URL(window.location.href);
+    u.searchParams.set("bucket", sel.value);
+    window.location.href = u.toString();
+  });
+})();
+</script>
+<!-- MM_AX_REGIME_NAVBAR_V1_END -->
+
+
+{# === MM_REGIME_LAYOUT_CLEAN_V1_START === #}
+<div class="mm-ax-page">
+  <div class="mm-ax-container">
+    {% block analytics_body %}
+      {# If a page extends this layout but doesn?t define analytics_body,
+         it can just put everything in its own {% block content %} instead. #}
+    {% endblock %}
+  </div>
+</div>
+
+<style>
+  /* Scoped to this layout only */
+  .mm-ax-page{
+    width:100%;
+    display:block;
+  }
+  .mm-ax-container{
+    width:100%;
+    max-width:1400px;
+    margin:0 auto;
+    padding:16px;
+  }
+</style>
+{# === MM_REGIME_LAYOUT_CLEAN_V1_END === #}
+{% endblock %}
