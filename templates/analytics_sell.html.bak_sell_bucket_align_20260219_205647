@@ -138,18 +138,6 @@
 </style>
 <!-- MM_SELL_BODY_CENTERED_OUTERCARD_V2_END -->
 
-<!-- MM_SELL_BUCKET_ALIGN_WITH_CARD_V1_START -->
-<style>
-  /* Align the Bucket row with the centered body card (keep toolbar full-width) */
-  #mm-sell-bucket-row{
-    max-width: 1100px !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
-  }
-</style>
-<!-- MM_SELL_BUCKET_ALIGN_WITH_CARD_V1_END -->
-
-
 
 
 <!-- MM_SELL_TOOLBAR_RIGHT_ALIGN_V1_START -->
@@ -223,7 +211,7 @@
     This page focuses on exit reasons, execution outcomes, and time-in-position. (Counts stay off the SELL Settings page.)
   </div>
 
-  <div id="mm-sell-bucket-row" class="d-flex align-items-center gap-2 flex-wrap" style="margin-top:10px;">
+  <div class="d-flex align-items-center gap-2 flex-wrap" style="margin-top:10px;">
     <div class="fw-bold" style="opacity:.8; min-width:70px;">Bucket</div>
     <select id="mm-sell-bucket" class="form-select form-select-sm">
       <option value="today">TODAY</option>

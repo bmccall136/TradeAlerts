@@ -42,7 +42,9 @@
 
 
 <div id="mm-sell-analytics-wrap" class="mm-ax-container">
-
+<style><!-- MM_SELL_ANALYTICS_CLAMP_V1 -->
+#mm-sell-analytics-wrap{max-width:1200px;}
+</style>
 <!-- MM_SELL_ANALYTICS_WRAP_START -->
 <div id="mm-sell-analytics-root">
 <!-- ====== REGIME TAPE (Analytics pages only) ====== -->
@@ -138,57 +140,17 @@
 </style>
 <!-- MM_SELL_BODY_CENTERED_OUTERCARD_V2_END -->
 
-<!-- MM_SELL_BUCKET_ALIGN_WITH_CARD_V1_START -->
+<!-- MM_SELL_CENTER_HEADER_STRIP_V1_START -->
 <style>
-  /* Align the Bucket row with the centered body card (keep toolbar full-width) */
-  #mm-sell-bucket-row{
+  /* Sell Analytics: center the header strip (desc + bucket) to match centered body card */
+  #mm-sell-analytics-wrap .mm-ax-container{
     max-width: 1100px !important;
+    width: 100% !important;
     margin-left: auto !important;
     margin-right: auto !important;
   }
 </style>
-<!-- MM_SELL_BUCKET_ALIGN_WITH_CARD_V1_END -->
-
-
-
-
-<!-- MM_SELL_TOOLBAR_RIGHT_ALIGN_V1_START -->
-<style>
-  /* Sell Analytics: FORCE toolbar links/date controls to the RIGHT (title stays left) */
-  #mm-sell-analytics-wrap .mm-ax-container > .d-flex.align-items-center.justify-content-between.mb-2{
-    width: 100% !important;
-  }
-  #mm-sell-analytics-wrap .mm-ax-container > .d-flex.align-items-center.justify-content-between.mb-2 > div:nth-child(2){
-    margin-left: auto !important;
-    justify-content: flex-end !important;
-    text-align: right !important;
-  }
-</style>
-<!-- MM_SELL_TOOLBAR_RIGHT_ALIGN_V1_END -->
-
-<!-- MM_SELL_TOOLBAR_RIGHT_ALIGN_V2_START -->
-<style>
-  /* Sell Analytics: HARD FORCE toolbar alignment (left title / right links) */
-  #mm-sell-analytics-wrap .mm-ax-container > .d-flex.align-items-center.justify-content-between.mb-2{
-    display:flex !important;
-    justify-content:space-between !important;
-    align-items:center !important;
-    width:100% !important;
-  }
-
-  /* Right-side group: shove to the far right and keep right-aligned */
-  #mm-sell-analytics-wrap .mm-ax-container > .d-flex.align-items-center.justify-content-between.mb-2 > div:nth-child(2){
-    display:flex !important;
-    margin-left:auto !important;
-    justify-content:flex-end !important;
-    align-items:center !important;
-    text-align:right !important;
-    width:auto !important;
-  }
-</style>
-<!-- MM_SELL_TOOLBAR_RIGHT_ALIGN_V2_END -->
-
-
+<!-- MM_SELL_CENTER_HEADER_STRIP_V1_END -->
 
 
 
@@ -223,7 +185,7 @@
     This page focuses on exit reasons, execution outcomes, and time-in-position. (Counts stay off the SELL Settings page.)
   </div>
 
-  <div id="mm-sell-bucket-row" class="d-flex align-items-center gap-2 flex-wrap" style="margin-top:10px;">
+  <div class="d-flex align-items-center gap-2 flex-wrap" style="margin-top:10px;">
     <div class="fw-bold" style="opacity:.8; min-width:70px;">Bucket</div>
     <select id="mm-sell-bucket" class="form-select form-select-sm">
       <option value="today">TODAY</option>
