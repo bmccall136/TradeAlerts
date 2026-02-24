@@ -1,0 +1,2396 @@
+from __future__ import annotations
+
+# MM_REGIME_EXIT_OVERLAY_FROM_SETTINGS_V3
+
+# MM_REGIME_EXIT_OVERLAY_MODE_FROM_SETTINGS_V4
+
+# MM_REGIME_EXIT_OVERLAY_MODE_FROM_LIVE_MODE_V5
+def _mm_load_regime_exit_overlay(mode, legacy_map):
+    """Load regime_exit_overlay using ACTIVE mode from live_mode.txt (dashboard toggle).
+
+    Order:
+      1) Read live_mode.txt to determine active mode (DAY/SWING). Default DAY.
+      2) Select primary = live_settings_swing.json if SWING else live_settings_day.json
+      3) Load regime_exit_overlay from primary; fallback to live_settings.json
+      4) Return legacy_map if missing/invalid
+
+    Scope: ONLY target_mult/stop_mult/time_mult for TREND/CHOP/DEAD (+ UNKNOWN).
+    """
+    try:
+        import os, json
+
+        root = os.path.dirname(__file__)
+        live_fp   = os.path.join(root, "live_settings.json")
+        day_fp    = os.path.join(root, "live_settings_day.json")
+        swing_fp  = os.path.join(root, "live_settings_swing.json")
+
+        # Dashboard mode toggle file (source of truth)
+        live_mode_fp = os.path.join(root, "live_mode.txt")
+        valid_modes = {"DAY","SWING"}
+
+        def _read_json(fp):
+            try:
+                with open(fp, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                return None
+
+        def _read_mode_file():
+            try:
+                with open(live_mode_fp, "r", encoding="utf-8") as f:
+                    s = (f.read() or "").strip().upper()
+            except Exception:
+                s = ""
+            if s in valid_modes:
+                return s
+            return "DAY"
+
+        # 1) Determine active mode from live_mode.txt
+        cfg_mode = _read_mode_file()
+
+        # Fallback to provided mode arg only if somehow mode file logic breaks
+        if not cfg_mode:
+            cfg_mode = (mode or "").upper().strip() or "DAY"
+        if cfg_mode not in valid_modes:
+            cfg_mode = "DAY"
+
+        primary_fp = swing_fp if (cfg_mode == "SWING") else day_fp
+
+        # 2) Load from primary first; fallback to live_settings.json
+        primary_cfg = _read_json(primary_fp) or {}
+        live_cfg = _read_json(live_fp) or {}
+        cfg = primary_cfg if isinstance(primary_cfg, dict) and primary_cfg else live_cfg
+
+        ov = cfg.get("regime_exit_overlay")
+        if not isinstance(ov, dict):
+            # last-ditch: if primary missing overlay but live has it, try live
+            ov = live_cfg.get("regime_exit_overlay")
+        if not isinstance(ov, dict):
+            return legacy_map
+
+        out = {}
+        for k in ("TREND","CHOP","DEAD"):
+            v = ov.get(k)
+            if not isinstance(v, dict):
+                continue
+            lk = legacy_map.get(k, {}) if isinstance(legacy_map, dict) else {}
+
+            def _f(key, default):
+                try:
+                    return float(v.get(key, lk.get(key, default)))
+                except Exception:
+                    try:
+                        return float(lk.get(key, default))
+                    except Exception:
+                        return float(default)
+
+            out[k] = {
+                "target_mult": _f("target_mult", 1.0),
+                "stop_mult":   _f("stop_mult",   1.0),
+                "time_mult":   _f("time_mult",   1.0),
+            }
+
+        # ensure UNKNOWN + fill missing keys from legacy
+        if isinstance(legacy_map, dict):
+            legacy_map = dict(legacy_map)
+        else:
+            legacy_map = {}
+        legacy_map.setdefault("UNKNOWN", {"target_mult":1.0,"stop_mult":1.0,"time_mult":1.0})
+
+        for k in ("TREND","CHOP","DEAD","UNKNOWN"):
+            if k not in out:
+                out[k] = legacy_map.get(k) or {"target_mult":1.0,"stop_mult":1.0,"time_mult":1.0}
+        return out
+    except Exception:
+        return legacy_map
+
+        def _read_json(fp):
+            try:
+                with open(fp, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                return None
+
+        # 1) Determine active mode from live_settings.json (source of truth)
+        live_cfg = _read_json(live_fp) or {}
+        cfg_mode = (live_cfg.get("mode") or live_cfg.get("trade_mode") or live_cfg.get("run_mode") or "").upper().strip()
+
+        # Fallback to provided mode arg only if live_settings.json doesn't specify it
+        if not cfg_mode:
+            cfg_mode = (mode or "").upper()
+
+        primary_fp = swing_fp if ("SWING" in cfg_mode) else day_fp
+
+        # 2) Load from primary first; fallback to live_settings.json
+        primary_cfg = _read_json(primary_fp) or {}
+        cfg = primary_cfg if isinstance(primary_cfg, dict) and primary_cfg else live_cfg
+
+        ov = cfg.get("regime_exit_overlay")
+        if not isinstance(ov, dict):
+            # last-ditch: if primary missing overlay but live has it, try live
+            ov = live_cfg.get("regime_exit_overlay")
+        if not isinstance(ov, dict):
+            return legacy_map
+
+        out = {}
+        for k in ("TREND","CHOP","DEAD"):
+            v = ov.get(k)
+            if not isinstance(v, dict):
+                continue
+            lk = legacy_map.get(k, {}) if isinstance(legacy_map, dict) else {}
+
+            def _f(key, default):
+                try:
+                    return float(v.get(key, lk.get(key, default)))
+                except Exception:
+                    try:
+                        return float(lk.get(key, default))
+                    except Exception:
+                        return float(default)
+
+            out[k] = {
+                "target_mult": _f("target_mult", 1.0),
+                "stop_mult":   _f("stop_mult",   1.0),
+                "time_mult":   _f("time_mult",   1.0),
+            }
+
+        # ensure UNKNOWN + fill missing keys from legacy
+        if isinstance(legacy_map, dict):
+            legacy_map = dict(legacy_map)
+        else:
+            legacy_map = {}
+        legacy_map.setdefault("UNKNOWN", {"target_mult":1.0,"stop_mult":1.0,"time_mult":1.0})
+
+        for k in ("TREND","CHOP","DEAD","UNKNOWN"):
+            if k not in out:
+                out[k] = legacy_map.get(k) or {"target_mult":1.0,"stop_mult":1.0,"time_mult":1.0}
+        return out
+    except Exception:
+        return legacy_map
+
+        def _read(fp):
+            try:
+                with open(fp, "r", encoding="utf-8") as f:
+                    return f.read()
+            except Exception:
+                return None
+
+        def _loads(s):
+            try:
+                return json.loads(s) if s else None
+            except Exception:
+                return None
+
+        cfg = _loads(_read(primary)) or _loads(_read(fallback)) or {}
+        ov = cfg.get("regime_exit_overlay")
+        if not isinstance(ov, dict):
+            return legacy_map
+
+        out = {}
+        for k in ("TREND","CHOP","DEAD"):
+            v = ov.get(k)
+            if not isinstance(v, dict):
+                continue
+            lk = legacy_map.get(k, {}) if isinstance(legacy_map, dict) else {}
+            def _f(key, default):
+                try:
+                    return float(v.get(key, lk.get(key, default)))
+                except Exception:
+                    try:
+                        return float(lk.get(key, default))
+                    except Exception:
+                        return float(default)
+            out[k] = {
+                "target_mult": _f("target_mult", 1.0),
+                "stop_mult":   _f("stop_mult",   1.0),
+                "time_mult":   _f("time_mult",   1.0),
+            }
+
+        # ensure UNKNOWN + fill missing keys from legacy
+        if isinstance(legacy_map, dict):
+            legacy_map = dict(legacy_map)
+        else:
+            legacy_map = {}
+        legacy_map.setdefault("UNKNOWN", {"target_mult":1.0,"stop_mult":1.0,"time_mult":1.0})
+
+        for k in ("TREND","CHOP","DEAD","UNKNOWN"):
+            if k not in out:
+                out[k] = legacy_map.get(k) or {"target_mult":1.0,"stop_mult":1.0,"time_mult":1.0}
+        return out
+    except Exception:
+        return legacy_map
+
+
+# ----------------------------
+# $$Machine: Regime exit overlay (v1B)
+# Baseline settings remain DAY/SWING JSON; we apply runtime overlay in sell_guard only.
+# ----------------------------
+MM_REGIME_OVERLAY_ON = True  # set False to disable instantly
+
+def _mm_regime_snapshot():
+    try:
+        from services import market_regime as mr
+        for fn in ("get_market_regime", "compute_market_regime", "market_regime", "get_regime"):
+            if hasattr(mr, fn):
+                out = getattr(mr, fn)()
+                if isinstance(out, dict):
+                    lab = (out.get("label") or out.get("regime") or out.get("name") or out.get("state") or "UNKNOWN")
+                    out["label"] = str(lab).upper()
+                    return out
+        if hasattr(mr, "LATEST") and isinstance(mr.LATEST, dict):
+            out = dict(mr.LATEST)
+            lab = (out.get("label") or out.get("regime") or "UNKNOWN")
+            out["label"] = str(lab).upper()
+            return out
+    except Exception:
+        pass
+    return {"label":"UNKNOWN","confidence":0,"ok":False,"reason":"regime_unavailable","detail":{}}
+
+def _mm_regime_overlay(label: str, mode=""):
+    try:
+        # label arg is usually the first positional param in existing signatures
+        _lab = None
+        try:
+            _lab = (locals().get('label') or locals().get('lab') or locals().get('regime') or locals().get('r') or None)
+        except Exception:
+            _lab = None
+        if _lab is None:
+            try:
+                # fallback: first positional arg from locals (best-effort)
+                # if original signature was (label): it'll be in locals() already
+                _lab = None
+            except Exception:
+                _lab = None
+        _lab = (_lab or 'UNKNOWN').upper()
+        _legacy = {"CHOP":{"target_mult":0.6,"stop_mult":0.8,"time_mult":0.8},"TREND":{"target_mult":1.6,"stop_mult":1.25,"time_mult":1.3},"DEAD":{"target_mult":0.5,"stop_mult":0.7,"time_mult":0.6},"UNKNOWN":{"target_mult":1.0,"stop_mult":1.0,"time_mult":1.0}}
+        _ov = _mm_load_regime_exit_overlay(mode, _legacy)
+        return _ov.get(_lab) or _ov.get('UNKNOWN') or {'target_mult':1.0,'stop_mult':1.0,'time_mult':1.0}
+    except Exception:
+        return {'target_mult':1.0,'stop_mult':1.0,'time_mult':1.0}
+def _mm_apply_exit_overlay(target_gain_pct, stop_pct, hold_minutes=None, snap=None):
+    snap = snap or _mm_regime_snapshot()
+    lab  = (snap.get("label") or "UNKNOWN").upper()
+    ov   = _mm_regime_overlay(lab)
+
+    try: tg = float(target_gain_pct)
+    except Exception: tg = target_gain_pct
+    try: sp = float(stop_pct)
+    except Exception: sp = stop_pct
+
+    if isinstance(tg, (int,float)):
+        tg = tg * ov["target_mult"]
+
+    if isinstance(sp, (int,float)):
+        # Preserve sign conventions
+        sp = sp * ov["stop_mult"]
+
+    hm = hold_minutes
+    if hm is not None:
+        try: hm = float(hm) * ov["time_mult"]
+        except Exception: pass
+
+    return tg, sp, hm, ov
+
+def _mm_db_insert_sell_event(db_path, symbol, event, reason, snap=None, extra=None):
+    """DEPRECATED: use services.sell_events_db.log_sell_event (single source of truth)."""
+    try:
+        from services.sell_events_db import log_sell_event
+    except Exception:
+        log_sell_event = None
+
+    # Best-effort: accept either (payload) dict or explicit args; never raise.
+    try:
+        # Common injected signature was (payload: dict) or (row: dict) style.
+        payload = locals().get("payload") or locals().get("row") or None
+
+        if isinstance(payload, dict):
+            ts_utc  = payload.get("ts_utc")
+            symbol  = payload.get("symbol")
+            event   = payload.get("event")
+            reason  = payload.get("reason")
+            detail  = payload.get("detail")
+            order_id= payload.get("order_id")
+            price   = payload.get("price")
+            qty     = payload.get("qty")
+            mode    = payload.get("mode")
+            overlay = payload.get("overlay_json")
+            # If overlay_json exists, pack it into detail to preserve it even if schema differs.
+            if overlay and (not detail):
+                detail = overlay
+
+            if log_sell_event and symbol and event:
+                log_sell_event(
+                    symbol=symbol, event=event, reason=reason, detail=detail,
+                    order_id=order_id, price=price, qty=qty, mode=mode, ts_utc=ts_utc
+                )
+            return
+    except Exception:
+        pass
+
+    # Fallback: do nothing. This function is intentionally non-blocking.
+    return
+import json
+import logging
+import os
+import sys
+import time
+import sqlite3
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any, Dict, Iterable, List, Tuple, Optional
+# sell_guard.py (top-ish)
+from ai_advisor import get_ai_recommendation
+from services.news_service import news_headlines_for_symbol, has_fresh_bad_news
+from services.sell_triggers_log import emit_sell_event as _emit_sell_event
+from services.sell_events_db import ensure_sell_events_table, log_sell_event
+
+try:
+    from zoneinfo import ZoneInfo
+
+    ETZ = ZoneInfo("America/New_York")
+except Exception:  # pragma: no cover
+    ETZ = None
+
+LIVE_DB = "live.db"  # adjust if your path is different
+
+SELL_INFLIGHT_COOLDOWN_SEC = 120
+
+
+
+
+
+def _mm_stamp_last_sell_event_v2(conn=None, cur=None, symbol=None, event=None, ts_utc=None):
+    """DEPRECATED: use services.sell_events_db.log_sell_event (single source of truth)."""
+    try:
+        from services.sell_events_db import log_sell_event
+    except Exception:
+        log_sell_event = None
+
+    # Best-effort: accept either (payload) dict or explicit args; never raise.
+    try:
+        # Common injected signature was (payload: dict) or (row: dict) style.
+        payload = locals().get("payload") or locals().get("row") or None
+
+        if isinstance(payload, dict):
+            ts_utc  = payload.get("ts_utc")
+            symbol  = payload.get("symbol")
+            event   = payload.get("event")
+            reason  = payload.get("reason")
+            detail  = payload.get("detail")
+            order_id= payload.get("order_id")
+            price   = payload.get("price")
+            qty     = payload.get("qty")
+            mode    = payload.get("mode")
+            overlay = payload.get("overlay_json")
+            # If overlay_json exists, pack it into detail to preserve it even if schema differs.
+            if overlay and (not detail):
+                detail = overlay
+
+            if log_sell_event and symbol and event:
+                log_sell_event(
+                    symbol=symbol, event=event, reason=reason, detail=detail,
+                    order_id=order_id, price=price, qty=qty, mode=mode, ts_utc=ts_utc
+                )
+            return
+    except Exception:
+        pass
+
+    # Fallback: do nothing. This function is intentionally non-blocking.
+    return
+
+def _mm_clone_cfg(cfg):
+    """Best-effort clone for per-symbol cfg mutation."""
+    try:
+        from dataclasses import replace
+        return replace(cfg)
+    except Exception:
+        pass
+    try:
+        import copy
+        return copy.deepcopy(cfg)
+    except Exception:
+        return cfg
+
+def _mm_apply_overlay_to_exitconfig(exit_cfg, mode="", symbol=None):
+    """
+    Mutate ExitConfig in-place using current market regime overlay.
+    Logs an event into sell_events with regime+mode so Analytics can slice Mode?Regime.
+    """
+    # prevent double-application (safe if called multiple times)
+    try:
+        if getattr(exit_cfg, "_mm_overlay_applied", False):
+            return
+        setattr(exit_cfg, "_mm_overlay_applied", True)
+    except Exception:
+        pass
+
+    snap = _mm_regime_snapshot()
+    lab  = (snap.get("label") or "UNKNOWN").upper()
+    ov   = _mm_regime_overlay(lab)
+
+    # capture before for logging
+    before = {}
+    for k in ("min_hold_minutes","max_hold_minutes","target_gain_pct","trail_arm_gain_pct","trail_backoff_pct","timeout_exit_pct","intraday_stoploss_pct"):
+        try:
+            before[k] = float(getattr(exit_cfg, k))
+        except Exception:
+            pass
+
+    # time overlay (minutes)
+    try:
+        if hasattr(exit_cfg, "min_hold_minutes"):
+            exit_cfg.min_hold_minutes = float(exit_cfg.min_hold_minutes) * ov["time_mult"]
+        if hasattr(exit_cfg, "max_hold_minutes"):
+            exit_cfg.max_hold_minutes = float(exit_cfg.max_hold_minutes) * ov["time_mult"]
+    except Exception:
+        pass
+
+    # profit targets (positive %)
+    try:
+        if hasattr(exit_cfg, "target_gain_pct"):
+            exit_cfg.target_gain_pct = float(exit_cfg.target_gain_pct) * ov["target_mult"]
+        if hasattr(exit_cfg, "trail_arm_gain_pct"):
+            exit_cfg.trail_arm_gain_pct = float(exit_cfg.trail_arm_gain_pct) * ov["target_mult"]
+    except Exception:
+        pass
+
+    # trailing backoff + stops (often positive backoff, negative exits)
+    try:
+        if hasattr(exit_cfg, "trail_backoff_pct"):
+            exit_cfg.trail_backoff_pct = float(exit_cfg.trail_backoff_pct) * ov["stop_mult"]
+    except Exception:
+        pass
+
+    # defensive exits (these are usually negative % values)
+    def _mul_attr(name):
+        try:
+            if hasattr(exit_cfg, name):
+                v = float(getattr(exit_cfg, name))
+                setattr(exit_cfg, name, v * ov["stop_mult"])
+        except Exception:
+            pass
+
+    _mul_attr("timeout_exit_pct")
+    _mul_attr("intraday_stoploss_pct")
+
+    # after snapshot
+    after = {}
+    for k in before.keys():
+        try:
+            after[k] = float(getattr(exit_cfg, k))
+        except Exception:
+            pass
+
+    # best-effort: log overlay application for transparency
+    try:
+        payload = {
+            "mode": mode,
+            "regime": snap,
+            "overlay": ov,
+            "before": before,
+            "after": after,
+        }
+        emit_sell_event(event="REGIME_OVERLAY_APPLIED", symbol=(symbol or ""), reason="REGIME_OVERLAY", detail=json.dumps(payload, separators=(",", ":")), overlay_json=json.dumps(payload, separators=(",", ":")))
+    except Exception:
+        pass
+
+    # Log for analytics
+    try:
+        _dbp = globals().get("LIVE_DB") or globals().get("DB_PATH") or r"C:\TradeAlerts\live.db"
+        _sym = "SPY"  # regime overlay is market-wide; we log once per run loop decision point
+        # If you prefer per-symbol, change _sym to the position symbol when you call this.
+        extra = {
+            "mode": mode,
+            "label": lab,
+            "confidence": snap.get("confidence"),
+            "reason": snap.get("reason"),
+            "overlay": ov,
+            "before": before,
+            "after": after,
+        }
+        _mm_db_insert_sell_event(_dbp, _sym, "REGIME_PROFILE", f"{lab} conf={snap.get('confidence',0)}", snap, extra=extra)
+    except Exception:
+        pass
+
+    return exit_cfg, snap, ov
+
+def _live_db_path() -> str:
+    try:
+        return os.path.join(os.path.dirname(__file__), LIVE_DB)
+    except Exception:
+        return LIVE_DB
+
+def _db_connect():
+    return sqlite3.connect(_live_db_path())
+
+
+# --- SELL_EVENTS_DB_INIT (db-backed sell lifecycle logging for Sell Analytics) ---
+try:
+    ensure_sell_events_table(_live_db_path())
+except Exception:
+    # Never break Sell Guard due to analytics logging
+    pass
+
+def _map_sell_event_name(raw: str | None) -> str:
+    """Map existing emit_sell_event event names into normalized lifecycle events."""
+    if not raw:
+        return "RAW"
+    r = raw.upper()
+    if "ORDER_PLACED" in r or r.endswith("PLACED"):
+        return "PLACED"
+    if "SKIP" in r or "BLOCK" in r:
+        return "SKIPPED"
+    if "FAIL" in r or "ERROR" in r or "EXCEPT" in r:
+        return "FAILED"
+    if "FILLED" in r or "POSITION_CLOSED" in r or "POSITION_DISAPPEARED" in r:
+        return "FILLED"
+    if "DECISION" in r or r.endswith("_EXIT") or r.endswith("_SELL") or "EVAL" in r:
+        return "ATTEMPTED"
+    return "RAW"
+
+def _map_sell_reason(raw_event: str | None, raw_reason: str | None) -> str:
+    """Normalize exit reason buckets."""
+    ev = (raw_event or "").upper()
+    rs = (raw_reason or "").upper()
+    blob = ev + " " + rs
+    if "TARGET" in blob or "TP" in blob or "TAKE_PROFIT" in blob:
+        return "TARGET"
+    if "STOP" in blob or "SL" in blob or "STOPLOSS" in blob:
+        return "STOP"
+    if "TIMEOUT" in blob or ("HOLD" in blob and "TIME" in blob):
+        return "TIMEOUT"
+    if "PROTECT" in blob or "GUARD" in blob or "RISK" in blob or "NAV" in blob:
+        return "PROTECT"
+    if blob.startswith("AI") or " AI" in blob:
+        return "AI"
+    if "MANUAL" in blob:
+        return "MANUAL"
+    return "UNKNOWN"
+
+def emit_sell_event(*args, **kwargs):
+    """Wrapper around services.sell_triggers_log.emit_sell_event that ALSO logs to LIVE_DB sell_events."""
+    _emit_sell_event(*args, **kwargs)
+    try:
+        from services.sell_events_db import log_sell_event
+        symbol = (kwargs.get("symbol") or kwargs.get("sym") or kwargs.get("ticker") or "").strip().upper()
+        event  = (kwargs.get("event") or kwargs.get("ev") or kwargs.get("action") or "").strip().upper()
+        if symbol and event:
+            log_sell_event(
+                symbol=symbol,
+                event=event,
+                reason=kwargs.get("reason"),
+                detail=kwargs.get("detail"),
+                order_id=kwargs.get("order_id"),
+                price=kwargs.get("price"),
+                qty=kwargs.get("qty"),
+                mode=kwargs.get("mode"),
+                ts_utc=kwargs.get("ts_utc"),
+            )
+    except Exception:
+        pass
+    try:
+        sym = kwargs.get("symbol") or kwargs.get("sym") or ""
+        raw_event = kwargs.get("event")
+        raw_reason = kwargs.get("reason")
+        lifecycle = _map_sell_event_name(raw_event)
+        reason = _map_sell_reason(raw_event, raw_reason)
+
+        detail_obj = {
+            "event": raw_event,
+            "reason": raw_reason,
+            "action": kwargs.get("action"),
+            "pl_pct": kwargs.get("pl_pct"),
+            "hold_min": kwargs.get("hold_min"),
+            "detail": kwargs.get("detail"),
+        }
+        import json as _json
+        detail = _json.dumps(detail_obj, default=str)[:800]
+
+        log_sell_event(
+            db_path=_live_db_path(),
+            symbol=str(sym),
+            event=str(lifecycle),
+            reason=str(reason),
+            detail=detail,
+            order_id=kwargs.get("order_id"),
+            price=kwargs.get("price"),
+            qty=kwargs.get("qty"),
+            mode=kwargs.get("mode"),
+        )
+    except Exception:
+        pass
+
+
+def _ensure_sell_inflight_table(con):
+    """
+    Ensure sell_inflight exists.
+    Supports BOTH schemas:
+      - New (your live.db): symbol TEXT PK, ts_utc INTEGER, reason TEXT
+      - Old: symbol TEXT PK, last_attempt_epoch INTEGER, inflight_seconds INTEGER, reason TEXT
+    """
+    cur = con.cursor()
+    # Create the NEW schema (safe even if table exists)
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS sell_inflight ("
+        " symbol TEXT PRIMARY KEY,"
+        " ts_utc INTEGER,"
+        " reason TEXT"
+        ")"
+    )
+    con.commit()
+
+
+def _sell_inflight_last(sym: str):
+    try:
+        with _db_connect() as con:
+            cur = con.cursor()
+            cur.execute("SELECT last_attempt_epoch FROM sell_inflight WHERE symbol=?", (sym,))
+            r = cur.fetchone()
+            return float(r[0]) if r and r[0] is not None else None
+    except Exception:
+        return None
+
+def _sell_inflight_set(sym: str, reason: str | None = None, err: str | None = None):
+    try:
+        with _db_connect() as con:
+            cur = con.cursor()
+            cur.execute("""
+                INSERT INTO sell_inflight(symbol,last_attempt_epoch,last_reason,last_error)
+                VALUES(?,?,?,?)
+                ON CONFLICT(symbol) DO UPDATE SET
+                    last_attempt_epoch=excluded.last_attempt_epoch,
+                    last_reason=excluded.last_reason,
+                    last_error=excluded.last_error
+            """, (sym, time.time(), reason, err))
+            con.commit()
+    except Exception:
+        pass
+def _sell_inflight_clear(sym: str):
+    try:
+        with _db_connect() as con:
+            cur = con.cursor()
+            cur.execute("DELETE FROM sell_inflight WHERE symbol=?", (sym,))
+            con.commit()
+    except Exception:
+        pass
+def _opened_dt_from_position_opened(sym: str):
+    """
+    Source of truth for hold time: live.db.position_opened.opened_epoch (seconds).
+    Returns aware UTC datetime or None.
+    """
+    try:
+        with _db_connect() as con:
+            cur = con.cursor()
+            cur.execute("SELECT opened_epoch FROM position_opened WHERE symbol=?", (sym,))
+            r = cur.fetchone()
+            if not r or r[0] is None:
+                return None
+            ep = int(r[0])
+            return datetime.fromtimestamp(ep, tz=UTC)
+    except Exception:
+        return None
+
+
+
+LOG = logging.getLogger("sell-guard")
+
+# MM_SELL_INFLIGHT_LATCH_V4_START
+_MM_SELL_INFLIGHT_UNTIL = {}
+
+def _mm_sell_inflight_mark(sym, seconds=180):
+    import time as _t
+    try:
+        k = str(sym)
+    except Exception:
+        k = "?"
+    _MM_SELL_INFLIGHT_UNTIL[k] = _t.time() + float(seconds)
+
+def _mm_sell_inflight_active(sym) -> bool:
+    import time as _t
+    try:
+        k = str(sym)
+    except Exception:
+        k = "?"
+    until = _MM_SELL_INFLIGHT_UNTIL.get(k, 0.0) or 0.0
+    return _t.time() < float(until)
+# MM_SELL_INFLIGHT_LATCH_V4_END
+# MM_TIMEOUT_GUARD_FIX_V2_START
+_MM_TIMEOUT_SKIP_LAST = {}
+
+def _mm_timeout_skip_throttled(sym: str, every_sec: int = 600):
+    """Throttle noisy TIMEOUT SKIP logs (default: once/10min per symbol)."""
+    import time as _t
+    now = _t.time()
+    last = _MM_TIMEOUT_SKIP_LAST.get(sym, 0.0)
+    if (now - last) >= every_sec:
+        _MM_TIMEOUT_SKIP_LAST[sym] = now
+        LOG.info("[TIMEOUT] SKIP %s: no opened_epoch (guarded)", sym)
+# MM_TIMEOUT_GUARD_FIX_V2_END
+
+
+LOG.setLevel(logging.INFO)
+for h in list(LOG.handlers):
+    LOG.removeHandler(h)
+
+_sh = logging.StreamHandler(sys.stdout)
+_sh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s sell-guard: %(message)s"))
+LOG.addHandler(_sh)
+
+from logging.handlers import RotatingFileHandler
+
+try:
+    log_dir = os.path.join(os.path.dirname(__file__), "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    sg_log_path = os.path.join(log_dir, "sell_guard.log")
+except Exception:
+    sg_log_path = "sell_guard.log"
+
+_sg_fh = RotatingFileHandler(sg_log_path, maxBytes=5_000_000, backupCount=5, encoding="utf-8")
+_sg_fh.setFormatter(_sh.formatter)
+LOG.addHandler(_sg_fh)
+
+
+# Backwards-compat alias used deeper in the file
+_lg = LOG
+
+try:
+    import services.etrade_service as et
+except Exception as exc:  # pragma: no cover
+    LOG.error("FATAL: cannot import services.etrade_service: %s", exc)
+    raise SystemExit(1)
+
+# === AI Advisor JSON log ==========================================
+AI_LOG = logging.getLogger("ai-advisor")
+
+if not AI_LOG.handlers:
+    AI_LOG.setLevel(logging.INFO)
+    try:
+        log_dir = os.path.join(os.path.dirname(__file__), "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, "ai_advisor.log")
+    except Exception:
+        log_path = "ai_advisor.log"
+
+    ai_fh = RotatingFileHandler(
+        log_path,
+        maxBytes=5_000_000,
+        backupCount=5,
+        encoding="utf-8",
+    )
+    ai_fh.setFormatter(logging.Formatter("%(message)s"))
+    AI_LOG.addHandler(ai_fh)
+    AI_LOG.propagate = False
+
+def _scalar_float(x) -> float:
+    # pandas Series -> first element
+    try:
+        import pandas as pd  # local import ok
+        if isinstance(x, pd.Series):
+            x = x.iloc[0]
+    except Exception:
+    # numpy scalar -> python scalar
+        pass
+    # numpy scalar -> python scalar
+    if hasattr(x, "item"):
+        try:
+            x = x.item()
+        except Exception:
+            pass
+    return float(x)
+
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+ETZ = ZoneInfo("America/New_York")
+
+def _opened_et_from_position(pos: dict) -> datetime | None:
+    """
+    E*TRADE 'dateAcquired' is typically epoch *milliseconds*.
+    Return timezone-aware ET datetime.
+    """
+    raw = pos.get("dateAcquired")
+    if raw is None:
+        return None
+    try:
+        ts = float(raw)
+    except Exception:
+        return None
+
+    # Heuristic: ms vs seconds
+    if ts > 10_000_000_000:   # definitely ms
+        ts /= 1000.0
+
+    dt_utc = datetime.fromtimestamp(ts, tz=ZoneInfo("UTC"))
+    return dt_utc.astimezone(ETZ)
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+ETZ = ZoneInfo("America/New_York")
+
+def _hold_minutes(opened_et: datetime | None) -> float:
+    if not opened_et:
+        return 0.0
+    now_et = datetime.now(ETZ)
+    return max(0.0, (now_et - opened_et).total_seconds() / 60.0)
+
+
+def log_ai_decision(
+    *,
+    symbol: str,
+    mode: str,
+    qty: float,
+    pl_pct: float,
+    hold_min: float,
+    action: str,
+    confidence: int,
+    reason_tags: list[str] | None = None,
+    reason: str | None = None,
+    has_bad_news: bool | None = None,
+    headlines: list[str] | None = None,
+    market_regime: str | None = None,
+    **extra: Any,
+) -> None:
+    """Write a single JSON record for each AI exit decision.
+
+    This function must NEVER raise - callers depend on AI logic continuing even
+    if logging fails.
+    """
+    try:
+        record: Dict[str, Any] = {
+            "ts": datetime.now(tz=UTC).isoformat(),
+            "symbol": str(symbol or "").upper(),
+            "mode": mode,
+            "qty": float(qty or 0.0),
+            "pl_pct": float(pl_pct or 0.0),
+            "hold_min": float(hold_min or 0.0),
+            "action": str(action or "HOLD").upper(),
+            "confidence": int(confidence or 0),
+            "reason_tags": reason_tags or [],
+            "reason": reason or "",
+            "has_bad_news": bool(has_bad_news) if has_bad_news is not None else False,
+            "headlines": headlines or [],
+            "market_regime": market_regime or "unknown",
+        }
+        # Optional extras (e.g. entry_price/last_price/vwap/etc). Only include JSON-safe scalars.
+        for k, v in (extra or {}).items():
+            if v is None:
+                continue
+            if isinstance(v, (str, int, float, bool)):
+                record[k] = v
+            else:
+                # best-effort serialization
+                record[k] = str(v)
+
+        AI_LOG.info(json.dumps(record, ensure_ascii=False))
+    except Exception as exc:  # pragma: no cover
+        LOG.warning("Failed to log AI decision for %s: %s", symbol, exc)
+
+
+# === Market regime helper (SPY-based) =======================================
+_last_regime: str = "unknown"
+_last_regime_ts: float = 0.0
+
+def _safe_float(x):
+    try:
+        return float(x)
+    except Exception:
+        return None
+
+def _extract_spy_pct_from_quote(payload: dict) -> float | None:
+    """
+    Try to extract SPY % change from common E*TRADE quote shapes.
+    Returns a decimal (e.g. 0.004 = +0.4%), or None if unavailable.
+    """
+    if not isinstance(payload, dict):
+        return None
+
+    # Common: {"QuoteResponse":{"QuoteData":[{"All":{...}}]}}
+    qd = (
+        payload.get("QuoteResponse", {})
+              .get("QuoteData", [])
+    )
+    if isinstance(qd, list) and qd:
+        allblk = qd[0].get("All", {}) if isinstance(qd[0], dict) else {}
+        # Prefer explicit percent fields if present
+        for k in ("changeClosePercentage", "changePercent", "percentChange", "chgPct"):
+            v = _safe_float(allblk.get(k))
+            if v is not None:
+                # E*TRADE often returns percent as "0.12" meaning 0.12% (or sometimes 12.0)
+                # We'll assume it's percent points and convert to decimal.
+                return v / 100.0
+
+        # Otherwise compute from last + prev close
+        last = _safe_float(allblk.get("lastTrade") or allblk.get("lastTradePrice") or allblk.get("last"))
+        prev = _safe_float(allblk.get("previousClose") or allblk.get("prevClose") or allblk.get("close"))
+        if last is not None and prev not in (None, 0.0):
+            return (last / prev) - 1.0
+
+    return None
+
+def _fetch_spy_quote_pct() -> float | None:
+    """
+    Call into services.etrade_service using whatever quote function exists.
+    Returns decimal % change, or None.
+    """
+    if et is None:
+        return None
+
+    # Try a few likely function names without breaking if missing.
+    for fn_name in ("fetch_etrade_quote", "fetch_quote", "get_quote", "get_quotes", "quote"):
+        fn = getattr(et, fn_name, None)
+        if callable(fn):
+            try:
+                resp = fn("SPY")
+                pct = _extract_spy_pct_from_quote(resp if isinstance(resp, dict) else {})
+                if pct is not None:
+                    return pct
+            except Exception:
+                continue
+    return None
+
+def get_market_regime() -> str:
+    """
+    Classify the current market regime using SPY from E*TRADE only.
+    Returns: "uptrend", "downtrend", "chop", or "unknown".
+    Cached for 60s to avoid hammering quote calls.
+    """
+    global _last_regime, _last_regime_ts
+    now = time.time()
+
+    if _last_regime != "unknown" and (now - _last_regime_ts) < 60:
+        return _last_regime
+
+    try:
+        pct = _fetch_spy_quote_pct()
+        if pct is None:
+            regime = _last_regime or "unknown"
+        else:
+            # Keep your same thresholds
+            if pct > 0.004:
+                regime = "uptrend"
+            elif pct < -0.004:
+                regime = "downtrend"
+            else:
+                regime = "chop"
+    except Exception:
+        regime = _last_regime or "unknown"
+
+    _last_regime = regime
+    _last_regime_ts = now
+    return regime
+# --------------------------------------------------------------------------- #
+# E*TRADE positions helper
+# --------------------------------------------------------------------------- #
+
+def get_positions_any() -> Dict[str, Any]:
+    """
+    Thin wrapper around et.get_positions() so the rest of the code can call
+    a single helper. Returns the raw E*TRADE payload.
+    """
+    if et is None:
+        raise RuntimeError("etrade_service import failed; et is None")
+
+    try:
+        raw = et.get_positions()
+        LOG.debug(
+            "get_positions_any: type=%s",
+            type(raw).__name__,
+        )
+        return raw
+    except Exception:
+        LOG.exception("get_positions_any: error calling et.get_positions()")
+        raise
+
+try:
+    from openai import OpenAI
+
+    _openai_client = OpenAI()
+except Exception:  # pragma: no cover
+    _openai_client = None
+
+
+# --------------------------------------------------------------------------- #
+# Defaults / settings
+# --------------------------------------------------------------------------- #
+# --- Live mode (DAY/SWING) settings resolution ------------------------------
+LIVE_MODE_FILE = os.path.join(os.path.dirname(__file__), "live_mode.txt")
+VALID_LIVE_MODES = {"DAY", "SWING"}
+LIVE_MODE_DEFAULT = "DAY"
+
+def _read_live_mode() -> str:
+    """Return current live mode: 'DAY' or 'SWING'."""
+    try:
+        with open(LIVE_MODE_FILE, "r", encoding="utf-8") as f:
+            v = (f.read() or "").strip().upper()
+            if v in VALID_LIVE_MODES:
+                return v
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+    return LIVE_MODE_DEFAULT
+
+def _resolve_settings_file() -> str:
+    """
+    If SELL_GUARD_SETTINGS env var is set, it wins.
+    Otherwise, honor live_mode.txt and select the matching JSON file.
+    """
+    env = os.environ.get("SELL_GUARD_SETTINGS")
+    if env:
+        return env
+
+    mode = _read_live_mode()
+    base = os.path.dirname(__file__)
+    if mode == "SWING":
+        return os.path.join(base, "sell_guard_settings_swing.json")
+    return os.path.join(base, "sell_guard_settings_day.json")
+
+SETTINGS_FILE = _resolve_settings_file()
+# ---------------------------------------------------------------------------
+
+@dataclass
+class SellGuardConfig:
+    mode: str
+    interval_sec: int
+    market_open: str
+    market_close: str
+    timezone: str
+    blocklist: List[str]
+    only_allow_symbol: str | None
+    min_hold_minutes: float
+    max_hold_minutes: float
+    min_gain_pct: float
+    target_gain_pct: float
+    trail_arm_gain_pct: float
+    trail_backoff_pct: float
+    timeout_exit_pct: float
+    intraday_stoploss_pct: float
+    intraday_stoploss_pct: float
+    avoid_daytrades: bool
+    max_place_attempts: int
+    normalize_tick: float
+    allow_intraday_stoploss: bool
+    market_fallback_for: List[str]
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "SellGuardConfig":
+        return cls(
+            mode=str(d.get("mode", "DAY")).upper(),
+            interval_sec=int(d.get("interval_sec", 30)),
+            market_open=str(d.get("market_open", "09:30")),
+            market_close=str(d.get("market_close", "16:00")),
+            timezone=str(d.get("timezone", "America/New_York")),
+            blocklist=list(d.get("blocklist", [])),
+            only_allow_symbol=d.get("only_allow_symbol"),
+            min_hold_minutes=float(d.get("min_hold_minutes", 0)),
+            max_hold_minutes=float(d.get("max_hold_minutes", 480)),
+            min_gain_pct=float(d.get("min_gain_pct", -5.0)),
+            target_gain_pct=float(d.get("target_gain_pct", 1.0)),
+            trail_arm_gain_pct=float(d.get("trail_arm_gain_pct", 1.5)),
+            trail_backoff_pct=float(d.get("trail_backoff_pct", 1.0)),
+            timeout_exit_pct=float(d.get("timeout_exit_pct", -1.0)),
+intraday_stoploss_pct=float(
+    d.get("intraday_stoploss_pct",
+          (-abs(float(d.get("stop_bps") or 100)) / 100.0) if d.get("stop_bps") is not None else float(d.get("timeout_exit_pct", -1.0)))
+),
+            avoid_daytrades=bool(d.get("avoid_daytrades", False)),
+            max_place_attempts=int(d.get("max_place_attempts", 4)),
+            normalize_tick=float(d.get("normalize_tick", 0.01)),
+            allow_intraday_stoploss=bool(d.get("allow_intraday_stoploss", True)),
+            market_fallback_for=list(d.get("market_fallback_for", [])),
+        )
+
+
+DEFAULTS: Dict[str, Any] = {
+    "sell_guard": {
+        "mode": "DAY",
+        "interval_sec": 30,
+        "market_open": "09:30",
+        "market_close": "16:00",
+        "timezone": "America/New_York",
+        "blocklist": [],
+        "only_allow_symbol": None,
+        "min_hold_minutes": 0,
+        "max_hold_minutes": 480,
+        "min_gain_pct": -5.0,
+        "target_gain_pct": 1.0,
+        "trail_arm_gain_pct": 1.5,
+        "trail_backoff_pct": 1.0,
+        "timeout_exit_pct": -1.0,
+        "avoid_daytrades": False,
+        "max_place_attempts": 4,
+        "normalize_tick": 0.01,
+        "allow_intraday_stoploss": True,
+        "market_fallback_for": [
+            "SELL_STOP",
+            "TIMEOUT",
+        ],
+    }
+}
+
+
+def _load_user_settings(path: str | os.PathLike[str]) -> Dict[str, Any]:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except FileNotFoundError:
+        LOG.warning("Settings file %s not found; using defaults only", path)
+        return {}
+    except json.JSONDecodeError as exc:
+        LOG.error("Settings file %s is invalid JSON: %s", path, exc)
+        raise SystemExit(1)
+
+
+def merge_dict(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(base)
+    for k, v in override.items():
+        if isinstance(v, dict) and isinstance(base.get(k), dict):
+            merged[k] = merge_dict(base[k], v)
+        else:
+            merged[k] = v
+    return merged
+
+
+def load_settings() -> Dict[str, Any]:
+    """
+    Load settings from SELL_GUARD_SETTINGS (resolved SETTINGS_FILE), merged over DEFAULTS.
+    Merge rule: DEFAULTS first, then user overrides (user wins).
+    Supports either:
+      - root object containing {'sell_guard': {...}}
+      - flat root object that is itself the sell_guard dict
+    """
+    user = _load_user_settings(SETTINGS_FILE)
+    if not isinstance(user, dict):
+        raise SystemExit(f"Settings root must be an object, got {type(user)!r}")
+
+    base = dict(DEFAULT_SETTINGS) if 'DEFAULT_SETTINGS' in globals() and isinstance(DEFAULT_SETTINGS, dict) else {}
+
+    # Normalize user: if it doesn't contain 'sell_guard', treat the whole dict as sell_guard.
+    if 'sell_guard' not in user and isinstance(user, dict):
+        user = {'sell_guard': user}
+
+    # Ensure sell_guard dict exists in base
+    if 'sell_guard' not in base or not isinstance(base.get('sell_guard'), dict):
+        base['sell_guard'] = {}
+
+    # Merge sell_guard specifically (deep-ish)
+    if isinstance(user.get('sell_guard'), dict):
+        sg = dict(base.get('sell_guard') or {})
+        sg.update(user.get('sell_guard') or {})
+        base.update(user)
+        base['sell_guard'] = sg
+        return base
+
+    # Fallback: shallow merge
+    base.update(user)
+    return base
+
+
+def get_ai_flags(settings: Dict[str, Any]) -> tuple[bool, bool]:
+    """Extract AI enablement flags from settings.
+
+    Returns (ai_enabled, ai_use_exits).
+    """
+    ai = settings.get("ai") or {}
+    enabled = bool(ai.get("enabled", False))
+    use_exits = bool(ai.get("use_exits", True))
+    return enabled, use_exits
+
+
+# --------------------------------------------------------------------------- #
+# E*TRADE helpers / wrappers
+# --------------------------------------------------------------------------- #
+
+
+def account_id_key() -> str:
+    aid = et.account_id_key()
+    if not aid:
+        raise RuntimeError("account_id_key() returned empty")
+    return aid
+
+
+def fetch_positions() -> dict:
+    """
+    Fetch raw positions from E*TRADE and log a small snippet for debugging.
+    """
+    # 1) get the data
+    positions_raw = get_positions_any()
+
+    # 3) hand it back to the caller
+    return positions_raw
+
+
+def fetch_open_orders() -> List[Dict[str, Any]]:
+    """Return a flat list of open orders from E*TRADE, or [] on error."""
+    try:
+        # list_open_orders() already flattens the E*TRADE response for us
+        return et.list_open_orders()
+    except Exception as exc:  # pragma: no cover
+        LOG.warning("open_orders() failed: %s", exc)
+        return []
+
+
+# --------------------------------------------------------------------------- #
+# AI Advisor - exits
+# --------------------------------------------------------------------------- #
+
+
+def ai_exit_check(
+    symbol: str,
+    qty: float,
+    pl_pct: float,
+    hold_min: float,
+    entry_price: float,
+    last_price: float,
+) -> Dict[str, Any]:
+    """
+    Ask AI Advisor (via ai_advisor.get_ai_recommendation) for an exit
+    recommendation, including recent news context.
+
+    Returns a dict like:
+      {
+        "action": "SELL" | "HOLD" | "RED_FLAG",
+        "confidence": int,
+        "reason": "...",
+        "reason_tags": [...],
+      }
+
+    NOTE: ai_advisor.get_ai_recommendation() is designed to NEVER raise; it
+    returns a neutral recommendation on error. We still wrap in try/except as
+    a final safety net.
+    """
+    try:
+        # --- 1) Build news context from our DB (no external calls here) ---
+        headlines = news_headlines_for_symbol(symbol, limit=5)
+        bad_flag, bad_rows = has_fresh_bad_news(
+            symbol,
+            lookback_minutes=240,
+            max_rows=20,
+        )
+        if bad_flag:
+            headlines.insert(
+                0,
+                f"BAD NEWS FLAG: {len(bad_rows)} negative headline(s) in last 4h.",
+            )
+        if not headlines:
+            headlines = [
+                "No major recent news found for this symbol in the last few hours."
+            ]
+
+        # --- 2) Compute market regime (SPY intraday) ---
+        market_regime = get_market_regime()
+
+        # --- 3) Build snapshot for ai_advisor.get_ai_recommendation() ---
+        price = float(last_price or 0.0)
+        vwap = float(entry_price or price)
+        vwap_diff = float(price - vwap)
+
+        snapshot: Dict[str, Any] = {
+            "symbol": symbol,
+            "name": symbol,
+            "price": price,
+            "vwap": vwap,
+            "vwap_diff": vwap_diff,
+            "indicators": {
+                "pl_pct": float(pl_pct),
+                "hold_minutes": float(hold_min),
+            },
+            "position": {
+                "qty": float(qty),
+                "entry_price": float(entry_price or 0.0),
+                "unrealized_pl_pct": float(pl_pct),
+            },
+            "portfolio": None,
+            "news_headlines": headlines,
+            "timeframe": "intraday/swing exit (next 1-3 days)",
+            "market_regime": market_regime,
+        }
+
+        rec = get_ai_recommendation(snapshot)
+        action = str(rec.get("action", "HOLD")).upper()
+        confidence = int(rec.get("confidence") or 0)
+        reason_tags = rec.get("reason_tags") or []
+        comment = rec.get("comment") or rec.get("reason") or ""
+
+        return {
+            "action": action,
+            "confidence": confidence,
+            "reason_tags": reason_tags,
+            "reason": comment,
+            "market_regime": market_regime,
+            "has_bad_news": bool(bad_flag),
+        }
+
+    except Exception as exc:
+        LOG.warning("ai_exit_check error for %s: %s", symbol, exc)
+        return {"action": "HOLD", "confidence": 0, "reason": "error", "reason_tags": []}
+
+# --------------------------------------------------------------------------- #
+# Core logic
+# --------------------------------------------------------------------------- #
+
+
+@dataclass
+class PositionRow:
+    symbol: str
+    qty: float
+    mv: float
+    entry_price: float
+    last_trade: float
+    opened_at: datetime | None
+
+
+def parse_positions(rows) -> List[PositionRow]:
+    """
+    Normalize the E*TRADE PortfolioResponse into a flat list of
+    PositionRow objects. Accepts either:
+      - raw dict from et.positions()
+      - list/iterable of position dicts (legacy behaviour)
+    """
+    # --- Normalize input into a list of dicts called `items` ---
+
+    # Case 1: full E*TRADE response dict
+    if isinstance(rows, dict):
+        pr = rows.get("PortfolioResponse") or rows.get("portfolioResponse") or rows
+
+        # Some responses use AccountPortfolio, some AccountPositions
+        accounts = (
+            pr.get("AccountPortfolio")
+            or pr.get("AccountPositions")
+            or []
+        )
+
+        if isinstance(accounts, dict):
+            accounts = [accounts]
+
+        items: List[Dict[str, Any]] = []
+        for acct in accounts:
+            pos_list = acct.get("Position") or acct.get("positions") or []
+            if isinstance(pos_list, dict):
+                pos_list = [pos_list]
+            items.extend(pos_list)
+
+    # Case 2: JSON string (just in case)
+    elif isinstance(rows, str):
+        try:
+            parsed = json.loads(rows)
+            return parse_positions(parsed)
+        except Exception:
+            LOG.error("parse_positions: got string rows; JSON decode failed")
+            return []
+
+    # Case 3: already an iterable of dicts
+    else:
+        try:
+            items = list(rows or [])
+        except TypeError:
+            LOG.error("parse_positions: unsupported rows type %r", type(rows))
+            return []
+
+    holdings: List[PositionRow] = []
+
+    for r in items:
+        if not isinstance(r, dict):
+            LOG.warning("parse_positions: skipping non-dict row: %r", r)
+            continue
+
+        sym = str(r.get("symbolDescription") or r.get("symbol") or "").strip()
+        if not sym:
+            continue
+
+        qty = float(r.get("quantity") or 0)
+        price_paid = float(r.get("pricePaid") or r.get("costPerShare") or 0)
+        market_value = float(r.get("marketValue") or 0)
+        total_cost = float(r.get("totalCost") or (qty * price_paid))
+        total_gain = float(r.get("totalGain") or (market_value - total_cost))
+
+        # Best effort for last trade / current price (not strictly needed since we use mv/qty first)
+        try:
+            last_trade = float(
+                r.get("lastTrade") or r.get("price") or 0.0
+            )
+        except Exception:
+            last_trade = 0.0
+
+        # opened_at from dateAcquired (E*TRADE uses ms since epoch)
+        opened_at = None
+        ts = r.get("dateAcquired")
+        if ts:
+            try:
+                opened_at = datetime.fromtimestamp(float(ts) / 1000.0, tz=UTC)
+            except Exception:
+                opened_at = None
+
+        # Day P&L is currently unused in the PositionRow, but we keep the computation
+        # in case we want to log or extend PositionRow later.
+        # day_pnl = float(r.get("daysGain") or 0.0)
+
+        holdings.append(
+            PositionRow(
+                symbol=sym,
+                qty=qty,
+                mv=market_value,
+                entry_price=price_paid,
+                last_trade=last_trade,
+                opened_at=opened_at,
+            )
+        )
+
+    return holdings
+
+
+def within_session(now: datetime, cfg: SellGuardConfig) -> bool:
+    """
+    Return True if now is within the configured market session.
+    """
+    if ETZ is not None:
+        now_local = now.astimezone(ETZ)
+    else:  # pragma: no cover
+        now_local = now
+
+    h, m = map(int, cfg.market_open.split(":", 1))
+    open_dt = now_local.replace(hour=h, minute=m, second=0, microsecond=0)
+    h, m = map(int, cfg.market_close.split(":", 1))
+    close_dt = now_local.replace(hour=h, minute=m, second=0, microsecond=0)
+    return open_dt <= now_local <= close_dt
+
+
+def normalize_price(px: float, tick: float) -> float:
+    if tick <= 0:
+        return px
+    return round(px / tick) * tick
+
+
+def compute_order_params(
+    symbol: str,
+    cfg: SellGuardConfig,
+    *,
+    kind: str = "SELL",
+) -> Tuple[str, float | None]:
+    """
+    For now we mostly place market or stop orders; price logic is handled
+    elsewhere if needed.
+    """
+    if kind == "SELL":
+        return "MARKET", None
+    return "MARKET", None
+
+
+def place_with_adaptive_variants(
+    acct_key: str,
+    symbol: str,
+    qty: float,
+    order_type: str,
+    limit_price: float | None,
+    max_attempts: int,
+) -> None:
+    """
+    Try to place a SELL order, retrying on transient E*TRADE errors.
+
+    Uses preview_equity_order / place_equity_order from services.etrade_service.
+    DB-backed SELL_INFLIGHT latch prevents repeated SELL spam per symbol.
+    """
+    # Normalize inputs once
+    sym = (symbol or "").strip().upper()
+    if not sym:
+        return
+    try:
+        q = float(qty or 0.0)
+    except Exception:
+        q = 0.0
+    if q <= 0:
+        return
+
+    order_type = (order_type or "MARKET").upper()
+    price_type = "MARKET" if order_type == "MARKET" else "LIMIT"
+
+    from importlib import import_module
+    et = import_module("services.etrade_service")
+
+    # --- SELL_INFLIGHT latch + cooldown (prevents repeat SELL spam) ---
+    import os, time, sqlite3
+
+    _SELL_INFLIGHT_COOLDOWN_SEC = int(os.environ.get("SELL_INFLIGHT_COOLDOWN_SEC", "120") or "120")
+    _db_path = os.path.join(os.path.dirname(__file__), "live.db")
+
+    def _inflight_get_ts(sym2: str) -> int | None:
+        try:
+            con = sqlite3.connect(_db_path)
+            cur = con.cursor()
+            cur.execute("SELECT ts_utc FROM sell_inflight WHERE symbol=?", (sym2,))
+            row = cur.fetchone()
+            con.close()
+            return int(row[0]) if row and row[0] is not None else None
+        except Exception:
+            return None
+
+    def _inflight_set(sym2: str, ts_utc: int, why: str) -> None:
+        try:
+            con = sqlite3.connect(_db_path)
+            cur = con.cursor()
+            cur.execute(
+                "INSERT INTO sell_inflight(symbol, ts_utc, reason) VALUES(?,?,?) "
+                "ON CONFLICT(symbol) DO UPDATE SET ts_utc=excluded.ts_utc, reason=excluded.reason",
+                (sym2, int(ts_utc), str(why)[:200]),
+            )
+            con.commit()
+            con.close()
+        except Exception:
+            pass
+    def _inflight_clear(sym2: str) -> None:
+        try:
+            con = sqlite3.connect(_db_path)
+            cur = con.cursor()
+            cur.execute("DELETE FROM sell_inflight WHERE symbol=?", (sym2,))
+            con.commit()
+            con.close()
+        except Exception:
+            pass
+    now = int(time.time())
+    prev_ts = _inflight_get_ts(sym)
+
+    # If we recently tried a SELL for this symbol, SKIP (do NOT clear latch)
+    if prev_ts is not None and (now - prev_ts) < _SELL_INFLIGHT_COOLDOWN_SEC:
+        LOG.info(
+            "[SELL_INFLIGHT] SKIP %s: cooldown=%ss elapsed=%ss",
+            sym,
+            _SELL_INFLIGHT_COOLDOWN_SEC,
+            (now - prev_ts),
+        )
+        return
+
+    # Set latch before any E*TRADE calls (prevents double-fire across loops)
+    _inflight_set(sym, now, f"start:{order_type}")
+
+    attempts = 0
+    last_err: Exception | None = None
+
+    while attempts < max_attempts:
+        attempts += 1
+        try:
+            LOG.info(
+                "place_with_adaptive_variants attempt %s: %s qty=%s type=%s limit=%s",
+                attempts,
+                sym,
+                q,
+                order_type,
+                limit_price,
+            )
+
+            # For MARKET we must not send a limit price; for LIMIT we pass it through.
+            limit = None
+            if price_type == "LIMIT" and limit_price is not None:
+                limit = float(limit_price)
+
+            preview = et.preview_equity_order(
+                acct_key,
+                sym,
+                int(q),
+                limit,
+                action="SELL",
+                price_type=price_type,
+            )
+            et.place_equity_order(preview, qty=int(q))
+
+            # --- sell_triggers logging: order placed (best-effort) ---
+            try:
+                emit_sell_event(
+                    symbol=sym,
+                    event="ORDER_PLACED",
+                    action=str(order_type or "SELL"),
+                    reason="place_equity_order_success",
+                    hold_min=None,
+                    qty=float(q),
+                    last_price=None,
+                    entry_price=None,
+                    pnl_pct=None,
+                    mode="LIVE",
+                    details={
+                        "order_type": str(order_type),
+                        "limit_price": (float(limit_price) if limit_price is not None else None),
+                        "attempt": attempts,
+                    },
+                )
+            except Exception:
+            # ---------------------------------------------------------
+
+                pass
+            # ---------------------------------------------------------
+
+            LOG.info("place_with_adaptive_variants success for %s", sym)
+
+            # Clear latch on success (we placed the order)
+            _inflight_clear(sym)
+            return
+
+        except Exception as exc:  # noqa: BLE001
+            last_err = exc
+            msg = str(exc)
+
+            # Update latch reason so the DB shows what happened most recently
+            _inflight_set(sym, int(time.time()), f"err:{order_type}:{msg[:120]}")
+
+            # 1028 duplicate order / 1049 prior request processing:
+            # This means a sell is already in-flight. KEEP latch, stop retries.
+            if ("code': 1028" in msg) or ('code": 1028' in msg) or ("code': 1049" in msg) or ('code": 1049' in msg):
+                LOG.warning(
+                    "[SELL_INFLIGHT] %s pending/duplicate for %s; stop retries this loop. (%s)",
+                    order_type,
+                    sym,
+                    msg,
+                )
+                return
+
+            # 1514: symbol/account mismatch for closing order ? treat as terminal for this loop.
+            # KEEP latch (cooldown) so we don't hammer it every 30s.
+            if ("code': 1514" in msg) or ('code": 1514' in msg):
+                LOG.error(
+                    "place_with_adaptive_variants: E*TRADE code 1514 for %s; skipping auto-sell this loop. Error: %s",
+                    sym,
+                    msg,
+                )
+                return
+
+            LOG.warning(
+                "place_with_adaptive_variants attempt %s failed for %s: %s",
+                attempts,
+                sym,
+                msg,
+            )
+            time.sleep(1.0)
+
+    # All attempts failed. KEEP latch so next loop cools down.
+    raise RuntimeError(f"Failed to place order for {sym}: {last_err}")
+
+
+
+# --------------------------------------------------------------------------- #
+# Main loop
+# --------------------------------------------------------------------------- #
+
+
+def main() -> None:
+    LOG.info("sell_guard starting?")
+# NOTE: previous line had mojibake from copy/paste; fixed to a normal ellipsis.
+    LOG.info("Using SELL_GUARD_SETTINGS=%s", SETTINGS_FILE)
+
+    LOG.info('DBG SETTINGS RESOLVED live_mode=%s settings=%s', _read_live_mode(), SETTINGS_FILE)
+    settings = load_settings()
+    sg = settings.get("sell_guard", {}) or {}
+    ai_enabled, ai_use_exits = get_ai_flags(settings)
+    LOG.info("AI exits config: enabled=%s use_exits=%s", ai_enabled, ai_use_exits)
+
+    base_cfg = SellGuardConfig.from_dict(sg)
+    LOG.info("SellGuardConfig(base): %s", base_cfg)
+
+    cfg = base_cfg  # keep existing code paths working; per-symbol clone happens in loop
+
+    acct_key = account_id_key()
+    LOG.info("account_id_key=%s", acct_key)
+
+    armed_trail: Dict[str, float] = {}
+
+
+    # Track previous loop positions so we can log when a position disappears (sell went through)
+
+    prev_positions: Dict[str, float] = {}
+    while True:
+        loop_start = datetime.now(tz=UTC)
+
+        try:
+            if not within_session(loop_start, cfg):
+                LOG.info(
+                    "Outside market session %s-%s; sleeping %ss",
+                    cfg.market_open,
+                    cfg.market_close,
+                    cfg.interval_sec,
+                )
+                time.sleep(cfg.interval_sec)
+                continue
+
+            positions_raw = fetch_positions()
+            positions = parse_positions(positions_raw)
+
+            # ---- sell_triggers logging: detect positions that disappeared (sell went through) ----
+            try:
+                cur_positions = {(pp.symbol or "").upper().strip(): float(pp.qty or 0.0) for pp in (positions or [])}
+
+                # FULL close: symbol disappeared
+                for _sym, _qty in (prev_positions or {}).items():
+                    _sym_u = (_sym or "").upper().strip()
+                    if not _sym_u:
+                        continue
+                    if _sym_u not in cur_positions and float(_qty or 0.0) > 0:
+                        try:
+                            emit_sell_event(
+                                symbol=_sym_u,
+                                event="POSITION_CLOSED",
+                                action="SELL",
+                                reason="position_disappeared",
+                                hold_min=None,
+                                qty=float(_qty or 0.0),
+                                last_price=None,
+                                entry_price=None,
+                                pnl_pct=None,
+                                mode=cfg.mode,
+                                details={"note": "position no longer returned by positions; likely sell filled"},
+                            )
+                        except Exception:
+                # OPTIONAL: partial reduction
+                            pass
+                # OPTIONAL: partial reduction
+                for _sym, _prev_qty in (prev_positions or {}).items():
+                    _sym_u = (_sym or "").upper().strip()
+                    if not _sym_u:
+                        continue
+                    _prev = float(_prev_qty or 0.0)
+                    _cur  = float(cur_positions.get(_sym_u, 0.0) or 0.0)
+                    if _cur > 0 and _prev > 0 and _cur < _prev:
+                        try:
+                            emit_sell_event(
+                                symbol=_sym_u,
+                                event="POSITION_REDUCED",
+                                action="SELL",
+                                reason="qty_reduced",
+                                hold_min=None,
+                                qty=(_prev - _cur),
+                                last_price=None,
+                                entry_price=None,
+                                pnl_pct=None,
+                                mode=cfg.mode,
+                                details={"prev_qty": _prev, "cur_qty": _cur},
+                            )
+                        except Exception:
+                            pass
+                prev_positions = dict(cur_positions)
+
+            except Exception:
+                # never let logging break the guard loop
+            # ------------------------------------------------------------------------------
+
+                pass
+                # never let logging break the guard loop
+            # ------------------------------------------------------------------------------
+
+            if not positions:
+                LOG.info("No positions; sleeping %ss", cfg.interval_sec)
+                time.sleep(cfg.interval_sec)
+                continue
+
+            open_orders = fetch_open_orders()
+            # Build a quick set of symbols that already have an OPEN/PENDING SELL order
+            open_sell_symbols: set[str] = set()
+            for _o in (open_orders or []):
+                try:
+                    if not isinstance(_o, dict):
+                        continue
+                    _sym = (_o.get("symbol") or "").strip().upper()
+                    if not _sym:
+                        continue
+                    _act = str(_o.get("orderAction") or _o.get("action") or "").upper()
+                    _status = str(_o.get("status") or _o.get("orderStatus") or "").upper()
+                    if "SELL" in _act and _status not in {"EXECUTED", "FILLED", "CANCELLED", "REJECTED"}:
+                        open_sell_symbols.add(_sym)
+                except Exception:
+                    continue
+            open_map: Dict[str, datetime] = {}
+            for o in open_orders:
+                try:
+                    sym = (o.get("symbol") or "").strip()
+                    if not sym:
+                        continue
+                    ot = o.get("orderTime")
+                    if not ot:
+                        continue
+                    # E*TRADE generally returns ISO strings here, but be defensive
+                    dt: Optional[datetime] = None
+                    if isinstance(ot, (int, float)):
+                        dt = datetime.fromtimestamp(ot / 1000.0, tz=UTC)
+                    elif isinstance(ot, str):
+                        s = ot.strip()
+                        if not s:
+                            continue
+
+                        # Normalize common E*TRADE formats
+                        # e.g. "2025-12-03T14:26:01.000Z" or with +0000
+                        s = s.replace("Z", "+00:00")
+                        if len(s) > 5 and (s[-5:].endswith("0000") and s[-5] in "+-"):
+                            # "...+0000" -> "...+00:00"
+                            s = s[:-5] + s[-5:-2] + ":" + s[-2:]
+                        try:
+                            dt = datetime.fromisoformat(s)
+                        except Exception:
+                            # maybe it's actually epoch ms in a string
+                            # maybe it's actually epoch ms in a string
+                            if s.isdigit():
+                                val = int(s)
+                                # assume ms if it looks too large
+                                if val > 10**11:
+                                    dt = datetime.fromtimestamp(val / 1000.0, tz=UTC)
+                                else:
+                                    dt = datetime.fromtimestamp(val, tz=UTC)
+                    if dt is None:
+                        continue
+
+                    opened_at = dt.astimezone(UTC)
+                    if sym not in open_map or opened_at < open_map[sym]:
+                        open_map[sym] = opened_at
+                except Exception:
+                    continue
+
+
+            LOG.info(
+                "positions raw glimpse: %s",
+                json.dumps(positions_raw, default=str)[:400] + "..."
+            )
+
+            # 1) What you actually hold (normalized)
+            LOG.info(
+                "positions normalized -> %s",
+                [(p.symbol, p.qty) for p in positions],
+            )
+
+            # 2) What is allowed to be *considered* (not blocklisted / no-sell list)
+            allowed = [p for p in positions if p.symbol not in cfg.blocklist]
+            LOG.info(
+                "positions allowed (not blocklisted) -> %s",
+                [(p.symbol, p.qty) for p in allowed],
+            )
+
+
+            for p in positions:
+                s = p.symbol
+
+
+                # --- per-symbol Market Regime overlay (safe clone) ---
+
+
+                cfg = _mm_clone_cfg(base_cfg)
+
+
+                try:
+
+
+                    _mm_apply_overlay_to_exitconfig(cfg, mode=mode, symbol=s)
+                    LOG.info("[REGIME_OVERLAY] %s mode=%s cfg target=%.2f stop=%.2f hold=[%.0f..%.0f]", s, mode, cfg.target_gain_pct, cfg.intraday_stoploss_pct, cfg.min_hold_minutes, cfg.max_hold_minutes)
+
+
+                except Exception:
+
+
+                    pass
+                has_open_sell = (s in open_sell_symbols)
+                qty = p.qty
+                mv = p.mv
+                entry_px = p.entry_price
+                last_trade = p.last_trade
+
+                if s in cfg.blocklist:
+                    LOG.info("[SKIP] %s is in blocklist", s)
+                    continue
+
+                if cfg.only_allow_symbol and s != cfg.only_allow_symbol:
+                    LOG.info("[SKIP] %s not equal to only_allow_symbol=%s", s, cfg.only_allow_symbol)
+                    continue
+
+                if qty <= 0:
+                    continue
+
+                if mv and qty:
+                    cur_px = mv / qty
+                elif last_trade:
+                    cur_px = last_trade
+                else:
+                    cur_px = entry_px or 0.0
+
+                if not entry_px:
+                    LOG.info("[SKIP] %s has no entry price", s)
+                    continue
+
+                pl_pct = ((cur_px - entry_px) / entry_px) * 100.0
+
+                # Determine hold time:
+                # - Prefer any explicit opened_at from the position.
+                # - Fall back to earliest open order time for that symbol.
+                opened = p.opened_at or open_map.get(s)
+                opened_is_db = False
+                hold_min = 0.0
+                is_prior_day = False
+
+                if opened:
+                    if ETZ is not None:
+                        opened_local = opened.astimezone(ETZ)
+                        now_local = loop_start.astimezone(ETZ)
+                    else:  # pragma: no cover
+                        opened_local = opened
+                        now_local = loop_start
+
+                    # Prior-day flag
+                    is_prior_day = opened_local.date() < now_local.date()
+
+                    # ---- CRITICAL FIX ----
+                    # If opened_at came from E*TRADE dateAcquired, it is often midnight ET (00:00)
+                    # even for intraday entries. That is NOT a real fill time; treating it as such
+                    # inflates hold_min and triggers false TIMEOUT behavior.
+                    is_midnightish = (
+                        opened_local.hour == 0
+                        and opened_local.minute == 0
+                        and opened_local.second < 5
+                    )
+
+                    if (not is_prior_day) and is_midnightish:
+                        # Same-day midnight dateAcquired ? treat as "fresh/unknown" (do NOT time out)
+                        hold_min = 0.0
+                        is_prior_day = False
+                    else:
+                        # Real timestamp (or prior-day) ? compute real age
+                        hold_sec = (loop_start - opened).total_seconds()
+                        hold_min = max(0.0, hold_sec / 60.0)
+
+                    emit_sell_event(
+                        symbol=s,
+                        event="EVAL",
+                        action="HOLD",
+                        reason="loop",
+                        hold_min=hold_min,
+                        qty=qty,
+                        last_price=cur_px,
+                        entry_price=entry_px,
+                        pnl_pct=pl_pct,
+                        mode=cfg.mode,
+                        details={
+                            "is_prior_day": bool(is_prior_day),
+                            "has_open_sell": bool(has_open_sell),
+                            "opened_src": "position" if p.opened_at else ("open_map" if open_map.get(s) else "none"),
+                        },
+                    )
+
+
+                LOG.info(
+                    "[HOLD] %s gain=%.2f%% hold=%.1f mins (waiting for trail/target/timeout)",
+                    s,
+                    pl_pct,
+                    hold_min,
+                )
+
+                # Min hold: donâ€™t touch very fresh entries
+                if hold_min < cfg.min_hold_minutes:
+                    LOG.info(
+                        "[HOLD] %s hold_min=%.1f < min_hold=%.1f ? skipping",
+                        s,
+                        hold_min,
+                        cfg.min_hold_minutes,
+                    )
+                    continue
+
+                # --- AI EXIT: Max says goes (except hard stoploss) ---
+                ai_action = None
+                ai_conf = 0
+                ai_tags: List[str] = []
+                ai_veto_profit_exits = False
+
+                if ai_enabled and ai_use_exits and qty > 0:
+                    try:
+                        last_px = entry_px * (1.0 + (pl_pct / 100.0)) if entry_px else 0.0
+                        ai = ai_exit_check(s, qty, pl_pct, hold_min, entry_px, last_px)
+
+                        ai_action = str(ai.get("action", "HOLD")).upper()
+                        ai_conf = int(ai.get("confidence") or 0)
+                        ai_tags = ai.get("reason_tags") or []
+                        ai_reason = ai.get("reason") or ""
+
+                        has_bad = bool(ai.get("has_bad_news"))
+                        regime = ai.get("market_regime")
+
+                        # ?? Log every AI decision as JSON (for analysis/backtest later)
+                        log_ai_decision(
+                            symbol=s,
+                            mode=cfg.mode,
+                            qty=qty,
+                            pl_pct=pl_pct,
+                            hold_min=hold_min,
+                            action=ai_action,
+                            confidence=ai_conf,
+                            reason_tags=ai_tags,
+                            reason=ai_reason,
+                            has_bad_news=has_bad,
+                            headlines=None,
+                            market_regime=regime,
+                        )
+
+                        # ?? If Max says SELL or RED_FLAG ? we SELL. No confidence threshold.
+                        if ai_action in {"SELL", "RED_FLAG"}:
+                            pt, lim = compute_order_params(s, cfg)
+                            LOG.info(
+                                "[AI_EXIT] %s qty=%d pl=%.2f%% hold=%.1f mins ? %s (%d%%) tags=%s ? place %s%s",
+                                s,
+                                qty,
+                                pl_pct,
+                                hold_min,
+                                ai_action,
+                                ai_conf,
+                                ",".join(ai_tags),
+                                pt,
+                                f" {lim:.2f}" if lim else "",
+                            )
+                            if has_open_sell:
+                                LOG.info("[OPEN_SELL] %s already has a pending SELL; skip AI exit order this loop", s)
+                                try:
+                                    emit_sell_event(
+                                        event="AI_EXIT_SKIP_OPEN_SELL",
+                                        symbol=s,
+                                        qty=qty,
+                                        pl_pct=pl_pct,
+                                        hold_min=hold_min,
+                                        reason="OPEN_SELL",
+                                        details={"ai_action": ai_action, "ai_conf": ai_conf, "ai_tags": ai_tags, "mode": cfg.mode},
+                                    )
+                                except Exception:
+                                    pass
+                                continue
+
+                            # [SELL_INFLIGHT_SKIP] do not re-place sells while broker is processing/duplicate
+
+                            if _sg_inflight(sym):
+
+                                # MM_SELL_INFLIGHT_LATCH_V4_MARK
+                                _mm_sell_inflight_mark(s, 180)
+                                _sg_mark_inflight(sym, 90, LOG.info, "[SELL_INFLIGHT] %s still backing off" % sym)
+
+                                continue
+
+                            # MM_SELL_INFLIGHT_LATCH_V4_GUARD
+                            if _mm_sell_inflight_active(s):
+                                LOG.info("[SELL_INFLIGHT] %s cooldown active; skip new order", s)
+                                continue
+                            place_with_adaptive_variants(
+                                acct_key,
+                                s,
+                                qty,
+                                pt,
+                                lim if pt == "LIMIT" else None,
+                                cfg.max_place_attempts,
+                            )
+                            continue
+
+                        # ?? If Max says HOLD ? veto profit-style exits this loop
+                        if ai_action == "HOLD":
+                            ai_veto_profit_exits = True
+                            LOG.info(
+                                "[AI_EXIT_VETO] %s pl=%.2f%% hold=%.1f mins ? HOLD (%d%%) tags=%s ? veto profit exits this loop",
+                                s,
+                                pl_pct,
+                                hold_min,
+                                ai_conf,
+                                ",".join(ai_tags),
+                            )
+
+                    except Exception as exc:
+                        LOG.warning("[AI_EXIT] error for %s: %s", s, exc)
+                else:
+                    LOG.debug(
+                        "[AI_EXIT] disabled for %s (ai_enabled=%s use_exits=%s)",
+                        s,
+                        ai_enabled,
+                        ai_use_exits,
+                    )
+
+                # ? AI-aware timeout for stale losers only
+                # Only trigger if:
+                #   - enable_timeout_exits True
+                #   - prior-day position (timeout applies)
+                #   - hold_min > max_hold_minutes
+                #   - AND P/L is worse than timeout_exit_pct (e.g. <= -0.6%)
+                if (
+                    getattr(cfg, "enable_timeout_exits", True)  # MM_TIMEOUT_ENABLED_V2
+                    and is_prior_day
+                    and (cfg.max_hold_minutes and cfg.max_hold_minutes > 0)
+                    and (hold_min > cfg.max_hold_minutes)
+                    and (pl_pct <= cfg.timeout_exit_pct)  # MM_TIMEOUT_PCT_FIX_V2
+                ):
+                    if ai_enabled and ai_use_exits and ai_action == "HOLD":
+                        LOG.info(
+                            "[TIMEOUT_VETO_AI] %s hold_min=%.1f > max_hold=%.1f, pl=%.2f%% but AI says HOLD ? skip timeout",
+                            s,
+                            hold_min,
+                            cfg.max_hold_minutes,
+                            pl_pct,
+                        )
+                    else:
+                        LOG.info(
+                            "[TIMEOUT] %s hold_min=%.1f > max_hold=%.1f, pl=%.2f%% ? exit",
+                            s,
+                            hold_min,
+                            cfg.max_hold_minutes,
+                            pl_pct,
+                        )
+                        try:
+                            emit_sell_event(event="TIMEOUT_DECISION", action="SELL", symbol=s, qty=qty, pl_pct=pl_pct, hold_min=hold_min, reason="TIMEOUT")
+                        except Exception:
+                            pass
+                        pt, lim = compute_order_params(s, cfg, kind="TIMEOUT")
+                        if has_open_sell:
+                            LOG.info("[OPEN_SELL] %s already has a pending SELL; skip TIMEOUT order this loop", s)
+                        else:
+                            # MM_SELL_INFLIGHT_LATCH_V4_GUARD
+                            if _mm_sell_inflight_active(s):
+                                LOG.info("[SELL_INFLIGHT] %s cooldown active; skip new order", s)
+                                continue
+                            place_with_adaptive_variants(
+                            acct_key,
+                            s,
+                            qty,
+                            pt,
+                            lim if pt == "LIMIT" else None,
+                            cfg.max_place_attempts,
+                        )
+                    continue
+
+# TIMEOUT guardrail: only warn/skip when TIMEOUT would actually run (prevents spam)
+                try:
+                    _oe = opened_epoch
+                except NameError:
+                    _oe = None
+                _timeout_candidate = (
+                    getattr(cfg, "enable_timeout_exits", True)
+                    and is_prior_day
+                    and (cfg.max_hold_minutes and cfg.max_hold_minutes > 0)
+                    and (hold_min > cfg.max_hold_minutes)
+                    and (pl_pct <= cfg.timeout_exit_pct)
+                )
+                if _timeout_candidate and (not _oe):
+                    _mm_timeout_skip_throttled(s)
+                    continue
+
+                # Intraday stop-loss (hard floor, AI cannot veto)
+                if cfg.allow_intraday_stoploss and (not is_prior_day) and pl_pct <= cfg.intraday_stoploss_pct:
+                    LOG.info(
+                        "[STOPLOSS] %s pl=%.2f%% <= timeout_exit_pct=%.2f%% ? exit",
+                        s,
+                        pl_pct,
+                        cfg.timeout_exit_pct,
+                    )
+                    try:
+                        emit_sell_event(event="STOPLOSS_DECISION", action="SELL", symbol=s, qty=qty, pl_pct=pl_pct, hold_min=hold_min, reason="STOPLOSS")
+                    except Exception:
+                        pass
+                    pt, lim = compute_order_params(s, cfg, kind="SELL_STOP")
+                    if has_open_sell:
+                        LOG.info("[OPEN_SELL] %s already has a pending SELL; skip STOPLOSS order this loop", s)
+                    else:
+                        # MM_SELL_INFLIGHT_LATCH_V4_GUARD
+                        if _mm_sell_inflight_active(s):
+                            LOG.info("[SELL_INFLIGHT] %s cooldown active; skip new order", s)
+                            continue
+                        place_with_adaptive_variants(
+                        acct_key,
+                        s,
+                        qty,
+                        pt,
+                        lim if pt == "LIMIT" else None,
+                        cfg.max_place_attempts,
+                    )
+                    continue
+
+
+                if pl_pct >= cfg.trail_arm_gain_pct:
+                    prev = armed_trail.get(s)
+                    new_floor = pl_pct - cfg.trail_backoff_pct
+                    if prev is None or new_floor > prev:
+                        armed_trail[s] = new_floor
+                        LOG.info(
+                            "[TRAIL_ARM] %s pl=%.2f%% arm_floor=%.2f%% (prev=%s)",
+                            s,
+                            pl_pct,
+                            new_floor,
+                            f"{prev:.2f}%" if prev is not None else "None",
+                        )
+                else:
+                    if s in armed_trail:
+                        LOG.info("[TRAIL_RESET] %s pl=%.2f%% < arm gain ? disarm", s, pl_pct)
+                        armed_trail.pop(s, None)
+
+                if s in armed_trail:
+                    floor = armed_trail[s]
+                    if pl_pct <= floor:
+                        if ai_veto_profit_exits:
+                            LOG.info(
+                                "[TRAIL_EXIT_VETO] %s pl=%.2f%% <= trail_floor=%.2f%% but AI vetoed profit exits this loop",
+                                s,
+                                pl_pct,
+                                floor,
+                            )
+                            try:
+                                emit_sell_event(
+                                    event="TRAIL_EXIT_VETO_AI",
+                                    symbol=s,
+                                    qty=qty,
+                                    pl_pct=pl_pct,
+                                    hold_min=hold_min,
+                                    reason="TRAIL_EXIT_VETO",
+                                    details={"mode": cfg.mode, "ai_action": ai_action, "ai_conf": ai_conf, "ai_tags": ai_tags},
+                                )
+                            except Exception:
+                                pass
+                        else:
+                            LOG.info(
+                                "[TRAIL_EXIT] %s pl=%.2f%% <= trail_floor=%.2f%% ? exit",
+                                s,
+                                pl_pct,
+                                floor,
+                            )
+                            pt, lim = compute_order_params(s, cfg)
+                            try:
+                                emit_sell_event(
+                                    event="TRAIL_EXIT",
+                                    symbol=s,
+                                    qty=qty,
+                                    pl_pct=pl_pct,
+                                    hold_min=hold_min,
+                                    reason="TRAIL_EXIT",
+                                    details={
+                                        "mode": cfg.mode,
+                                        "pt": pt,
+                                        "lim": lim,
+                                    },
+                                )
+                            except Exception:
+                                pass
+                            if has_open_sell:
+                                LOG.info("[OPEN_SELL] %s already has a pending SELL; skip exit order this loop", s)
+                                try:
+                                    emit_sell_event(
+                                        event="TRAIL_EXIT_SKIP_OPEN_SELL",
+                                        symbol=s,
+                                        qty=qty,
+                                        pl_pct=pl_pct,
+                                        hold_min=hold_min,
+                                        reason="OPEN_SELL",
+                                        details={"mode": cfg.mode, "context": "[TRAIL_EXIT]"},
+                                    )
+                                except Exception:
+                                    pass
+                            else:
+                                # MM_SELL_INFLIGHT_LATCH_V4_GUARD
+                                if _mm_sell_inflight_active(s):
+                                    LOG.info("[SELL_INFLIGHT] %s cooldown active; skip new order", s)
+                                    continue
+                                place_with_adaptive_variants(
+                                acct_key,
+                                s,
+                                qty,
+                                pt,
+                                lim if pt == "LIMIT" else None,
+                                cfg.max_place_attempts,
+                            )
+                            armed_trail.pop(s, None)
+                            continue
+
+                if pl_pct >= cfg.target_gain_pct:
+                    if ai_veto_profit_exits:
+                        LOG.info(
+                            "[TARGET_EXIT_VETO] %s pl=%.2f%% >= target_gain_pct=%.2f%% but AI vetoed profit exits this loop",
+                            s,
+                            pl_pct,
+                            cfg.target_gain_pct,
+                        )
+                        try:
+                            emit_sell_event(
+                                event="TARGET_EXIT_VETO_AI",
+                                symbol=s,
+                                qty=qty,
+                                pl_pct=pl_pct,
+                                hold_min=hold_min,
+                                reason="TARGET_EXIT_VETO",
+                                details={"mode": cfg.mode, "ai_action": ai_action, "ai_conf": ai_conf, "ai_tags": ai_tags},
+                            )
+                        except Exception:
+                            pass
+                    else:
+                        LOG.info(
+                            "[TARGET_EXIT] %s pl=%.2f%% >= target_gain_pct=%.2f%% ? exit",
+                            s,
+                            pl_pct,
+                            cfg.target_gain_pct,
+                        )
+                        pt, lim = compute_order_params(s, cfg)
+                        try:
+                            emit_sell_event(
+                                event="TARGET_EXIT",
+                        trigger="TARGET",
+                                symbol=s,
+                                qty=qty,
+                                pl_pct=pl_pct,
+                                hold_min=hold_min,
+                                reason="TARGET_EXIT",
+                                details={
+                                    "mode": cfg.mode,
+                                    "pt": pt,
+                                    "lim": lim,
+                                },
+                            )
+                        except Exception:
+                            pass
+                        # MM_SELL_INFLIGHT_LATCH_V4_GUARD
+                        if _mm_sell_inflight_active(s):
+                            LOG.info("[SELL_INFLIGHT] %s cooldown active; skip new order", s)
+                            continue
+                        place_with_adaptive_variants(
+                            acct_key,
+                            s,
+                            qty,
+                            pt,
+                            lim if pt == "LIMIT" else None,
+                            cfg.max_place_attempts,
+                        )
+                        armed_trail.pop(s, None)
+                        continue
+
+            loop_end = datetime.now(tz=UTC)
+            elapsed = (loop_end - loop_start).total_seconds()
+            sleep_for = max(1.0, cfg.interval_sec - elapsed)
+            LOG.info("sleeping %.1fs", sleep_for)
+            time.sleep(sleep_for)
+
+        except KeyboardInterrupt:
+            LOG.info("KeyboardInterrupt ? exiting")
+            break
+        except Exception as e:
+            # If broker says duplicate/processing, back off this symbol for a bit
+            # If broker says duplicate/processing, back off this symbol for a bit
+            try:
+                _txt = str(e)
+            except Exception:
+                _txt = str(e)
+            if '"code": 1028' in _txt or '"code": 1049' in _txt or "duplicate order" in _txt.lower() or "processing your previous request" in _txt.lower():
+                _sg_mark_inflight(sym, 180, LOG.warning, "[SELL_INFLIGHT] %s broker duplicate/processing; backing off 180s" % sym)
+            # Robust logging that cannot crash
+            try:
+                glimpse = None
+                if "positions_raw" in locals():
+                    glimpse = positions_raw
+
+                if glimpse is not None:
+                    dump = json.dumps(glimpse, default=str)
+                    LOG.error(
+                        "Unexpected error in main loop: %s | positions_raw glimpse: %s",
+                        e,
+                        dump[:400] + "...",
+                    )
+                else:
+                    LOG.error("Unexpected error in main loop (no positions_raw yet): %s", e)
+
+            except Exception as log_err:
+                # Last-ditch logging so logging itself never crashes
+                # Last-ditch logging so logging itself never crashes
+                LOG.error(
+                    "Unexpected error in main loop AND while logging (%s): %s",
+                    log_err,
+                    e,
+                )
+
+            time.sleep(cfg.interval_sec)
+
+
+if __name__ == "__main__":
+    main()

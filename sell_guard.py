@@ -1,5 +1,225 @@
 from __future__ import annotations
 
+# MM_REGIME_EXIT_OVERLAY_FROM_SETTINGS_V3
+
+# MM_REGIME_EXIT_OVERLAY_MODE_FROM_SETTINGS_V4
+
+# MM_REGIME_EXIT_OVERLAY_MODE_FROM_LIVE_MODE_V5
+def _mm_load_regime_exit_overlay(mode, legacy_map):
+    """Load regime_exit_overlay using ACTIVE mode from live_mode.txt (dashboard toggle).
+
+    Order:
+      1) Read live_mode.txt to determine active mode (DAY/SWING). Default DAY.
+      2) Select primary = live_settings_swing.json if SWING else live_settings_day.json
+      3) Load regime_exit_overlay from primary; fallback to live_settings.json
+      4) Return legacy_map if missing/invalid
+
+    Scope: ONLY target_mult/stop_mult/time_mult for TREND/CHOP/DEAD (+ UNKNOWN).
+    """
+    try:
+        import os, json
+
+        root = os.path.dirname(__file__)
+        live_fp   = os.path.join(root, "live_settings.json")
+        day_fp    = os.path.join(root, "live_settings_day.json")
+        swing_fp  = os.path.join(root, "live_settings_swing.json")
+
+        # Dashboard mode toggle file (source of truth)
+        live_mode_fp = os.path.join(root, "live_mode.txt")
+        valid_modes = {"DAY","SWING"}
+
+        def _read_json(fp):
+            try:
+                with open(fp, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                return None
+
+        def _read_mode_file():
+            try:
+                with open(live_mode_fp, "r", encoding="utf-8") as f:
+                    s = (f.read() or "").strip().upper()
+            except Exception:
+                s = ""
+            if s in valid_modes:
+                return s
+            return "DAY"
+
+        # 1) Determine active mode from live_mode.txt
+        cfg_mode = _read_mode_file()
+
+        # Fallback to provided mode arg only if somehow mode file logic breaks
+        if not cfg_mode:
+            cfg_mode = (mode or "").upper().strip() or "DAY"
+        if cfg_mode not in valid_modes:
+            cfg_mode = "DAY"
+
+        primary_fp = swing_fp if (cfg_mode == "SWING") else day_fp
+
+        # 2) Load from primary first; fallback to live_settings.json
+        primary_cfg = _read_json(primary_fp) or {}
+        live_cfg = _read_json(live_fp) or {}
+        cfg = primary_cfg if isinstance(primary_cfg, dict) and primary_cfg else live_cfg
+
+        ov = cfg.get("regime_exit_overlay")
+        if not isinstance(ov, dict):
+            # last-ditch: if primary missing overlay but live has it, try live
+            ov = live_cfg.get("regime_exit_overlay")
+        if not isinstance(ov, dict):
+            return legacy_map
+
+        out = {}
+        for k in ("TREND","CHOP","DEAD"):
+            v = ov.get(k)
+            if not isinstance(v, dict):
+                continue
+            lk = legacy_map.get(k, {}) if isinstance(legacy_map, dict) else {}
+
+            def _f(key, default):
+                try:
+                    return float(v.get(key, lk.get(key, default)))
+                except Exception:
+                    try:
+                        return float(lk.get(key, default))
+                    except Exception:
+                        return float(default)
+
+            out[k] = {
+                "target_mult": _f("target_mult", 1.0),
+                "stop_mult":   _f("stop_mult",   1.0),
+                "time_mult":   _f("time_mult",   1.0),
+            }
+
+        # ensure UNKNOWN + fill missing keys from legacy
+        if isinstance(legacy_map, dict):
+            legacy_map = dict(legacy_map)
+        else:
+            legacy_map = {}
+        legacy_map.setdefault("UNKNOWN", {"target_mult":1.0,"stop_mult":1.0,"time_mult":1.0})
+
+        for k in ("TREND","CHOP","DEAD","UNKNOWN"):
+            if k not in out:
+                out[k] = legacy_map.get(k) or {"target_mult":1.0,"stop_mult":1.0,"time_mult":1.0}
+        return out
+    except Exception:
+        return legacy_map
+
+        def _read_json(fp):
+            try:
+                with open(fp, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                return None
+
+        # 1) Determine active mode from live_settings.json (source of truth)
+        live_cfg = _read_json(live_fp) or {}
+        cfg_mode = (live_cfg.get("mode") or live_cfg.get("trade_mode") or live_cfg.get("run_mode") or "").upper().strip()
+
+        # Fallback to provided mode arg only if live_settings.json doesn't specify it
+        if not cfg_mode:
+            cfg_mode = (mode or "").upper()
+
+        primary_fp = swing_fp if ("SWING" in cfg_mode) else day_fp
+
+        # 2) Load from primary first; fallback to live_settings.json
+        primary_cfg = _read_json(primary_fp) or {}
+        cfg = primary_cfg if isinstance(primary_cfg, dict) and primary_cfg else live_cfg
+
+        ov = cfg.get("regime_exit_overlay")
+        if not isinstance(ov, dict):
+            # last-ditch: if primary missing overlay but live has it, try live
+            ov = live_cfg.get("regime_exit_overlay")
+        if not isinstance(ov, dict):
+            return legacy_map
+
+        out = {}
+        for k in ("TREND","CHOP","DEAD"):
+            v = ov.get(k)
+            if not isinstance(v, dict):
+                continue
+            lk = legacy_map.get(k, {}) if isinstance(legacy_map, dict) else {}
+
+            def _f(key, default):
+                try:
+                    return float(v.get(key, lk.get(key, default)))
+                except Exception:
+                    try:
+                        return float(lk.get(key, default))
+                    except Exception:
+                        return float(default)
+
+            out[k] = {
+                "target_mult": _f("target_mult", 1.0),
+                "stop_mult":   _f("stop_mult",   1.0),
+                "time_mult":   _f("time_mult",   1.0),
+            }
+
+        # ensure UNKNOWN + fill missing keys from legacy
+        if isinstance(legacy_map, dict):
+            legacy_map = dict(legacy_map)
+        else:
+            legacy_map = {}
+        legacy_map.setdefault("UNKNOWN", {"target_mult":1.0,"stop_mult":1.0,"time_mult":1.0})
+
+        for k in ("TREND","CHOP","DEAD","UNKNOWN"):
+            if k not in out:
+                out[k] = legacy_map.get(k) or {"target_mult":1.0,"stop_mult":1.0,"time_mult":1.0}
+        return out
+    except Exception:
+        return legacy_map
+
+        def _read(fp):
+            try:
+                with open(fp, "r", encoding="utf-8") as f:
+                    return f.read()
+            except Exception:
+                return None
+
+        def _loads(s):
+            try:
+                return json.loads(s) if s else None
+            except Exception:
+                return None
+
+        cfg = _loads(_read(primary)) or _loads(_read(fallback)) or {}
+        ov = cfg.get("regime_exit_overlay")
+        if not isinstance(ov, dict):
+            return legacy_map
+
+        out = {}
+        for k in ("TREND","CHOP","DEAD"):
+            v = ov.get(k)
+            if not isinstance(v, dict):
+                continue
+            lk = legacy_map.get(k, {}) if isinstance(legacy_map, dict) else {}
+            def _f(key, default):
+                try:
+                    return float(v.get(key, lk.get(key, default)))
+                except Exception:
+                    try:
+                        return float(lk.get(key, default))
+                    except Exception:
+                        return float(default)
+            out[k] = {
+                "target_mult": _f("target_mult", 1.0),
+                "stop_mult":   _f("stop_mult",   1.0),
+                "time_mult":   _f("time_mult",   1.0),
+            }
+
+        # ensure UNKNOWN + fill missing keys from legacy
+        if isinstance(legacy_map, dict):
+            legacy_map = dict(legacy_map)
+        else:
+            legacy_map = {}
+        legacy_map.setdefault("UNKNOWN", {"target_mult":1.0,"stop_mult":1.0,"time_mult":1.0})
+
+        for k in ("TREND","CHOP","DEAD","UNKNOWN"):
+            if k not in out:
+                out[k] = legacy_map.get(k) or {"target_mult":1.0,"stop_mult":1.0,"time_mult":1.0}
+        return out
+    except Exception:
+        return legacy_map
+
 
 # ----------------------------
 # $$Machine: Regime exit overlay (v1B)
@@ -26,16 +246,27 @@ def _mm_regime_snapshot():
         pass
     return {"label":"UNKNOWN","confidence":0,"ok":False,"reason":"regime_unavailable","detail":{}}
 
-def _mm_regime_overlay(label: str):
-    lab = (label or "UNKNOWN").upper()
-    if lab == "CHOP":
-        return {"target_mult": 0.60, "stop_mult": 0.80, "time_mult": 0.80}
-    if lab == "TREND":
-        return {"target_mult": 1.60, "stop_mult": 1.25, "time_mult": 1.30}
-    if lab == "DEAD":
-        return {"target_mult": 0.50, "stop_mult": 0.70, "time_mult": 0.60}
-    return {"target_mult": 1.00, "stop_mult": 1.00, "time_mult": 1.00}
-
+def _mm_regime_overlay(label: str, mode=""):
+    try:
+        # label arg is usually the first positional param in existing signatures
+        _lab = None
+        try:
+            _lab = (locals().get('label') or locals().get('lab') or locals().get('regime') or locals().get('r') or None)
+        except Exception:
+            _lab = None
+        if _lab is None:
+            try:
+                # fallback: first positional arg from locals (best-effort)
+                # if original signature was (label): it'll be in locals() already
+                _lab = None
+            except Exception:
+                _lab = None
+        _lab = (_lab or 'UNKNOWN').upper()
+        _legacy = {"CHOP":{"target_mult":0.6,"stop_mult":0.8,"time_mult":0.8},"TREND":{"target_mult":1.6,"stop_mult":1.25,"time_mult":1.3},"DEAD":{"target_mult":0.5,"stop_mult":0.7,"time_mult":0.6},"UNKNOWN":{"target_mult":1.0,"stop_mult":1.0,"time_mult":1.0}}
+        _ov = _mm_load_regime_exit_overlay(mode, _legacy)
+        return _ov.get(_lab) or _ov.get('UNKNOWN') or {'target_mult':1.0,'stop_mult':1.0,'time_mult':1.0}
+    except Exception:
+        return {'target_mult':1.0,'stop_mult':1.0,'time_mult':1.0}
 def _mm_apply_exit_overlay(target_gain_pct, stop_pct, hold_minutes=None, snap=None):
     snap = snap or _mm_regime_snapshot()
     lab  = (snap.get("label") or "UNKNOWN").upper()
@@ -104,6 +335,36 @@ import os
 import sys
 import time
 import sqlite3
+
+# --- MM_OPENED_EPOCH_FROM_DB_V1_START ---
+def _mm_opened_epoch_from_db(symbol: str, db_path: str = r"C:\TradeAlerts\live.db"):
+    """Return latest opened_ts_utc (epoch seconds) from live.db.position_opened for symbol, else None."""
+    try:
+        import sqlite3
+        sym = (symbol or "").strip().upper()
+        if not sym:
+            return None
+        con = sqlite3.connect(db_path)
+        try:
+            cur = con.cursor()
+            cur.execute("SELECT opened_ts_utc FROM position_opened WHERE symbol=? ORDER BY opened_ts_utc DESC LIMIT 1", (sym,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            v = row[0]
+            if v is None:
+                return None
+            try:
+                return int(v)
+            except Exception:
+                return None
+        finally:
+            con.close()
+    except Exception:
+        return None
+# --- MM_OPENED_EPOCH_FROM_DB_V1_END ---
+
+
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Dict, Iterable, List, Tuple, Optional
@@ -462,6 +723,41 @@ def _opened_dt_from_position_opened(sym: str):
 
 
 LOG = logging.getLogger("sell-guard")
+
+# MM_SELL_INFLIGHT_LATCH_V4_START
+_MM_SELL_INFLIGHT_UNTIL = {}
+
+def _mm_sell_inflight_mark(sym, seconds=180):
+    import time as _t
+    try:
+        k = str(sym)
+    except Exception:
+        k = "?"
+    _MM_SELL_INFLIGHT_UNTIL[k] = _t.time() + float(seconds)
+
+def _mm_sell_inflight_active(sym) -> bool:
+    import time as _t
+    try:
+        k = str(sym)
+    except Exception:
+        k = "?"
+    until = _MM_SELL_INFLIGHT_UNTIL.get(k, 0.0) or 0.0
+    return _t.time() < float(until)
+# MM_SELL_INFLIGHT_LATCH_V4_END
+# MM_TIMEOUT_GUARD_FIX_V2_START
+_MM_TIMEOUT_SKIP_LAST = {}
+
+def _mm_timeout_skip_throttled(sym: str, every_sec: int = 600):
+    """Throttle noisy TIMEOUT SKIP logs (default: once/10min per symbol)."""
+    import time as _t
+    now = _t.time()
+    last = _MM_TIMEOUT_SKIP_LAST.get(sym, 0.0)
+    if (now - last) >= every_sec:
+        _MM_TIMEOUT_SKIP_LAST[sym] = now
+        LOG.info("[TIMEOUT] SKIP %s: no opened_epoch (guarded)", sym)
+# MM_TIMEOUT_GUARD_FIX_V2_END
+
+
 LOG.setLevel(logging.INFO)
 for h in list(LOG.handlers):
     LOG.removeHandler(h)
@@ -1647,6 +1943,21 @@ def main() -> None:
                 # - Prefer any explicit opened_at from the position.
                 # - Fall back to earliest open order time for that symbol.
                 opened = p.opened_at or open_map.get(s)
+
+                # MM_WIRED_OPENED_FROM_DB_V1
+                if not opened:
+                    _ts = None
+                    try:
+                        _ts = _mm_opened_epoch_from_db(s)
+                    except Exception:
+                        _ts = None
+                    if _ts:
+                        try:
+                            import datetime as _dt
+                            opened = _dt.datetime.fromtimestamp(int(_ts), tz=_dt.timezone.utc)
+                            opened_is_db = True
+                        except Exception:
+                            pass
                 opened_is_db = False
                 hold_min = 0.0
                 is_prior_day = False
@@ -1787,10 +2098,16 @@ def main() -> None:
 
                             if _sg_inflight(sym):
 
+                                # MM_SELL_INFLIGHT_LATCH_V4_MARK
+                                _mm_sell_inflight_mark(s, 180)
                                 _sg_mark_inflight(sym, 90, LOG.info, "[SELL_INFLIGHT] %s still backing off" % sym)
 
                                 continue
 
+                            # MM_SELL_INFLIGHT_LATCH_V4_GUARD
+                            if _mm_sell_inflight_active(s):
+                                LOG.info("[SELL_INFLIGHT] %s cooldown active; skip new order", s)
+                                continue
                             place_with_adaptive_variants(
                                 acct_key,
                                 s,
@@ -1825,14 +2142,17 @@ def main() -> None:
 
                 # ? AI-aware timeout for stale losers only
                 # Only trigger if:
-                #   - max_hold_minutes > 0 (timeout enabled)
-                #   - position is older than max_hold_minutes
-                #   - AND P/L is worse than timeout_exit_pct (e.g. <= -1.0%)
+                #   - enable_timeout_exits is True
+                #   - max_hold_minutes > 0
+                #   - hold_min > max_hold_minutes
+                #   - AND P/L <= timeout_exit_pct
+                # MM_ENABLE_TIMEOUT_V6
                 if (
-                    False  # TIMEOUT disabled until opened_epoch-based hold_min is reliable
-                    and is_prior_day
-                    and hold_min > cfg.max_hold_minutes
-                    and pl_pct <= cfg.intraday_stoploss_pct
+                    getattr(cfg, "enable_timeout_exits", True)
+                    and (cfg.max_hold_minutes is not None)
+                    and (float(cfg.max_hold_minutes) > 0.0)
+                    and (hold_min > float(cfg.max_hold_minutes))
+                    and (pl_pct <= float(cfg.timeout_exit_pct))
                 ):
                     if ai_enabled and ai_use_exits and ai_action == "HOLD":
                         LOG.info(
@@ -1858,6 +2178,10 @@ def main() -> None:
                         if has_open_sell:
                             LOG.info("[OPEN_SELL] %s already has a pending SELL; skip TIMEOUT order this loop", s)
                         else:
+                            # MM_SELL_INFLIGHT_LATCH_V4_GUARD
+                            if _mm_sell_inflight_active(s):
+                                LOG.info("[SELL_INFLIGHT] %s cooldown active; skip new order", s)
+                                continue
                             place_with_adaptive_variants(
                             acct_key,
                             s,
@@ -1868,10 +2192,20 @@ def main() -> None:
                         )
                     continue
 
-                                # TIMEOUT guardrail: never TIMEOUT without DB-backed opened time
-                if getattr(cfg, "enable_timeout_exits", True) and (not opened_is_db):
-                    LOG.info("[TIMEOUT] SKIP %s: no position_opened.opened_epoch (guarded)", s)
-
+# TIMEOUT guardrail: require an opened_epoch (DB-backed preferred, but allow other sources)
+                _oe = None
+                try:
+                    _oe = opened_epoch
+                except NameError:
+                    _oe = None
+                if not _oe:
+                    try:
+                        _oe = _mm_opened_epoch_from_db(s)
+                    except Exception:
+                        _oe = None
+                opened_epoch = _oe  # ensure downstream TIMEOUT/hold math sees it
+                if getattr(cfg, "enable_timeout_exits", True) and (not opened_epoch):
+                    _mm_timeout_skip_throttled(s)
                 # Intraday stop-loss (hard floor, AI cannot veto)
                 if cfg.allow_intraday_stoploss and (not is_prior_day) and pl_pct <= cfg.intraday_stoploss_pct:
                     LOG.info(
@@ -1888,6 +2222,10 @@ def main() -> None:
                     if has_open_sell:
                         LOG.info("[OPEN_SELL] %s already has a pending SELL; skip STOPLOSS order this loop", s)
                     else:
+                        # MM_SELL_INFLIGHT_LATCH_V4_GUARD
+                        if _mm_sell_inflight_active(s):
+                            LOG.info("[SELL_INFLIGHT] %s cooldown active; skip new order", s)
+                            continue
                         place_with_adaptive_variants(
                         acct_key,
                         s,
@@ -1977,6 +2315,10 @@ def main() -> None:
                                 except Exception:
                                     pass
                             else:
+                                # MM_SELL_INFLIGHT_LATCH_V4_GUARD
+                                if _mm_sell_inflight_active(s):
+                                    LOG.info("[SELL_INFLIGHT] %s cooldown active; skip new order", s)
+                                    continue
                                 place_with_adaptive_variants(
                                 acct_key,
                                 s,
@@ -2033,6 +2375,10 @@ def main() -> None:
                             )
                         except Exception:
                             pass
+                        # MM_SELL_INFLIGHT_LATCH_V4_GUARD
+                        if _mm_sell_inflight_active(s):
+                            LOG.info("[SELL_INFLIGHT] %s cooldown active; skip new order", s)
+                            continue
                         place_with_adaptive_variants(
                             acct_key,
                             s,

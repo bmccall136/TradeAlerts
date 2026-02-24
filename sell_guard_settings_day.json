@@ -49,7 +49,7 @@
     "trail_backoff_pct": 1.5,
     "use_extended_hours": false
   },
-  "target_gain_pct": 1,
+  "target_gain_pct": 1.2,
   "timeout_exit_pct": -0.3,
   "trail_arm_gain_pct": 1.8,
   "trail_backoff_pct": 1.5

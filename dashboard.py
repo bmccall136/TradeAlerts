@@ -7474,6 +7474,205 @@ def _mm_bucket_norm(b):
 
 @app.route("/api/analytics/candidate_fires")
 def api_analytics_candidate_fires():
+    # MM_CANDIDATE_FIRES_CANONICAL_V3D_START
+    # NOTE: This early-return block forces a schema-adaptive live.db backed response.
+    try:
+        import time, sqlite3
+        from flask import request, jsonify
+        _db = globals().get('LIVE_DB') or r'C:\\TradeAlerts\\live.db'
+        _bucket = (request.args.get('bucket','today') or 'today').lower()
+        _debug = str(request.args.get('debug','0'))
+        _now = int(time.time())
+        if _bucket == 'all':
+            _since = 0; _until = _now
+        else:
+            fn = globals().get('_mm_bucket_since_epoch')
+            try:
+                _since = int(fn(_bucket)) if fn else 0
+            except Exception:
+                _since = 0
+            _until = _now
+    
+        con = sqlite3.connect(_db)
+        con.row_factory = sqlite3.Row
+        cur = con.cursor()
+    
+        cols = [r['name'] for r in cur.execute('PRAGMA table_info(trigger_fires)').fetchall()]
+        colset = set(cols)
+        pref = ['indicator','trigger','signal','name','type','family','reason']
+        group_col = next((c for c in pref if c in colset), None)
+    
+        trig_total = int(cur.execute(
+            'SELECT COUNT(*) n FROM trigger_fires WHERE CAST(ts_utc AS INTEGER) >= ? AND CAST(ts_utc AS INTEGER) < ?',
+            (_since, _until)
+        ).fetchone()['n'])
+    
+        sig_total = None
+        if cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='signal_fires'").fetchone():
+            try:
+                sig_total = int(cur.execute(
+                    'SELECT COUNT(*) n FROM signal_fires WHERE CAST(ts_utc AS INTEGER) >= ? AND CAST(ts_utc AS INTEGER) < ?',
+                    (_since, _until)
+                ).fetchone()['n'])
+            except Exception:
+                sig_total = None
+    
+        by_indicator = {}
+        if group_col:
+            q = (
+                "SELECT COALESCE(" + group_col + ", 'UNKNOWN') AS k, COUNT(*) AS n "
+                "FROM trigger_fires "
+                "WHERE CAST(ts_utc AS INTEGER) >= ? AND CAST(ts_utc AS INTEGER) < ? "
+                "GROUP BY COALESCE(" + group_col + ", 'UNKNOWN') "
+                "ORDER BY n DESC"
+            )
+            for r in cur.execute(q, (_since, _until)).fetchall():
+                by_indicator[str(r['k'])] = int(r['n'])
+        else:
+            by_indicator = {'UNKNOWN': int(trig_total)}
+    
+        want = ['ts_utc','symbol']
+        if group_col and group_col not in want:
+            want.append(group_col)
+        for c in ['score','detail','details','note','meta','overlay_json','reason']:
+            if c in colset and c not in want:
+                want.append(c)
+    
+        sel = ', '.join(want)
+        sql_rows = (
+            'SELECT ' + sel + ' FROM trigger_fires '
+            'WHERE CAST(ts_utc AS INTEGER) >= ? AND CAST(ts_utc AS INTEGER) < ? '
+            'ORDER BY CAST(ts_utc AS INTEGER) DESC LIMIT 500'
+        )
+        rows = [dict(r) for r in cur.execute(sql_rows, (_since, _until)).fetchall()]
+    
+        con.close()
+    
+        payload = {
+            'ok': True,
+            'bucket': _bucket,
+            'since_ts_utc': int(_since),
+            'cand': int(trig_total),
+            'req': int(trig_total),
+            'strict': 0,
+            'strict_n': None,
+            'buyable': 0,
+            'bought': 0,
+            'counts': {'trigger_fires': int(trig_total), 'signal_fires': sig_total},
+            'by_indicator': by_indicator,
+            'rows': rows,
+            'source': 'live.db:trigger_fires',
+        }
+        if _debug == '1':
+            payload['debug'] = {'db': _db, 'rows_returned': len(rows), 'since': int(_since), 'until': int(_until), 'trigger_fires_cols': cols, 'group_col': group_col, 'handler': 'api_analytics_candidate_fires'}
+        return jsonify(payload)
+    except Exception as e:
+        # HTTP 200 on purpose so Invoke-WebRequest doesn't throw
+        try:
+            from flask import jsonify
+            return jsonify({'ok': False, 'error': str(e), 'errors': [str(e)], 'rows': [], 'by_indicator': {}, 'cand': 0, 'req': 0, 'counts': {'trigger_fires': 0, 'signal_fires': 0}, 'source': 'live.db:trigger_fires', 'debug': {'handler': 'api_analytics_candidate_fires'}})
+        except Exception:
+            raise
+    # MM_CANDIDATE_FIRES_CANONICAL_V3D_END
+
+    # MM_CANDIDATE_FIRES_DB_OVERRIDE_V2S_START
+    try:
+        import time, sqlite3
+        from flask import request, jsonify
+        _db = globals().get('LIVE_DB') or r'C:\TradeAlerts\live.db'
+        _bucket = (request.args.get('bucket','today') or 'today').lower()
+        _debug = str(request.args.get('debug','0'))
+        _now = int(time.time())
+        if _bucket == 'all':
+            _since = 0; _until = _now
+        else:
+            fn = globals().get('_mm_bucket_since_epoch')
+            try:
+                _since = int(fn(_bucket)) if fn else 0
+            except Exception:
+                _since = 0
+            _until = _now
+    
+        con = sqlite3.connect(_db)
+        con.row_factory = sqlite3.Row
+        cur = con.cursor()
+    
+        cols = [r['name'] for r in cur.execute('PRAGMA table_info(trigger_fires)').fetchall()]
+        colset = set(cols)
+        pref = ['indicator','trigger','signal','name','type','family','reason']
+        group_col = next((c for c in pref if c in colset), None)
+    
+        trig_total = int(cur.execute(
+            'SELECT COUNT(*) n FROM trigger_fires WHERE CAST(ts_utc AS INTEGER) >= ? AND CAST(ts_utc AS INTEGER) < ?',
+            (_since, _until)
+        ).fetchone()['n'])
+    
+        sig_total = None
+        if cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='signal_fires'").fetchone():
+            try:
+                sig_total = int(cur.execute(
+                    'SELECT COUNT(*) n FROM signal_fires WHERE CAST(ts_utc AS INTEGER) >= ? AND CAST(ts_utc AS INTEGER) < ?',
+                    (_since, _until)
+                ).fetchone()['n'])
+            except Exception:
+                sig_total = None
+    
+        by_indicator = {}
+        if group_col:
+            q = (
+                "SELECT COALESCE(" + group_col + ", 'UNKNOWN') AS k, COUNT(*) AS n "
+                "FROM trigger_fires "
+                "WHERE CAST(ts_utc AS INTEGER) >= ? AND CAST(ts_utc AS INTEGER) < ? "
+                "GROUP BY COALESCE(" + group_col + ", 'UNKNOWN') "
+                "ORDER BY n DESC"
+            )
+            for r in cur.execute(q, (_since, _until)).fetchall():
+                by_indicator[str(r['k'])] = int(r['n'])
+        else:
+            by_indicator = {'UNKNOWN': int(trig_total)}
+    
+        want = ['ts_utc','symbol']
+        if group_col and group_col not in want:
+            want.append(group_col)
+        for c in ['score','reason','detail','details','note','meta','overlay_json']:
+            if c in colset and c not in want:
+                want.append(c)
+    
+        sel = ', '.join(want)
+        sql_rows = (
+            'SELECT ' + sel + ' FROM trigger_fires '
+            'WHERE CAST(ts_utc AS INTEGER) >= ? AND CAST(ts_utc AS INTEGER) < ? '
+            'ORDER BY CAST(ts_utc AS INTEGER) DESC LIMIT 500'
+        )
+        rows = [dict(r) for r in cur.execute(sql_rows, (_since, _until)).fetchall()]
+    
+        con.close()
+    
+        payload = {
+            'ok': True,
+            'bucket': _bucket,
+            'since_ts_utc': int(_since),
+            'cand': int(trig_total),
+            'req': int(trig_total),
+            'strict': 0,
+            'strict_n': None,
+            'buyable': 0,
+            'bought': 0,
+            'counts': {'trigger_fires': int(trig_total), 'signal_fires': sig_total},
+            'by_indicator': by_indicator,
+            'rows': rows,
+            'source': 'live.db:trigger_fires',
+        }
+        if _debug == '1':
+            payload['debug'] = {'db': _db, 'rows_returned': len(rows), 'since': int(_since), 'until': int(_until), 'trigger_fires_cols': cols, 'group_col': group_col}
+        return jsonify(payload)
+    except Exception as e:
+        try:
+            from flask import jsonify
+            return jsonify({'ok': False, 'error': str(e), 'errors': [str(e)], 'rows': [], 'by_indicator': {}, 'cand': 0, 'req': 0, 'counts': {'trigger_fires': 0, 'signal_fires': 0}})
+        except Exception:
+            raise
+    # MM_CANDIDATE_FIRES_DB_OVERRIDE_V2S_END
     bucket = _mm_bucket_norm(request.args.get("bucket") or "today")
     try:
         since_ts_utc = _mm_bucket_since_epoch(bucket)
@@ -7529,6 +7728,148 @@ def api_analytics_candidate_fires():
     except Exception as e:
         out["ok"] = False
         out["error"] = str(e)
+
+    
+    # MM_CANDIDATE_ITEMS_V4_START
+
+    try:
+
+        import sqlite3
+
+        if isinstance(out, dict):
+
+            # Build by_indicator if missing
+
+            bi = out.get('by_indicator') or out.get('byIndicator')
+
+            since_ts = out.get('since_ts_utc') or out.get('since') or out.get('since_ts')
+
+            if (not isinstance(bi, dict) or not bi) and since_ts:
+
+                try: since_ts = int(since_ts)
+
+                except Exception: since_ts = None
+
+            if (not isinstance(bi, dict) or not bi) and since_ts:
+
+                db_path = globals().get('LIVE_DB') or r'C:\TradeAlerts\live.db'
+
+                con = sqlite3.connect(db_path)
+
+                con.row_factory = sqlite3.Row
+
+                cur = con.cursor()
+
+                def _has_table(t):
+
+                    return cur.fetchone() is not None
+
+                def _cols(t):
+
+                    try:
+
+                        cur.execute(f"PRAGMA table_info({t})")
+
+                        return set(r[1] for r in cur.fetchall())
+
+                    except Exception:
+
+                        return set()
+
+                bi2 = {}
+
+                try:
+
+                    # Best case: trigger_fires(indicator, ts_utc/ts_epoch)
+
+                    if _has_table('trigger_fires'):
+
+                        c = _cols('trigger_fires')
+
+                        ts_col = 'ts_utc' if 'ts_utc' in c else ('ts_epoch' if 'ts_epoch' in c else ('ts' if 'ts' in c else None))
+
+                        if 'indicator' in c and ts_col:
+
+                            q = f"SELECT indicator, COUNT(1) n FROM trigger_fires WHERE {ts_col} >= ? GROUP BY indicator"
+
+                            for row in cur.execute(q, (since_ts,)): bi2[str(row[0])] = int(row[1])
+
+                    # Fallback: signal_fires with a candidate flag if present
+
+                    if (not bi2) and _has_table('signal_fires'):
+
+                        c = _cols('signal_fires')
+
+                        ts_col = 'ts_utc' if 'ts_utc' in c else ('ts_epoch' if 'ts_epoch' in c else ('ts' if 'ts' in c else None))
+
+                        if 'indicator' in c and ts_col:
+
+                            where = [f"{ts_col} >= ?"]
+
+                            args = [since_ts]
+
+                            if 'is_candidate' in c: where.append("is_candidate=1")
+
+                            else:
+
+                                # No safe candidate discriminator; do not explode counts
+
+                                where = None
+
+                            if where:
+
+                                q = "SELECT indicator, COUNT(1) n FROM signal_fires WHERE " + " AND ".join(where) + " GROUP BY indicator"
+
+                                for row in cur.execute(q, args): bi2[str(row[0])] = int(row[1])
+
+                except Exception:
+
+                    bi2 = {}
+
+                try: con.close()
+
+                except Exception: pass
+
+                if bi2:
+
+                    out['by_indicator'] = bi2
+
+                    bi = bi2
+
+            # Build items/total from by_indicator
+
+            bi = out.get('by_indicator') or out.get('byIndicator') or {}
+
+            if isinstance(bi, dict) and not out.get('items'):
+
+                items=[]
+
+                for k,v in bi.items():
+
+                    try: n=int(v)
+
+                    except Exception:
+
+                        try: n=int((v or {}).get('n'))
+
+                        except Exception: n=None
+
+                    if n is None: continue
+
+                    items.append({'indicator': str(k), 'n': n})
+
+                items.sort(key=lambda x: x.get('n',0), reverse=True)
+
+                out['items'] = items
+
+                out['total'] = int(sum(i.get('n',0) for i in items))
+
+    except Exception:
+
+        pass
+
+    # MM_CANDIDATE_ITEMS_V4_END
+
 
     return _mm_jsonify(out), 200
 

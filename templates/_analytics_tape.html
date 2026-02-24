@@ -6,7 +6,7 @@
   </div>
 
   <div style="height:10px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;">
-    <div id="mm-ax-tape-bar" style="height:10px;width:0%;background:#f0c419;"></div>
+    <div id="mm-ax-tape-bar" style="height:10px;width:0%;background:transparent;"></div>
   </div>
 
   <div id="mm-ax-tape-scale"
@@ -43,7 +43,27 @@
       const j = await r.json();
 
       const arr = (j && (j.points || j.buckets)) || [];
-      const n = (j && (j.pts ?? (Array.isArray(arr) ? arr.length : 0))) || 0;
+      const n = (Array.isArray(arr) ? arr.length : 0);
+      const bar = document.getElementById('mm-ax-tape-bar');
+      if (bar && n > 0) {
+        const c = (r) => {
+          r = String(r || 'UNKNOWN').toUpperCase();
+          if (r === 'TREND') return '#29d66f';   // green
+          if (r === 'CHOP')  return '#f0c419';   // yellow
+          if (r === 'DEAD')  return '#7a7f88';   // gray
+          return '#7a7f88';
+        };
+        const step = 100 / n;
+        const stops = [];
+        for (let i = 0; i < n; i++) {
+          const col = c(arr[i] && arr[i].regime);
+          const a = (i * step).toFixed(4);
+          const b = ((i + 1) * step).toFixed(4);
+          stops.push(`${col} ${a}%`, `${col} ${b}%`);
+        }
+        bar.style.background = `linear-gradient(to right, ${stops.join(',')})`;
+      }
+
 
       const pct = Math.max(0, Math.min(100, (n / EXPECTED_PTS) * 100));
       bar.style.width = pct.toFixed(1) + '%';

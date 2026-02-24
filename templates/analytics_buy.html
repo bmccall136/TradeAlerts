@@ -324,17 +324,26 @@ function mmNormBucket(b) {
   
 async function loadFunnel(bucket) {
   try {
-    const r = await fetch(`/api/analytics/buy_funnel?bucket=${encodeURIComponent(bucket)}`, {cache:'no-store'});
-    const j = await r.json();
+    // Funnel for Source=candidate should come from candidate_fires payload
+    const b = mmNormBucket(bucket);
+    const r = await fetch(`/api/analytics/candidate_fires?bucket=${encodeURIComponent(b)}`, { cache: 'no-store' });
+    let j = await r.json();
     if (!j || !j.ok) return;
-    const fmtInt = (n) => (n==null ? '?' : Number(n).toLocaleString());
-    document.getElementById('fCand').textContent    = fmtInt(j.candidates);
-    document.getElementById('fReq').textContent     = fmtInt(j.required_pass);
-    document.getElementById('fStrict').textContent  = fmtInt(j.strict_pass);
+
+    // Normalize schema so UI never shows "?"
+    j = mmNormCandidatePayload(j);
+
+    const fmtInt = (n) => (n == null ? '?' : Number(n).toLocaleString());
+
+    document.getElementById('fCand').textContent    = fmtInt(j.cand);
+    document.getElementById('fReq').textContent     = fmtInt(j.req);
+    document.getElementById('fStrict').textContent  = fmtInt(j.strict);
     document.getElementById('fBuyable').textContent = fmtInt(j.buyable);
     document.getElementById('fBought').textContent  = fmtInt(j.bought);
-    document.getElementById('funnelMeta').textContent = `Bucket: ${j.bucket}  ?  Strict>=${j.strict_n}`;
-  } catch(e) {}
+
+    const strictN = (j.strict_n == null ? '—' : j.strict_n);
+    document.getElementById('funnelMeta').textContent = `Bucket: ${j.bucket || b}  •  Strict>=${strictN}`;
+  } catch (e) {}
 }
 
 function syncFunnelVisibility() {

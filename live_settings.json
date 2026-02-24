@@ -43,6 +43,23 @@
   "range_pct": 3.5,
   "realized_since": "2025-08-22",
   "realized_tz": "America/New_York",
+  "regime_exit_overlay": {
+    "CHOP": {
+      "stop_mult": 0.8,
+      "target_mult": 0.6,
+      "time_mult": 0.8
+    },
+    "DEAD": {
+      "stop_mult": 0.7,
+      "target_mult": 0.5,
+      "time_mult": 0.6
+    },
+    "TREND": {
+      "stop_mult": 1.25,
+      "target_mult": 1.6,
+      "time_mult": 1.3
+    }
+  },
   "require_sma20": false,
   "required_filters": [
     "macd",

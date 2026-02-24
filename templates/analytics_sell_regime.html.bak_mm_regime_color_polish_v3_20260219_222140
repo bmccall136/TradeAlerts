@@ -1,0 +1,96 @@
+{% extends "analytics_regime_layout.html" %}
+{% block analytics_tape %}
+  {% include "_analytics_tape.html" %}
+{% endblock %}
+
+{% block analytics_body %}
+<div id="mm-sell-regime-root">
+
+  <div class="mm-ax-card mb-3">
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <div style="font-size:14px;font-weight:800;">By Regime</div>
+      <div style="font-size:12px;opacity:.75;" id="mm-sr-meta">Loading...</div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm table-dark align-middle mb-0" style="border-radius:10px;overflow:hidden;">
+        <thead>
+          <tr style="opacity:.85;">
+            <th style="width:140px;">Regime</th>
+            <th style="width:120px;">Count</th>
+            <th style="width:160px;">Avg Conf</th>
+            <th style="width:120px;">Share</th>
+          </tr>
+        </thead>
+        <tbody id="mm-sr-rows">
+          <tr><td colspan="4" style="opacity:.7;">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="mt-2" style="font-size:12px;opacity:.7;">
+      Shows count + avg confidence (if present).
+    </div>
+  </div>
+
+  <div class="mm-ax-card mb-3">
+    <div style="font-size:14px;font-weight:800;" class="mb-2">Sell outcomes by regime</div>
+    <div id="mm-sr-outcomes" style="font-size:12px;opacity:.75;">Loading...</div>
+  </div>
+
+  <div class="mm-ax-card">
+    <div style="font-size:14px;font-weight:800;" class="mb-2">Exit reasons by regime</div>
+    <div id="mm-sr-exits" style="font-size:12px;opacity:.75;">Loading...</div>
+  </div>
+
+</div>
+
+<script>
+(async () => {
+  const params = new URLSearchParams(window.location.search);
+  const bucket = (params.get("bucket") || "today").toLowerCase();
+  try {
+    const res = await fetch(`/api/analytics/sell_regime?bucket=${encodeURIComponent(bucket)}`);
+    if (!res.ok) throw new Error(`sell_regime HTTP ${res.status}`);
+    const j = await res.json();
+
+    const rows = Array.isArray(j.by_regime) ? j.by_regime : [];
+    const total = rows.reduce((a,r)=>a+(Number(r.count)||0),0);
+    const meta = document.getElementById("mm-sr-meta");
+    if (meta) meta.textContent = `bucket=${bucket} ? total=${total}`;
+
+    const tb = document.getElementById("mm-sr-rows");
+    if (tb) {
+      if (!rows.length) {
+        tb.innerHTML = `<tr><td colspan="4" style="opacity:.7;">No rows for this bucket.</td></tr>`;
+      } else {
+        tb.innerHTML = rows.map(r => {
+          const regime = (r.regime || "").toString();
+          const count = Number(r.count)||0;
+          const avg = (r.avg_conf==null) ? "" : Number(r.avg_conf).toFixed(1);
+          const share = total ? ((count/total)*100).toFixed(1)+"%" : "";
+          return `<tr>
+            <td>${regime}</td>
+            <td>${count}</td>
+            <td>${avg}</td>
+            <td>${share}</td>
+          </tr>`;
+        }).join("");
+      }
+    }
+
+    // outcomes/exits placeholders (keep simple; your APIs may be disabled)
+    const out = document.getElementById("mm-sr-outcomes");
+    if (out) out.textContent = "No outcomes rows (API not wired yet).";
+    const ex = document.getElementById("mm-sr-exits");
+    if (ex) ex.textContent = "No exits rows (API not wired yet).";
+  } catch (e) {
+    const meta = document.getElementById("mm-sr-meta");
+    if (meta) meta.textContent = "Error";
+    const tb = document.getElementById("mm-sr-rows");
+    if (tb) tb.innerHTML = `<tr><td colspan="4" style="color:#ff6b6b;">${String(e)}</td></tr>`;
+  }
+})();
+</script>
+{% endblock %}
+

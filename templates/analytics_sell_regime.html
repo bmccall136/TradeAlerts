@@ -3,12 +3,44 @@
   {% include "_analytics_tape.html" %}
 {% endblock %}
 
+<!-- MM_REGIME_COLOR_POLISH_V3_START -->
+<style>
+/* ===== BUY REGIME (ENTRY FOCUS) ===== */
+#mm-buy-regime-root .mm-ax-card:first-of-type,
+#mm-buy-regime-root .card:first-of-type {
+    border-left: 4px solid #00d2ff !important;
+}
+
+/* ===== REGIME ANALYTICS (MARKET STATE) ===== */
+#mm-sell-regime-root .mm-ax-card:first-of-type,
+#mm-sell-regime-root .card:first-of-type {
+    border-left: 4px solid rgba(255,215,0,.95) !important;
+}
+
+/* Make regime chips feel deliberate */
+.mm-chip {
+    text-transform: uppercase;
+    font-weight: 900;
+    letter-spacing: .6px;
+}
+
+/* Improve empty sections */
+.mm-rp-empty {
+    text-align: center;
+    font-size: 13px;
+    opacity: .85;
+}
+</style>
+<!-- MM_REGIME_COLOR_POLISH_V3_END -->
+
+
+
 {% block analytics_body %}
 <div id="mm-sell-regime-root">
 
   <div class="mm-ax-card mb-3">
     <div class="d-flex align-items-center justify-content-between mb-2">
-      <div style="font-size:14px;font-weight:800;">By Regime</div>
+      <div style="font-size:14px;font-weight:800;">Market time by regime</div>
       <div style="font-size:12px;opacity:.75;" id="mm-sr-meta">Loading...</div>
     </div>
 
@@ -81,9 +113,9 @@
 
     // outcomes/exits placeholders (keep simple; your APIs may be disabled)
     const out = document.getElementById("mm-sr-outcomes");
-    if (out) out.textContent = "No outcomes rows (API not wired yet).";
+    if (out) out.textContent = "Outcomes by regime ? coming soon (win rate, avg hold time, R-multiple).";
     const ex = document.getElementById("mm-sr-exits");
-    if (ex) ex.textContent = "No exits rows (API not wired yet).";
+    if (ex) ex.textContent = "Exit reasons by regime ? coming soon (reason mix + P&L impact).";
   } catch (e) {
     const meta = document.getElementById("mm-sr-meta");
     if (meta) meta.textContent = "Error";

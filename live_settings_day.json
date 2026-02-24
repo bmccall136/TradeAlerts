@@ -37,6 +37,23 @@
   "profile": "day",
   "range_on": false,
   "range_pct": 0,
+  "regime_exit_overlay": {
+    "CHOP": {
+      "stop_mult": 0.8,
+      "target_mult": 0.6,
+      "time_mult": 0.8
+    },
+    "DEAD": {
+      "stop_mult": 0.7,
+      "target_mult": 0.5,
+      "time_mult": 0.6
+    },
+    "TREND": {
+      "stop_mult": 1.25,
+      "target_mult": 1.6,
+      "time_mult": 1.3
+    }
+  },
   "require_sma20": true,
   "required_filters": [
     "macd",
