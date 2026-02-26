@@ -220,153 +220,7 @@ def _mm_load_regime_exit_overlay(mode, legacy_map):
     except Exception:
         return legacy_map
 
-def _safe_float(x, default=None):
-    try:
-        if x is None:
-            return default
-        return float(x)
-    except Exception:
-        return default
 
-def _safe_int(x, default=None):
-    try:
-        if x is None:
-            return default
-        return int(x)
-    except Exception:
-        return default
-
-def _days_held(holding, now_ts_utc: int) -> float:
-    """
-    holding should have opened_ts_utc (int epoch seconds) OR opened_ts_utc-like.
-    Returns fractional days.
-    """
-    opened = _safe_int(holding.get("opened_ts_utc"), None)
-    if not opened:
-        # If you only have ET string, you *should* fix the data model, but we fail safe:
-        return 0.0
-    age_sec = max(0, now_ts_utc - opened)
-    return age_sec / 86400.0
-
-def _unrealized_gain_pct(holding) -> float:
-    """
-    Uses holding['avg_cost'] and holding['last'] (or 'price') style fields.
-    Returns percent (e.g., 0.8 means +0.8%).
-    """
-    avg = _safe_float(holding.get("avg_cost") or holding.get("avgCost") or holding.get("cost_basis"), None)
-    last = _safe_float(holding.get("last") or holding.get("mark") or holding.get("price") or holding.get("current_price"), None)
-    if not avg or not last:
-        return 0.0
-    return ((last - avg) / avg) * 100.0
-
-def _max_gain_since_entry_pct(holding) -> float:
-    """
-    Needs a 'max_price_since_entry' (or similar) tracked somewhere.
-    If you don’t have it yet, return 0 and the rule still works, but less accurate.
-    """
-    avg = _safe_float(holding.get("avg_cost") or holding.get("avgCost") or holding.get("cost_basis"), None)
-    mx  = _safe_float(holding.get("max_price_since_entry") or holding.get("max_since_entry"), None)
-    if not avg or not mx:
-        return 0.0
-    return ((mx - avg) / avg) * 100.0
-# ================================
-# STALE RELIEF EXIT (lifecycle-aware)
-# ================================
-
-def _stale_relief_exit(position, now_ts_utc, settings, regime=None):
-    cfg = (settings or {}).get("stale_relief_exit") or {}
-    if not cfg.get("enabled"):
-        return None
-
-    try:
-        min_hold_days = float(cfg.get("min_hold_days", 2))
-        relief_gain   = float(cfg.get("relief_gain_pct", 0.8))
-        runner_max    = float(cfg.get("runner_max_gain_pct", 1.5))
-    except Exception:
-        return None
-
-    opened_ts = position.get("opened_ts_utc")
-    if not opened_ts:
-        return None
-
-    held_days = max(0, (now_ts_utc - int(opened_ts))) / 86400.0
-    if held_days < min_hold_days:
-        return None
-
-    avg_cost = float(position.get("avg_cost", 0))
-    last     = float(position.get("last", 0))
-    if not avg_cost or not last:
-        return None
-
-    cur_gain = ((last - avg_cost) / avg_cost) * 100.0
-
-    max_price = position.get("max_price_since_entry")
-    if max_price:
-        max_gain = ((float(max_price) - avg_cost) / avg_cost) * 100.0
-    else:
-        max_gain = 0.0
-
-    # If it ever ran like a runner, don't force relief exit
-    if max_gain >= runner_max:
-        return None
-
-    # Optional regime gate
-    if cfg.get("require_regime_nontrend"):
-        rname = (regime or {}).get("regime")
-        rconf = (regime or {}).get("conf", 0)
-        conf_max = cfg.get("regime_conf_max", 75)
-        if rname == "TREND" and rconf >= conf_max:
-            return None
-
-    if cur_gain >= relief_gain:
-        return {
-            "action": "SELL",
-            "reason": f"STALE_RELIEF_EXIT held={held_days:.2f}d gain={cur_gain:.2f}%",
-            "exit_type": "stale_relief_exit"
-        }
-
-    return None
-def _should_stale_relief_exit(holding, now_ts_utc: int, settings: dict, regime: dict | None = None):
-    """
-    Returns (bool, reason_string)
-    """
-    cfg = (settings or {}).get("stale_relief_exit") or {}
-    if not cfg.get("enabled"):
-        return (False, "")
-
-    min_hold_days = _safe_float(cfg.get("min_hold_days"), 0)
-    relief_gain   = _safe_float(cfg.get("relief_gain_pct"), None)
-    runner_max    = _safe_float(cfg.get("runner_max_gain_pct"), None)
-
-    if relief_gain is None or runner_max is None:
-        return (False, "")
-
-    held_days = _days_held(holding, now_ts_utc)
-    if held_days < min_hold_days:
-        return (False, "")
-
-    # Optional regime gate
-    if cfg.get("require_regime_nontrend"):
-        # Expect regime like: {"regime":"TREND","conf":85}
-        rname = (regime or {}).get("regime")
-        rconf = _safe_int((regime or {}).get("conf"), 0) or 0
-        conf_max = _safe_int(cfg.get("regime_conf_max"), 75) or 75
-        if (rname == "TREND") and (rconf >= conf_max):
-            return (False, "")
-
-    cur_gain = _unrealized_gain_pct(holding)
-
-    # If it has ever proven itself (runner), don’t force a relief exit.
-    max_gain = _max_gain_since_entry_pct(holding)
-    if max_gain >= runner_max:
-        return (False, "")
-
-    # Relief pop: finally green enough -> take it.
-    if cur_gain >= relief_gain:
-        reason = f"STALE_RELIEF_EXIT: held_days={held_days:.2f} cur_gain={cur_gain:.2f}% max_gain={max_gain:.2f}%"
-        return (True, reason)
-
-    return (False, "")
 # ----------------------------
 # $$Machine: Regime exit overlay (v1B)
 # Baseline settings remain DAY/SWING JSON; we apply runtime overlay in sell_guard only.
@@ -2088,13 +1942,7 @@ def main() -> None:
                 # Determine hold time:
                 # - Prefer any explicit opened_at from the position.
                 # - Fall back to earliest open order time for that symbol.
-                # Determine hold time:
-                # - Prefer any explicit opened_at from the position.
-                # - Fall back to earliest open order time for that symbol.
                 opened = p.opened_at or open_map.get(s)
-
-                # Track whether opened came from DB (for debugging)
-                opened_is_db = False
 
                 # MM_WIRED_OPENED_FROM_DB_V1
                 if not opened:
@@ -2110,80 +1958,9 @@ def main() -> None:
                             opened_is_db = True
                         except Exception:
                             pass
-
-                # Compute hold minutes safely
+                opened_is_db = False
                 hold_min = 0.0
-                try:
-                    # loop_start is your loop timestamp (datetime)
-                    if opened and hasattr(opened, "timestamp"):
-                        hold_min = max(0.0, (loop_start.timestamp() - opened.timestamp()) / 60.0)
-                except Exception:
-                    hold_min = 0.0
-
-                # Min hold: don’t touch very fresh entries
-                if hold_min < cfg.min_hold_minutes:
-                    LOG.info("[HOLD] %s hold_min=%.1f < min_hold=%.1f (opened_is_db=%s) – skipping",
-                             s, hold_min, cfg.min_hold_minutes, opened_is_db)
-                    continue
-
-                # --- MM_STALE_RELIEF_EXIT_V1_START ---
-                try:
-                    _opened_ts = None
-                    try:
-                        if opened:
-                            _opened_ts = int(opened.timestamp())
-                    except Exception:
-                        _opened_ts = None
-
-                    _holding = {
-                        "opened_ts_utc": _opened_ts,
-                        "avg_cost": float(entry_px or 0.0),
-                        "last": float(cur_px or 0.0),
-                        # optional future improvement
-                        "max_price_since_entry": None,
-                    }
-
-                    _now_ts = int(loop_start.timestamp())
-
-                    # stale_relief_exit config lives inside sell_guard settings dict (sg)
-                    _do, _why = _should_stale_relief_exit(_holding, _now_ts, sg, regime=None)
-
-                    if _do:
-                        LOG.info("[STALE_RELIEF_EXIT] %s -> %s", s, _why)
-                        try:
-                            emit_sell_event(
-                                event="STALE_RELIEF_EXIT",
-                                symbol=s,
-                                qty=qty,
-                                pl_pct=pl_pct,
-                                hold_min=hold_min,
-                                reason=_why,
-                                details={"mode": cfg.mode},
-                            )
-                        except Exception:
-                            pass
-
-                        if has_open_sell:
-                            LOG.info("[OPEN_SELL] %s already has a pending SELL; skip stale-relief order this loop", s)
-                            continue
-
-                        if _mm_sell_inflight_active(s):
-                            LOG.info("[SELL_INFLIGHT] %s cooldown active; skip new order", s)
-                            continue
-
-                        pt, lim = compute_order_params(s, cfg)
-                        place_with_adaptive_variants(
-                            acct_key,
-                            s,
-                            qty,
-                            pt,
-                            lim if pt == "LIMIT" else None,
-                            cfg.max_place_attempts,
-                        )
-                        continue
-                except Exception as _e:
-                    LOG.info("[STALE_RELIEF_EXIT] %s check failed (ignored): %s", s, _e)
-                # --- MM_STALE_RELIEF_EXIT_V1_END ---                is_prior_day = False
+                is_prior_day = False
 
                 if opened:
                     if ETZ is not None:

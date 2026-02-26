@@ -52,4 +52,12 @@
     "force_symbols": [],
     "force_without_entry": false
   }
+  "stale_relief_exit": {
+  "enabled": true,
+  "min_hold_days": 2,
+  "relief_gain_pct": 0.8,
+  "runner_max_gain_pct": 1.5,
+  "require_regime_nontrend": false,
+  "regime_conf_max": 75
+}
 }

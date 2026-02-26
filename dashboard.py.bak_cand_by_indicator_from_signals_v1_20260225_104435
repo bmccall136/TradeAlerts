@@ -7474,7 +7474,8 @@ def _mm_bucket_norm(b):
 
 @app.route("/api/analytics/candidate_fires")
 # MM_CANDIDATE_FIRES_TS_NORM_V1
-def api_analytics_candidate_fires():
+def api_analytics_candidate_fires
+# MM_BY_INDICATOR_FROM_SIGNALS_V1():
     # MM_CANDIDATE_FIRES_CANONICAL_V3D_START
     # NOTE: This early-return block forces a schema-adaptive live.db backed response.
     try:
@@ -7504,7 +7505,7 @@ def api_analytics_candidate_fires():
         group_col = next((c for c in pref if c in colset), None)
     
         trig_total = int(cur.execute(
-            'SELECT COUNT(*) n FROM trigger_fires WHERE CAST(ts_utc AS INTEGER) >= ? AND CAST(ts_utc AS INTEGER) < ?',
+            'SELECT COUNT(*) n, COALESCE(signals_pretty,'') AS signals_pretty FROM trigger_fires WHERE CAST(ts_utc AS INTEGER) >= ? AND CAST(ts_utc AS INTEGER) < ?',
             (_since, _until)
         ).fetchone()['n'])
     
@@ -7545,6 +7546,40 @@ def api_analytics_candidate_fires():
             'WHERE CAST(ts_utc AS INTEGER) >= ? AND CAST(ts_utc AS INTEGER) < ? '
             'ORDER BY CAST(ts_utc AS INTEGER) DESC LIMIT 500'
         )
+    # MM_BY_INDICATOR_FROM_SIGNALS_V1_START
+    def _mm_norm_sig(tok):
+        t = (tok or "").strip()
+        if not t:
+            return ""
+        u = t.upper()
+        if u.startswith("PRICE>SMA") or u.startswith("SMA"):
+            return "SMA"
+        if u.startswith("RSI"):
+            return "RSI"
+        if u.startswith("MACD"):
+            return "MACD"
+        if u.startswith("VWAP"):
+            return "VWAP"
+        if "BB" in u or "BOLL" in u:
+            return "BB"
+        return (t.split("(")[0].split(">")[-1].strip() or t)
+
+    try:
+        _bi = {}
+        for _r in rows if isinstance(rows, list) else []:
+            _s = ""
+            if isinstance(_r, dict):
+                _s = (_r.get("signals_pretty") or "")
+            for _tok in str(_s).split(","):
+                _k = _mm_norm_sig(_tok)
+                if _k:
+                    _bi[_k] = _bi.get(_k, 0) + 1
+        if _bi:
+            by_indicator = _bi
+    except Exception:
+        pass
+    # MM_BY_INDICATOR_FROM_SIGNALS_V1_END
+
         rows = [dict(r) for r in cur.execute(sql_rows, (_since, _until)).fetchall()]
     
         con.close()
@@ -7566,58 +7601,6 @@ def api_analytics_candidate_fires():
         }
         if _debug == '1':
             payload['debug'] = {'db': _db, 'rows_returned': len(rows), 'since': int(_since), 'until': int(_until), 'trigger_fires_cols': cols, 'group_col': group_col, 'handler': 'api_analytics_candidate_fires'}
-
-        # MM_BY_INDICATOR_FROM_SIGNALS_V2_SAFE_START
-        def _mm_norm_sig(tok):
-            t = (tok or "").strip()
-            if not t:
-                return ""
-            u = t.upper()
-            if u.startswith("PRICE>SMA") or u.startswith("SMA"):
-                return "SMA"
-            if u.startswith("RSI"):
-                return "RSI"
-            if u.startswith("MACD"):
-                return "MACD"
-            if u.startswith("VWAP"):
-                return "VWAP"
-            if "BB" in u or "BOLL" in u:
-                return "BB"
-            return (t.split("(")[0].split(">")[-1].strip() or t)
-
-        # Best-effort: ensure each row dict has signals_pretty (if 'detail' contains it)
-        try:
-            import json as _mm_json
-            if isinstance(rows, list):
-                for _r in rows:
-                    if isinstance(_r, dict) and not _r.get("signals_pretty") and _r.get("detail"):
-                        try:
-                            _d = _mm_json.loads(_r.get("detail")) if isinstance(_r.get("detail"), str) else _r.get("detail")
-                            if isinstance(_d, dict) and _d.get("signals_pretty"):
-                                _r["signals_pretty"] = _d.get("signals_pretty")
-                        except Exception:
-                            pass
-        except Exception:
-            pass
-
-        # Derive by_indicator from signals_pretty, overwrite UNKNOWN-only output
-        try:
-            _bi = {}
-            if isinstance(rows, list):
-                for _r in rows:
-                    _s = ""
-                    if isinstance(_r, dict):
-                        _s = (_r.get("signals_pretty") or "")
-                    for _tok in str(_s).split(","):
-                        _k = _mm_norm_sig(_tok)
-                        if _k:
-                            _bi[_k] = _bi.get(_k, 0) + 1
-            if _bi:
-                by_indicator = _bi
-        except Exception:
-            pass
-        # MM_BY_INDICATOR_FROM_SIGNALS_V2_SAFE_END
-
         return jsonify(payload)
     except Exception as e:
         # HTTP 200 on purpose so Invoke-WebRequest doesn't throw

@@ -193,6 +193,19 @@
           {"k":"sell_guard.min_hold_days","label":"Min Hold Days","type":"number","optional":true}
         ]
       },
+	  {
+	  "key":"stale_relief_exit",
+	  "label":"Stale Relief Exit (exit triggers)",
+	  "enable_key": null, "enable_is_field": false,
+	  "fields":[
+		{"k":"stale_relief_exit.enabled","label":"Enabled","type":"bool"},
+		{"k":"stale_relief_exit.min_hold_days","label":"Min Hold Days","type":"number"},
+		{"k":"stale_relief_exit.relief_gain_pct","label":"Relief Gain % (exit when >=)","type":"number"},
+		{"k":"stale_relief_exit.runner_max_gain_pct","label":"Runner Max Gain % (ignore if ever >=)","type":"number"},
+		{"k":"stale_relief_exit.require_regime_nontrend","label":"Require Non-TREND Regime","type":"bool"},
+		{"k":"stale_relief_exit.regime_conf_max","label":"Regime Conf Max","type":"number"}
+	  ]
+	},
       {
         "key":"protect",
         "label":"Protect / Trailing (exit triggers)",

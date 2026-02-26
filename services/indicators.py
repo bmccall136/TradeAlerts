@@ -76,7 +76,25 @@ def price_above_sma(price_series: pd.Series, length: int = 20) -> bool:
 
 
 # services/indicators.py
+def rma_tv(series, length: int):
+    """
+    TradingView-style RMA (Wilder smoothing) with SMA seed.
+    This matches TV's ATR/ADX smoothing behavior better than pandas ewm().
+    """
+    s = series.astype(float).copy()
+    out = s.copy() * 0.0
+    out[:] = float("nan")
+    if len(s) < length:
+        return out
 
+    # seed with SMA of first 'length' values
+    out.iloc[length - 1] = s.iloc[:length].mean()
+
+    # Wilder smoothing
+    for i in range(length, len(s)):
+        out.iloc[i] = (out.iloc[i - 1] * (length - 1) + s.iloc[i]) / length
+
+    return out
 
 def daily_range_pct(df: pd.DataFrame) -> float:
     """
@@ -193,20 +211,37 @@ def compute_sma(series: pd.Series, length: int = 20) -> float:
 
 def compute_atr(df: pd.DataFrame, period: int = 14) -> float:
     """
-    Compute the most recent ATR over `period` daily bars.
-    Expects df with columns ['high','low','close'] indexed by date.
-    Returns a single float (the last ATR value).
+    TradingView-style ATR (Wilder RMA) over `period` bars.
+    Expects df with columns ['high','low','close'] indexed by date/time.
+    Returns the last ATR value.
     """
-    high = df["high"]
-    low = df["low"]
-    close = df["close"]
+    high = df["high"].astype(float)
+    low  = df["low"].astype(float)
+    close = df["close"].astype(float)
+
     prev_close = close.shift(1)
-    tr1 = high - low
-    tr2 = (high - prev_close).abs()
-    tr3 = (low - prev_close).abs()
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    atr = tr.rolling(window=period).mean().iloc[-1]
-    return atr
+
+    tr = pd.concat([
+        (high - low),
+        (high - prev_close).abs(),
+        (low - prev_close).abs(),
+    ], axis=1).max(axis=1)
+
+    # Not enough bars
+    if len(tr) < period:
+        return float("nan")
+
+    atr = tr.copy()
+    atr[:] = float("nan")
+
+    # seed with SMA of first `period` TR values
+    atr.iloc[period - 1] = tr.iloc[:period].mean()
+
+    # Wilder smoothing
+    for i in range(period, len(tr)):
+        atr.iloc[i] = (atr.iloc[i - 1] * (period - 1) + tr.iloc[i]) / period
+
+    return float(atr.iloc[-1])
 
 
 def compute_daily_range_pct(df: pd.DataFrame) -> float:

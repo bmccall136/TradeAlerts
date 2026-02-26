@@ -142,35 +142,8 @@ def log_sell_event(
         cols = _table_cols(con, "sell_events")
         if ts_utc is None:
             ts_utc = int(time.time())
-                    
-        # --- MM_PROMOTE_DETAIL_REASON_V1_START ---
-        # Many synthetic FILLED rows (position_disappeared) store the real reason in `detail` JSON.
-        # Promote that into the `reason` column so analytics can attribute exits correctly.
-        # MUST NEVER break Sell Guard.
-        try:
-            evu = (event or "").strip().upper()
-            r0u = ("" if reason is None else str(reason)).strip().upper()
 
-            if evu == "FILLED" and (not r0u or r0u in ("UNKNOWN", "NONE", "NULL", "N/A")) and detail:
-                det_obj = None
-                try:
-                    det_obj = json.loads(detail) if isinstance(detail, str) else detail
-                except Exception:
-                    det_obj = None
-
-                if isinstance(det_obj, dict):
-                    # Prefer explicit "reason" inside the detail payload
-                    dr = det_obj.get("reason") or det_obj.get("exit_reason") or det_obj.get("exit_type")
-                    if dr:
-                        reason = str(dr).strip().upper()
-                    else:
-                        # Fall back to event label in detail (POSITION_CLOSED etc.)
-                        de = det_obj.get("event")
-                        if de:
-                            reason = str(de).strip().upper()
-        except Exception:
-            pass
-        # --- MM_PROMOTE_DETAIL_REASON_V1_END ---        snap = regime_snapshot or _get_regime_snapshot()
+        snap = regime_snapshot or _get_regime_snapshot()
         reg = (snap.get("label") or "UNKNOWN")
         conf = snap.get("confidence")
         reas = snap.get("reason")
