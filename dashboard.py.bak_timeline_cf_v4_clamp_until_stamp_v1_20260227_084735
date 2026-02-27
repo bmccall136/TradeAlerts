@@ -8718,37 +8718,6 @@ def api_market_regime_timeline():
 
         pass
 
-
-    # MM_CF_V4_CLAMP_UNTIL_STAMP_V1
-
-    try:
-
-        import time as _mm_time
-
-        _mm_now = int(_mm_time.time())
-
-        if isinstance(out.get('window'), dict):
-
-            try:
-
-                _u = int(out['window'].get('until_ts_utc') or 0)
-
-            except Exception:
-
-                _u = 0
-
-            if _u and _u > _mm_now:
-
-                out['window']['until_ts_utc'] = _mm_now
-
-        out['mm_cf_v4_clamp_until_stamp_v1'] = 1
-
-        out['mm_cf_v4_now'] = _mm_now
-
-    except Exception:
-
-        pass
-
     return jsonify(out)
 @app.route('/analytics/buy_regime')
 def analytics_buy_regime_page():

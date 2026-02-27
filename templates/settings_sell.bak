@@ -460,7 +460,7 @@ function MM_REO_MERGE_SETTINGS_OBJ(obj){
 </script>
 
 <!-- MM_REGIME_EXIT_OVERLAY_UI_V5_START -->
-<div class="card mb-3 mm-card" id="mm-regime-exit-overlay-card">
+<div class="card mb-3" id="mm-regime-exit-overlay-card">
   <div class="card-header d-flex align-items-center justify-content-between">
     <div class="fw-bold">Regime Exit Overlay</div>
     <div class="small text-secondary">target_mult / stop_mult / time_mult</div>

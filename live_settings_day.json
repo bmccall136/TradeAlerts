@@ -1,7 +1,7 @@
 {
   "adx_len": 14,
   "adx_on": false,
-  "adx_threshold": 20,
+  "adx_threshold": 25,
   "ai": {
     "enabled": true,
     "use_entries": true,
@@ -35,8 +35,8 @@
   "price_sma_len": 50,
   "price_sma_on": true,
   "profile": "day",
-  "range_on": false,
-  "range_pct": 0,
+  "range_on": true,
+  "range_pct": 0.8,
   "regime_exit_overlay": {
     "CHOP": {
       "stop_mult": 0.8,
@@ -57,8 +57,11 @@
   "require_sma20": true,
   "required_filters": [
     "macd",
-    "rsi",
-    "vwap"
+    "vwap",
+    "price_sma",
+    "sma20",
+    "range",
+    "adx"
   ],
   "required_signals_min": 2,
   "rsi_len": 14,
@@ -71,7 +74,7 @@
   "sma20_on": true,
   "sma_len": 50,
   "sma_on": true,
-  "strict_buy_signals": 2,
+  "strict_buy_signals": 3,
   "supertrend_fast": 10,
   "supertrend_on": false,
   "supertrend_signal": 0,

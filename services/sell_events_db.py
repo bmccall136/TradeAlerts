@@ -143,35 +143,35 @@ def log_sell_event(
         if ts_utc is None:
             ts_utc = int(time.time())
                     
-        # --- MM_PROMOTE_DETAIL_REASON_V1_START ---
-        # Many synthetic FILLED rows (position_disappeared) store the real reason in `detail` JSON.
-        # Promote that into the `reason` column so analytics can attribute exits correctly.
+        # --- MM_SEPARATE_RECONCILIATION_V1_START ---
+        # If upstream logs "FILLED" but the detail JSON indicates this was a reconciliation
+        # (e.g., POSITION_CLOSED / position_disappeared), store it as RECONCILED_* instead.
+        # This keeps strategy exits (true fills) separate from reconciliation closes.
         # MUST NEVER break Sell Guard.
         try:
             evu = (event or "").strip().upper()
-            r0u = ("" if reason is None else str(reason)).strip().upper()
 
-            if evu == "FILLED" and (not r0u or r0u in ("UNKNOWN", "NONE", "NULL", "N/A")) and detail:
-                det_obj = None
+            det_obj = None
+            if detail:
                 try:
                     det_obj = json.loads(detail) if isinstance(detail, str) else detail
                 except Exception:
                     det_obj = None
 
-                if isinstance(det_obj, dict):
-                    # Prefer explicit "reason" inside the detail payload
-                    dr = det_obj.get("reason") or det_obj.get("exit_reason") or det_obj.get("exit_type")
-                    if dr:
-                        reason = str(dr).strip().upper()
-                    else:
-                        # Fall back to event label in detail (POSITION_CLOSED etc.)
-                        de = det_obj.get("event")
-                        if de:
-                            reason = str(de).strip().upper()
+            if evu == "FILLED" and isinstance(det_obj, dict):
+                det_event  = (det_obj.get("event") or "").strip().upper()
+                det_reason = (det_obj.get("reason") or det_obj.get("exit_reason") or "").strip().lower()
+
+                # Reconciliation: position vanished / closed externally
+                if det_event in ("POSITION_CLOSED", "POSITION_DISAPPEARED") or det_reason == "position_disappeared":
+                    event = "RECONCILED_CLOSED"
+
+                # Reconciliation: partial reduction detected (optional)
+                elif det_event == "POSITION_REDUCED" or det_reason == "qty_reduced":
+                    event = "RECONCILED_REDUCED"
         except Exception:
             pass
-        # --- MM_PROMOTE_DETAIL_REASON_V1_END ---        snap = regime_snapshot or _get_regime_snapshot()
-        reg = (snap.get("label") or "UNKNOWN")
+        # --- MM_SEPARATE_RECONCILIATION_V1_END ---        reg = (snap.get("label") or "UNKNOWN")
         conf = snap.get("confidence")
         reas = snap.get("reason")
 

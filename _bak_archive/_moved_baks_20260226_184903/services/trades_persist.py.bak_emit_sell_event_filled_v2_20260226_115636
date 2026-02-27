@@ -189,35 +189,24 @@ def persist_trades(db_path: str, rows):
 
     if inserted:
         con.commit()
-        # --- MM_EMIT_SELL_EVENT_FILLED_V2_START ---
+        # --- MM_EMIT_SELL_EVENT_FILLED_V1_START ---
         try:
-            # tolerate different variable names used by different callers
-            _side = None
-            try:
-                _side = (locals().get("side") or locals().get("action") or locals().get("trade_side") or "")
-            except Exception:
-                _side = ""
-            if str(_side).upper() == "SELL":
+            if str(action).upper() == "SELL":
                 try:
                     from services.sell_events_db import log_sell_event
-                    _sym = (locals().get("symbol") or locals().get("sym") or locals().get("ticker") or "").strip()
-                    _qty = (locals().get("qty") or locals().get("quantity") or locals().get("shares") or None)
-                    _px  = (locals().get("price") or locals().get("fill_price") or locals().get("last") or None)
-                    _mode = (locals().get("mode") or "LIVE")
-                    if _sym:
-                        log_sell_event(
-                            symbol=str(_sym).upper(),
-                            event="FILLED",
-                            reason="BROKER_FILLED",
-                            price=(None if _px is None else float(_px)),
-                            qty=(None if _qty is None else float(_qty)),
-                            mode=str(_mode),
-                        )
+                    log_sell_event(
+                        symbol=str(symbol).upper(),
+                        event="FILLED",
+                        reason="BROKER_FILLED",
+                        price=(None if price is None else float(price)),
+                        qty=(None if qty is None else float(qty)),
+                        mode=(mode or "LIVE") if "mode" in locals() else "LIVE",
+                    )
                 except Exception:
                     pass
         except Exception:
             pass
-        # --- MM_EMIT_SELL_EVENT_FILLED_V2_END ---
+        # --- MM_EMIT_SELL_EVENT_FILLED_V1_END ---
 
     con.close()
     return inserted

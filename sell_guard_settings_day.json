@@ -5,7 +5,7 @@
     "use_exits": false
   },
   "stale_relief_exit": {
-    "enabled": true,
+    "enabled": false,
     "min_hold_days": 2,
     "regime_conf_max": 75,
     "relief_gain_pct": 0.8,

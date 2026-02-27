@@ -31,7 +31,30 @@ def compute_supertracker(history, fast_len, slow_len, signal_len):
 
     return osc, sig
 
+import pandas as pd
 
+def adr_chart(df: pd.DataFrame, length: int = 14) -> float:
+    """
+    TradingView 'ADR' with Timeframe=Chart:
+    ADR = SMA(high-low, length) computed on the chart's timeframe bars.
+    Expects df with ['high','low'] columns (lowercase).
+    Returns the most recent value (last row).
+    """
+    rng = (df["high"] - df["low"]).astype(float)
+    adr = rng.rolling(window=length).mean()
+    return float(adr.iloc[-1])
+
+
+def adr_percent_daily(df_daily: pd.DataFrame, length: int = 20) -> float:
+    """
+    TradingView 'ADR% - Average Daily Range %' (daily-based):
+    ADR% = 100 * SMA((high-low)/close, length) using DAILY bars.
+    Expects df_daily with ['high','low','close'] lowercase, daily bars.
+    Returns the most recent value (last row).
+    """
+    rng_pct = ((df_daily["high"] - df_daily["low"]) / df_daily["close"]).astype(float) * 100.0
+    adr_pct = rng_pct.rolling(window=length).mean()
+    return float(adr_pct.iloc[-1])
 def compute_adx(history, length=14):
     """Compute the Average Directional Index (ADX) from OHLCV history DataFrame.
     Returns a pd.Series, same length as history['close'].

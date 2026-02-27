@@ -28,25 +28,6 @@ def _persist_trade_best_effort(symbol: str, action: str, qty: float, price, ts_e
             VALUES (?, ?, ?, ?, ?, ?)
         """, (ts_et, ts_utc, symbol, action, float(qty or 0), (None if price is None else float(price))))
         con.commit()
-        # --- MM_EMIT_SELL_EVENT_FILLED_V1_START ---
-        try:
-            if str(action).upper() == "SELL":
-                try:
-                    from services.sell_events_db import log_sell_event
-                    log_sell_event(
-                        symbol=str(symbol).upper(),
-                        event="FILLED",
-                        reason="BROKER_FILLED",
-                        price=(None if price is None else float(price)),
-                        qty=(None if qty is None else float(qty)),
-                        mode=(mode or "LIVE") if "mode" in locals() else "LIVE",
-                    )
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        # --- MM_EMIT_SELL_EVENT_FILLED_V1_END ---
-
         con.close()
     except Exception:
         try:

@@ -116,25 +116,6 @@ for r in rows[::-1]:  # oldest -> newest for nicer ordering
     inserted += 1
 
 con.commit()
-        # --- MM_EMIT_SELL_EVENT_FILLED_V1_START ---
-        try:
-            if str(action).upper() == "SELL":
-                try:
-                    from services.sell_events_db import log_sell_event
-                    log_sell_event(
-                        symbol=str(symbol).upper(),
-                        event="FILLED",
-                        reason="BROKER_FILLED",
-                        price=(None if price is None else float(price)),
-                        qty=(None if qty is None else float(qty)),
-                        mode=(mode or "LIVE") if "mode" in locals() else "LIVE",
-                    )
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        # --- MM_EMIT_SELL_EVENT_FILLED_V1_END ---
-
 
 count = cur.execute("SELECT COUNT(*) FROM trades").fetchone()[0]
 print(f"OK: backfilled {inserted} rows. trades now has {count} rows.")

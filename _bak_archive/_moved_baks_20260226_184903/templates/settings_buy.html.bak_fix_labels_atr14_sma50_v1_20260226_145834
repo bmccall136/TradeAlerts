@@ -12,8 +12,7 @@
     backdrop-filter: blur(6px);
   }
   .mm-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-
-  .mm-gate-grid{
+  .mm-gate-grid {
     display:grid;
     grid-template-columns: repeat(8, minmax(120px, 1fr));
     gap: 8px 10px;
@@ -21,19 +20,22 @@
   @media (max-width: 1200px) { .mm-gate-grid { grid-template-columns: repeat(4, minmax(140px, 1fr)); } }
   @media (max-width: 700px)  { .mm-gate-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); } }
 
-  .mm-gate-pill{
+  .mm-gate-pill {
     display:flex; align-items:center; gap:8px;
     border:1px solid #262a38; border-radius:10px; padding:6px 8px;
     background:#0b0d14;
   }
   .mm-gate-pill input { transform: scale(1.05); }
-  .mm-disabled-pill { opacity:.55; filter: grayscale(20%); }
-  .mm-disabled-pill input { cursor:not-allowed; }
-  .mm-disabled-pill label { cursor:not-allowed; }
 
   .mm-gate-subtitle { font-weight:800; margin: 12px 0 6px 0; }
   .mm-gate-note { font-size: 12px; opacity:.85; margin: 0 0 10px 0; }
-  .mm-divider { height:1px; background:#222531; margin: 14px 0; }
+
+  .mm-disabled-pill {
+    opacity: .55;
+    filter: grayscale(20%);
+  }
+  .mm-disabled-pill input { cursor:not-allowed; }
+  .mm-disabled-pill label { cursor:not-allowed; }
 
   .mm-cards { display:flex; flex-direction:column; gap:10px; }
   details.mm-ind { border:1px solid #222531; border-radius:10px; background:#0b0d14; }
@@ -51,13 +53,13 @@
   .mm-body { padding: 8px 12px 12px 12px; border-top:1px solid #222531; }
   .mm-grid {
     display:grid;
-    grid-template-columns: 1fr 260px;
+    grid-template-columns: 1fr 220px;
     gap: 8px 12px;
     align-items:center;
   }
   @media (max-width: 700px) { .mm-grid { grid-template-columns: 1fr; } }
 
-  .mm-grid label { opacity:.95; color:#d7dbe6; font-weight:700; }
+  .mm-grid label { opacity:.9; }
   .mm-grid input[type="text"], .mm-grid input[type="number"], .mm-grid select {
     width:100%;
     background:#0b0d14;
@@ -73,23 +75,31 @@
   }
   .mm-section-title { font-size:18px; font-weight:800; margin-bottom:6px; }
   .mm-subtitle { margin-top:0; margin-bottom:10px; }
+  .mm-divider { height:1px; background:#222531; margin: 14px 0; }
 
-  /* Checkbox accent */
-  #settings-page input[type="checkbox"] { accent-color: #f5d400; }
-  #settings-page input[type="checkbox"]:focus { outline:none; box-shadow: 0 0 0 2px rgba(245,212,0,0.25); }
+  /* Other Settings: make left-column labels readable */
+  #otherCard .mm-grid label {
+    opacity: 0.95;
+    color: #d7dbe6;
+    font-weight: 700;
+  }
+  #otherCard .mm-muted { opacity: 0.9; }
 
-  #settings-page { max-width: 1100px !important; margin-left:auto !important; margin-right:auto !important; }
-  body, #settings-page { color:#e9edf6; }
+  /* Other Settings: match card tone + checkbox accent */
+  #otherCard { background: rgba(17,21,28,0.78); }
+  #otherCard .card-body { background: transparent; }
+  #otherCard .mm-section-title { color: #e9edf6; }
+  #otherCard input[type="checkbox"] { accent-color: #f5d400; }
+  #otherCard input[type="checkbox"]:focus { outline: none; box-shadow: 0 0 0 2px rgba(245,212,0,0.25); }
 </style>
 
 <div id="settings-page" class="container-fluid" style="max-width:1100px;margin-left:auto;margin-right:auto;">
-
   <div class="d-flex align-items-center justify-content-between" style="margin:18px 0 10px 0;">
     <div style="font-size:22px;font-weight:800;">Settings</div>
     <div class="d-flex align-items-center" style="gap:10px;">
       <div class="btn-group" role="group" aria-label="settings tabs">
-        <a class="btn btn-sm btn-dark" href="/settings/buy">BUY</a>
-        <a class="btn btn-sm btn-warning" href="/settings/sell">SELL</a>
+        <a class="btn btn-sm btn-warning" href="/settings/buy">BUY</a>
+        <a class="btn btn-sm btn-dark" href="/settings/sell">SELL</a>
       </div>
       <div class="d-flex align-items-center" style="gap:8px;">
         <div style="opacity:.85;">Profile</div>
@@ -103,7 +113,7 @@
 
   <div class="mm-stickybar mb-3">
     <div class="mm-row">
-      <div class="mm-muted">Editing: <b id="stickyGroup">SELL</b> / <b id="stickyProfile">DAY</b></div>
+      <div class="mm-muted">Editing: <b id="stickyGroup">BUY</b> / <b id="stickyProfile">DAY</b></div>
       <div style="display:flex; align-items:center; gap:10px;">
         <button id="saveBtnTop" class="btn btn-warning">Save</button>
         <div id="saveMsgTop" class="mm-muted"></div>
@@ -111,141 +121,68 @@
     </div>
   </div>
 
-  <!-- SELL "splitâ€ legend (like BUY, but NOT a gate) -->
-  <div id="sellLegendCard" class="card mm-card mb-3">
+  <div id="gateCard" class="card mm-card mb-3">
     <div class="card-body">
-      <div style="font-size:18px;font-weight:700;">Sell Modules Overview</div>
-      <div style="opacity:.9;margin:2px 0 10px 0;">
-        <b>Exit Triggers</b> decide "should we sellâ€. <b>Execution/Safety</b> controls how we place orders and guardrails.
+      <div style="font-size:18px;font-weight:700;">Required Signals Gate</div>
+      <div style="opacity:.9;margin:2px 0 12px 0;">
+        Only <b>true indicators</b> can be required. Enhancers can still be enabled and logged, but cannot be required.
       </div>
 
-      <div class="mm-gate-subtitle">Exit Triggers (cause a sell)</div>
-      <div class="mm-gate-note">These are the decision engines that fire sell actions.</div>
-      <div id="sellGridTriggers" class="mm-gate-grid"></div>
+      <div class="mm-gate-subtitle">True Indicators (gate-able)</div>
+      <div class="mm-gate-note">These can be required and count toward your gate rules.</div>
+      <div id="gateGridPrimary" class="mm-gate-grid"></div>
 
       <div class="mm-divider"></div>
 
-      <div class="mm-gate-subtitle">Execution / Safety (does not "causeâ€ a sell)</div>
-      <div class="mm-gate-note">These control routing, windows, throttles, counts, and safety rules.</div>
-      <div id="sellGridExec" class="mm-gate-grid"></div>
+      <div class="mm-gate-subtitle">Enhancers / Emitters (not gate-able)</div>
+      <div class="mm-gate-note">These enrich signals but are <b>not</b> eligible for Required Signals Gate.</div>
+      <div id="gateGridEnhancers" class="mm-gate-grid"></div>
+
+      <div id="gateHint" class="mm-muted" style="margin-top:10px;"></div>
     </div>
   </div>
 
   <div class="card mm-card mb-3">
     <div class="card-body">
-      <div class="mm-section-title">Sell Modules</div>
-      <div class="mm-muted mm-subtitle">Each section can be expanded/collapsed. Settings live inside each card.</div>
+      <div class="mm-section-title">Indicators</div>
+      <div class="mm-muted mm-subtitle">Each section can be expanded/collapsed. Enable controls eligibility; settings live inside each card.</div>
       <div id="indicatorCards" class="mm-cards"></div>
     </div>
   </div>
 
+  <div id="otherCard" class="card mm-card mb-3" style="display:block; max-width:1100px; margin-left:auto; margin-right:auto;">
+    <div class="card-body">
+      <div class="mm-section-title">Other Settings</div>
+      <div class="mm-muted mm-subtitle">Everything that is not an indicator lives here.</div>
+      <div id="otherFields" class="mm-grid"></div>
+    </div>
+  </div>
 </div>
 
 <script>
-  window.__MM_GROUP__ = "sell";
+  window.__MM_GROUP__ = "buy";
   window.__MM_CFG__ = {
-    // Cards are your existing SELL modules (kept), with better labeling.
-    cards: [
-      {
-        "key":"ai",
-        "label":"AI Advisor (SELL)",
-        "enable_key": null, "enable_is_field": false,
-        "fields":[
-          {"k":"ai.enabled","label":"Enabled","type":"bool"},
-          {"k":"ai.use_entries","label":"Use Entries","type":"bool"},
-          {"k":"ai.use_exits","label":"Use Exits","type":"bool"}
-        ]
-      },
-      {
-        "key":"sell_guard_core",
-        "label":"Core Loop / Session / Throttle (execution)",
-        "enable_key": null, "enable_is_field": false,
-        "fields":[
-          {"k":"sell_guard.mode","label":"Mode","type":"text","optional":true},
-          {"k":"sell_guard.interval_sec","label":"Interval Secs","type":"number","optional":true},
-          {"k":"sell_guard.sell_window_start_et","label":"Sell Window Start (ET)","type":"text","optional":true},
-          {"k":"sell_guard.sell_window_end_et","label":"Sell Window End (ET)","type":"text","optional":true},
-          {"k":"sell_guard.use_extended_hours","label":"Use Extended Hours","type":"bool","optional":true},
-          {"k":"sell_guard.throttle_ms","label":"Throttle ms","type":"number","optional":true}
-        ]
-      },
-      {
-        "key":"targets",
-        "label":"Targets & Stops (exit triggers)",
-        "enable_key": null, "enable_is_field": false,
-        "fields":[
-          {"k":"sell_guard.target_gain_pct","label":"Target Gain % (sell_guard)","type":"number","optional":true},
-          {"k":"sell_guard.target_bps","label":"Target bps (sell_guard)","type":"number","optional":true},
-          {"k":"sell_guard.stop_bps","label":"Stop bps (sell_guard)","type":"number","optional":true},
-          {"k":"sell_guard.timeout_exit_pct","label":"Timeout Exit % (sell_guard)","type":"number","optional":true},
-          {"k":"sell_guard.allow_intraday_stoploss","label":"Allow Intraday Stop","type":"bool","optional":true},
-          {"k":"sell_guard.intraday_stoploss_pct","label":"Intraday Stop %","type":"number","optional":true}
-        ]
-      },
-      {
-        "key":"timeouts",
-        "label":"Timeout / Hold Rules (exit triggers)",
-        "enable_key": null, "enable_is_field": false,
-        "fields":[
-          {"k":"sell_guard.enable_timeout_exits","label":"Enable Timeout Exits","type":"bool","optional":true},
-          {"k":"sell_guard.max_hold_minutes","label":"Max Hold Minutes","type":"number","optional":true},
-          {"k":"sell_guard.min_hold_minutes","label":"Min Hold Minutes","type":"number","optional":true},
-          {"k":"sell_guard.min_hold_days","label":"Min Hold Days","type":"number","optional":true}
-        ]
-      },
-	  {
-	  "key":"stale_relief_exit",
-	  "label":"Stale Relief Exit (exit triggers)",
-	  "enable_key": null, "enable_is_field": false,
-	  "fields":[
-		{"k":"stale_relief_exit.enabled","label":"Enabled","type":"bool"},
-		{"k":"stale_relief_exit.min_hold_days","label":"Min Hold Days","type":"number"},
-		{"k":"stale_relief_exit.relief_gain_pct","label":"Relief Gain % (exit when >=)","type":"number"},
-		{"k":"stale_relief_exit.runner_max_gain_pct","label":"Runner Max Gain % (ignore if ever >=)","type":"number"},
-		{"k":"stale_relief_exit.require_regime_nontrend","label":"Require Non-TREND Regime","type":"bool"},
-		{"k":"stale_relief_exit.regime_conf_max","label":"Regime Conf Max","type":"number"}
-	  ]
-	},
-      {
-        "key":"protect",
-        "label":"Protect / Trailing (exit triggers)",
-        "enable_key": null, "enable_is_field": false,
-        "fields":[
-          {"k":"sell_guard.trail_arm_gain_pct","label":"Trail Arm Gain %","type":"number","optional":true},
-          {"k":"sell_guard.trail_backoff_pct","label":"Trail Backoff %","type":"number","optional":true},
-          {"k":"sell_guard.protect_min_gain_pct","label":"Protect Min Gain %","type":"number","optional":true},
-          {"k":"sell_guard.protect_trail_arm_pct","label":"Protect Trail Arm %","type":"number","optional":true},
-          {"k":"sell_guard.protect_trail_pct","label":"Protect Trail %","type":"number","optional":true},
-          {"k":"sell_guard.sell_protect_after_mins","label":"Protect After Mins","type":"number","optional":true}
-        ]
-      },
-      {
-        "key":"filters",
-        "label":"Filters / Safety (execution)",
-        "enable_key": null, "enable_is_field": false,
-        "fields":[
-          {"k":"sell_guard.blocklist","label":"Blocklist","type":"text","optional":true},
-          {"k":"sell_guard.only_allow_symbol","label":"Only Allow Symbol","type":"text","optional":true},
-          {"k":"sell_guard.avoid_daytrades","label":"Avoid Daytrades","type":"bool","optional":true},
-          {"k":"sell_guard.pdt_allow_stop","label":"PDT Allow Stop","type":"bool","optional":true},
-          {"k":"sell_guard.max_place_attempts","label":"Max Place Attempts","type":"number","optional":true},
-          {"k":"sell_guard.normalize_tick","label":"Normalize Tick","type":"number","optional":true},
-          {"k":"sell_guard.limit_from","label":"Limit From","type":"text","optional":true},
-          {"k":"sell_guard.limit_offset_bps","label":"Limit Offset bps","type":"number","optional":true}
-        ]
-      }
+    cards: [{"key": "rsi", "label": "RSI", "enable_key": "rsi_on", "enable_is_field": false, "fields": [{"k": "rsi_len", "label": "Length", "type": "number", "optional": false}, {"k": "rsi_overbought", "label": "Overbought", "type": "number", "optional": false}, {"k": "rsi_oversold", "label": "Oversold", "type": "number", "optional": false}, {"k": "rsi_slope_on", "label": "RSI Slope", "type": "bool", "optional": false}]}, {"key": "sma", "label": "SMA", "enable_key": "sma_on", "enable_is_field": false, "fields": [{"k": "sma_length", "label": "Length", "type": "number", "optional": false}, {"k": "sma_len", "label": "Length (alt)", "type": "number", "optional": true}]}, {"key": "sma20", "label": "SMA20 (Require)", "enable_key": "require_sma20", "enable_is_field": true, "fields": [{"k": "require_sma20", "label": "Require SMA20", "type": "bool", "optional": false}]}, {"key": "super", "label": "Supertrend", "enable_key": "supertrend_on", "enable_is_field": false, "fields": [{"k": "supertrend_fast", "label": "Fast", "type": "number", "optional": false}, {"k": "supertrend_slow", "label": "Slow", "type": "number", "optional": false}, {"k": "supertrend_signal", "label": "Signal", "type": "number", "optional": false}]}, {"key": "vol", "label": "Volume", "enable_key": "vol_on", "enable_is_field": false, "fields": [{"k": "vol_multiplier", "label": "Multiplier", "type": "number", "optional": false}, {"k": "vol_mult", "label": "Multiplier (alt)", "type": "number", "optional": true}]}, {"key": "vwap", "label": "VWAP", "enable_key": "vwap_on", "enable_is_field": false, "fields": [{"k": "vwap_threshold", "label": "Threshold", "type": "number", "optional": false}, {"k": "vwap_diff_threshold", "label": "Diff Threshold", "type": "number", "optional": true}, {"k": "vwap_len", "label": "Length", "type": "number", "optional": true}]}, {"key": "range", "label": "Range", "enable_key": "range_on", "enable_is_field": false, "fields": [{"k": "range_pct", "label": "Range %", "type": "number", "optional": false}]}, {"key": "price_sma", "label": "SMA50 (Close > SMA50)", "enable_key": "price_sma_on", "enable_is_field": false, "fields": [{"k": "price_sma_len", "label": "Length", "type": "number", "optional": false}]}, {"key": "macd", "label": "MACD", "enable_key": "macd_on", "enable_is_field": false, "fields": [{"k": "macd_fast", "label": "Fast", "type": "number", "optional": false}, {"k": "macd_signal", "label": "Signal", "type": "number", "optional": false}, {"k": "macd_slow", "label": "Slow", "type": "number", "optional": false}]}, {"key": "macd_hist", "label": "MACD Histogram", "enable_key": "macd_hist_on", "enable_is_field": true, "fields": [{"k": "macd_hist_on", "label": "Histogram Enabled", "type": "bool", "optional": false}]}, {"key": "gap", "label": "Gap", "enable_key": "gap_on", "enable_is_field": false, "fields": [{"k": "gap_pct", "label": "Gap %", "type": "number", "optional": false}]}, {"key": "bb", "label": "Bollinger Bands", "enable_key": "bb_on", "enable_is_field": false, "fields": [{"k": "bb_length", "label": "Length", "type": "number", "optional": false}, {"k": "bb_len", "label": "Length (alt)", "type": "number", "optional": true}, {"k": "bb_std", "label": "StdDev", "type": "number", "optional": false}, {"k": "bb_stddev", "label": "StdDev (alt)", "type": "number", "optional": true}]}, {"key": "bb_break", "label": "BB Breakout", "enable_key": "bb_breakout_enabled", "enable_is_field": true, "fields": [{"k": "bb_breakout_enabled", "label": "Breakout Enabled", "type": "bool", "optional": false}]}, {"key": "atr", "label": "ATR", "enable_key": "atr_on", "enable_is_field": false, "fields": [{"k": "atr_threshold", "label": "Threshold", "type": "number", "optional": false}]}, {"key": "atr_pct", "label": "ATR(14) RMA %", "enable_key": "atr_pct_on", "enable_is_field": false, "fields": [{"k": "atr_pct_on", "label": "ATR % Enabled", "type": "bool", "optional": false}, {"k": "atr_pct", "label": "ATR(14) RMA %", "type": "number", "optional": false}]}, {"key": "adx", "label": "ADX", "enable_key": "adx_on", "enable_is_field": false, "fields": [{"k": "adx_len", "label": "Length", "type": "number", "optional": false}, {"k": "adx_threshold", "label": "Threshold", "type": "number", "optional": false}]}, {"key": "ai", "label": "AI Advisor", "enable_key": null, "enable_is_field": false, "fields": [{"k": "ai.enabled", "label": "Enabled", "type": "bool", "optional": false}, {"k": "ai.use_entries", "label": "Use Entries", "type": "bool", "optional": false}, {"k": "ai.use_exits", "label": "Use Exits", "type": "bool", "optional": false}]}],
+    other: [{"k": "_ui_test_toggle", "label": "UI Test Toggle", "type": "bool", "optional": true}, {"k": "account_type", "label": "Account Type", "type": "text", "optional": false}, {"k": "broker_mode", "label": "Broker", "type": "text", "optional": false}, {"k": "mode", "label": "Mode", "type": "text", "optional": false}, {"k": "market_gate_on", "label": "Market Gate", "type": "bool", "optional": false}, {"k": "market_session", "label": "Market Session", "type": "text", "optional": false}, {"k": "pause_when_market_closed", "label": "Pause When Market Closed", "type": "bool", "optional": false}, {"k": "order_term", "label": "Order Term", "type": "text", "optional": false}, {"k": "prefer_quotes", "label": "Prefer Quotes", "type": "bool", "optional": false}, {"k": "poll_interval", "label": "Poll Interval", "type": "number", "optional": false}, {"k": "scan_sleep_secs", "label": "Scan Sleep Secs", "type": "number", "optional": false}, {"k": "max_per_trade", "label": "Max Per Trade", "type": "number", "optional": false}, {"k": "max_pyramids", "label": "Max Pyramids", "type": "number", "optional": false}, {"k": "single_entry_only", "label": "Single Entry Only", "type": "bool", "optional": false}, {"k": "sell_after_days", "label": "Sell After Days", "type": "number", "optional": false}, {"k": "stop_loss_pct", "label": "Stop Loss %", "type": "number", "optional": false}, {"k": "take_profit_pct", "label": "Take Profit %", "type": "number", "optional": false}, {"k": "use_trailing_stop", "label": "Use Trailing Stop", "type": "bool", "optional": false}, {"k": "trailing_stop_pct", "label": "Trailing Stop %", "type": "number", "optional": false}, {"k": "trail_arm_gain_pct", "label": "Trail Arm Gain %", "type": "number", "optional": false}, {"k": "trail_floor_to_entry", "label": "Trail Floor To Entry", "type": "bool", "optional": false}, {"k": "trail_tiers", "label": "Trail Tiers", "type": "text", "optional": true}, {"k": "news_on", "label": "News On", "type": "bool", "optional": false}, {"k": "nuke_db", "label": "Nuke DB", "type": "bool", "optional": false}, {"k": "realized_since", "label": "Realized Since", "type": "text", "optional": false}, {"k": "realized_tz", "label": "Realized TZ", "type": "text", "optional": false}, {"k": "strict_buy_signals", "label": "Strict Buy Signals", "type": "number", "optional": false}],
+    gate_primary: [
+      {"key": "rsi", "label": "RSI"},
+      {"key": "sma", "label": "SMA"},
+      {"key": "sma20", "label": "SMA20"},
+      {"key": "super", "label": "SUPER"},
+      {"key": "vwap", "label": "VWAP"},
+      {"key": "range", "label": "RANGE"},
+      {"key": "price_sma", "label": "SMA50"},
+      {"key": "macd", "label": "MACD"},
+      {"key": "bb", "label": "BB"},
+      {"key": "atr_pct", "label": "ATR %"},
+      {"key": "adx", "label": "ADX"}
     ],
-
-    // "Splitâ€ legend pills
-    triggers: [
-      {"key":"targets","label":"TARGET/STOP"},
-      {"key":"timeouts","label":"TIMEOUT/HOLD"},
-      {"key":"protect","label":"PROTECT/TRAIL"},
-      {"key":"ai","label":"AI EXITS"}
-    ],
-    exec: [
-      {"key":"sell_guard_core","label":"CORE LOOP"},
-      {"key":"filters","label":"FILTERS/SAFETY"}
+    gate_enhancers: [
+      {"key": "vol", "label": "VOL"},
+      {"key": "macd_hist", "label": "MACD HIST"},
+      {"key": "gap", "label": "GAP"},
+      {"key": "bb_break", "label": "BB BREAK"},
+      {"key": "atr", "label": "ATR"}
     ]
   };
 </script>
@@ -265,15 +202,44 @@ function MM_REO_MERGE_SETTINGS_OBJ(obj){
 }
 
 (() => {
-  const GROUP = (window.__MM_GROUP__ || "sell");
-  const CFG = window.__MM_CFG__ || { cards:[], triggers:[], exec:[] };
+  const GROUP = (window.__MM_GROUP__ || "buy");
+  const CFG = window.__MM_CFG__ || { cards:[], other:[], gate_primary:[], gate_enhancers:[] };
   const byId = (id) => document.getElementById(id);
 
   let SETTINGS = {};
+  let SCORE = {};
 
   function normProfile(v){
     v = String(v||"").toLowerCase();
     return (v === "swing") ? "swing" : "day";
+  }
+
+  function groupKey(k){
+    k = String(k||"").toLowerCase().replace(/\s+/g,"");
+    if (k.includes("price_sma")) return "price_sma";
+    if (k.includes("bb_break")) return "bb_break";
+    if (k.includes("atr_pct")) return "atr_pct";
+    if (k.includes("macd_hist")) return "macd_hist";
+    if (k === "sma20") return "sma20";
+    if (k.startsWith("sma")) return "sma";
+    if (k.startsWith("rsi")) return "rsi";
+    if (k.startsWith("macd")) return "macd";
+    if (k.startsWith("vwap")) return "vwap";
+    if (k.startsWith("vol") || k.startsWith("volume")) return "vol";
+    if (k.startsWith("range")) return "range";
+    if (k.startsWith("gap")) return "gap";
+    if (k.startsWith("bb")) return "bb";
+    if (k.startsWith("atr")) return "atr";
+    if (k.startsWith("adx")) return "adx";
+    if (k.startsWith("super")) return "super";
+    return k;
+  }
+
+  function scoreCount(key){
+    const g = groupKey(key);
+    const v = (SCORE || {})[g];
+    const n = Number(v || 0);
+    return Number.isFinite(n) ? n : 0;
   }
 
   async function apiLoad(profile){
@@ -295,6 +261,13 @@ function MM_REO_MERGE_SETTINGS_OBJ(obj){
     const j = await r.json();
     if (!j || !j.ok) throw new Error((j && j.error) ? j.error : "save failed");
     return j;
+  }
+
+  async function apiScore(bucket){
+    const r = await fetch(`/api/settings/scoreboard?bucket=${encodeURIComponent(bucket)}`, { cache:"no-store" });
+    const j = await r.json();
+    if (!j || !j.ok) throw new Error((j && j.error) ? j.error : "scoreboard failed");
+    return j.counts || {};
   }
 
   function getPath(obj, path){
@@ -321,31 +294,113 @@ function MM_REO_MERGE_SETTINGS_OBJ(obj){
     }
   }
 
-  function renderLegend(){
-    const hostA = byId("sellGridTriggers");
-    const hostB = byId("sellGridExec");
+  function getEnable(card){
+    if (card.enable_is_field){
+      return !!SETTINGS[card.enable_key];
+    }
+    if (!card.enable_key) return true;
+    return !!SETTINGS[card.enable_key];
+  }
+
+  function setEnable(card, v){
+    if (card.enable_is_field){
+      SETTINGS[card.enable_key] = !!v;
+      return;
+    }
+    if (!card.enable_key) return;
+    SETTINGS[card.enable_key] = !!v;
+  }
+
+  function cleanRequiredFilters(){
+    const allowed = new Set((CFG.gate_primary || []).map(x => String(x.key||"").toLowerCase()));
+    let req = SETTINGS.required_filters;
+    if (!Array.isArray(req)) req = [];
+    req = req.map(x => String(x||"").toLowerCase()).filter(x => allowed.has(x));
+    SETTINGS.required_filters = Array.from(new Set(req));
+  }
+
+  function renderGate(){
+    const hostA = byId("gateGridPrimary");
+    const hostB = byId("gateGridEnhancers");
     if (hostA) hostA.innerHTML = "";
     if (hostB) hostB.innerHTML = "";
 
-    const mk = (g, disabled=false) => {
-      const pill = document.createElement("div");
-      pill.className = "mm-gate-pill" + (disabled ? " mm-disabled-pill" : "");
-      const id = `pill_${g.key}`;
-      pill.innerHTML = `
-        <input type="checkbox" id="${id}" ${disabled ? "disabled" : "disabled"}>
-        <label for="${id}" style="margin:0;font-weight:800;">${g.label}</label>
-      `;
-      pill.title = disabled ? "Execution/Safety module (not an exit trigger itself)." : "Exit trigger module.";
-      return pill;
-    };
+    cleanRequiredFilters();
 
-    // Triggers: show as "active categoryâ€ pills (still disabled - this is a legend, not a gate)
+    const reqSet = new Set((SETTINGS.required_filters || []).map(x => String(x||"").toLowerCase()));
+
+    // Primary gate-able
     if (hostA){
-      for (const g of (CFG.triggers || [])) hostA.appendChild(mk(g,false));
+      for (const g of (CFG.gate_primary || [])){
+        const pill = document.createElement("div");
+        pill.className = "mm-gate-pill";
+        const id = `gate_${g.key}`;
+        const checked = reqSet.has(String(g.key).toLowerCase());
+        pill.innerHTML = `
+          <input type="checkbox" id="${id}" ${checked ? "checked" : ""}>
+          <label for="${id}" style="margin:0;font-weight:800;">${g.label}</label>
+        `;
+        pill.querySelector("input").onchange = (e) => {
+          const on = !!e.target.checked;
+          const key = String(g.key).toLowerCase();
+          let arr = Array.isArray(SETTINGS.required_filters) ? SETTINGS.required_filters.slice() : [];
+          arr = arr.map(x => String(x||"").toLowerCase());
+          const s = new Set(arr);
+          if (on) s.add(key); else s.delete(key);
+          SETTINGS.required_filters = Array.from(s);
+          cleanRequiredFilters();
+          const hint = byId("gateHint");
+          if (hint) hint.textContent = "Required: " + (SETTINGS.required_filters.length ? SETTINGS.required_filters.join(", ") : "(none)");
+        };
+        hostA.appendChild(pill);
+      }
     }
-    // Exec: show as disabled/greyed legend pills
+
+    // Enhancers (display only)
     if (hostB){
-      for (const g of (CFG.exec || [])) hostB.appendChild(mk(g,true));
+      for (const g of (CFG.gate_enhancers || [])){
+        const pill = document.createElement("div");
+        pill.className = "mm-gate-pill mm-disabled-pill";
+        const id = `enh_${g.key}`;
+        pill.title = "Enhancer / emitter: cannot be required (not part of Required Signals Gate).";
+        pill.innerHTML = `
+          <input type="checkbox" id="${id}" disabled>
+          <label for="${id}" style="margin:0;font-weight:800;">${g.label}</label>
+        `;
+        hostB.appendChild(pill);
+      }
+    }
+
+    const hint = byId("gateHint");
+    if (hint) hint.textContent = "Required: " + (reqSet.size ? Array.from(reqSet).join(", ") : "(none)");
+  }
+
+  function renderScoreboard(){
+    const host = byId("scoreboardCards");
+    if (!host) return;
+    host.innerHTML = "";
+
+    const items = (CFG.cards || []).map(c => {
+      return {
+        key: c.key,
+        label: c.label,
+        enabled: getEnable(c),
+        count: scoreCount(c.key)
+      };
+    }).sort((a,b) => (b.count - a.count));
+
+    for (const it of items){
+      const div = document.createElement("div");
+      div.className = "mm-gate-pill";
+      div.style.justifyContent = "space-between";
+      div.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="font-weight:800;">${it.label}</div>
+          <div class="mm-count">count: ${it.count}</div>
+        </div>
+        <div class="mm-count">${it.enabled ? "Enabled" : "Disabled"}</div>
+      `;
+      host.appendChild(div);
     }
   }
 
@@ -359,10 +414,24 @@ function MM_REO_MERGE_SETTINGS_OBJ(obj){
       det.className = "mm-ind";
       det.open = true;
 
+      const enabled = getEnable(card);
+      const cnt = scoreCount(card.key);
+
       const sum = document.createElement("summary");
+
+      const enableHtml = card.enable_key ? `
+        <label class="mm-toggle" onclick="event.stopPropagation();">
+          <input type="checkbox" ${enabled ? "checked" : ""} style="transform:scale(1.05);">
+          <span style="font-weight:800;">Enabled</span>
+        </label>
+      ` : ``;
+
       sum.innerHTML = `
         <div class="mm-title">${card.label}</div>
-        <div class="mm-right"></div>
+        <div class="mm-right">
+          <div class="mm-count">count: ${cnt}</div>
+          ${enableHtml}
+        </div>
       `;
       det.appendChild(sum);
 
@@ -415,35 +484,106 @@ function MM_REO_MERGE_SETTINGS_OBJ(obj){
       body.appendChild(grid);
       det.appendChild(body);
       host.appendChild(det);
+
+      if (card.enable_key){
+        const chk = sum.querySelector('input[type="checkbox"]');
+        if (chk){
+          chk.onchange = () => {
+            setEnable(card, !!chk.checked);
+            renderScoreboard();
+          };
+        }
+      }
+    }
+  }
+
+  function renderOther(){
+    const host = byId("otherFields");
+    if (!host) return;
+    host.innerHTML = "";
+
+    for (const f of (CFG.other || [])){
+      const key = f.k;
+      const label = f.label || key;
+      const type = f.type || "text";
+      const optional = !!f.optional;
+
+      const existing = SETTINGS[key] !== undefined;
+      if (optional && !existing) continue;
+
+      const rowLabel = document.createElement("label");
+      rowLabel.textContent = label;
+
+      let input;
+      if (type === "bool"){
+        input = document.createElement("input");
+        input.type = "checkbox";
+        input.checked = !!SETTINGS[key];
+        input.onchange = () => SETTINGS[key] = !!input.checked;
+      } else {
+        input = document.createElement("input");
+        input.type = (type === "number") ? "number" : "text";
+        const v = SETTINGS[key];
+        input.value = (v === undefined || v === null) ? "" : String(v);
+        input.oninput = () => SETTINGS[key] = (type === "number") ? Number(input.value) : input.value;
+      }
+
+      const box = document.createElement("div");
+      box.appendChild(input);
+
+      host.appendChild(rowLabel);
+      host.appendChild(box);
     }
   }
 
   async function refreshAll(){
     const prof = normProfile(byId("profileSel")?.value || "day");
     byId("stickyProfile").textContent = prof.toUpperCase();
-    byId("stickyGroup").textContent = "SELL";
+    byId("stickyGroup").textContent = GROUP.toUpperCase();
 
-    try { SETTINGS = await apiLoad(prof); }
-    catch(e){ console.error(e); SETTINGS = {}; }
+    try {
+      SETTINGS = await apiLoad(prof);
+    } catch(e) {
+      console.error(e);
+      SETTINGS = {};
+    }
 
     if (!SETTINGS.ai || typeof SETTINGS.ai !== "object") {
       SETTINGS.ai = { enabled:false, use_entries:false, use_exits:false };
     }
-    renderLegend();
+
+    try {
+      SCORE = await apiScore(byId("bucketSel")?.value || "today");
+      const err = byId("scoreErr");
+      if (err) err.style.display = "none";
+    } catch(e) {
+      console.error(e);
+      SCORE = {};
+      const err = byId("scoreErr");
+      if (err) {
+        err.textContent = "Scoreboard unavailable";
+        err.style.display = "block";
+      }
+    }
+
+    renderScoreboard();
+    renderGate();
     renderCards();
+    renderOther();
   }
 
   async function doSave(){
     const prof = normProfile(byId("profileSel")?.value || "day");
-    const msg = byId("saveMsgTop");
-    if (msg) msg.textContent = "Saving...";
+    const msg2 = byId("saveMsgTop");
+    if (msg2) msg2.textContent = "Saving...";
     try {
+      cleanRequiredFilters();
       await apiSave(prof, SETTINGS);
-      if (msg) msg.textContent = "Saved.";
-      setTimeout(() => { if (msg) msg.textContent = ""; }, 1500);
-    } catch(e){
+      if (msg2) msg2.textContent = "Saved.";
+      setTimeout(() => { if (msg2) msg2.textContent = ""; }, 1500);
+    } catch(e) {
       console.error(e);
-      if (msg) msg.textContent = "Save failed.";
+      if (msg2) msg2.textContent = "Save failed.";
     }
   }
 
@@ -457,10 +597,14 @@ function MM_REO_MERGE_SETTINGS_OBJ(obj){
     refreshAll();
   });
 })();
+
 </script>
 
+{% endblock %}
+
+
 <!-- MM_REGIME_EXIT_OVERLAY_UI_V5_START -->
-<div class="card mb-3 mm-card" id="mm-regime-exit-overlay-card">
+<div class="card mb-3" id="mm-regime-exit-overlay-card">
   <div class="card-header d-flex align-items-center justify-content-between">
     <div class="fw-bold">Regime Exit Overlay</div>
     <div class="small text-secondary">target_mult / stop_mult / time_mult</div>
@@ -721,4 +865,3 @@ function MM_REO_MERGE_SETTINGS_OBJ(obj){
 </script>
 <!-- MM_REGIME_EXIT_OVERLAY_UI_V5_END -->
 
-{% endblock %}

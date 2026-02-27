@@ -7431,12 +7431,7 @@ def api_market_regime_timeline():
 
 
 
-
-
-
-
-    # MM_TIMELINE_CARRY_FORWARD_SCAN_LOCALS_V3B
-
+    # MM_TIMELINE_CARRY_FORWARD_SCAN_LOCALS_V2
 
 
 
@@ -7444,14 +7439,11 @@ def api_market_regime_timeline():
 
 
 
-
         def _mm_is_unknown(x):
 
 
 
-
             try:
-
 
 
 
@@ -7459,104 +7451,11 @@ def api_market_regime_timeline():
 
 
 
-
             except Exception:
-
 
 
 
                 return True
-
-
-
-
-        def _mm_norm_item(it):
-
-
-
-
-            if isinstance(it, dict):
-
-
-
-
-                return it
-
-
-
-
-            try:
-
-
-
-
-                if hasattr(it, 'keys'):
-
-
-
-
-                    d = {}
-
-
-
-
-                    for _k in list(it.keys()):
-
-
-
-
-                        try:
-
-
-
-
-                            d[_k] = it[_k]
-
-
-
-
-                        except Exception:
-
-
-
-
-                            pass
-
-
-
-
-                    return d
-
-
-
-
-            except Exception:
-
-
-
-
-                pass
-
-
-
-
-            try:
-
-
-
-
-                return dict(it)
-
-
-
-
-            except Exception:
-
-
-
-
-                return None
-
 
 
 
@@ -7564,19 +7463,11 @@ def api_market_regime_timeline():
 
 
 
-
             if not isinstance(_lst, list) or not _lst:
 
 
 
-
-                return 0
-
-
-
-
-            _repl = 0
-
+                return
 
 
 
@@ -7584,287 +7475,7 @@ def api_market_regime_timeline():
 
 
 
-
             _last_conf = None
-
-
-
-
-            for _i in range(len(_lst)):
-
-
-
-
-                _p0 = _lst[_i]
-
-
-
-
-                _p = _mm_norm_item(_p0)
-
-
-
-
-                if _p is None:
-
-
-
-
-                    continue
-
-
-
-
-                if _p is not _p0:
-
-
-
-
-                    _lst[_i] = _p
-
-
-
-
-                _reg = _p.get('regime')
-
-
-
-
-                if not _mm_is_unknown(_reg):
-
-
-
-
-                    _last_reg = str(_reg).upper()
-
-
-
-
-                    _last_conf = _p.get('conf')
-
-
-
-
-                    continue
-
-
-
-
-                if _last_reg is not None:
-
-
-
-
-                    _p['regime'] = _last_reg
-
-
-
-
-                    if _p.get('conf') is None:
-
-
-
-
-                        _p['conf'] = _last_conf
-
-
-
-
-                    _repl += 1
-
-
-
-
-            return _repl
-
-
-
-
-        _mm_cf_repl = 0
-
-
-
-
-        # patch locals lists
-
-
-
-
-        try:
-
-
-
-
-            _mm_cf_repl += _mm_carry_forward_list(locals().get('points'))
-
-
-
-
-            _mm_cf_repl += _mm_carry_forward_list(locals().get('buckets'))
-
-
-
-
-        except Exception:
-
-
-
-
-            pass
-
-
-
-
-        # patch any response dict in locals
-
-
-
-
-        try:
-
-
-
-
-            for _k, _v in list(locals().items()):
-
-
-
-
-                if not isinstance(_v, dict):
-
-
-
-
-                    continue
-
-
-
-
-                if 'buckets' in _v:
-
-
-
-
-                    _mm_cf_repl += _mm_carry_forward_list(_v.get('buckets'))
-
-
-
-
-                if 'points' in _v:
-
-
-
-
-                    _mm_cf_repl += _mm_carry_forward_list(_v.get('points'))
-
-
-
-
-                if 'window' in _v and ('buckets' in _v or 'points' in _v):
-
-
-
-
-                    _v['mm_cf_v3_ran'] = 1
-
-
-
-
-                    _v['mm_cf_v3_repl'] = _mm_cf_repl
-
-
-
-
-        except Exception:
-
-
-
-
-            pass
-
-
-
-
-    except Exception:
-
-
-
-
-        pass
-
-
-
-
-
-    # MM_TIMELINE_WRAP_RETURN_CF_V4
-
-
-
-
-
-    out = ({"pts": len(points) if isinstance(points, list) else 0, "points": points if isinstance(points, list) else [], "buckets": buckets, "window": {"since_ts_utc": since_ts_utc, "until_ts_utc": until_ts_utc}})
-
-
-
-
-
-    try:
-
-
-
-
-
-        def _mm_is_unknown(x):
-
-
-
-
-
-            try:
-                v = str(x or '').strip().upper()
-            except Exception:
-                return True
-            # Only these are considered real regimes for carry-forward
-            return v not in ('TREND','CHOP','DEAD')
-
-
-
-
-
-
-        def _mm_cf_list(_lst):
-
-
-
-
-
-            if not isinstance(_lst, list) or not _lst:
-
-
-
-
-
-                return 0
-
-
-
-
-
-            _repl = 0
-
-
-
-
-
-            _last_reg = None
-
-
-
-
-
-            _last_conf = None
-
-
 
 
 
@@ -7872,17 +7483,11 @@ def api_market_regime_timeline():
 
 
 
-
-
                 if not isinstance(_p, dict):
 
 
 
-
-
                     continue
-
-
 
 
 
@@ -7890,53 +7495,7 @@ def api_market_regime_timeline():
 
 
 
-
-
-                # MM_CF_V4_FORCE_UNKNOWN_BEFORE_FIRST_REAL_V3
-
-
-
-
-
-                # Before first real regime exists, keep unknown-like regimes gray
-
-
-
-
-
-                if _mm_is_unknown(_reg) and _last_reg is None:
-
-
-
-
-
-                    _p['regime'] = 'UNKNOWN'
-
-
-
-
-
-                    _p['conf'] = None
-
-
-
-
-
-                    _repl += 1
-
-
-
-
-
-                    continue
-
-
-
-
-
                 if not _mm_is_unknown(_reg):
-
-
 
 
 
@@ -7944,11 +7503,7 @@ def api_market_regime_timeline():
 
 
 
-
-
                     _last_conf = _p.get('conf')
-
-
 
 
 
@@ -7956,11 +7511,7 @@ def api_market_regime_timeline():
 
 
 
-
-
                 if _last_reg is not None:
-
-
 
 
 
@@ -7968,11 +7519,7 @@ def api_market_regime_timeline():
 
 
 
-
-
                     if _p.get('conf') is None:
-
-
 
 
 
@@ -7980,84 +7527,7 @@ def api_market_regime_timeline():
 
 
 
-
-
-                    _repl += 1
-
-
-
-
-
-            return _repl
-
-
-
-
-
-        _mm_repl = 0
-
-
-
-
-
-        if isinstance(out, dict):
-
-
-
-
-
-            _mm_repl += _mm_cf_list(out.get('points'))
-
-
-
-
-
-            _mm_repl += _mm_cf_list(out.get('buckets'))
-
-
-
-
-
-            out['mm_cf_v4_ran'] = 1
-
-
-
-
-
-            out['mm_cf_v4_repl'] = _mm_repl
-
-
-
-
-
-    except Exception:
-
-
-
-
-
-        pass
-
-
-
-
-
-
-    # MM_CF_V4_NORMALIZE_REGIME_V2
-
-
-
-
-
-    # Only TREND/CHOP/DEAD are real regimes; everything else -> UNKNOWN
-
-
-
-
-
-    def _mm_norm_reg(_v):
-
-
+        # 1) Patch direct locals lists if present
 
 
 
@@ -8065,691 +7535,76 @@ def api_market_regime_timeline():
 
 
 
+            _mm_carry_forward_list(locals().get('points'))
 
 
-            s = str(_v or '').strip().upper()
 
-
+            _mm_carry_forward_list(locals().get('buckets'))
 
 
 
         except Exception:
 
 
-
-
-
-            s = ''
-
-
-
-
-
-        return s if s in ('TREND','CHOP','DEAD') else 'UNKNOWN'
-
-
-
-
-
-    
-
-
-
-
-
-    def _mm_norm_list(_lst):
-
-
-
-
-
-        if not isinstance(_lst, list):
-
-
-
-
-
-            return _lst
-
-
-
-
-
-        for _p in _lst:
-
-
-
-
-
-            if isinstance(_p, dict):
-
-
-
-
-
-                _nr = _mm_norm_reg(_p.get('regime'))
-
-
-
-
-
-                if _nr != _p.get('regime'):
-
-
-
-
-
-                    _p['regime'] = _nr
-
-
-
-
-
-                    _p['conf'] = None
-
-
-
-
-
-        return _lst
-
-
-
-
-
-    
-
-
-
-
-
-    out['points'] = _mm_norm_list(out.get('points'))
-
-
-
-
-
-    out['buckets'] = _mm_norm_list(out.get('buckets'))
-
-
-
-
-
-
-
-
-
-
-    # MM_CF_V4_TODAY_CLAMP_AND_GRAY_V1
-
-
-
-
-
-    # bucket=today: clamp until_ts_utc to now, and keep tape gray until first real regime
-
-
-
-
-
-    try:
-
-
-
-
-
-        import time as _mm_time
-
-
-
-
-
-        _mm_now = int(_mm_time.time())
-
-
-
-
-
-        _mm_bucket = None
-
-
-
-
-
-        try:
-
-
-
-
-
-            _mm_bucket = (request.args.get('bucket') or '').strip().lower()
-
-
-
-
-
-        except Exception:
-
-
-
-
-
-            _mm_bucket = ''
-
-
-
-
-
-        if _mm_bucket == 'today':
-
-
-
-
-
-            # clamp window
-
-
-
-
-
-            if isinstance(out.get('window'), dict):
-
-
-
-
-
-                _u = out['window'].get('until_ts_utc')
-
-
-
-
-
-                try:
-
-
-
-
-
-                    _u = int(_u)
-
-
-
-
-
-                except Exception:
-
-
-
-
-
-                    _u = _mm_now
-
-
-
-
-
-                out['window']['until_ts_utc'] = _mm_now if _u > _mm_now else _u
-
-
-
-
-
-    
-
-
-
-
-
-            _REAL = ('TREND','CHOP','DEAD')
-
-
-
-
-
-            def _mm_gray_before_first_real(_lst):
-
-
-
-
-
-                if not isinstance(_lst, list) or not _lst:
-
-
-
-
-
-                    return _lst
-
-
-
-
-
-                first_idx = None
-
-
-
-
-
-                for i, p in enumerate(_lst):
-
-
-
-
-
-                    if isinstance(p, dict):
-
-
-
-
-
-                        r = str(p.get('regime') or '').strip().upper()
-
-
-
-
-
-                        if r in _REAL:
-
-
-
-
-
-                            first_idx = i
-
-
-
-
-
-                            break
-
-
-
-
-
-                if first_idx is None:
-
-
-
-
-
-                    # no real regime today -> everything stays UNKNOWN
-
-
-
-
-
-                    for p in _lst:
-
-
-
-
-
-                        if isinstance(p, dict):
-
-
-
-
-
-                            p['regime'] = 'UNKNOWN'
-
-
-
-
-
-                            p['conf'] = None
-
-
-
-
-
-                    return _lst
-
-
-
-
-
-                for j in range(0, first_idx):
-
-
-
-
-
-                    p = _lst[j]
-
-
-
-
-
-                    if isinstance(p, dict):
-
-
-
-
-
-                        p['regime'] = 'UNKNOWN'
-
-
-
-
-
-                        p['conf'] = None
-
-
-
-
-
-                return _lst
-
-
-
-
-
-    
-
-
-
-
-
-            out['points'] = _mm_gray_before_first_real(out.get('points'))
-
-
-
-
-
-            out['buckets'] = _mm_gray_before_first_real(out.get('buckets'))
-
-
-
-
-
-    except Exception:
-
-
-
-
-
-        pass
-
-
-    # MM_CF_V4_TODAY_CLAMP_AND_GRAY_V2_REQUESTLESS
-
-    # Fix: never rely on request in this wrapper. Also: tape stays gray until market open (09:30 ET).
-
-    try:
-
-        import time as _mm_time
-
-        import datetime as _mm_dt
-
-        _mm_now = int(_mm_time.time())
-
-        # 1) Clamp until_ts_utc if it is in the future (should never happen)
-
-        if isinstance(out.get('window'), dict):
-
-            try:
-
-                _u = int(out['window'].get('until_ts_utc') or 0)
-
-            except Exception:
-
-                _u = 0
-
-            if _u and _u > _mm_now:
-
-                out['window']['until_ts_utc'] = _mm_now
-
-    
-
-        # 2) If window looks like TODAY (since is local midnight today), gray everything before 09:30 local
-
-        _since = None
-
-        try:
-
-            _since = int((out.get('window') or {}).get('since_ts_utc') or 0)
-
-        except Exception:
-
-            _since = 0
-
-        _is_today = False
-
-        if _since:
-
-            try:
-
-                _sd = _mm_dt.datetime.fromtimestamp(_since)
-
-                _nd = _mm_dt.datetime.fromtimestamp(_mm_now)
-
-                _is_today = (_sd.date() == _nd.date() and _sd.hour == 0 and _sd.minute == 0)
-
-            except Exception:
-
-                _is_today = False
-
-    
-
-        if _is_today:
-
-            def _mm_preopen_gray(_lst):
-
-                if not isinstance(_lst, list):
-
-                    return _lst
-
-                for _p in _lst:
-
-                    if not isinstance(_p, dict):
-
-                        continue
-
-                    try:
-
-                        _t = int(_p.get('ts_utc') or 0)
-
-                    except Exception:
-
-                        _t = 0
-
-                    if not _t:
-
-                        continue
-
-                    try:
-
-                        _lt = _mm_dt.datetime.fromtimestamp(_t)
-
-                    except Exception:
-
-                        continue
-
-                    # local time < 09:30 => UNKNOWN
-
-                    if (_lt.hour < 9) or (_lt.hour == 9 and _lt.minute < 30):
-
-                        _p['regime'] = 'UNKNOWN'
-
-                        _p['conf'] = None
-
-                return _lst
-
-    
-
-            out['points'] = _mm_preopen_gray(out.get('points'))
-
-            out['buckets'] = _mm_preopen_gray(out.get('buckets'))
-
-    except Exception:
-
-        # Do NOT break timeline endpoint
-
-        pass
-
-
-    # MM_MARKET_REGIME_TIMELINE_DIRECT_CLAMP_GRAY_V2_ANY_RETURN
-
-    # Fixes:
-
-    #  - Clamp until_ts_utc to NOW if it is in the future (prevents 'tomorrow' windows)
-
-    #  - For TODAY windows, force pre-09:30 local buckets/points to UNKNOWN (gray tape preopen)
-
-    try:
-
-        import time as _mm_time
-
-        import datetime as _mm_dt
-
-        _mm_now = int(_mm_time.time())
-
-    
-
-        # 1) Clamp future until_ts_utc
-
-        if isinstance(out.get('window'), dict):
-
-            try:
-
-                _u = int(out['window'].get('until_ts_utc') or 0)
-
-            except Exception:
-
-                _u = 0
-
-            if _u and _u > _mm_now:
-
-                out['window']['until_ts_utc'] = _mm_now
-
-    
-
-        # 2) Detect a TODAY window (local midnight start)
-
-        _since = 0
-
-        try:
-
-            _since = int((out.get('window') or {}).get('since_ts_utc') or 0)
-
-        except Exception:
-
-            _since = 0
-
-        _is_today = False
-
-        if _since:
-
-            try:
-
-                _sd = _mm_dt.datetime.fromtimestamp(_since)
-
-                _nd = _mm_dt.datetime.fromtimestamp(_mm_now)
-
-                _is_today = (_sd.date() == _nd.date() and _sd.hour == 0 and _sd.minute == 0)
-
-            except Exception:
-
-                _is_today = False
-
-    
-
-        if _is_today:
-
-            def _mm_gray_preopen(_lst):
-
-                if not isinstance(_lst, list):
-
-                    return _lst
-
-                for _p in _lst:
-
-                    if not isinstance(_p, dict):
-
-                        continue
-
-                    try:
-
-                        _t = int(_p.get('ts_utc') or 0)
-
-                    except Exception:
-
-                        _t = 0
-
-                    if not _t:
-
-                        continue
-
-                    try:
-
-                        _lt = _mm_dt.datetime.fromtimestamp(_t)
-
-                    except Exception:
-
-                        continue
-
-                    if (_lt.hour < 9) or (_lt.hour == 9 and _lt.minute < 30):
-
-                        _p['regime'] = 'UNKNOWN'
-
-                        _p['conf'] = None
-
-                return _lst
-
-    
-
-            out['points'] = _mm_gray_preopen(out.get('points'))
-
-            out['buckets'] = _mm_gray_preopen(out.get('buckets'))
-
-    
-
-        # debug stamp
-
-        try:
-
-            out['mm_direct_clamp_gray_v2_ran'] = 1
-
-        except Exception:
 
             pass
 
+
+
+        # 2) Patch any dict payload in locals that contains buckets/points
+
+
+
+        try:
+
+
+
+            for _k, _v in list(locals().items()):
+
+
+
+                if not isinstance(_v, dict):
+
+
+
+                    continue
+
+
+
+                if 'buckets' in _v:
+
+
+
+                    _mm_carry_forward_list(_v.get('buckets'))
+
+
+
+                if 'points' in _v:
+
+
+
+                    _mm_carry_forward_list(_v.get('points'))
+
+
+
+        except Exception:
+
+
+
+            pass
+
+
+
     except Exception:
+
+
 
         pass
 
 
-    # MM_CF_V4_CLAMP_UNTIL_STAMP_V1
 
-    try:
 
-        import time as _mm_time
-
-        _mm_now = int(_mm_time.time())
-
-        if isinstance(out.get('window'), dict):
-
-            try:
-
-                _u = int(out['window'].get('until_ts_utc') or 0)
-
-            except Exception:
-
-                _u = 0
-
-            if _u and _u > _mm_now:
-
-                out['window']['until_ts_utc'] = _mm_now
-
-        out['mm_cf_v4_clamp_until_stamp_v1'] = 1
-
-        out['mm_cf_v4_now'] = _mm_now
-
-    except Exception:
-
-        pass
-
-    return jsonify(out)
+    return jsonify({"pts": len(points) if isinstance(points, list) else 0, "points": points if isinstance(points, list) else [], "buckets": buckets, "window": {"since_ts_utc": since_ts_utc, "until_ts_utc": until_ts_utc}})
 @app.route('/analytics/buy_regime')
 def analytics_buy_regime_page():
     return render_template('analytics_buy_regime.html')
