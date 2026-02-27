@@ -55,25 +55,6 @@ def _lower_cols(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-
-# --- MM_ATR14_RMA_HELPER_V1_START --------------------------------------------
-def _mm_atr_rma(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
-    """
-    Wilder ATR via RMA (EMA alpha=1/period) on the provided timeframe.
-    Returns ATR in price units.
-    """
-    high = pd.to_numeric(high, errors="coerce").astype(float)
-    low  = pd.to_numeric(low, errors="coerce").astype(float)
-    close= pd.to_numeric(close, errors="coerce").astype(float)
-
-    tr1 = (high - low).abs()
-    tr2 = (high - close.shift(1)).abs()
-    tr3 = (low  - close.shift(1)).abs()
-    tr  = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-
-    atr = tr.ewm(alpha=1/period, adjust=False).mean()
-    return pd.to_numeric(atr, errors="coerce").fillna(0.0)
-# --- MM_ATR14_RMA_HELPER_V1_END ----------------------------------------------
 def compute_adx(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
     # Wilder-style ADX using EWM smoothing
     high = pd.to_numeric(high, errors="coerce").astype(float)
@@ -161,14 +142,9 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
         raw = fetch_etrade_quote(sym)
         if _dbg(sym):
             log.warning("[DEBUG][QUOTE] %s raw=%r type=%s", sym, raw, type(raw))
-        # MM_QUOTE_COERCE_V1: guard None / empty / non-numeric
-        if raw is None:
-            raise ValueError("quote raw=None")
-        if isinstance(raw, str) and not raw.strip():
-            raise ValueError("quote raw=empty-string")
         price_live = float(raw)
     except Exception as e:
-        log.warning("[E*TRADE] %s: quote failed (%s) raw=%r", sym, e, raw if "raw" in locals() else None)
+        log.warning("[E*TRADE] %s: quote failed (%s)", sym, e)
         return (None, [], False)
 
     if price_live <= 0:
@@ -257,28 +233,9 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
                 log.warning("[DEBUG] SMA(%d) sma=%.4f price=%.4f pass=%s", sma_len, sma_val, float(price_live), (float(price_live) > sma_val))
             if price_live > sma_val:
                 triggers.append(f"Price>SMA({sma_len})")
-
-
         except Exception as e:
             if _dbg(sym):
                 log.warning("[DEBUG] %s SMA failed: %s", sym, e)
-
-    # MM_SMA20_TRIGGER_V1_START
-    # Ensure required filter "sma20" can be satisfied even when price_sma_len != 20.
-    # We compute SMA20 (daily) and emit a dedicated trigger "SMA20" when price > SMA20.
-    if ("sma20" in req_list) or bool(s.get("require_sma20", False)) or bool(s.get("sma20_on", False)):
-        if close_d is not None:
-            try:
-                sma20_val = float(compute_sma(close_d, 20))
-                pass20 = (float(price_live) > sma20_val)
-                if _dbg(sym):
-                    log.warning("[DEBUG] SMA20 sma=%.4f price=%.4f pass=%s", sma20_val, float(price_live), pass20)
-                if pass20:
-                    triggers.append("SMA20")
-            except Exception as e:
-                if _dbg(sym):
-                    log.warning("[DEBUG] %s SMA20 failed: %s", sym, e)
-    # MM_SMA20_TRIGGER_V1_END
 
     # --- RSI (daily) ----------------------------------------------------------
     if bool(s.get("rsi_on", False)) and close_d is not None:
@@ -407,43 +364,6 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
             if _dbg(sym):
                 log.warning("[DEBUG] %s VWAP failed: %s", sym, e)
 
-    # --- ATR14 (intraday, Wilder/RMA) -----------------------------------------
-    # Backend key historically called "range" but UI label is ATR14.
-    # We compute ATR14 on intraday bars and compare ATR% to range_pct.
-    # MM_ATR14_TRIGGER_V1_START
-    if bool(s.get("range_on", False)) or ("range" in req_list) or ("atr14" in req_list) or ("atr" in req_list):
-        try:
-            atr_len = int(s.get("atr_len", 14))
-            # reuse existing threshold key range_pct (keeps backend stable)
-            atr_pct_thr = float(s.get("range_pct", s.get("atr14_pct", 0.0)))
-
-            hh = high_i
-            ll = low_i
-            cc = close_i
-
-            if hh is not None and ll is not None and cc is not None:
-                hh = pd.to_numeric(hh, errors="coerce").ffill().bfill()
-                ll = pd.to_numeric(ll, errors="coerce").ffill().bfill()
-                cc = pd.to_numeric(cc, errors="coerce").ffill().bfill()
-
-                atr_series = _mm_atr_rma(hh, ll, cc, atr_len)
-                atr_val = float(atr_series.iloc[-1]) if hasattr(atr_series, "iloc") else float(atr_series)
-
-                # ATR% relative to live price
-                atr_pct = (atr_val / float(price_live) * 100.0) if float(price_live) > 0 else 0.0
-                atr_pass = (atr_pct >= atr_pct_thr)
-
-                if _dbg(sym):
-                    log.warning("[DEBUG] ATR14_RMA(%d) atr=%.6f atr_pct=%.3f thr=%.3f pass=%s",
-                                atr_len, atr_val, atr_pct, atr_pct_thr, atr_pass)
-
-                if atr_pass:
-                    triggers.append("ATR14")
-        except Exception as e:
-            if _dbg(sym):
-                log.warning("[DEBUG] %s ATR14 failed: %s", sym, e)
-    # MM_ATR14_TRIGGER_V1_END
-
     passed = True
     if req_list:
         norm_triggers = {_norm_trigger(t) for t in triggers}
@@ -465,17 +385,6 @@ def _norm_trigger(t: str) -> str:
     s = str(t).strip().lower()
     for ch in [" ", "_", "-", ">", "<", "(", ")", "[", "]", "{", "}", ":", ";", ",", "="]:
         s = s.replace(ch, "")
-
-    # MM_NORM_TRIGGER_ALIASES_V1_START
-    # Keep backend required_filters stable:
-    # - UI label SMA50 maps to backend key "price_sma"
-    # - UI label ATR14 maps to backend key "range"
-    if "pricesma" in s and "sma50" in s:
-        return "price_sma"
-    if "atr14" in s or s == "atr14":
-        return "range"
-    # MM_NORM_TRIGGER_ALIASES_V1_END
-
     if "macd" in s:
         return "macd"
     if "adx" in s:

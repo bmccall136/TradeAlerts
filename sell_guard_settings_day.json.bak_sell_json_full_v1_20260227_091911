@@ -1,0 +1,14 @@
+{
+  "ai": {
+    "enabled": false,
+    "use_entries": false,
+    "use_exits": false
+  },
+  "stale_relief_exit": {
+    "enabled": false,
+    "min_hold_days": 2,
+    "regime_conf_max": 75,
+    "relief_gain_pct": 0.8,
+    "runner_max_gain_pct": 1.5
+  }
+}

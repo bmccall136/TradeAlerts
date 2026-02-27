@@ -51,73 +51,6 @@
   // 9:30–16:00 = 390 minutes; 5m cadence ~= 78 points
   const EXPECTED_PTS = 78;
 
-  // MM_TAPE_MARKET_SLOTS_V1
-  // Build a fixed 78-slot day from 09:30–16:00 local (5-minute slots).
-  function _mmLocalParts(ts){
-    const d = new Date(Number(ts||0) * 1000);
-    return {y:d.getFullYear(), mo:d.getMonth(), da:d.getDate(), h:d.getHours(), mi:d.getMinutes()};
-  }
-  function _mmStart930Local(tsAny){
-    const p = _mmLocalParts(tsAny);
-    const d = new Date(p.y, p.mo, p.da, 9, 30, 0, 0);
-    return Math.floor(d.getTime()/1000);
-  }
-  function _mmEnd1600Local(tsAny){
-    const p = _mmLocalParts(tsAny);
-    const d = new Date(p.y, p.mo, p.da, 16, 0, 0, 0);
-    return Math.floor(d.getTime()/1000);
-  }
-  function _mmSlotize(raw){
-    const arr = (Array.isArray(raw) ? raw.slice() : []).filter(p => p && typeof p === 'object');
-    arr.sort((a,b)=> (Number(a.ts_utc||0) - Number(b.ts_utc||0)));
-
-    if (!arr.length) return [];
-
-    const dayStart = _mmStart930Local(arr[0].ts_utc || 0);
-    const dayEnd   = _mmEnd1600Local(arr[0].ts_utc || 0);
-
-    // Keep only market-hours samples
-    const mh = arr.filter(p => {
-      const t = Number(p.ts_utc||0);
-      return t >= dayStart && t <= dayEnd;
-    });
-
-    // Build fixed slots and pick the latest sample <= slot end
-    const slots = [];
-    let idx = 0;
-    for (let i=0; i<EXPECTED_PTS; i++){
-      const slotStart = dayStart + (i * 300);
-      const slotEnd   = slotStart + 300;
-
-      // advance idx while sample is within this slot
-      let chosen = null;
-      while (idx < mh.length){
-        const t = Number(mh[idx].ts_utc||0);
-        if (t < slotStart){
-          idx++;
-          continue;
-        }
-        if (t <= slotEnd){
-          chosen = mh[idx];
-          idx++;
-          continue;
-        }
-        break;
-      }
-
-      if (!chosen){
-        slots.push({ts_utc: slotStart, regime:'UNKNOWN', conf:null});
-      } else {
-        slots.push({
-          ts_utc: Number(chosen.ts_utc||slotStart),
-          regime: chosen.regime || 'UNKNOWN',
-          conf: (chosen.conf != null ? chosen.conf : null)
-        });
-      }
-    }
-    return slots;
-  }
-
   function color(reg){
     const r = String(reg || 'UNKNOWN').toUpperCase();
     if (r === 'TREND') return 'rgba(0, 210, 255, 0.95)';
@@ -143,7 +76,6 @@
     bar.style.background = 'transparent';
 
     const n = arr.length;
-    const real = arr.filter(x => String((x&&x.regime)||'UNKNOWN').toUpperCase() !== 'UNKNOWN').length;
     for (let i=0; i<n; i++){
       const seg = document.createElement('div');
       seg.style.height = '10px';
@@ -152,7 +84,7 @@
       bar.appendChild(seg);
     }
     const pct = Math.min(100, Math.round((n / EXPECTED_PTS) * 100));
-    setStatus('progress: ' + pct + '% (' + n + ' pts)  real=' + real);
+    setStatus('progress: ' + pct + '% (' + n + ' pts)');
   }
 
   async function load(){
@@ -166,18 +98,17 @@
         return;
       }
       const j = await r.json();
-      const raw = (j && (j.points || j.buckets)) || [];
-      const slots = _mmSlotize(raw);
-
-      if(!slots.length){
+      const arr = normalizeList(j);
+      if(!arr.length){
+        // empty tape
         bar.innerHTML = '';
         bar.style.width = '0%';
         bar.style.background = 'transparent';
         setStatus('NO SAMPLES (TODAY)');
         return;
       }
-      renderSegments(slots);
-}catch(e){
+      renderSegments(arr);
+    }catch(e){
       console.warn('tape exception', e);
       setStatus('tape error');
     }

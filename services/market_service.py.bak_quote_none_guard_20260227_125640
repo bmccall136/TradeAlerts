@@ -161,14 +161,9 @@ def analyze_symbol(symbol: str, settings) -> tuple[float | None, list[str], bool
         raw = fetch_etrade_quote(sym)
         if _dbg(sym):
             log.warning("[DEBUG][QUOTE] %s raw=%r type=%s", sym, raw, type(raw))
-        # MM_QUOTE_COERCE_V1: guard None / empty / non-numeric
-        if raw is None:
-            raise ValueError("quote raw=None")
-        if isinstance(raw, str) and not raw.strip():
-            raise ValueError("quote raw=empty-string")
         price_live = float(raw)
     except Exception as e:
-        log.warning("[E*TRADE] %s: quote failed (%s) raw=%r", sym, e, raw if "raw" in locals() else None)
+        log.warning("[E*TRADE] %s: quote failed (%s)", sym, e)
         return (None, [], False)
 
     if price_live <= 0:

@@ -54,10 +54,13 @@
       "time_mult": 1.3
     }
   },
-  "require_sma20": false,
+  "require_sma20": true,
   "required_filters": [
     "macd",
     "vwap",
+    "price_sma",
+    "sma20",
+    "range",
     "adx"
   ],
   "required_signals_min": 2,

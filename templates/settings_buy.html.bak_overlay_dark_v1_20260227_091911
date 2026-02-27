@@ -601,60 +601,265 @@ function MM_REO_MERGE_SETTINGS_OBJ(obj){
 </script>
 
 <!-- MM_REGIME_EXIT_OVERLAY_UI_V5_START -->
-<style>
-  /* MM_REO_DARKSTYLE_V1 */
-  #mm-regime-exit-overlay-card{
-    background: rgba(255,255,255,.04);
-    border: 1px solid rgba(255,255,255,.10);
-    color: rgba(255,255,255,.92);
-  }
-  #mm-regime-exit-overlay-card .card-header{
-    background: rgba(0,0,0,.25);
-    border-bottom: 1px solid rgba(255,255,255,.10);
-    color: rgba(255,255,255,.95);
-    font-weight: 600;
-  }
-  #mm-regime-exit-overlay-card label{
-    color: rgba(255,255,255,.70);
-    font-size: 12px;
-  }
-  #mm-regime-exit-overlay-card .form-control,
-  #mm-regime-exit-overlay-card .form-select{
-    background: rgba(0,0,0,.35);
-    border: 1px solid rgba(255,255,255,.12);
-    color: rgba(255,255,255,.92);
-  }
-</style>
-
 <div class="card mb-3" id="mm-regime-exit-overlay-card">
   <div class="card-header d-flex align-items-center justify-content-between">
-    <div>Regime Exit Overlay</div>
-    <div style="opacity:.65;font-size:12px;">target_mult / stop_mult / time_mult</div>
+    <div class="fw-bold">Regime Exit Overlay</div>
+    <div class="small text-secondary">target_mult / stop_mult / time_mult</div>
   </div>
   <div class="card-body">
-    <div class="row g-2 align-items-center">
-      <div class="col-12" style="opacity:.65;font-size:12px;">
-        Applies on regime changes only. Stored in <code>regime_exit_overlay</code>. Active file is chosen by <code>live_mode.txt</code>.
-      </div>
+    <div class="row g-2">
 
-      {% for r in ["TREND","CHOP","DEAD","UNKNOWN"] %}
-      <div class="col-12 col-lg-3"><strong>{{r}}</strong></div>
-      <div class="col-4 col-lg-3">
-        <label class="form-label mb-1">target</label>
-        <input class="form-control form-control-sm" type="number" step="0.01" data-reo="{{r}}" data-reo-k="target_mult">
+    <div class="col-12">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div class="fw-bold" style="min-width:110px">TREND</div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <label class="small text-secondary mb-0">target</label>
+          <input class="form-control form-control-sm" style="width:120px" type="number" step="0.01" data-mm-reo="TREND.target_mult">
+          <label class="small text-secondary mb-0">stop</label>
+          <input class="form-control form-control-sm" style="width:120px" type="number" step="0.01" data-mm-reo="TREND.stop_mult">
+          <label class="small text-secondary mb-0">time</label>
+          <input class="form-control form-control-sm" style="width:120px" type="number" step="0.01" data-mm-reo="TREND.time_mult">
+        </div>
       </div>
-      <div class="col-4 col-lg-3">
-        <label class="form-label mb-1">stop</label>
-        <input class="form-control form-control-sm" type="number" step="0.01" data-reo="{{r}}" data-reo-k="stop_mult">
+    </div>
+
+    <div class="col-12">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div class="fw-bold" style="min-width:110px">CHOP</div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <label class="small text-secondary mb-0">target</label>
+          <input class="form-control form-control-sm" style="width:120px" type="number" step="0.01" data-mm-reo="CHOP.target_mult">
+          <label class="small text-secondary mb-0">stop</label>
+          <input class="form-control form-control-sm" style="width:120px" type="number" step="0.01" data-mm-reo="CHOP.stop_mult">
+          <label class="small text-secondary mb-0">time</label>
+          <input class="form-control form-control-sm" style="width:120px" type="number" step="0.01" data-mm-reo="CHOP.time_mult">
+        </div>
       </div>
-      <div class="col-4 col-lg-3">
-        <label class="form-label mb-1">time</label>
-        <input class="form-control form-control-sm" type="number" step="0.01" data-reo="{{r}}" data-reo-k="time_mult">
+    </div>
+
+    <div class="col-12">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div class="fw-bold" style="min-width:110px">DEAD</div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <label class="small text-secondary mb-0">target</label>
+          <input class="form-control form-control-sm" style="width:120px" type="number" step="0.01" data-mm-reo="DEAD.target_mult">
+          <label class="small text-secondary mb-0">stop</label>
+          <input class="form-control form-control-sm" style="width:120px" type="number" step="0.01" data-mm-reo="DEAD.stop_mult">
+          <label class="small text-secondary mb-0">time</label>
+          <input class="form-control form-control-sm" style="width:120px" type="number" step="0.01" data-mm-reo="DEAD.time_mult">
+        </div>
       </div>
-      {% endfor %}
+    </div>
+
+    <div class="col-12">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div class="fw-bold" style="min-width:110px">UNKNOWN</div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <label class="small text-secondary mb-0">target</label>
+          <input class="form-control form-control-sm" style="width:120px" type="number" step="0.01" data-mm-reo="UNKNOWN.target_mult">
+          <label class="small text-secondary mb-0">stop</label>
+          <input class="form-control form-control-sm" style="width:120px" type="number" step="0.01" data-mm-reo="UNKNOWN.stop_mult">
+          <label class="small text-secondary mb-0">time</label>
+          <input class="form-control form-control-sm" style="width:120px" type="number" step="0.01" data-mm-reo="UNKNOWN.time_mult">
+        </div>
+      </div>
+    </div>
+    </div>
+    <div class="mt-2 small text-secondary">
+      Applies on regime changes only. Stored in <code>regime_exit_overlay</code>.
+      Active file is chosen by <code>live_mode.txt</code>.
     </div>
   </div>
 </div>
+
+<!-- keep JSON hidden (human-first UI) -->
+<textarea id="settings_json" name="settings_json" style="display:none" aria-hidden="true"></textarea>
+
+<script>
+(function(){
+  function qs(sel){ return document.querySelector(sel); }
+  function qsa(sel){ return Array.prototype.slice.call(document.querySelectorAll(sel)); }
+
+
+  // MM_REO_ENSURE_CARD_V9
+  // The settings pages are fetch-driven; DOM can be rebuilt. Ensure the overlay card exists in the visible flow.
+  function MM_REO_ENSURE_CARD(){
+    try{
+      var card = document.getElementById("mm-regime-exit-overlay-card");
+      if(!card) return;
+
+      // Prefer placing it before "Other Settings" section if present
+      var anchors = [
+        document.querySelector('h5, h4, h3'),
+        document.querySelector('[data-mm-section="other-settings"]'),
+        document.querySelector('#mm-other-settings'),
+        document.querySelector('.mm-other-settings'),
+      ].filter(Boolean);
+
+      // If we can find the "Other Settings" header by text, use it
+      var hs = Array.prototype.slice.call(document.querySelectorAll("h1,h2,h3,h4,h5,div,span"));
+      var other = null;
+      for(var i=0;i<hs.length;i++){
+        var t = (hs[i].textContent||"").trim().toLowerCase();
+        if(t === "other settings" || t.indexOf("other settings") >= 0){
+          other = hs[i];
+          break;
+        }
+      }
+
+      var insertBefore = other || anchors[0] || null;
+
+      // Fallback: insert near the top of the main content container
+      var main = document.querySelector("main") || document.querySelector(".container") || document.body;
+
+      // If card isn't currently inside main visible area, move it
+      if(main && !main.contains(card)){
+        main.insertBefore(card, main.firstChild);
+      }
+
+      // If we have a good insertBefore anchor within main, move card right above it
+      if(insertBefore && insertBefore.parentNode){
+        insertBefore.parentNode.insertBefore(card, insertBefore);
+      }
+    }catch(e){}
+  }
+
+  var regimes = ["TREND","CHOP","DEAD","UNKNOWN"];
+  var keys = ["target_mult","stop_mult","time_mult"];
+
+  function tryReadSettingsObject(){
+    try {
+      if (window.MM_SETTINGS && typeof window.MM_SETTINGS === "object") return window.MM_SETTINGS;
+      if (window.mmSettings && typeof window.mmSettings === "object") return window.mmSettings;
+      if (window.settings && typeof window.settings === "object") return window.settings;
+    } catch(e) {}
+
+    try {
+      var el = qs("#mm-settings-json");
+      if (el && (el.type || "").toLowerCase() === "application/json") {
+        return JSON.parse(el.textContent || "{}");
+      }
+    } catch(e) {}
+
+    return null;
+  }
+
+  function ensureOverlay(obj){
+    if(!obj || typeof obj !== "object") obj = {};
+    if(!obj.regime_exit_overlay || typeof obj.regime_exit_overlay !== "object") obj.regime_exit_overlay = {};
+    regimes.forEach(function(r){
+      if(!obj.regime_exit_overlay[r] || typeof obj.regime_exit_overlay[r] !== "object") obj.regime_exit_overlay[r] = {};
+      keys.forEach(function(k){
+        var v = obj.regime_exit_overlay[r][k];
+        if(typeof v !== "number" || !isFinite(v)) obj.regime_exit_overlay[r][k] = 1.0;
+      });
+    });
+    return obj;
+  }
+
+  function readCurrentJSON(){
+    var ta = qs("#settings_json");
+    if (ta && (ta.value || "").trim()) {
+      try { return JSON.parse(ta.value); } catch(e) {}
+    }
+    var obj = tryReadSettingsObject();
+    if (obj) return obj;
+    return {};
+  }
+
+  function writeCurrentJSON(obj){
+    var ta = qs("#settings_json");
+    if(!ta) return;
+    try { ta.value = JSON.stringify(obj, null, 2); } catch(e) {}
+  }
+
+  function hydrate(){
+    var obj = ensureOverlay(readCurrentJSON());
+    qsa("[data-mm-reo]").forEach(function(inp){
+      var path = (inp.getAttribute("data-mm-reo") || "");
+      var parts = path.split(".");
+      if(parts.length !== 2) return;
+      var r = parts[0], k = parts[1];
+      try {
+        var v = obj.regime_exit_overlay[r][k];
+        if(typeof v === "number" && isFinite(v)) inp.value = String(v);
+      } catch(e){}
+    });
+    writeCurrentJSON(obj);
+     // MM_REO_EXPORT_V7
+     // Expose small API so the page's Save flow can force-sync overlay -> settings object
+     try {
+       window.MM_REO = window.MM_REO || {};
+       window.MM_REO.push = push;
+       window.MM_REO.hydrate = hydrate;
+       window.MM_REO.getOverlay = function(){
+         try {
+           var obj = ensureOverlay(readCurrentJSON());
+           return (obj && obj.regime_exit_overlay) ? obj.regime_exit_overlay : null;
+         } catch(e){ return null; }
+       };
+     } catch(e) {}
+    // keep any global mirrors aligned if they exist
+    try { if(window.MM_SETTINGS && typeof window.MM_SETTINGS === "object") window.MM_SETTINGS = obj; } catch(e){}
+    try { if(window.mmSettings && typeof window.mmSettings === "object") window.mmSettings = obj; } catch(e){}
+  }
+
+  function push(){
+    var obj = ensureOverlay(readCurrentJSON());
+    qsa("[data-mm-reo]").forEach(function(inp){
+      var path = (inp.getAttribute("data-mm-reo") || "");
+      var parts = path.split(".");
+      if(parts.length !== 2) return;
+      var r = parts[0], k = parts[1];
+      var num = parseFloat(inp.value);
+      if(!isFinite(num)) return;
+      obj.regime_exit_overlay[r][k] = num;
+    });
+    writeCurrentJSON(obj);
+    try { if(window.MM_SETTINGS && typeof window.MM_SETTINGS === "object") window.MM_SETTINGS = obj; } catch(e){}
+    try { if(window.mmSettings && typeof window.mmSettings === "object") window.mmSettings = obj; } catch(e){}
+  }
+
+  qsa("[data-mm-reo]").forEach(function(inp){
+    inp.addEventListener("input", push);
+    inp.addEventListener("change", push);
+  });
+
+    // MM_REO_HYDRATE_RETRY_V6
+  // If settings are populated later (fetch / async), retry hydrate for a short window.
+  (function(){
+    var tries = 0;
+    function tick(){
+      tries++;
+      try {
+        var ta = qs("#settings_json");
+        var hasTA = ta && (ta.value || "").trim().length > 0;
+        var hasObj = false;
+        try { hasObj = !!tryReadSettingsObject(); } catch(e) { hasObj = false; }
+
+        if (hasTA || hasObj) {
+          hydrate();
+          try{ MM_REO_ENSURE_CARD(); }catch(e){}
+
+          return;
+        }
+      } catch(e) {}
+      if (tries < 25) setTimeout(tick, 200);
+    }
+    tick();
+  })();
+})();
+
+
+  // MM_REO_ENSURE_CARD_DOMREADY_V9
+  try{
+    if(document.readyState === "loading"){
+      document.addEventListener("DOMContentLoaded", function(){ try{ MM_REO_ENSURE_CARD(); }catch(e){} });
+    }else{
+      MM_REO_ENSURE_CARD();
+    }
+  }catch(e){}
+</script>
 <!-- MM_REGIME_EXIT_OVERLAY_UI_V5_END -->
 
 {% endblock %}

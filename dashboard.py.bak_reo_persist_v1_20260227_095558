@@ -32,42 +32,6 @@ from datetime import UTC, datetime, date, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-# --- MM_REO_PERSIST_HELPERS_V1_START ---
-from pathlib import Path as _MMPath
-import json as _MMjson
-
-def _mm_live_settings_path_for_profile(profile: str) -> _MMPath:
-    # profile is "day" / "swing" (from UI)
-    prof = (profile or "").strip().lower() or "day"
-    # primary target (what BUY settings uses)
-    cand = _MMPath(r"C:\TradeAlerts") / f"live_settings_{prof}.json"
-    if cand.exists():
-        return cand
-    # fallback legacy names if you ever used them
-    cand2 = _MMPath(r"C:\TradeAlerts") / f"live_settings_{prof}.json"
-    return cand2
-
-def _mm_read_json(p: _MMPath) -> dict:
-    try:
-        return _MMjson.loads(p.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-
-def _mm_write_json(p: _MMPath, obj: dict):
-    p.write_text(_MMjson.dumps(obj, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-def _mm_get_reo(profile: str) -> dict:
-    p = _mm_live_settings_path_for_profile(profile)
-    obj = _mm_read_json(p)
-    return obj.get("regime_exit_overlay") or {}
-
-def _mm_set_reo(profile: str, reo: dict):
-    p = _mm_live_settings_path_for_profile(profile)
-    obj = _mm_read_json(p)
-    obj["regime_exit_overlay"] = reo or {}
-    _mm_write_json(p, obj)
-# --- MM_REO_PERSIST_HELPERS_V1_END ---
-
 from flask import (
     Flask,
     jsonify,
@@ -6045,15 +6009,6 @@ def api_settings_load():
     group, profile = _settings_key()
     path = _settings_path(group, profile)
     if not path:
-        pass
-
-    # --- MM_REO_PERSIST_LOAD_V1_START ---
-    try:
-        if isinstance(data, dict) and ("regime_exit_overlay" not in data or not data.get("regime_exit_overlay")):
-            data["regime_exit_overlay"] = _mm_get_reo(profile) or {}
-    except Exception as _e:
-        pass
-    # --- MM_REO_PERSIST_LOAD_V1_END ---
         return jsonify({"ok": False, "error": f"Unknown group/profile: {group}/{profile}"}), 400
     data, errs = _read_json(path)
     return jsonify({"ok": True, "group": group, "profile": profile, "path": path, "data": data, "errors": errs})
@@ -6069,15 +6024,6 @@ def api_settings_save():
 
     # allow either raw object or {data: {...}}
     data = payload.get("data") if isinstance(payload, dict) and "data" in payload else payload
-    # --- MM_REO_PERSIST_SAVE_V1_START ---
-    try:
-        if isinstance(data, dict) and "regime_exit_overlay" in data:
-            _mm_set_reo(profile, data.get("regime_exit_overlay") or {})
-    except Exception as _e:
-        # don't block saves
-        pass
-    # --- MM_REO_PERSIST_SAVE_V1_END ---
-
     if not isinstance(data, dict):
         return jsonify({"ok": False, "error": "Body must be a JSON object (or {data: object})"}), 400
 

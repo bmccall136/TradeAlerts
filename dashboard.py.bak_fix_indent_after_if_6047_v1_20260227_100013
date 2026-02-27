@@ -6045,7 +6045,6 @@ def api_settings_load():
     group, profile = _settings_key()
     path = _settings_path(group, profile)
     if not path:
-        pass
 
     # --- MM_REO_PERSIST_LOAD_V1_START ---
     try:

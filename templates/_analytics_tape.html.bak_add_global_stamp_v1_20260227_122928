@@ -1,0 +1,126 @@
+{# MM_ANALYTICS_TAPE_PARTIAL_V2 #}
+<div id="mm-ax-tape-wrap" style="margin:0 0 10px 0;direction:ltr;unicode-bidi:isolate;">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;margin:0 0 6px 2px;">
+    <div style="font-size:12px;opacity:.75;">Regime tape (today)</div>
+    <div id="mm-ax-tape-status" style="font-size:12px;opacity:.75;">loading?</div>
+  </div>
+
+  <div style="height:10px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;direction:ltr;unicode-bidi:isolate;">
+    <div id="mm-ax-tape-bar" style="height:10px;width:0%;background:transparent;transform-origin:left center;direction:ltr;unicode-bidi:isolate;background-position:left top;background-repeat:no-repeat;"></div>
+  </div>
+
+  <div id="mm-ax-tape-scale"
+       style="display:flex;justify-content:space-between;font-size:11px;opacity:.6;margin-top:4px;">
+    <span>9:30</span><span>10:30</span><span>12</span><span>2</span><span>4</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  const bar = document.getElementById('mm-ax-tape-bar');
+  const st  = document.getElementById('mm-ax-tape-status');
+  if(!bar || !st) return;
+
+  if(window.__mmTapeRunning) return;
+  window.__mmTapeRunning = true;
+
+  // MM_TAPE_LTR_SORT_V1
+  window.MM_TAPE_LTR_SORT_V1 = 1;
+
+  function setStatus(s){ st.textContent = s; }
+
+  // 9:30?16:00 ET = 390 minutes. If samples are every 5 min => ~78 points.
+  const EXPECTED_PTS = 78;
+
+  async function load(){
+    try{
+      setStatus('loading?');
+      const r = await fetch('/api/market_regime_timeline?bucket=today');
+      if(!r.ok){
+        const t = await r.text();
+        setStatus('tape error: ' + r.status);
+        console.warn('tape bad response', r.status, t);
+        return;
+      }
+
+      const j = await r.json();
+
+      const arr = (j && (j.points || j.buckets)) || [];
+      // MM_TAPE_SORT_ASC_V1
+      if (Array.isArray(arr)) { arr.sort((a,b)=>Number(a?.ts_utc||0)-Number(b?.ts_utc||0)); }
+
+  // MM_TAPE_LTR_SORT_V1
+  // Force chronological order so tape always fills LEFT->RIGHT
+  let _mm_arr = arr;
+  try{
+    if(Array.isArray(_mm_arr)){
+      _mm_arr = _mm_arr.slice().sort((a,b)=> (Number(a&&a.ts_utc||0) - Number(b&&b.ts_utc||0)));
+    }
+  }catch(e){}
+  // Prefer points/buckets in sorted order downstream
+  const _mm_sorted = _mm_arr;
+
+      const n = (Array.isArray(_mm_sorted) ? _mm_sorted.length : 0);
+      const bar = document.getElementById('mm-ax-tape-bar');
+      if (bar && n > 0) {
+        // --- MM_TAPE_SEGMENTS_RENDER_V1_START ---
+        // Render real segments (flex) instead of gradient so fill is always LEFT->RIGHT.
+        try {
+          const raw = (j && (j.points || j.buckets)) || [];
+          const arr2 = (Array.isArray(raw) ? raw.slice() : []).filter(p => p && typeof p === 'object');
+
+          // Sort by time ASC to guarantee left-to-right progression
+          arr2.sort((a,b) => (Number(a.ts_utc||0) - Number(b.ts_utc||0)));
+
+          const n2 = arr2.length;
+          bar.innerHTML = '';
+          bar.style.width = '100%';
+          bar.style.display = 'flex';
+          bar.style.flexDirection = 'row';
+          bar.style.alignItems = 'stretch';
+
+          const color = (r) => {
+            r = String(r || 'UNKNOWN').toUpperCase();
+            if (r === 'TREND') return 'rgba(0, 210, 255, 0.95)';
+            if (r === 'CHOP')  return 'rgba(255, 215, 0, 0.95)';
+            if (r === 'DEAD')  return 'rgba(180, 180, 180, 0.85)';
+            return 'rgba(255,255,255,0.08)'; // UNKNOWN = gray
+          };
+
+          if (n2 > 0) {
+            // Create equal-width segments; we want a "tape" not a chart
+            for (let i = 0; i < n2; i++) {
+              const seg = document.createElement('div');
+              seg.style.height = '10px';
+              seg.style.flex = '1 1 0';
+              seg.style.background = color(arr2[i].regime);
+              bar.appendChild(seg);
+            }
+          }
+
+          // Progress (status only)
+          const pct = Math.min(100, Math.round((n2 / EXPECTED_PTS) * 100));
+          setStatus('progress: ' + pct + '% (' + n2 + ' pts)');
+        } catch (e2) {
+          console.warn('tape render exception', e2);
+          setStatus('tape render error');
+        }
+        // --- MM_TAPE_SEGMENTS_RENDER_V1_END ---
+      } = Math.max(0, Math.min(100, (n / EXPECTED_PTS) * 100));
+      bar.style.width = pct.toFixed(1) + '%';
+
+      if(Array.isArray(_mm_sorted) && _mm_sorted.length){
+        setStatus('progress: ' + Math.round(pct) + '%  (' + n + ' pts)');
+      } else {
+        setStatus('NO SAMPLES (TODAY)');
+      }
+    }catch(e){
+      console.warn('tape exception', e);
+      setStatus('tape error');
+    }
+  }
+
+  load();
+  setInterval(load, 30000);
+})();
+</script>
