@@ -71,33 +71,6 @@ def upsert_position_opened(
                 break
 
         # Build a compatible UPSERT
-        # --- MM_POS_OPENED_EPOCH_WRITE_V1_START ---
-        # Ensure epoch fields are present whenever opened_utc exists (prevents 12:00 AM UI fallbacks).
-        try:
-            _d = None
-            for _k in ("data","row","rec","pos","payload","values","vals","d"):
-                if _k in locals() and isinstance(locals().get(_k), dict):
-                    _d = locals().get(_k)
-                    break
-            if _d is not None:
-                _ou = _d.get("opened_utc") or _d.get("openedUtc")
-                if _ou and (not _d.get("opened_ts_utc")):
-                    from datetime import datetime, timezone
-                    s = str(_ou).strip().replace("Z", "+00:00")
-                    # keep only YYYY-MM-DDTHH:MM:SS (+ tz) if microseconds present
-                    if len(s) >= 19 and s[10] == "T":
-                        # datetime.fromisoformat can parse microseconds; keep as-is
-                        pass
-                    dt = datetime.fromisoformat(s)
-                    if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=timezone.utc)
-                    ep = int(dt.timestamp())
-                    _d.setdefault("opened_ts_utc", ep)
-                    _d.setdefault("opened_epoch", ep)
-        except Exception:
-            pass
-        # --- MM_POS_OPENED_EPOCH_WRITE_V1_END ---
-
         insert_cols = ["symbol", opened_col]
         insert_vals = ["?", "?"]
         params = [sym, opened_iso]
