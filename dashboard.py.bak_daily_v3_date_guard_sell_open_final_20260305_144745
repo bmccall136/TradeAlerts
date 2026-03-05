@@ -4723,28 +4723,6 @@ def _ax_log_paths_for_date(log_dir: str, ymd: str):
 # --- MM_API_ANALYTICS_DAILY_ALIAS_V1 ---
 @app.route("/api/analytics/daily")
 def api_analytics_daily():
-    # --- MM_DAILY_DATE_ET_GUARD_V1_START ---
-    # Ensure date_et is always defined to prevent UnboundLocalError in drifted/duplicated handler code.
-    try:
-        from datetime import datetime as _dt, date as _date, time as _time
-        try:
-            from zoneinfo import ZoneInfo as _ZI
-            _ET = _ZI("America/New_York")
-            _UTC = _ZI("UTC")
-        except Exception:
-            _ET = None
-            _UTC = None
-        _now_et = _dt.now(_ET) if _ET else _dt.utcnow()
-        if "date_et" not in locals() or locals().get("date_et") is None:
-            date_et = _now_et.date()
-    except Exception:
-        try:
-            import datetime as _d
-            date_et = _d.date.today()
-        except Exception:
-            date_et = None
-    # --- MM_DAILY_DATE_ET_GUARD_V1_END ---
-
     """
     Returns daily analytics payload.
     Critical rules:
@@ -6194,84 +6172,6 @@ def api_analytics_daily():
                 _ret['meta'] = _meta
     except Exception:
         pass
-    # --- MM_DAILY_SELL_OPEN_FINAL_V1_START ---
-    # Fill SELL 'open' from last BUY before sell trade_id, applied at the final payload to avoid overwrite.
-    try:
-        import sqlite3
-        _db = r"C:\TradeAlerts\live.db"
-        _c = sqlite3.connect(_db)
-        _cur = _c.cursor()
-        _q_buy = "SELECT price_paid, price FROM trades WHERE symbol=? AND action='BUY' AND id<? ORDER BY id DESC LIMIT 1"
-        _slist = None
-        try:
-            if isinstance(out, dict) and isinstance(out.get("sells"), list):
-                _slist = out.get("sells")
-        except Exception:
-            _slist = None
-        if isinstance(_slist, list):
-            for _s in _slist:
-                try:
-                    if not isinstance(_s, dict):
-                        continue
-                    if _s.get("open") not in (None, ""):
-                        continue
-                    _sym = (_s.get("symbol") or "").strip()
-                    _tid = _s.get("trade_id")
-                    if not _sym or _tid is None:
-                        continue
-                    try:
-                        _tid_i = int(str(_tid).strip())
-                    except Exception:
-                        continue
-                    _buy = _cur.execute(_q_buy, (_sym, _tid_i)).fetchone()
-                    if not _buy:
-                        continue
-                    _pp, _px = _buy[0], _buy[1]
-                    _open = _pp if _pp not in (None, "") else _px
-                    if _open is not None:
-                        _s["open"] = float(_open)
-                except Exception:
-                    continue
-        _c.close()
-    except Exception:
-        pass
-    # --- MM_DAILY_SELL_OPEN_FINAL_V1_END ---
-    # --- MM_DAILY_SELL_OPEN_BY_TIME_V1_START ---
-    # If trade_id/close are missing, still fill SELL 'open' using last BUY by ts_et <= sell.time_et.
-    try:
-        import sqlite3
-        _db = r"C:\TradeAlerts\live.db"
-        _c = sqlite3.connect(_db)
-        _cur = _c.cursor()
-        _q = "SELECT price_paid, price FROM trades WHERE symbol=? AND action='BUY' AND ts_et<=? ORDER BY id DESC LIMIT 1"
-        _slist = None
-        if isinstance(out, dict) and isinstance(out.get("sells"), list):
-            _slist = out.get("sells")
-        if isinstance(_slist, list):
-            for _s in _slist:
-                try:
-                    if not isinstance(_s, dict):
-                        continue
-                    if _s.get("open") not in (None, ""):
-                        continue
-                    _sym = (_s.get("symbol") or "").strip()
-                    _t   = (_s.get("time_et") or _s.get("time") or "").strip()
-                    if not _sym or not _t:
-                        continue
-                    _buy = _cur.execute(_q, (_sym, _t)).fetchone()
-                    if not _buy:
-                        continue
-                    _pp, _px = _buy[0], _buy[1]
-                    _open = _pp if _pp not in (None, "") else _px
-                    if _open is not None:
-                        _s["open"] = float(_open)
-                except Exception:
-                    continue
-        _c.close()
-    except Exception:
-        pass
-    # --- MM_DAILY_SELL_OPEN_BY_TIME_V1_END ---
-    
     return jsonify(out)
 
         # --- MM_DAILY_ENRICH_SELLS_FROM_REALIZED_V3 ---

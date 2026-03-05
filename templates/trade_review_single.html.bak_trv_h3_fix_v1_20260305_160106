@@ -122,8 +122,7 @@
 
   <div class="tr-grid">
     <section class="tr-col">
-      <h3>Buy Triggers</h3>
-      <!-- MM_TRV_H3_HEADER_FIX_V1 -->
+      <h3>Buy Triggers
 <!-- MM_TRV_TEMPLATE_RENDER_DB_TRIGGERS_V1:BUY -->
 <div class="tr-triggers-block">
   {% if buy_triggers and (buy_triggers|length) > 0 %}
@@ -140,6 +139,7 @@
   {% endif %}
 </div>
 <!-- /MM_TRV_TEMPLATE_RENDER_DB_TRIGGERS_V1:BUY -->
+</h3>
 {% if buy_groups %}
 <div class="mm-triggers">
   {% for g in buy_groups %}
@@ -176,7 +176,7 @@
 {% else %}
 <div class="mm-muted">No buy triggers found.</div>
 {% endif %}
-<h3>Sell Triggers</h3>
+<h3>Sell Triggers
 <!-- MM_TRV_TEMPLATE_RENDER_DB_TRIGGERS_V1:SELL -->
 <div class="tr-triggers-block">
   {% if sell_triggers and (sell_triggers|length) > 0 %}
@@ -193,6 +193,7 @@
   {% endif %}
 </div>
 <!-- /MM_TRV_TEMPLATE_RENDER_DB_TRIGGERS_V1:SELL -->
+</h3>
 {% if sell_groups %}
 <div class="mm-triggers">
   {% for g in sell_groups %}

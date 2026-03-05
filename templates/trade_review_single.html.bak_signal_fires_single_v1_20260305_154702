@@ -122,8 +122,7 @@
 
   <div class="tr-grid">
     <section class="tr-col">
-      <h3>Buy Triggers</h3>
-      <!-- MM_TRV_H3_HEADER_FIX_V1 -->
+      <h3>Buy Triggers
 <!-- MM_TRV_TEMPLATE_RENDER_DB_TRIGGERS_V1:BUY -->
 <div class="tr-triggers-block">
   {% if buy_triggers and (buy_triggers|length) > 0 %}
@@ -140,6 +139,7 @@
   {% endif %}
 </div>
 <!-- /MM_TRV_TEMPLATE_RENDER_DB_TRIGGERS_V1:BUY -->
+</h3>
 {% if buy_groups %}
 <div class="mm-triggers">
   {% for g in buy_groups %}
@@ -176,7 +176,7 @@
 {% else %}
 <div class="mm-muted">No buy triggers found.</div>
 {% endif %}
-<h3>Sell Triggers</h3>
+<h3>Sell Triggers
 <!-- MM_TRV_TEMPLATE_RENDER_DB_TRIGGERS_V1:SELL -->
 <div class="tr-triggers-block">
   {% if sell_triggers and (sell_triggers|length) > 0 %}
@@ -193,6 +193,7 @@
   {% endif %}
 </div>
 <!-- /MM_TRV_TEMPLATE_RENDER_DB_TRIGGERS_V1:SELL -->
+</h3>
 {% if sell_groups %}
 <div class="mm-triggers">
   {% for g in sell_groups %}
@@ -337,136 +338,4 @@
   .mm-muted{opacity:.65}
 </style>
 <!-- /MM_TRV_RENDER_FROM_API_V3 -->
-
-
-
-<!-- MM_TR_SINGLE_SIGNAL_FIRES_V1_START -->
-<script>
-(function(){
-  function norm(s){ return (s||"").replace(/\s+/g," ").trim(); }
-
-  function findHeaderExact(text){
-    const want = norm(text);
-    const nodes = document.querySelectorAll("h1,h2,h3,h4,div,span");
-    for (const n of nodes){
-      if (!n || !n.textContent) continue;
-      if (norm(n.textContent) === want) return n;
-    }
-    return null;
-  }
-
-  function ensureSignalSection(afterNode){
-    let sigH = document.getElementById("mm-signal-fires-h");
-    let sigBox = document.getElementById("mm-signal-fires");
-    if (sigH && sigBox) return {sigH, sigBox};
-
-    sigH = document.createElement("div");
-    sigH.id = "mm-signal-fires-h";
-    sigH.textContent = "Signal Fires";
-    sigH.style.fontSize = "26px";
-    sigH.style.fontWeight = "700";
-    sigH.style.marginTop = "10px";
-    sigH.style.marginBottom = "6px";
-    sigH.style.color = "#ffffff";
-
-    sigBox = document.createElement("div");
-    sigBox.id = "mm-signal-fires";
-    sigBox.style.display = "block";
-
-    if (afterNode && afterNode.parentNode){
-      afterNode.parentNode.insertBefore(sigH, afterNode.nextSibling);
-      afterNode.parentNode.insertBefore(sigBox, sigH.nextSibling);
-    } else {
-      document.body.appendChild(sigH);
-      document.body.appendChild(sigBox);
-    }
-    return {sigH, sigBox};
-  }
-
-  function isTriggerCard(el){
-    if (!el) return false;
-    if (el.classList && (el.classList.contains("mm-trv-row") || el.classList.contains("tr-row") || el.classList.contains("trigger-row")))
-      return true;
-    const t = el.textContent || "";
-    return /\b20\d{2}-\d{2}-\d{2}\b/.test(t) && /\$[0-9]/.test(t);
-  }
-
-  function hideNoTriggersLines(root){
-    if (!root) return;
-    Array.from(root.querySelectorAll(".tr-empty")).forEach(function(el){ el.style.display="none"; });
-    Array.from(root.querySelectorAll("*")).forEach(function(el){
-      if(el.childElementCount !== 0) return;
-      var t=(el.textContent||"").trim();
-      if(/^No (buy|sell) triggers found\.?$/i.test(t)) el.textContent="";
-      if(/^No triggers found\.?$/i.test(t)) el.textContent="";
-    });
-  }
-
-  function moveToSignalFires(){
-    const sellH = findHeaderExact("Sell Triggers");
-    if (!sellH) return;
-
-    const {sigH, sigBox} = ensureSignalSection(sellH);
-
-    const buyH = findHeaderExact("Buy Triggers");
-    let moved = 0;
-
-    // Grab likely trigger rows that appear AFTER Sell Triggers in DOM order
-    const candidates = Array.from(document.querySelectorAll(".mm-trv-row, .tr-row, .trigger-row, div"));
-    for (const el of candidates){
-      if (!isTriggerCard(el)) continue;
-      try{
-        // Must be after SELL header
-        const pos = sellH.compareDocumentPosition(el);
-        const afterSell = (pos & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-        if (!afterSell) continue;
-
-        // Already moved?
-        if (sigBox.contains(el)) continue;
-
-        // Skip anything between Buy and Sell (belongs to Buy)
-        if (buyH){
-          const buyBeforeSell = (buyH.compareDocumentPosition(sellH) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-          if (buyBeforeSell){
-            const afterBuy = (buyH.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-            const beforeSell = (el.compareDocumentPosition(sellH) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-            if (afterBuy && beforeSell) continue;
-          }
-        }
-
-        sigBox.appendChild(el);
-        moved++;
-      }catch(_e){}
-    }
-
-    // Clean up “No sell triggers found” text if we moved stuff out
-    if (moved > 0){
-      const sellRoot = sellH.parentElement || sellH;
-      hideNoTriggersLines(sellRoot);
-    }
-
-    // Hide Signal Fires if empty
-    if (sigBox.childElementCount === 0){
-      sigH.style.display="none";
-      sigBox.style.display="none";
-    } else {
-      sigH.style.display="";
-      sigBox.style.display="";
-    }
-  }
-
-  // run now + keep alive
-  try{ moveToSignalFires(); }catch(_e){}
-  try{
-    const obs = new MutationObserver(function(){ moveToSignalFires(); });
-    obs.observe(document.documentElement || document.body, {subtree:true, childList:true});
-  }catch(_e){}
-  window.addEventListener("load", function(){
-    setTimeout(moveToSignalFires, 50);
-    setTimeout(moveToSignalFires, 250);
-    setTimeout(moveToSignalFires, 750);
-  });
-})();
-</script>
-<!-- MM_TR_SINGLE_SIGNAL_FIRES_V1_END -->
 

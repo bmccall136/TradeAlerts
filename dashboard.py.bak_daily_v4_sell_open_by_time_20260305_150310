@@ -6236,42 +6236,6 @@ def api_analytics_daily():
     except Exception:
         pass
     # --- MM_DAILY_SELL_OPEN_FINAL_V1_END ---
-    # --- MM_DAILY_SELL_OPEN_BY_TIME_V1_START ---
-    # If trade_id/close are missing, still fill SELL 'open' using last BUY by ts_et <= sell.time_et.
-    try:
-        import sqlite3
-        _db = r"C:\TradeAlerts\live.db"
-        _c = sqlite3.connect(_db)
-        _cur = _c.cursor()
-        _q = "SELECT price_paid, price FROM trades WHERE symbol=? AND action='BUY' AND ts_et<=? ORDER BY id DESC LIMIT 1"
-        _slist = None
-        if isinstance(out, dict) and isinstance(out.get("sells"), list):
-            _slist = out.get("sells")
-        if isinstance(_slist, list):
-            for _s in _slist:
-                try:
-                    if not isinstance(_s, dict):
-                        continue
-                    if _s.get("open") not in (None, ""):
-                        continue
-                    _sym = (_s.get("symbol") or "").strip()
-                    _t   = (_s.get("time_et") or _s.get("time") or "").strip()
-                    if not _sym or not _t:
-                        continue
-                    _buy = _cur.execute(_q, (_sym, _t)).fetchone()
-                    if not _buy:
-                        continue
-                    _pp, _px = _buy[0], _buy[1]
-                    _open = _pp if _pp not in (None, "") else _px
-                    if _open is not None:
-                        _s["open"] = float(_open)
-                except Exception:
-                    continue
-        _c.close()
-    except Exception:
-        pass
-    # --- MM_DAILY_SELL_OPEN_BY_TIME_V1_END ---
-    
     return jsonify(out)
 
         # --- MM_DAILY_ENRICH_SELLS_FROM_REALIZED_V3 ---

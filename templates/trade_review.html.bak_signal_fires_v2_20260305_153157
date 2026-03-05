@@ -329,9 +329,8 @@
 <script>
 (function(){
   function norm(s){ return (s||"").replace(/\s+/g," ").trim(); }
-  function esc(s){ return String(s||""); }
 
-  function findHeaderExact(text){
+  function findHeader(text){
     const want = norm(text);
     const nodes = document.querySelectorAll("h1,h2,h3,h4,div,span");
     for (const n of nodes){
@@ -341,113 +340,98 @@
     return null;
   }
 
-  function ensureSignalSection(afterNode){
-    let sigH = findHeaderExact("Signal Fires");
-    let sigBox = document.getElementById("mm-signal-fires");
-    if (sigH && sigBox) return {sigH, sigBox};
-
-    sigH = document.createElement("div");
-    sigH.textContent = "Signal Fires";
-    sigH.style.fontSize = "26px";
-    sigH.style.fontWeight = "700";
-    sigH.style.marginTop = "10px";
-    sigH.style.marginBottom = "6px";
-    sigH.style.color = "#ffffff";
-
-    sigBox = document.createElement("div");
-    sigBox.id = "mm-signal-fires";
-    sigBox.style.display = "block";
-
-    if (afterNode && afterNode.parentNode){
-      afterNode.parentNode.insertBefore(sigH, afterNode.nextSibling);
-      afterNode.parentNode.insertBefore(sigBox, sigH.nextSibling);
-    } else {
-      document.body.appendChild(sigH);
-      document.body.appendChild(sigBox);
+  function sectionNodesAfterHeader(h){
+    // collect siblings after header until next header-like label
+    if (!h) return [];
+    const out = [];
+    let cur = h.nextElementSibling;
+    while (cur){
+      const t = norm(cur.textContent || "");
+      if (t === "Buy Triggers" || t === "Sell Triggers" || t === "Signal Fires" || t === "Buy Trigger Rows" || t === "Sell Trigger Rows") break;
+      out.push(cur);
+      cur = cur.nextElementSibling;
     }
-    return {sigH, sigBox};
+    return out;
   }
 
-  function isTriggerCard(el){
+  function ensureSignalSection(afterNode){
+    let sigH = findHeader("Signal Fires");
+    if (sigH) return sigH;
+
+    const h = document.createElement("div");
+    h.textContent = "Signal Fires";
+    h.style.fontSize = "26px";
+    h.style.fontWeight = "700";
+    h.style.marginTop = "10px";
+    h.style.marginBottom = "6px";
+    h.style.color = "#ffffff";
+
+    const box = document.createElement("div");
+    box.id = "mm-signal-fires";
+    // match your existing row spacing without fighting CSS
+    box.style.display = "block";
+
+    if (afterNode && afterNode.parentNode){
+      afterNode.parentNode.insertBefore(box, afterNode.nextSibling);
+      afterNode.parentNode.insertBefore(h, box);
+    } else {
+      document.body.appendChild(h);
+      document.body.appendChild(box);
+    }
+    return h;
+  }
+
+  function looksLikeTriggerRow(el){
     if (!el) return false;
-    // Prefer known card class if present
-    if (el.classList && (el.classList.contains("mm-trv-row") || el.classList.contains("tr-row") || el.classList.contains("trigger-row"))) return true;
-    const t = el.textContent || "";
-    // Heuristic: date + $ pattern
+    const t = (el.textContent || "");
+    // Your rows contain "YYYY-MM-DD HH:MM:SS" and a "$"
     return /\b20\d{2}-\d{2}-\d{2}\b/.test(t) && /\$[0-9]/.test(t);
   }
 
-  function moveToSignalFires(){
-    const sellH = findHeaderExact("Sell Triggers");
+  function moveSellWindowRowsToSignalFires(){
+    const sellH = findHeader("Sell Triggers");
     if (!sellH) return;
 
-    const {sigH, sigBox} = ensureSignalSection(sellH);
+    // ensure signal fires section exists right after sell section header block
+    const sigHeader = ensureSignalSection(sellH);
 
-    // Collect any trigger-looking rows that appear AFTER the Sell section,
-    // but are not inside an explicit BUY section container.
+    const sigBox = document.getElementById("mm-signal-fires");
+    if (!sigBox) return;
+
+    // Nodes immediately following Sell Triggers header
+    const nodes = sectionNodesAfterHeader(sellH);
+
+    // Move any “row-like” elements (timestamp + $) into Signal Fires box
     let moved = 0;
-
-    // Look for all row-like elements on the page and move the ones that are
-    // currently sitting after the Sell Triggers header in DOM order.
-    const all = Array.from(document.querySelectorAll(".mm-trv-row, .tr-row, .trigger-row, div"));
-    for (const el of all){
-      if (!isTriggerCard(el)) continue;
-
-      // Only move if it's visually under Sell section: i.e., it appears after sell header in the DOM
-      // and before any future major heading.
-      try{
-        const pos = sellH.compareDocumentPosition(el);
-        const afterSell = (pos & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-        if (!afterSell) continue;
-
-        // Don't move if already in our signal box
-        if (sigBox.contains(el)) continue;
-
-        // Don’t move if it’s clearly inside a BUY container
-        const buyH = findHeaderExact("Buy Triggers");
-        if (buyH){
-          // if element is after BUY heading but before SELL heading, it belongs to BUY, skip it
-          const afterBuy = (buyH.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-          const beforeSell = (buyH.compareDocumentPosition(sellH) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-          if (afterBuy && beforeSell){
-            // el between buyH and sellH
-            const between = (buyH.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 &&
-                            (el.compareDocumentPosition(sellH) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-            if (between) continue;
-          }
-        }
-
-        sigBox.appendChild(el);
+    for (const n of nodes){
+      // If this node itself is a row
+      if (looksLikeTriggerRow(n)){
+        sigBox.appendChild(n);
         moved++;
-      }catch(_e){}
+        continue;
+      }
+      // Or contains row children
+      const kids = Array.from(n.querySelectorAll("*"));
+      for (const k of kids){
+        if (looksLikeTriggerRow(k)){
+          sigBox.appendChild(k);
+          moved++;
+        }
+      }
     }
 
-    // Hide if empty
-    if (moved === 0 && sigBox.childElementCount === 0){
-      sigH.style.display = "none";
-      sigBox.style.display = "none";
-    } else {
-      sigH.style.display = "";
-      sigBox.style.display = "";
+    // If we moved nothing, hide the signal section we created so it doesn't clutter
+    if (moved === 0){
+      const sigH = findHeader("Signal Fires");
+      if (sigH) sigH.style.display = "none";
+      if (sigBox) sigBox.style.display = "none";
     }
   }
 
-  // Run once now
-  try{ moveToSignalFires(); }catch(_e){}
-
-  // And keep doing it as the DOM changes
-  try{
-    const obs = new MutationObserver(function(_muts){
-      moveToSignalFires();
-    });
-    obs.observe(document.documentElement || document.body, {subtree:true, childList:true});
-  }catch(_e){}
-
-  // Also re-run a few times shortly after load
+  // Run after page scripts render
   window.addEventListener("load", function(){
-    setTimeout(moveToSignalFires, 50);
-    setTimeout(moveToSignalFires, 250);
-    setTimeout(moveToSignalFires, 750);
+    setTimeout(moveSellWindowRowsToSignalFires, 50);
+    setTimeout(moveSellWindowRowsToSignalFires, 250);
   });
 })();
 </script>

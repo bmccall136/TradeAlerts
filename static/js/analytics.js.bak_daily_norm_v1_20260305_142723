@@ -1,31 +1,3 @@
-
-// --- MM_DAILY_NORM_V1_START ---
-function _mmDailyNormRow(r) {
-  if (!r || typeof r !== 'object') return r;
-  const o = Object.assign({}, r);
-
-  // Time normalization (UI often expects `time`)
-  o.time = (r.time_et || r.time || r.time_hhmm || r.time_hhmm_et || "");
-
-  // Price normalization (cover common names)
-  if (o.open == null)  o.open  = (r.open ?? r.price_paid ?? r.open_price ?? r.entry_price ?? null);
-  if (o.close == null) o.close = (r.close ?? r.price ?? r.close_price ?? r.exit_price ?? null);
-
-  // P&L normalization
-  if (o.pnl == null)     o.pnl     = (r.pnl ?? r.gain ?? r.pl ?? null);
-  if (o.pnl_pct == null) o.pnl_pct = (r.pnl_pct ?? r.gain_pct ?? r.pl_pct ?? null);
-
-  return o;
-}
-function _mmDailyNormPayload(data) {
-  try {
-    if (data && Array.isArray(data.buys))  data.buys  = data.buys.map(_mmDailyNormRow);
-    if (data && Array.isArray(data.sells)) data.sells = data.sells.map(_mmDailyNormRow);
-  } catch (e) {}
-  return data;
-}
-// --- MM_DAILY_NORM_V1_END ---
-
 // analytics.js (Daily Analytics) - $$Machine black theme + Trade Review links
 (function(){
   const $ = (sel) => document.querySelector(sel);
@@ -127,7 +99,7 @@ function _mmDailyNormPayload(data) {
     try {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) throw new Error("API " + res.status + " " + res.statusText);
-      const data = _mmDailyNormPayload(await res.json());
+      const data = await res.json();
 
       const buys  = data.buys  || [];
       const sells = data.sells || [];
