@@ -27,7 +27,7 @@
   "macd_signal": 9,
   "macd_slow": 26,
   "market_gate_on": true,
-  "max_per_trade": 250,
+  "max_per_trade": 350,
   "max_pyramids": 0,
   "min_signals": 2,
   "pause_when_market_closed": true,

@@ -1,0 +1,188 @@
+﻿import re, shutil, datetime, pathlib
+
+P = pathlib.Path(r"C:\TradeAlerts\dashboard.py")
+ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+bak = P.with_suffix(f".py.bak_trade_review_anchor_v1c_{ts}")
+shutil.copy2(P, bak)
+print(f"Backup -> {bak}")
+
+txt = P.read_text(encoding="utf-8", errors="replace")
+
+route_pat = re.compile(r"(?m)^\s*@app\.route\(\s*['\"]/api/trade_review['\"]\s*\)\s*$")
+m_route = route_pat.search(txt)
+if not m_route:
+    raise SystemExit("ERROR: Could not find @app.route('/api/trade_review')")
+
+def_pat = re.compile(r"(?m)^\s*def\s+api_trade_review\s*\(\s*\)\s*:\s*$")
+m_def = def_pat.search(txt, m_route.end())
+if not m_def:
+    raise SystemExit("ERROR: Could not find def api_trade_review() after route decorator")
+
+start = m_route.start()
+next_route = re.search(r"(?m)^\s*@app\.route\(", txt[m_def.end():])
+end = (m_def.end() + next_route.start()) if next_route else len(txt)
+
+api_repl = (
+"@app.route('/api/trade_review')\n"
+"def api_trade_review():\n"
+"    # --- MM_TRADE_REVIEW_ANCHOR_FROM_DB_V1C ---\n"
+"    # Backward compatible:\n"
+"    # - Always returns recent buys/sells + meta.buy_ct/sell_ct (for UI dropdowns)\n"
+"    # - If symbol/trade_id provided, ALSO returns anchor meta + triggers around BUY timestamp\n"
+"    out = {\"buys\": [], \"sells\": [], \"buy_triggers\": [], \"sell_triggers\": [], \"errors\": [], \"meta\": {\"buy_ct\": 0, \"sell_ct\": 0}}\n"
+"    try:\n"
+"        import sqlite3\n"
+"        from datetime import datetime, timezone\n"
+"\n"
+"        def _row_to_dict(r):\n"
+"            if r is None:\n"
+"                return None\n"
+"            try:\n"
+"                return dict(r)\n"
+"            except Exception:\n"
+"                return {k: r[k] for k in r.keys()}\n"
+"\n"
+"        def _to_epoch(tsv):\n"
+"            # Accept int epoch OR ISO string (with or without offset)\n"
+"            if tsv is None:\n"
+"                return None\n"
+"            try:\n"
+"                if isinstance(tsv, (int, float)):\n"
+"                    return int(tsv)\n"
+"            except Exception:\n"
+"                pass\n"
+"            s = str(tsv).strip()\n"
+"            if not s:\n"
+"                return None\n"
+"            # Common: 2026-02-27T14:27:18-05:00\n"
+"            try:\n"
+"                dt = datetime.fromisoformat(s.replace('Z', '+00:00'))\n"
+"                if dt.tzinfo is None:\n"
+"                    # assume ET if naive\n"
+"                    try:\n"
+"                        import pytz\n"
+"                        et = pytz.timezone('America/New_York')\n"
+"                        dt = et.localize(dt)\n"
+"                    except Exception:\n"
+"                        dt = dt.replace(tzinfo=timezone.utc)\n"
+"                return int(dt.astimezone(timezone.utc).timestamp())\n"
+"            except Exception:\n"
+"                return None\n"
+"\n"
+"        con = sqlite3.connect(LIVE_DB)\n"
+"        con.row_factory = sqlite3.Row\n"
+"        cur = con.cursor()\n"
+"\n"
+"        # --- 1) Always return the recent lists (matches existing UI expectations)\n"
+"        try:\n"
+"            buys = cur.execute(\n"
+"                \"SELECT id as trade_id, symbol, name, price, qty, ts_utc FROM trades \"\n"
+"                \"WHERE UPPER(COALESCE(action,'')) IN ('BUY','BOT','BUY_FILLED','BUY_EXECUTED') \"\n"
+"                \"ORDER BY id DESC LIMIT 40\"\n"
+"            ).fetchall()\n"
+"            sells = cur.execute(\n"
+"                \"SELECT id as trade_id, symbol, name, price, qty, ts_utc FROM trades \"\n"
+"                \"WHERE UPPER(COALESCE(action,'')) IN ('SELL','SOLD','SELL_FILLED','SELL_EXECUTED') \"\n"
+"                \"ORDER BY id DESC LIMIT 40\"\n"
+"            ).fetchall()\n"
+"\n"
+"            def _fmt_side(rows, side):\n"
+"                out_rows = []\n"
+"                for r in rows:\n"
+"                    d = _row_to_dict(r) or {}\n"
+"                    # preserve existing keys\n"
+"                    d['side'] = side\n"
+"                    # keep time_et similar to what you currently emit\n"
+"                    tsiso = d.get('ts_utc')\n"
+"                    if tsiso:\n"
+"                        try:\n"
+"                            dt = datetime.fromisoformat(str(tsiso).replace('Z', '+00:00'))\n"
+"                            if dt.tzinfo is None:\n"
+"                                d['time_et'] = str(tsiso)\n"
+"                            else:\n"
+"                                d['time_et'] = dt.astimezone(dt.tzinfo).strftime('%Y-%m-%d %H:%M:%S')\n"
+"                        except Exception:\n"
+"                            d['time_et'] = str(tsiso)\n"
+"                    else:\n"
+"                        d['time_et'] = ''\n"
+"                    out_rows.append(d)\n"
+"                return out_rows\n"
+"\n"
+"            out['buys'] = _fmt_side(buys, 'BUY')\n"
+"            out['sells'] = _fmt_side(sells, 'SELL')\n"
+"            out['meta']['buy_ct'] = len(out['buys'])\n"
+"            out['meta']['sell_ct'] = len(out['sells'])\n"
+"        except Exception as e:\n"
+"            out['errors'].append('list query failed: ' + str(e))\n"
+"\n"
+"        # --- 2) Optional detail augmentation when symbol/trade_id is provided\n"
+"        trade_id = request.args.get('trade_id', type=int)\n"
+"        symbol_q = (request.args.get('symbol') or '').strip().upper()\n"
+"        win = request.args.get('win_secs', type=int) or 900\n"
+"\n"
+"        if trade_id or symbol_q:\n"
+"            trade = None\n"
+"            if trade_id:\n"
+"                trade = cur.execute(\"SELECT * FROM trades WHERE id=?\", (int(trade_id),)).fetchone()\n"
+"            elif symbol_q:\n"
+"                trade = cur.execute(\"SELECT * FROM trades WHERE UPPER(symbol)=? ORDER BY id DESC LIMIT 1\", (symbol_q,)).fetchone()\n"
+"\n"
+"            trade_d = _row_to_dict(trade) or {}\n"
+"            sym = (trade_d.get('symbol') or symbol_q or '').upper().strip()\n"
+"            act = (trade_d.get('action') or '').upper().strip()\n"
+"\n"
+"            buy_row = None\n"
+"            if sym:\n"
+"                if act in ('BUY','BOT','BUY_FILLED','BUY_EXECUTED'):\n"
+"                    buy_row = trade\n"
+"                else:\n"
+"                    buy_row = cur.execute(\n"
+"                        \"SELECT * FROM trades WHERE UPPER(symbol)=? AND UPPER(COALESCE(action,'')) IN ('BUY','BOT','BUY_FILLED','BUY_EXECUTED') \"\n"
+"                        \"ORDER BY id DESC LIMIT 1\",\n"
+"                        (sym,)\n"
+"                    ).fetchone()\n"
+"\n"
+"            buy_d = _row_to_dict(buy_row) or {}\n"
+"            buy_ts_epoch = _to_epoch(buy_d.get('ts_utc') or buy_d.get('ts') or buy_d.get('timestamp'))\n"
+"\n"
+"            # Anchor meta for the UI\n"
+"            try:\n"
+"                out['meta'].update({\n"
+"                    'symbol': sym,\n"
+"                    'anchor_trade_id': (buy_d.get('id') or buy_d.get('trade_id') or None),\n"
+"                    'anchor_buy_ts_utc_epoch': buy_ts_epoch,\n"
+"                    'anchor_buy_price': buy_d.get('price') or buy_d.get('fill_price') or buy_d.get('avg_price'),\n"
+"                    'anchor_qty': buy_d.get('qty') or buy_d.get('quantity'),\n"
+"                    'win_secs': win,\n"
+"                })\n"
+"            except Exception:\n"
+"                pass\n"
+"\n"
+"            if sym and buy_ts_epoch:\n"
+"                lo = int(buy_ts_epoch) - int(win)\n"
+"                hi = int(buy_ts_epoch) + int(win)\n"
+"                try:\n"
+"                    rows = cur.execute(\n"
+"                        \"SELECT * FROM trigger_fires WHERE UPPER(symbol)=? AND COALESCE(ts_utc,0) BETWEEN ? AND ? ORDER BY COALESCE(ts_utc,0) ASC\",\n"
+"                        (sym, lo, hi)\n"
+"                    ).fetchall()\n"
+"                    out['buy_triggers'] = [_row_to_dict(r) for r in rows]\n"
+"                except Exception as e:\n"
+"                    out['errors'].append('buy_triggers query failed: ' + str(e))\n"
+"\n"
+"        con.close()\n"
+"    except Exception as e:\n"
+"        out['errors'].append('api_trade_review exception: ' + str(e))\n"
+"    return jsonify(out)\n"
+"    # --- /MM_TRADE_REVIEW_ANCHOR_FROM_DB_V1C ---\n"
+)
+
+txt_new = txt[:start] + api_repl + txt[end:]
+P.write_text(txt_new, encoding="utf-8")
+print("PATCHED: /api/trade_review -> MM_TRADE_REVIEW_ANCHOR_FROM_DB_V1C")
+print(f"WROTE -> {P}")
+
+import py_compile
+py_compile.compile(str(P), doraise=True)
+print("PY_COMPILE_OK")
+print("DONE. Restart dashboard to pick up code if it does not auto-reload.")

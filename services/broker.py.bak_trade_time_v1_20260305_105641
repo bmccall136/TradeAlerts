@@ -24,7 +24,7 @@ def _persist_trade_best_effort(symbol: str, action: str, qty: float, price, ts_e
         con = sqlite3.connect(db_path)
         cur = con.cursor()
         cur.execute("""
-            INSERT INTO trades (trade_time, ts_et, ts_utc, symbol, action, qty, price)
+            INSERT INTO trades (ts_et, ts_utc, symbol, action, qty, price)
             VALUES (?, ?, ?, ?, ?, ?)
         """, (ts_et, ts_utc, symbol, action, float(qty or 0), (None if price is None else float(price))))
         con.commit()

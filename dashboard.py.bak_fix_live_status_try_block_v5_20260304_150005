@@ -569,7 +569,8 @@ def _mm_hydrate_holdings_opened_from_position_opened_and_trades(holdings, dbp):
             _ET = None
 
         if not isinstance(holdings, list) or not holdings:
-            return holdings
+            return
+
         con = sqlite3.connect(str(dbp), timeout=5)
         cur = con.cursor()
 
@@ -651,139 +652,13 @@ def _mm_hydrate_holdings_opened_from_position_opened_and_trades(holdings, dbp):
             except Exception:
                 h["opened_et"] = str(ts)
 
-
-        # --- MM_OPENED_ET_FINAL_NORMALIZE_V1_START ---
-        # Final safety: if opened_et is still numeric (epoch) OR opened_utc exists,
-        # convert to a display string so the frontend never sees an epoch and flashes 12:00 AM.
-        try:
-            for h in holdings or []:
-                if not isinstance(h, dict):
-                    continue
-
-                # If we already set a human string (contains "/"), leave it.
-                v = h.get("opened_et", None)
-                if isinstance(v, str) and "/" in v:
-                    continue
-
-                # Prefer opened_ts_utc if present, else opened_utc (E*TRADE epoch seconds), else numeric opened_et
-                epoch = None
-                try:
-                    if h.get("opened_ts_utc"):
-                        epoch = float(h.get("opened_ts_utc"))
-                except Exception:
-                    epoch = None
-
-                if epoch is None:
-                    try:
-                        if h.get("opened_utc") is not None:
-                            epoch = float(h.get("opened_utc"))
-                    except Exception:
-                        epoch = None
-
-                if epoch is None:
-                    try:
-                        if isinstance(v, (int, float)):
-                            epoch = float(v)
-                        elif isinstance(v, str):
-                            s = v.strip()
-                            if s and s.replace(".", "", 1).isdigit():
-                                epoch = float(s)
-                    except Exception:
-                        epoch = None
-
-                if epoch is None:
-                    continue
-
-                # preserve raw epoch artifact if not already present
-                if "opened_et_epoch" not in h:
-                    try:
-                        h["opened_et_epoch"] = str(v if v is not None else epoch)
-                    except Exception:
-                        pass
-
-                try:
-                    h["opened_ts_utc"] = int(epoch)
-                except Exception:
-                    pass
-
-                try:
-                    dtu = _dt.datetime.fromtimestamp(int(epoch), tz=_dt.timezone.utc)
-                    dte = dtu.astimezone(_ET) if _ET is not None else dtu
-
-                    # If it's midnight exactly, show date-only (midnight epoch is a placeholder, not a real fill time)
-                    if dte.hour == 0 and dte.minute == 0 and dte.second == 0:
-                        h["opened_et"] = dte.strftime("%m/%d/%Y, %I:%M %p")
-                    else:
-                        h["opened_et"] = dte.strftime("%m/%d/%Y, %I:%M %p")
-                except Exception:
-                    h["opened_et"] = str(int(epoch))
-        except Exception:
-            pass
-        # --- MM_OPENED_ET_FINAL_NORMALIZE_V1_END ---
-
         try:
             con.close()
         except Exception:
             pass
 
     except Exception:
-            return holdings
-    # --- MM_OPENED_ET_NORMALIZE_NUMERIC_V1_START ---
-    # If opened_et is still a numeric epoch (string/float), convert to display string
-    # so JS doesn't interpret it as an epoch and flash/force 12:00 AM.
-    try:
-        from datetime import datetime, timezone
-        try:
-            from zoneinfo import ZoneInfo
-            _ET = ZoneInfo("America/New_York")
-        except Exception:
-            _ET = None
-
-        for _h in (holdings or []):
-            try:
-                v = (_h or {}).get("opened_et", None)
-
-                # skip if it's already a display string like "02/12/2026, 03:26 PM"
-                if isinstance(v, str) and "/" in v:
-                    continue
-
-                # numeric epoch as float/int or numeric string
-                _epoch = None
-                if isinstance(v, (int, float)):
-                    _epoch = float(v)
-                elif isinstance(v, str):
-                    s = v.strip()
-                    if s and s.replace(".", "", 1).isdigit():
-                        _epoch = float(s)
-
-                if _epoch is None:
-                    continue
-
-                # preserve the raw epoch (useful for debugging)
-                if not (_h.get("opened_et_epoch")):
-                    _h["opened_et_epoch"] = str(v)
-
-                # also provide opened_ts_utc if missing
-                if not (_h.get("opened_ts_utc")):
-                    _h["opened_ts_utc"] = int(_epoch)
-
-                dt_utc = datetime.fromtimestamp(_epoch, tz=timezone.utc)
-                if _ET is not None:
-                    dt_et = dt_utc.astimezone(_ET)
-                else:
-                    dt_et = dt_utc
-
-                # If it's exactly midnight, show date-only (midnight is not a real fill-time)
-                if dt_et.hour == 0 and dt_et.minute == 0 and dt_et.second == 0:
-                    _h["opened_et"] = dt_et.strftime("%m/%d/%Y")
-                else:
-                    _h["opened_et"] = dt_et.strftime("%m/%d/%Y, %I:%M %p")
-            except Exception:
-                pass
-    except Exception:
-        pass
-    # --- MM_OPENED_ET_NORMALIZE_NUMERIC_V1_END ---
-
+        return
 def fifo_debug_unmatched_sells(days: int = 120) -> dict:
     """
     Returns unmatched SELL qty per symbol when FIFO has no lots.
@@ -2657,12 +2532,13 @@ def live_status():
         pos_rows = normalize_positions_payload(raw_positions)
         holdings, positions_value = _build_holdings_from_positions(pos_rows)
         try:
-            _mm_hydrate_holdings_opened_from_position_opened_and_trades(
+            try:
+                _mm_hydrate_holdings_opened_from_position_opened_and_trades(
                 holdings,
-                globals().get('LIVE_DB', r'C:\TradeAlerts\live.db')
-            )
-        except Exception:
-            pass
+                globals().get("LIVE_DB", r"C:\TradeAlerts\live.db")
+                )
+            except Exception:
+                pass
         holdings = _mm_hydrate_holdings_opened_from_db(holdings)
         all_time_pnl, all_time_pct = _calc_unrealized_all_time_from_holdings(holdings)
         payload["positions_value"] = float(positions_value or 0.0)
@@ -3061,14 +2937,6 @@ def live_data():
         )
 
         holdings, positions_value = _build_holdings_from_positions(pos_rows)
-
-        try:
-            _mm_hydrate_holdings_opened_from_position_opened_and_trades(
-                holdings,
-                globals().get('LIVE_DB', r'C:\\TradeAlerts\\live.db')
-            )
-        except Exception:
-            pass
 
         # --- MM_HYDRATE_HOLDINGS_FROM_POSITION_OPENED_LIVE_DATA_V3 ---
         try:

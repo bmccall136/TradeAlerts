@@ -712,7 +712,7 @@ def _mm_hydrate_holdings_opened_from_position_opened_and_trades(holdings, dbp):
 
                     # If it's midnight exactly, show date-only (midnight epoch is a placeholder, not a real fill time)
                     if dte.hour == 0 and dte.minute == 0 and dte.second == 0:
-                        h["opened_et"] = dte.strftime("%m/%d/%Y, %I:%M %p")
+                        h["opened_et"] = dte.strftime("%m/%d/%Y")
                     else:
                         h["opened_et"] = dte.strftime("%m/%d/%Y, %I:%M %p")
                 except Exception:

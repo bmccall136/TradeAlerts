@@ -3159,19 +3159,6 @@ def place_equity_order(preview: dict, qty: float | None = None) -> dict:
     for outer in range(1, 1 + 4):
         try:
             resp = _epost(path_key, body)
-            # --- MM_PLACE_EQUITY_ORDER_DICT_FIX_V3_START ---
-            # Some internal wrappers may return already-decoded JSON (dict) instead of requests.Response.
-            # If we treat dict like a Response, we crash (no .status_code) and Sell Guard retries, causing 1028 duplicates.
-            if isinstance(resp, dict):
-                err = (resp.get('Error') or {}) if isinstance(resp, dict) else {}
-                code = err.get('code') if isinstance(err, dict) else None
-                msg  = err.get('message') if isinstance(err, dict) else None
-                if code is not None:
-                    # Preserve the "code': 1028" pattern Sell Guard keys off of
-                    raise RuntimeError(f"etrade POST {path} -> 400: {{'Error': {{'code': {code}, 'message': {msg!r}}}}} | payload={body!r}")
-                return resp
-            # --- MM_PLACE_EQUITY_ORDER_DICT_FIX_V3_END ---
-
             if 200 <= resp.status_code < 300:
                 return resp.json()
 

@@ -554,236 +554,6 @@ except ImportError:
 # -----------------------------------------------------------------------------#
 # Helpers
 # -----------------------------------------------------------------------------#
-def _mm_hydrate_holdings_opened_from_position_opened_and_trades(holdings, dbp):
-    """
-    1) hydrate holdings[*].opened_et from live.db.position_opened.opened_ts_utc
-    2) if missing, backfill position_opened from latest BUY in live.db.trades (then hydrate)
-    Always sets opened_et to a DISPLAY STRING (not a number) to stop JS epoch->midnight.
-    """
-    try:
-        import sqlite3, datetime as _dt
-        try:
-            from zoneinfo import ZoneInfo as _ZoneInfo
-            _ET = _ZoneInfo("America/New_York")
-        except Exception:
-            _ET = None
-
-        if not isinstance(holdings, list) or not holdings:
-            return holdings
-        con = sqlite3.connect(str(dbp), timeout=5)
-        cur = con.cursor()
-
-        # load map from position_opened
-        mm_map = {}
-        for sym, ts in cur.execute(
-            "SELECT symbol, opened_ts_utc FROM position_opened WHERE opened_ts_utc IS NOT NULL"
-        ):
-            if sym and ts:
-                mm_map[str(sym).upper()] = int(ts)
-
-        def _parse_trade_time_to_ts_utc(s):
-            if not s:
-                return None
-            t = str(s).strip().replace("T", " ").split(".")[0]
-            try:
-                dt = _dt.datetime.fromisoformat(t)
-            except Exception:
-                return None
-            # trades are typically stored as naive ET
-            if dt.tzinfo is None and _ET is not None:
-                dt = dt.replace(tzinfo=_ET)
-            try:
-                return int(dt.astimezone(_dt.timezone.utc).timestamp())
-            except Exception:
-                return None
-
-        # backfill missing symbols from trades BUY time
-        needed = []
-        for h in holdings:
-            if not isinstance(h, dict):
-                continue
-            sym = str(h.get("symbol") or h.get("Symbol") or "").upper().strip()
-            if sym and sym not in mm_map:
-                needed.append(sym)
-
-        for sym in sorted(set(needed)):
-            row = cur.execute(
-                "SELECT trade_time FROM trades WHERE symbol=? AND UPPER(action)='BUY' ORDER BY trade_time DESC, id DESC LIMIT 1",
-                (sym,),
-            ).fetchone()
-            if not row:
-                continue
-            ts_utc = _parse_trade_time_to_ts_utc(row[0])
-            if not ts_utc:
-                continue
-            try:
-                cur.execute(
-                    "INSERT OR REPLACE INTO position_opened(symbol, opened_ts_utc) VALUES (?, ?)",
-                    (sym, int(ts_utc)),
-                )
-                mm_map[sym] = int(ts_utc)
-            except Exception:
-                pass
-
-        try:
-            con.commit()
-        except Exception:
-            pass
-
-        # hydrate holdings opened_et as DISPLAY STRING
-        for h in holdings:
-            if not isinstance(h, dict):
-                continue
-            sym = str(h.get("symbol") or h.get("Symbol") or "").upper().strip()
-            ts = mm_map.get(sym)
-            if not ts:
-                continue
-
-            # preserve old numeric/epoch artifact if present
-            if "opened_et_epoch" not in h and "opened_et" in h:
-                h["opened_et_epoch"] = h.get("opened_et")
-
-            h["opened_ts_utc"] = int(ts)
-            try:
-                dtu = _dt.datetime.fromtimestamp(int(ts), tz=_dt.timezone.utc)
-                dte = dtu.astimezone(_ET) if _ET is not None else dtu
-                h["opened_et"] = dte.strftime("%m/%d/%Y, %I:%M %p")
-            except Exception:
-                h["opened_et"] = str(ts)
-
-
-        # --- MM_OPENED_ET_FINAL_NORMALIZE_V1_START ---
-        # Final safety: if opened_et is still numeric (epoch) OR opened_utc exists,
-        # convert to a display string so the frontend never sees an epoch and flashes 12:00 AM.
-        try:
-            for h in holdings or []:
-                if not isinstance(h, dict):
-                    continue
-
-                # If we already set a human string (contains "/"), leave it.
-                v = h.get("opened_et", None)
-                if isinstance(v, str) and "/" in v:
-                    continue
-
-                # Prefer opened_ts_utc if present, else opened_utc (E*TRADE epoch seconds), else numeric opened_et
-                epoch = None
-                try:
-                    if h.get("opened_ts_utc"):
-                        epoch = float(h.get("opened_ts_utc"))
-                except Exception:
-                    epoch = None
-
-                if epoch is None:
-                    try:
-                        if h.get("opened_utc") is not None:
-                            epoch = float(h.get("opened_utc"))
-                    except Exception:
-                        epoch = None
-
-                if epoch is None:
-                    try:
-                        if isinstance(v, (int, float)):
-                            epoch = float(v)
-                        elif isinstance(v, str):
-                            s = v.strip()
-                            if s and s.replace(".", "", 1).isdigit():
-                                epoch = float(s)
-                    except Exception:
-                        epoch = None
-
-                if epoch is None:
-                    continue
-
-                # preserve raw epoch artifact if not already present
-                if "opened_et_epoch" not in h:
-                    try:
-                        h["opened_et_epoch"] = str(v if v is not None else epoch)
-                    except Exception:
-                        pass
-
-                try:
-                    h["opened_ts_utc"] = int(epoch)
-                except Exception:
-                    pass
-
-                try:
-                    dtu = _dt.datetime.fromtimestamp(int(epoch), tz=_dt.timezone.utc)
-                    dte = dtu.astimezone(_ET) if _ET is not None else dtu
-
-                    # If it's midnight exactly, show date-only (midnight epoch is a placeholder, not a real fill time)
-                    if dte.hour == 0 and dte.minute == 0 and dte.second == 0:
-                        h["opened_et"] = dte.strftime("%m/%d/%Y, %I:%M %p")
-                    else:
-                        h["opened_et"] = dte.strftime("%m/%d/%Y, %I:%M %p")
-                except Exception:
-                    h["opened_et"] = str(int(epoch))
-        except Exception:
-            pass
-        # --- MM_OPENED_ET_FINAL_NORMALIZE_V1_END ---
-
-        try:
-            con.close()
-        except Exception:
-            pass
-
-    except Exception:
-            return holdings
-    # --- MM_OPENED_ET_NORMALIZE_NUMERIC_V1_START ---
-    # If opened_et is still a numeric epoch (string/float), convert to display string
-    # so JS doesn't interpret it as an epoch and flash/force 12:00 AM.
-    try:
-        from datetime import datetime, timezone
-        try:
-            from zoneinfo import ZoneInfo
-            _ET = ZoneInfo("America/New_York")
-        except Exception:
-            _ET = None
-
-        for _h in (holdings or []):
-            try:
-                v = (_h or {}).get("opened_et", None)
-
-                # skip if it's already a display string like "02/12/2026, 03:26 PM"
-                if isinstance(v, str) and "/" in v:
-                    continue
-
-                # numeric epoch as float/int or numeric string
-                _epoch = None
-                if isinstance(v, (int, float)):
-                    _epoch = float(v)
-                elif isinstance(v, str):
-                    s = v.strip()
-                    if s and s.replace(".", "", 1).isdigit():
-                        _epoch = float(s)
-
-                if _epoch is None:
-                    continue
-
-                # preserve the raw epoch (useful for debugging)
-                if not (_h.get("opened_et_epoch")):
-                    _h["opened_et_epoch"] = str(v)
-
-                # also provide opened_ts_utc if missing
-                if not (_h.get("opened_ts_utc")):
-                    _h["opened_ts_utc"] = int(_epoch)
-
-                dt_utc = datetime.fromtimestamp(_epoch, tz=timezone.utc)
-                if _ET is not None:
-                    dt_et = dt_utc.astimezone(_ET)
-                else:
-                    dt_et = dt_utc
-
-                # If it's exactly midnight, show date-only (midnight is not a real fill-time)
-                if dt_et.hour == 0 and dt_et.minute == 0 and dt_et.second == 0:
-                    _h["opened_et"] = dt_et.strftime("%m/%d/%Y")
-                else:
-                    _h["opened_et"] = dt_et.strftime("%m/%d/%Y, %I:%M %p")
-            except Exception:
-                pass
-    except Exception:
-        pass
-    # --- MM_OPENED_ET_NORMALIZE_NUMERIC_V1_END ---
-
 def fifo_debug_unmatched_sells(days: int = 120) -> dict:
     """
     Returns unmatched SELL qty per symbol when FIFO has no lots.
@@ -2344,143 +2114,7 @@ def live_mode():
 
     # GET: just report current mode
     return {"ok": True, "mode": _read_live_mode()}
-def _mm_hydrate_holdings_opened_from_db(holdings, live_db_path=None):
-    """
-    Overwrite holdings[*].opened_ts_utc + holdings[*].opened_et from live.db position_opened.
-    This fixes E*TRADE dateAcquired midnight artifacts in the Live holdings table.
-    Safe: never raises.
-    """
-    try:
-        import sqlite3
-        import datetime as _dt
-        try:
-            from zoneinfo import ZoneInfo as _ZoneInfo
-            _ET = _ZoneInfo("America/New_York")
-        except Exception:
-            _ET = None
 
-        if not isinstance(holdings, list) or not holdings:
-            return holdings
-
-        # Resolve DB path
-        dbp = live_db_path
-        if not dbp:
-            try:
-                dbp = globals().get("LIVE_DB") or globals().get("DB_PATH")
-            except Exception:
-                dbp = None
-        if not dbp:
-            dbp = r"C:\TradeAlerts\live.db"
-
-        # Load mapping
-        mm_map = {}
-        con = None
-        try:
-            con = sqlite3.connect(str(dbp), timeout=5)
-            cur = con.cursor()
-            for sym, ts in cur.execute(
-                "SELECT symbol, opened_ts_utc FROM position_opened WHERE opened_ts_utc IS NOT NULL"
-            ):
-                if sym:
-                    mm_map[str(sym).upper()] = int(ts)
-        finally:
-            try:
-                if con:
-                    con.close()
-            except Exception:
-                pass
-        # Fallback: if position_opened missing for a symbol, backfill from live.db trades BUY time
-        try:
-            con = sqlite3.connect(str(dbp), timeout=5)
-            cur = con.cursor()
-
-            def _parse_trade_time_to_ts_utc(s):
-                if not s:
-                    return None
-                t = str(s).strip().replace("T", " ").split(".")[0]
-                try:
-                    dt = _dt.datetime.fromisoformat(t)
-                except Exception:
-                    return None
-                # trades are usually stored as naive ET; assume ET if naive
-                if dt.tzinfo is None:
-                    if _ET is not None:
-                        dt = dt.replace(tzinfo=_ET)
-                # convert to UTC epoch
-                try:
-                    return int(dt.astimezone(_dt.timezone.utc).timestamp())
-                except Exception:
-                    return None
-
-            # Gather symbols we need
-            needed = set()
-            for h in holdings:
-                if isinstance(h, dict):
-                    sym = str(h.get("symbol") or h.get("Symbol") or "").upper().strip()
-                    if sym and sym not in mm_map:
-                        needed.add(sym)
-
-            if needed:
-                for sym in sorted(needed):
-                    row = cur.execute(
-                        "SELECT trade_time FROM trades WHERE symbol=? AND UPPER(action)='BUY' ORDER BY trade_time DESC, id DESC LIMIT 1",
-                        (sym,),
-                    ).fetchone()
-                    if not row:
-                        continue
-                    ts_utc = _parse_trade_time_to_ts_utc(row[0])
-                    if not ts_utc:
-                        continue
-
-                    # Write to position_opened so future requests hydrate cleanly
-                    try:
-                        cur.execute(
-                            "INSERT OR REPLACE INTO position_opened(symbol, opened_ts_utc) VALUES (?, ?)",
-                            (sym, int(ts_utc)),
-                        )
-                        mm_map[sym] = int(ts_utc)
-                    except Exception:
-                        pass
-
-                try:
-                    con.commit()
-                except Exception:
-                    pass
-
-        except Exception:
-            pass
-        finally:
-            try:
-                con.close()
-            except Exception:
-                pass
-        # Apply to holdings
-        for h in holdings:
-            if not isinstance(h, dict):
-                continue
-            sym = str(h.get("symbol") or h.get("Symbol") or "").upper().strip()
-            if not sym:
-                continue
-            ts = mm_map.get(sym)
-            if not ts:
-                continue
-
-            # Preserve whatever was there (often midnight-ish)
-            if "opened_et_epoch" not in h and "opened_et" in h:
-                h["opened_et_epoch"] = h.get("opened_et")
-
-            h["opened_ts_utc"] = int(ts)
-            try:
-                dtu = _dt.datetime.fromtimestamp(int(ts), tz=_dt.timezone.utc)
-                dte = dtu.astimezone(_ET) if _ET is not None else dtu
-                h["opened_et"] = dte.strftime("%m/%d/%Y, %I:%M %p")
-            except Exception:
-                h["opened_et"] = str(ts)
-
-        return holdings
-
-    except Exception:
-        return holdings
 @app.route("/live")
 def live_view():
     """
@@ -2537,7 +2171,6 @@ def live_view():
         LOG.info("LIVE: normalized pos_rows count=%s sample=%s", len(pos_rows or []), (pos_rows[0] if pos_rows else None))
 
         holdings, positions_value = _build_holdings_from_positions(pos_rows)
-        holdings = _mm_hydrate_holdings_opened_from_db(holdings)
         all_time_pnl, all_time_pct = _calc_unrealized_all_time_from_holdings(holdings)
         
         LOG.info("LIVE: holdings built count=%s positions_value=%s", len(holdings or []), positions_value)
@@ -2562,39 +2195,30 @@ def live_view():
     # --- SORT HOLDINGS: Opened (newest first) ---
     from datetime import datetime as _dt
 
-    return render_template("live.html", account=account, holdings=holdings)
-
-def _parse_opened_any(_h):
-    """
-    Prefer opened_et (what we display) so all rows sort consistently.
-    Fall back to opened_utc ISO8601 if needed.
-    Blanks/unparseable => bottom.
-    """
-    v = (_h or {}).get("opened_et") or ""
-    if v:
-        # Live UI format (what you actually display): 03/04/2026, 12:00 AM
-        try:
-            return _dt.strptime(v, "%m/%d/%Y, %I:%M %p")
-        except Exception:
-            pass
-
-        # older formats you had
-        try:
-            return _dt.strptime(v, "%Y-%m-%d %H:%M")
-        except Exception:
+    def _parse_opened_any(_h):
+        """
+        Prefer opened_et (what we display) so all rows sort consistently.
+        Fall back to opened_utc ISO8601 if needed.
+        Blanks/unparseable => bottom.
+        """
+        v = (_h or {}).get("opened_et") or ""
+        if v:
             try:
-                return _dt.strptime(v, "%Y-%m-%d %H:%M:%S")
+                return _dt.strptime(v, "%Y-%m-%d %H:%M")
+            except Exception:
+                try:
+                    return _dt.strptime(v, "%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    pass
+
+        v = (_h or {}).get("opened_utc") or ""
+        if v:
+            try:
+                return _dt.fromisoformat(v.replace("Z", "+00:00"))
             except Exception:
                 pass
 
-    v = (_h or {}).get("opened_utc") or ""
-    if v:
-        try:
-            return _dt.fromisoformat(v.replace("Z", "+00:00"))
-        except Exception:
-            pass
-
-    return _dt.min
+        return _dt.min
 
     try:
         holdings.sort(key=_parse_opened_any, reverse=True)
@@ -2639,9 +2263,6 @@ def live_status():
     """
     from services import etrade_service as es
 
-
-    payload = {}
-
     import time
     now_ts = time.time()
 
@@ -2656,15 +2277,8 @@ def live_status():
         raw_positions = es.get_positions()
         pos_rows = normalize_positions_payload(raw_positions)
         holdings, positions_value = _build_holdings_from_positions(pos_rows)
-        try:
-            _mm_hydrate_holdings_opened_from_position_opened_and_trades(
-                holdings,
-                globals().get('LIVE_DB', r'C:\TradeAlerts\live.db')
-            )
-        except Exception:
-            pass
-        holdings = _mm_hydrate_holdings_opened_from_db(holdings)
         all_time_pnl, all_time_pct = _calc_unrealized_all_time_from_holdings(holdings)
+        payload["holdings"] = holdings or []
         payload["positions_value"] = float(positions_value or 0.0)
 
 
@@ -3061,14 +2675,6 @@ def live_data():
         )
 
         holdings, positions_value = _build_holdings_from_positions(pos_rows)
-
-        try:
-            _mm_hydrate_holdings_opened_from_position_opened_and_trades(
-                holdings,
-                globals().get('LIVE_DB', r'C:\\TradeAlerts\\live.db')
-            )
-        except Exception:
-            pass
 
         # --- MM_HYDRATE_HOLDINGS_FROM_POSITION_OPENED_LIVE_DATA_V3 ---
         try:
@@ -6281,28 +5887,14 @@ def _tr__yahoo_intraday_series(symbol, interval="5m"):
         return []
 @app.route('/api/trade_review')
 def api_trade_review():
-    # --- MM_TRADE_REVIEW_ANCHOR_FROM_DB_V1D ---
-    # V1D: fix time_et -> America/New_York, harden request alias, and populate trigger time_et from ts_utc.
+    # --- MM_TRADE_REVIEW_ANCHOR_FROM_DB_V1C ---
+    # Backward compatible:
+    # - Always returns recent buys/sells + meta.buy_ct/sell_ct (for UI dropdowns)
+    # - If symbol/trade_id provided, ALSO returns anchor meta + triggers around BUY timestamp
     out = {"buys": [], "sells": [], "buy_triggers": [], "sell_triggers": [], "errors": [], "meta": {"buy_ct": 0, "sell_ct": 0}}
     try:
         import sqlite3
         from datetime import datetime, timezone
-
-        try:
-            _rq = flask_request  # type: ignore
-        except Exception:
-            _rq = request
-
-        _ET = None
-        try:
-            import zoneinfo
-            _ET = zoneinfo.ZoneInfo('America/New_York')
-        except Exception:
-            try:
-                import pytz
-                _ET = pytz.timezone('America/New_York')
-            except Exception:
-                _ET = None
 
         def _row_to_dict(r):
             if r is None:
@@ -6313,6 +5905,7 @@ def api_trade_review():
                 return {k: r[k] for k in r.keys()}
 
         def _to_epoch(tsv):
+            # Accept int epoch OR ISO string (with or without offset)
             if tsv is None:
                 return None
             try:
@@ -6323,40 +5916,26 @@ def api_trade_review():
             s = str(tsv).strip()
             if not s:
                 return None
+            # Common: 2026-02-27T14:27:18-05:00
             try:
                 dt = datetime.fromisoformat(s.replace('Z', '+00:00'))
                 if dt.tzinfo is None:
-                    if _ET is not None:
-                        try:
-                            dt = dt.replace(tzinfo=_ET)
-                        except Exception:
-                            try:
-                                dt = _ET.localize(dt)
-                            except Exception:
-                                dt = dt.replace(tzinfo=timezone.utc)
-                    else:
+                    # assume ET if naive
+                    try:
+                        import pytz
+                        et = pytz.timezone('America/New_York')
+                        dt = et.localize(dt)
+                    except Exception:
                         dt = dt.replace(tzinfo=timezone.utc)
                 return int(dt.astimezone(timezone.utc).timestamp())
             except Exception:
                 return None
 
-        def _epoch_to_et_str(ep):
-            try:
-                ep = int(ep)
-            except Exception:
-                return ''
-            try:
-                dt = datetime.fromtimestamp(ep, tz=timezone.utc)
-                if _ET is not None:
-                    dt = dt.astimezone(_ET)
-                return dt.strftime('%Y-%m-%d %H:%M:%S')
-            except Exception:
-                return ''
-
         con = sqlite3.connect(LIVE_DB)
         con.row_factory = sqlite3.Row
         cur = con.cursor()
 
+        # --- 1) Always return the recent lists (matches existing UI expectations)
         try:
             buys = cur.execute(
                 "SELECT id as trade_id, symbol, name, price, qty, ts_utc FROM trades "
@@ -6373,11 +5952,19 @@ def api_trade_review():
                 out_rows = []
                 for r in rows:
                     d = _row_to_dict(r) or {}
+                    # preserve existing keys
                     d['side'] = side
+                    # keep time_et similar to what you currently emit
                     tsiso = d.get('ts_utc')
                     if tsiso:
-                        ep = _to_epoch(tsiso)
-                        d['time_et'] = _epoch_to_et_str(ep) if ep else str(tsiso)
+                        try:
+                            dt = datetime.fromisoformat(str(tsiso).replace('Z', '+00:00'))
+                            if dt.tzinfo is None:
+                                d['time_et'] = str(tsiso)
+                            else:
+                                d['time_et'] = dt.astimezone(dt.tzinfo).strftime('%Y-%m-%d %H:%M:%S')
+                        except Exception:
+                            d['time_et'] = str(tsiso)
                     else:
                         d['time_et'] = ''
                     out_rows.append(d)
@@ -6390,9 +5977,10 @@ def api_trade_review():
         except Exception as e:
             out['errors'].append('list query failed: ' + str(e))
 
-        trade_id = _rq.args.get('trade_id', type=int)
-        symbol_q = (_rq.args.get('symbol') or '').strip().upper()
-        win = _rq.args.get('win_secs', type=int) or 900
+        # --- 2) Optional detail augmentation when symbol/trade_id is provided
+        trade_id = request.args.get('trade_id', type=int)
+        symbol_q = (request.args.get('symbol') or '').strip().upper()
+        win = request.args.get('win_secs', type=int) or 900
 
         if trade_id or symbol_q:
             trade = None
@@ -6419,15 +6007,18 @@ def api_trade_review():
             buy_d = _row_to_dict(buy_row) or {}
             buy_ts_epoch = _to_epoch(buy_d.get('ts_utc') or buy_d.get('ts') or buy_d.get('timestamp'))
 
-            out['meta'].update({
-                'symbol': sym,
-                'anchor_trade_id': (buy_d.get('id') or buy_d.get('trade_id') or None),
-                'anchor_buy_ts_utc_epoch': buy_ts_epoch,
-                'anchor_buy_time_et': _epoch_to_et_str(buy_ts_epoch) if buy_ts_epoch else '',
-                'anchor_buy_price': buy_d.get('price') or buy_d.get('fill_price') or buy_d.get('avg_price'),
-                'anchor_qty': buy_d.get('qty') or buy_d.get('quantity'),
-                'win_secs': win,
-            })
+            # Anchor meta for the UI
+            try:
+                out['meta'].update({
+                    'symbol': sym,
+                    'anchor_trade_id': (buy_d.get('id') or buy_d.get('trade_id') or None),
+                    'anchor_buy_ts_utc_epoch': buy_ts_epoch,
+                    'anchor_buy_price': buy_d.get('price') or buy_d.get('fill_price') or buy_d.get('avg_price'),
+                    'anchor_qty': buy_d.get('qty') or buy_d.get('quantity'),
+                    'win_secs': win,
+                })
+            except Exception:
+                pass
 
             if sym and buy_ts_epoch:
                 lo = int(buy_ts_epoch) - int(win)
@@ -6437,17 +6028,7 @@ def api_trade_review():
                         "SELECT * FROM trigger_fires WHERE UPPER(symbol)=? AND COALESCE(ts_utc,0) BETWEEN ? AND ? ORDER BY COALESCE(ts_utc,0) ASC",
                         (sym, lo, hi)
                     ).fetchall()
-                    out['buy_triggers'] = []
-                    for r in rows:
-                        d = _row_to_dict(r) or {}
-                        # V1E2: always compute time_et from ts_utc (ignore DB time_et)
-                        _ts = d.get('ts_utc')
-                        try:
-                            _ts_ep = int(_ts) if _ts is not None else None
-                        except Exception:
-                            _ts_ep = _to_epoch(_ts)
-                        d['time_et'] = _epoch_to_et_str(_ts_ep) if _ts_ep else (d.get('time_et') or '')
-                        out['buy_triggers'].append(d)
+                    out['buy_triggers'] = [_row_to_dict(r) for r in rows]
                 except Exception as e:
                     out['errors'].append('buy_triggers query failed: ' + str(e))
 
@@ -6455,7 +6036,7 @@ def api_trade_review():
     except Exception as e:
         out['errors'].append('api_trade_review exception: ' + str(e))
     return jsonify(out)
-    # --- /MM_TRADE_REVIEW_ANCHOR_FROM_DB_V1D ---
+    # --- /MM_TRADE_REVIEW_ANCHOR_FROM_DB_V1C ---
 @app.route("/__fingerprint")
 def __fingerprint():
     from flask import jsonify
