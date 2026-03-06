@@ -6793,20 +6793,6 @@ def api_trade_review():
     except Exception:
         pass
     # --- /MM_TRV_META_COUNTS_ANY_JSONIFY_RETURN_V3 ---
-
-    # --- MM_TRV_FORCE_EMPTY_SELLS_WHEN_SELL_CT_ZERO_V1_START ---
-    try:
-        _mm_resp = out
-        if isinstance(_mm_resp, dict):
-            _mm_meta = _mm_resp.get("meta")
-            if not isinstance(_mm_meta, dict):
-                _mm_meta = {}
-            _mm_sell_ct = int(_mm_meta.get("sell_ct") or 0)
-            if _mm_sell_ct <= 0:
-                _mm_resp["sells"] = []
-    except Exception:
-        pass
-    # --- MM_TRV_FORCE_EMPTY_SELLS_WHEN_SELL_CT_ZERO_V1_END ---
     return jsonify(out)
     # --- /MM_TRADE_REVIEW_ANCHOR_FROM_DB_V1D ---
 @app.route("/__fingerprint")
@@ -7739,19 +7725,11 @@ def trade_review_chart():
 
         if buy_t:
             ax.axvline(buy_t, linewidth=2)
-            ax.text(
-                buy_t, close.min(), _fmt_lbl(buy_t, "BUY"),
-                va="bottom", ha="left", fontsize=10, color="#7CFFB2",
-                bbox=dict(boxstyle="round,pad=0.20", facecolor="#0b0b0b", edgecolor="none", alpha=0.85)
-            )
+            ax.text(buy_t, close.min(), _fmt_lbl(buy_t, "BUY"), va="bottom", ha="left", fontsize=10)
 
         if sell_t:
             ax.axvline(sell_t, linewidth=2)
-            ax.text(
-                sell_t, close.min(), _fmt_lbl(sell_t, "SELL"),
-                va="bottom", ha="left", fontsize=10, color="#FF9A9A",
-                bbox=dict(boxstyle="round,pad=0.20", facecolor="#0b0b0b", edgecolor="none", alpha=0.85)
-            )
+            ax.text(sell_t, close.min(), _fmt_lbl(sell_t, "SELL"), va="bottom", ha="left", fontsize=10)
 
         # Extra trigger marker lines
         for _bm in buy_marks:

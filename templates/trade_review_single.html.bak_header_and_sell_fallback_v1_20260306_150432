@@ -82,12 +82,6 @@
       var sellPx = meta.anchor_sell_price;
       var qty    = meta.anchor_qty;
 
-      try{
-        if((sellPx == null || Number(sellPx||0) === 0) && meta.anchor_sell_price != null){
-          sellPx = meta.anchor_sell_price;
-        }
-      }catch(e){}
-
       Array.from(sub.querySelectorAll("span")).forEach(function(sp){
         var t = (sp.textContent||"").trim();
         if(/^Buy:\s*@/i.test(t) && buyPx!=null)  sp.textContent = "Buy:  @ " + money(buyPx);
@@ -140,42 +134,8 @@
     fetch(url, {cache:"no-store"})
       .then(function(res){ return res.ok ? res.json() : Promise.reject("HTTP " + res.status); })
       .then(function(j){
-        const _meta = j.meta || {};
-        const _tradeId = String((_meta.anchor_trade_id != null ? _meta.anchor_trade_id : "")).trim();
-        const _symbol  = String((_meta.symbol || "")).trim().toUpperCase();
-
-        let _sellRows = Array.isArray(j.sell_triggers) ? j.sell_triggers.slice() : [];
-        if(!_sellRows.length){
-          const _sells = Array.isArray(j.sells) ? j.sells : [];
-          let _match = null;
-
-          if(_tradeId){
-            _match = _sells.find(function(r){
-              return String((r && r.trade_id != null ? r.trade_id : "")).trim() === _tradeId;
-            }) || null;
-          }
-          // MM_TRV_REMOVE_SYMBOL_SELL_FALLBACK_V2: removed unsafe fallback
-) || null;
-          }
-
-          if(_match){
-            _sellRows = [{
-              time_et: _match.time_et || "",
-              price: _match.price,
-              signals_pretty: (_match.reason || _match.source || "SELL from DB")
-            }];
-
-            if(!_meta.anchor_sell_time_et && _match.time_et){
-              _meta.anchor_sell_time_et = _match.time_et;
-            }
-            if((_meta.anchor_sell_price == null || Number(_meta.anchor_sell_price || 0) === 0) && _match.price != null){
-              _meta.anchor_sell_price = _match.price;
-            }
-          }
-        }
-
-        mountIntoBlocks(j.buy_triggers || [], _sellRows);
-        setMeta(_meta);
+        mountIntoBlocks(j.buy_triggers || [], j.sell_triggers || []);
+        setMeta(j.meta || {});
       })
       .catch(function(err){
         console.log("MM_TRV_SINGLE_HYDRATE_SYMBOL_TS_V2_TRADEID fetch failed:", err);

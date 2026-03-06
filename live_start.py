@@ -159,8 +159,16 @@ def main():
     raw_mode = data.get("broker_mode", "LIVE")
     mode = _norm_mode(os.getenv("BROKER_MODE") or raw_mode)
 
-    symbols = load_symbols(SYMS_PATH)
+    base_symbols = load_symbols(SYMS_PATH)
+
+    from services.universe_cache import load_cached_universe
+    symbols = load_cached_universe(base_symbols)
+
+    log.info("Universe loaded: %d symbols (base=%d)", len(symbols), len(base_symbols))
     log.info("Scanning %d symbols from %s", len(symbols), SYMS_PATH)
+
+    from services.universe_builder import start_universe_builder
+    start_universe_builder(base_symbols, log)
 
     from services.live_loop import run_live_loop
 

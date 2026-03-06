@@ -154,8 +154,10 @@
               return String((r && r.trade_id != null ? r.trade_id : "")).trim() === _tradeId;
             }) || null;
           }
-          // MM_TRV_REMOVE_SYMBOL_SELL_FALLBACK_V2: removed unsafe fallback
-) || null;
+          if(!_match && _symbol){
+            _match = _sells.find(function(r){
+              return String((r && r.symbol || "")).trim().toUpperCase() === _symbol;
+            }) || null;
           }
 
           if(_match){
