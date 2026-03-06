@@ -444,15 +444,11 @@
     const buyTs = (j.meta && j.meta.anchor_buy_time_et) ? String(j.meta.anchor_buy_time_et).trim() : (buyTimes[0] || "");
     const sellTs = (j.meta && j.meta.anchor_sell_time_et) ? String(j.meta.anchor_sell_time_et).trim() : (sellTimes[0] || "");
 
-    src = src.replace(/([&?])ts=[^&]*/g, "");
     src = src.replace(/([&?])buy_ts=[^&]*/g, "");
     src = src.replace(/([&?])sell_ts=[^&]*/g, "");
     src = src.replace(/([&?])buy_marks=[^&]*/g, "");
     src = src.replace(/([&?])sell_marks=[^&]*/g, "");
     src = src.replace(/[?&]rtfix=1/g, "");
-    src = src.replace(/[?&]+$/g, "");
-    src = src.replace(/&&+/g, "&");
-    src = src.replace(/\?&/g, "?");
 
     const joiner = src.indexOf("?") >= 0 ? "&" : "?";
     let extra = "";

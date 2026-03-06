@@ -7629,19 +7629,6 @@ def trade_review_chart():
             # fallback: keep as-is
             pass
 
-        # Force data to the trade date when ts is provided
-        if ts:
-            try:
-                et = pytz.timezone("America/New_York")
-                ts_et = et.localize(ts) if getattr(df.index, "tz", None) is not None and ts.tzinfo is None else ts
-                trade_day = ts_et.date()
-                dmask = pd.to_datetime(df.index).date == trade_day
-                dfd = df.loc[dmask].copy()
-                if not dfd.empty:
-                    df = dfd
-            except Exception:
-                pass
-
         # Focus window: around ts if provided (?60 minutes), else full day
         if ts:
             # interpret ts as ET naive -> localize ET if df index is tz-aware

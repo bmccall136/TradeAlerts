@@ -254,28 +254,9 @@
   {% set _s0 = sell_triggers[0] %}
   {% set _sell_ts = (_s0.ts_et or _s0.time_et or '') %}
 {% endif %}
-{% set _bm = namespace(vals=[]) %}
-{% if buy_triggers and (buy_triggers|length) > 0 %}
-  {% for _t in buy_triggers %}
-    {% if _t.ts_et or _t.time_et %}
-      {% set _bm.vals = _bm.vals + [(_t.ts_et or _t.time_et)] %}
-    {% endif %}
-  {% endfor %}
-{% endif %}
-{% set _buy_marks = _bm.vals %}
-
-{% set _sm = namespace(vals=[]) %}
-{% if sell_triggers and (sell_triggers|length) > 0 %}
-  {% for _t in sell_triggers %}
-    {% if _t.ts_et or _t.time_et %}
-      {% set _sm.vals = _sm.vals + [(_t.ts_et or _t.time_et)] %}
-    {% endif %}
-  {% endfor %}
-{% endif %}
-{% set _sell_marks = _sm.vals %}
 <!-- /MM_TRV_CHART_BUY_SELL_PARAMS_V1 -->
 <img class="tr-chart trade-chart-img"
-         src="/trade_review/chart?symbol={{ symbol if symbol is defined else (trade.symbol if trade is defined and trade else '') }}{% if _buy_ts %}&buy_ts={{ _buy_ts|urlencode }}&ts={{ _buy_ts|urlencode }}{% endif %}{% if _sell_ts %}&sell_ts={{ _sell_ts|urlencode }}{% endif %}{% if _buy_marks and (_buy_marks|length) > 0 %}&buy_marks={{ (_buy_marks|join('|'))|urlencode }}{% endif %}{% if _sell_marks and (_sell_marks|length) > 0 %}&sell_marks={{ (_sell_marks|join('|'))|urlencode }}{% endif %}&v={{ (trade.ts_utc if trade is defined and trade and trade.ts_utc else (trade_id if trade_id else 0)) }}"
+         src="/trade_review/chart?symbol={{ symbol if symbol is defined else (trade.symbol if trade is defined and trade else '') }}{% if _buy_ts %}&buy_ts={{ _buy_ts|urlencode }}&ts={{ _buy_ts|urlencode }}{% endif %}{% if _sell_ts %}&sell_ts={{ _sell_ts|urlencode }}{% endif %}&v={{ (trade.ts_utc if trade is defined and trade and trade.ts_utc else (trade_id if trade_id else 0)) }}"
          alt="Trade chart {{ trade.symbol }}{% if name %} ? {{ name }}{% endif %}">
 <!-- --- Inline Trade Review chart (BUY/SELL marked) --- -->
   <div class="trade-chart-wrap tr-chart-wrap">
@@ -400,85 +381,80 @@
 {% endif %}
 
 
-<!-- MM_TRV_RUNTIME_MARKS_FROM_API_V1 -->
+<!-- MM_TRV_RUNTIME_CHART_PARAMS_V1 -->
 <script>
 (function(){
   function q(sel){ return document.querySelector(sel); }
+  function qq(sel){ return Array.from(document.querySelectorAll(sel)); }
   function enc(s){ return encodeURIComponent((s||"").trim()); }
 
-  function getTradeIdFromPath(){
-    const m = String(window.location.pathname || "").match(/\/trade_review\/trade\/(\d+)/i);
-    return m ? m[1] : "";
+  function firstTimestampUnderHeader(headerText){
+    const headers = qq("h1,h2,h3,h4,div,span,strong");
+    const hdr = headers.find(el => ((el.textContent||"").trim() === headerText));
+    if(!hdr) return "";
+    let n = hdr.nextElementSibling;
+    while(n){
+      const txt = (n.textContent || "").trim();
+      const m = txt.match(/\b(20\d{2}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\b/);
+      if(m) return m[1];
+      if(/^(Buy Triggers|Sell Triggers|Signal Fires)$/i.test(txt)) break;
+      n = n.nextElementSibling;
+    }
+    return "";
   }
 
-  async function patch(){
+  function allTimestampsUnderHeader(headerText){
+    const out = [];
+    const headers = qq("h1,h2,h3,h4,div,span,strong");
+    const hdr = headers.find(el => ((el.textContent||"").trim() === headerText));
+    if(!hdr) return out;
+    let n = hdr.nextElementSibling;
+    while(n){
+      const txt = (n.textContent || "").trim();
+      const matches = txt.match(/\b20\d{2}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\b/g);
+      if(matches){ matches.forEach(x => out.push(x)); }
+      if(/^(Buy Triggers|Sell Triggers|Signal Fires)$/i.test(txt)) break;
+      n = n.nextElementSibling;
+    }
+    return Array.from(new Set(out));
+  }
+
+  function patch(){
     const img = q("img.tr-chart");
     if(!img) return;
 
     let src = img.getAttribute("src") || "";
     if(!src || src.indexOf("/trade_review/chart") === -1) return;
+    if(src.indexOf("buy_ts=") !== -1) return;
 
-    const tradeId = getTradeIdFromPath();
-    if(!tradeId) return;
+    const buyTs = firstTimestampUnderHeader("Buy Triggers");
+    const sellTs = firstTimestampUnderHeader("Sell Triggers");
+    const buyMarks = allTimestampsUnderHeader("Buy Triggers");
+    const sellMarks = allTimestampsUnderHeader("Sell Triggers");
 
-    let j = null;
-    try{
-      const res = await fetch("/api/trade_review?trade_id=" + encodeURIComponent(tradeId), { cache: "no-store" });
-      if(!res.ok) return;
-      j = await res.json();
-    }catch(e){
-      return;
-    }
-    if(!j) return;
-
-    const buyRows = Array.isArray(j.buy_triggers) ? j.buy_triggers : [];
-    const sellRows = Array.isArray(j.sell_triggers) ? j.sell_triggers : [];
-
-    const buyTimes = Array.from(new Set(
-      buyRows.map(r => (r && (r.time_et || r.ts_et || "") || "").trim()).filter(Boolean)
-    ));
-    const sellTimes = Array.from(new Set(
-      sellRows.map(r => (r && (r.time_et || r.ts_et || "") || "").trim()).filter(Boolean)
-    ));
-
-    const buyTs = (j.meta && j.meta.anchor_buy_time_et) ? String(j.meta.anchor_buy_time_et).trim() : (buyTimes[0] || "");
-    const sellTs = (j.meta && j.meta.anchor_sell_time_et) ? String(j.meta.anchor_sell_time_et).trim() : (sellTimes[0] || "");
-
-    src = src.replace(/([&?])ts=[^&]*/g, "");
-    src = src.replace(/([&?])buy_ts=[^&]*/g, "");
-    src = src.replace(/([&?])sell_ts=[^&]*/g, "");
-    src = src.replace(/([&?])buy_marks=[^&]*/g, "");
-    src = src.replace(/([&?])sell_marks=[^&]*/g, "");
-    src = src.replace(/[?&]rtfix=1/g, "");
-    src = src.replace(/[?&]+$/g, "");
-    src = src.replace(/&&+/g, "&");
-    src = src.replace(/\?&/g, "?");
+    if(!buyTs) return;
 
     const joiner = src.indexOf("?") >= 0 ? "&" : "?";
-    let extra = "";
-    if(buyTs) extra += "&buy_ts=" + enc(buyTs) + "&ts=" + enc(buyTs);
-    if(sellTs) extra += "&sell_ts=" + enc(sellTs);
-    if(buyTimes.length) extra += "&buy_marks=" + buyTimes.map(enc).join("|");
-    if(sellTimes.length) extra += "&sell_marks=" + sellTimes.map(enc).join("|");
-    extra += "&rtfix=1";
+    src += joiner + "buy_ts=" + enc(buyTs) + "&ts=" + enc(buyTs);
+    if(sellTs) src += "&sell_ts=" + enc(sellTs);
+    if(buyMarks.length) src += "&buy_marks=" + buyMarks.map(enc).join("|");
+    if(sellMarks.length) src += "&sell_marks=" + sellMarks.map(enc).join("|");
+    src += "&rtfix=1";
 
-    src = src + joiner + extra.replace(/^&/, "");
     img.setAttribute("src", src);
-
-    try { console.log("MM_TRV_RUNTIME_MARKS_FROM_API_V1", src, {buyTimes, sellTimes, buyTs, sellTs}); } catch(e) {}
-  }
-
-  function runMany(){
-    setTimeout(patch, 50);
-    setTimeout(patch, 250);
-    setTimeout(patch, 800);
-    setTimeout(patch, 1500);
+    try { console.log("MM_TRV_RUNTIME_CHART_PARAMS_V1", src); } catch(e) {}
   }
 
   if(document.readyState === "loading"){
-    document.addEventListener("DOMContentLoaded", runMany);
+    document.addEventListener("DOMContentLoaded", function(){
+      setTimeout(patch, 50);
+      setTimeout(patch, 250);
+      setTimeout(patch, 800);
+    });
   } else {
-    runMany();
+    setTimeout(patch, 50);
+    setTimeout(patch, 250);
+    setTimeout(patch, 800);
   }
 })();
 </script>
