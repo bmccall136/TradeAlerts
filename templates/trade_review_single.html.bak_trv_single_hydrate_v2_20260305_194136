@@ -1,7 +1,6 @@
 <!-- MM_TRV_SINGLE_SERVED_STAMP_V1 20260305_163051 -->
 
 <!-- MM_TRV_SINGLE_HYDRATE_SYMBOL_TS_V1 -->
-<!-- MM_TRV_SINGLE_HYDRATE_SYMBOL_TS_V2_TRADEID -->
 <script>
 (function(){
   function q(name){
@@ -100,36 +99,27 @@
         }
       }
 
-      // If we *can* canonicalize to /trade_review/trade/<id>, do it (no reload)
-      try{
-        if(meta.anchor_trade_id){
-          var tid = String(meta.anchor_trade_id);
-          if(tid && !/\/trade_review\/trade\/\d+/i.test(window.location.pathname||"")){
-            window.history.replaceState({}, "", "/trade_review/trade/" + encodeURIComponent(tid));
-          }
-        }
-      }catch(_e){}
+      // NOTE: do NOT rewrite URL here; your /trade_review route already handles canonical redirect.
     }catch(e){}
   }
 
-  function buildApiUrl(){
+  function shouldRun(){
     var path = String(window.location.pathname||"");
-    var m = path.match(/\/trade_review\/trade\/(\d+)/i);
-    if(m && m[1]){
-      return "/api/trade_review?trade_id=" + encodeURIComponent(m[1]);
-    }
-
+    if(/\/trade_review\/trade\/\d+/i.test(path)) return false;
+    if(!/\/trade_review\/?$/i.test(path)) return false;
     var sym = q("symbol");
-    var ts  = q("ts");
-    if(!sym) return "";
-    var url = "/api/trade_review?symbol=" + encodeURIComponent(sym);
-    if(ts) url += "&ts=" + encodeURIComponent(ts);
-    return url;
+    return !!sym;
   }
 
   function run(){
-    var url = buildApiUrl();
-    if(!url) return;
+    if(!shouldRun()) return;
+
+    var sym = q("symbol");
+    var ts  = q("ts");
+    if(!sym) return;
+
+    var url = "/api/trade_review?symbol=" + encodeURIComponent(sym);
+    if(ts) url += "&ts=" + encodeURIComponent(ts);
 
     fetch(url, {cache:"no-store"})
       .then(function(res){ return res.ok ? res.json() : Promise.reject("HTTP " + res.status); })
@@ -138,7 +128,7 @@
         setMeta(j.meta || {});
       })
       .catch(function(err){
-        console.log("MM_TRV_SINGLE_HYDRATE_SYMBOL_TS_V2_TRADEID fetch failed:", err);
+        console.log("MM_TRV_SINGLE_HYDRATE_SYMBOL_TS_V1 fetch failed:", err);
       });
   }
 

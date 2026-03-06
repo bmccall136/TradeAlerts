@@ -6801,28 +6801,6 @@ def api_trade_review():
         pass
     # --- /MM_TRV_META_COUNTS_FROM_ARRAYS_V1 ---
 
-
-    # --- MM_TRV_META_COUNTS_ANY_JSONIFY_RETURN_V3 ---
-    try:
-        # If we return jsonify(payload_dict) or jsonify(resp), adjust meta counts from the payload itself
-        _payload = None
-        try:
-            # best effort: capture the object passed to jsonify on this return line
-            _payload = out
-        except Exception:
-            _payload = None
-
-        if isinstance(_payload, dict):
-            _bt = _payload.get("buy_triggers") or []
-            _st = _payload.get("sell_triggers") or []
-            _meta = _payload.get("meta")
-            if isinstance(_meta, dict):
-                _meta["buy_ct"]  = len(_bt)
-                _meta["sell_ct"] = len(_st)
-                _payload["meta"] = _meta
-    except Exception:
-        pass
-    # --- /MM_TRV_META_COUNTS_ANY_JSONIFY_RETURN_V3 ---
     return jsonify(out)
     # --- /MM_TRADE_REVIEW_ANCHOR_FROM_DB_V1D ---
 @app.route("/__fingerprint")

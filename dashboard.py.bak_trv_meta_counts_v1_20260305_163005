@@ -6787,42 +6787,6 @@ def api_trade_review():
         con.close()
     except Exception as e:
         out['errors'].append('api_trade_review exception: ' + str(e))
-
-    # --- MM_TRV_META_COUNTS_FROM_ARRAYS_V1 ---
-    try:
-        # Force meta counts to reflect the arrays we actually return (trade-specific truth)
-        _out_locals = locals()
-        _buy_arr = _out_locals.get("buy_triggers") or _out_locals.get("buy_rows") or _out_locals.get("buy_list") or []
-        _sell_arr = _out_locals.get("sell_triggers") or _out_locals.get("sell_rows") or _out_locals.get("sell_list") or []
-        if "meta" in _out_locals and isinstance(_out_locals["meta"], dict):
-            _out_locals["meta"]["buy_ct"] = len(_buy_arr)
-            _out_locals["meta"]["sell_ct"] = len(_sell_arr)
-    except Exception:
-        pass
-    # --- /MM_TRV_META_COUNTS_FROM_ARRAYS_V1 ---
-
-
-    # --- MM_TRV_META_COUNTS_ANY_JSONIFY_RETURN_V3 ---
-    try:
-        # If we return jsonify(payload_dict) or jsonify(resp), adjust meta counts from the payload itself
-        _payload = None
-        try:
-            # best effort: capture the object passed to jsonify on this return line
-            _payload = out
-        except Exception:
-            _payload = None
-
-        if isinstance(_payload, dict):
-            _bt = _payload.get("buy_triggers") or []
-            _st = _payload.get("sell_triggers") or []
-            _meta = _payload.get("meta")
-            if isinstance(_meta, dict):
-                _meta["buy_ct"]  = len(_bt)
-                _meta["sell_ct"] = len(_st)
-                _payload["meta"] = _meta
-    except Exception:
-        pass
-    # --- /MM_TRV_META_COUNTS_ANY_JSONIFY_RETURN_V3 ---
     return jsonify(out)
     # --- /MM_TRADE_REVIEW_ANCHOR_FROM_DB_V1D ---
 @app.route("/__fingerprint")
