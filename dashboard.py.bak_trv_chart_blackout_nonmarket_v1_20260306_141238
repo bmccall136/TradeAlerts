@@ -7668,23 +7668,6 @@ def trade_review_chart():
 
         ax.plot(close.index, close.values, linewidth=2)
 
-        # Black out non-market / no-candle gaps (overnight, premarket holes, etc.)
-        try:
-            import pandas as _pd
-            _idx = close.index
-            if len(_idx) >= 2:
-                for _i in range(1, len(_idx)):
-                    try:
-                        _prev = _idx[_i - 1]
-                        _cur = _idx[_i]
-                        _mins = (_cur - _prev).total_seconds() / 60.0
-                        if _mins > 20:
-                            ax.axvspan(_prev, _cur, color="black", alpha=0.35, zorder=0)
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-
         # Shade held period if buy_ts and sell_ts exist (best effort)
         def _to_index_tz(dt):
             if dt is None:
