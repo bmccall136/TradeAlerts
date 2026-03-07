@@ -48,9 +48,7 @@ function _mmDailyNormPayload(data) {
     return (x * 100).toFixed(2) + "%";
   }
 
-  function tradeReviewHref(sym, ts, tradeId){
-    const tid = String(tradeId ?? "").trim();
-    if (tid) return "/trade_review/trade/" + encodeURIComponent(tid);
+  function tradeReviewHref(sym, ts){
     const dateArg = qs("date");
     const href =
       "/trade_review?symbol=" + encodeURIComponent(sym || "") +
@@ -144,7 +142,7 @@ function _mmDailyNormPayload(data) {
           { label: "Time",   get: r => (r.ts || "") },
           { label: "Symbol", html: r => {
               const sym = String(r.symbol || "");
-              const href = tradeReviewHref(sym, r.ts, r.trade_id);
+              const href = tradeReviewHref(sym, r.ts);
               return `<a href="${href}" style="color:#00c8ff; text-decoration:none; font-weight:700;">${esc(sym)}</a>`;
             }
           },
@@ -159,7 +157,7 @@ function _mmDailyNormPayload(data) {
           { label: "Time",   get: r => (r.ts || "") },
           { label: "Symbol", html: r => {
               const sym = String(r.symbol || "");
-              const href = tradeReviewHref(sym, r.ts, r.trade_id);
+              const href = tradeReviewHref(sym, r.ts);
               return `<a href="${href}" style="color:#00c8ff; text-decoration:none; font-weight:700;">${esc(sym)}</a>`;
             }
           },

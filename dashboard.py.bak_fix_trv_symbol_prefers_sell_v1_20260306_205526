@@ -1228,13 +1228,11 @@ def always_json(f):
             return out
         except Exception as e:
             try:
-                import traceback
-                traceback.print_exc()
+                return jsonify({'ok': False, 'error': str(e)}), 500
             except Exception:
-                pass
-            return jsonify({"ok": False, "error": str(e)}), 500
-
+                raise
     return _wrap
+
 
 def _safe_float(x: Any, default: float = 0.0) -> float:
     try:
@@ -6245,160 +6243,150 @@ def api_analytics_daily():
         pass
     # --- MM_DAILY_SELL_OPEN_BY_TIME_V1_END ---
     
-    
-    # --- MM_DAILY_SELL_ENRICH_CORRECT_SITE_V1_START ---
-    try:
-        import sqlite3 as _sqlite3
-        _conn_mm = _sqlite3.connect(LIVE_DB)
-        _conn_mm.row_factory = _sqlite3.Row
-        _cur_mm = _conn_mm.cursor()
-
-        _day_mm = (_d or "").strip()
-        _sells_mm = out.get("sells") or []
-        if isinstance(_sells_mm, list):
-            for _row in _sells_mm:
-                if not isinstance(_row, dict):
-                    continue
-
-                _sym = str(_row.get("symbol") or "").strip().upper()
-                _time_et = str(_row.get("time_et") or "").strip()
-                _trade_id = _row.get("trade_id")
-                _ts = _row.get("ts")
-
-                if (_trade_id not in (None, "", 0, "0")) and str(_ts or "").strip():
-                    continue
-                if not _sym:
-                    continue
-
-                _match = None
-
-                # best match: same symbol + same ET timestamp
-                if _time_et:
-                    _match = _cur_mm.execute(
-                        """
-                        SELECT id, symbol, trade_time, ts_et, ts_utc
-                        FROM trades
-                        WHERE UPPER(COALESCE(symbol,'')) = ?
-                          AND UPPER(COALESCE(action,'')) = 'SELL'
-                          AND COALESCE(ts_et, trade_time, '') = ?
-                        ORDER BY id DESC
-                        LIMIT 1
-                        """,
-                        (_sym, _time_et)
-                    ).fetchone()
-
-                # fallback: same symbol + same date
-                if _match is None and _day_mm:
-                    _match = _cur_mm.execute(
-                        """
-                        SELECT id, symbol, trade_time, ts_et, ts_utc
-                        FROM trades
-                        WHERE UPPER(COALESCE(symbol,'')) = ?
-                          AND UPPER(COALESCE(action,'')) = 'SELL'
-                          AND substr(COALESCE(ts_et, trade_time, ''), 1, 10) = ?
-                        ORDER BY id DESC
-                        LIMIT 1
-                        """,
-                        (_sym, _day_mm)
-                    ).fetchone()
-
-                if _match is not None:
-                    if _row.get("trade_id") in (None, "", 0, "0"):
-                        _row["trade_id"] = _match["id"]
-                    if not str(_row.get("ts") or "").strip():
-                        _row["ts"] = _match["ts_et"] or _match["trade_time"] or ""
-                    if not str(_row.get("time_et") or "").strip():
-                        _row["time_et"] = _match["ts_et"] or _match["trade_time"] or ""
-
-        try:
-            _conn_mm.close()
-        except Exception:
-            pass
-    except Exception as _e_mm:
-        try:
-            out.setdefault("errors", [])
-            out["errors"].append(f"daily sell enrich error: {_e_mm!r}")
-        except Exception:
-            pass
-    # --- MM_DAILY_SELL_ENRICH_CORRECT_SITE_V1_END ---
-
-
-    # --- MM_DAILY_SELL_ENRICH_V3_START ---
-    try:
-        import sqlite3 as _sqlite3
-        _conn_mm = _sqlite3.connect(db_path)
-        _conn_mm.row_factory = _sqlite3.Row
-        _cur_mm = _conn_mm.cursor()
-
-        _day_mm = str(base_date)
-        _sells_mm = out.get("sells") or []
-        if isinstance(_sells_mm, list):
-            for _row in _sells_mm:
-                if not isinstance(_row, dict):
-                    continue
-
-                _sym = str(_row.get("symbol") or "").strip().upper()
-                _time_et = str(_row.get("time_et") or "").strip()
-                _trade_id = _row.get("trade_id")
-                _ts = _row.get("ts")
-
-                if (_trade_id not in (None, "", 0, "0")) and str(_ts or "").strip():
-                    continue
-                if not _sym:
-                    continue
-
-                _match = None
-
-                if _time_et:
-                    _match = _cur_mm.execute(
-                        """
-                        SELECT id, symbol, trade_time, ts_et, ts_utc
-                        FROM trades
-                        WHERE UPPER(COALESCE(symbol,'')) = ?
-                          AND UPPER(COALESCE(action,'')) = 'SELL'
-                          AND COALESCE(ts_et, trade_time, '') = ?
-                        ORDER BY id DESC
-                        LIMIT 1
-                        """,
-                        (_sym, _time_et)
-                    ).fetchone()
-
-                if _match is None and _day_mm:
-                    _match = _cur_mm.execute(
-                        """
-                        SELECT id, symbol, trade_time, ts_et, ts_utc
-                        FROM trades
-                        WHERE UPPER(COALESCE(symbol,'')) = ?
-                          AND UPPER(COALESCE(action,'')) = 'SELL'
-                          AND substr(COALESCE(ts_et, trade_time, ''), 1, 10) = ?
-                        ORDER BY id DESC
-                        LIMIT 1
-                        """,
-                        (_sym, _day_mm)
-                    ).fetchone()
-
-                if _match is not None:
-                    if _row.get("trade_id") in (None, "", 0, "0"):
-                        _row["trade_id"] = _match["id"]
-                    if not str(_row.get("ts") or "").strip():
-                        _row["ts"] = _match["ts_et"] or _match["trade_time"] or ""
-                    if not str(_row.get("time_et") or "").strip():
-                        _row["time_et"] = _match["ts_et"] or _match["trade_time"] or ""
-
-        try:
-            _conn_mm.close()
-        except Exception:
-            pass
-    except Exception as _e_mm:
-        try:
-            out.setdefault("errors", [])
-            out["errors"].append(f"daily sell enrich error: {_e_mm!r}")
-        except Exception:
-            pass
-    # --- MM_DAILY_SELL_ENRICH_V3_END ---
-
     return jsonify(out)
 
+        # --- MM_DAILY_ENRICH_SELLS_FROM_REALIZED_V3 ---
+    try:
+        import sqlite3 as _sqlite3
+        import datetime as _dt
+        from zoneinfo import ZoneInfo as _ZoneInfo
+    
+        def _mm_sf(x):
+            try:
+                if x is None: return None
+                s = str(x).strip()
+                if not s: return None
+                return float(s)
+            except Exception:
+                return None
+    
+        def _mm_epoch_from_time_et(s):
+            try:
+                if not s: return None
+                t = str(s).strip().replace('T',' ').replace('Z','')
+                t = t.split('.')[0].strip()
+                d = _dt.datetime.strptime(t, "%Y-%m-%d %H:%M:%S")
+                d = d.replace(tzinfo=_ZoneInfo("America/New_York"))
+                return int(d.timestamp())
+            except Exception:
+                return None
+    
+        # Date for realized_trades lookup: prefer date_et, else _d
+        _date = None
+        try:
+            _date = (locals().get("date_et") or "").strip()
+        except Exception:
+            _date = None
+        if not _date:
+            try:
+                _date = (locals().get("_d") or "").strip()
+            except Exception:
+                _date = None
+    
+        # Sells list: could be local sells, or out['sells'], or _ret['sells']
+        _sells_ref = None
+        try:
+            if "sells" in locals() and isinstance(locals().get("sells"), list):
+                _sells_ref = locals().get("sells")
+        except Exception:
+            pass
+        if _sells_ref is None:
+            try:
+                _o = locals().get("out")
+                if isinstance(_o, dict) and isinstance(_o.get("sells"), list):
+                    _sells_ref = _o.get("sells")
+            except Exception:
+                pass
+        if _sells_ref is None:
+            try:
+                _r = locals().get("_ret")
+                if isinstance(_r, dict) and isinstance(_r.get("sells"), list):
+                    _sells_ref = _r.get("sells")
+            except Exception:
+                pass
+    
+        if _date and isinstance(_sells_ref, list) and _sells_ref:
+            # DB path
+            if "LIVE_DB" in globals():
+                _db = LIVE_DB
+            elif "DB_PATH" in globals():
+                _db = DB_PATH
+            else:
+                _db = r"C:\TradeAlerts\live.db"
+    
+            _con = _sqlite3.connect(_db)
+            _con.row_factory = _sqlite3.Row
+            _cur = _con.cursor()
+    
+            _has = _cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='realized_trades'").fetchone() is not None
+            if _has:
+                def _pick(d, *ks):
+                    for k in ks:
+                        if k in d and d.get(k) is not None and str(d.get(k)).strip() != "":
+                            return d.get(k)
+                    return None
+    
+                _rt_by_sym = {}
+                _rows = _cur.execute("SELECT * FROM realized_trades WHERE time_et LIKE ? ORDER BY time_et ASC", (_date + "%",)).fetchall()
+                for _r in _rows:
+                    _dct = dict(_r)
+                    _sym = str(_dct.get("symbol") or "").strip().upper()
+                    if not _sym:
+                        continue
+                    _rt_by_sym.setdefault(_sym, []).append({
+                        "ts": _mm_epoch_from_time_et(_dct.get("time_et")),
+                        "time_et": _dct.get("time_et"),
+                        "open": _mm_sf(_pick(_dct, "open","open_price","entry_price","buy_price")),
+                        "close": _mm_sf(_pick(_dct, "close","close_price","exit_price","price")),
+                        "pnl": _mm_sf(_pick(_dct, "pnl","gain","pl","profit")),
+                        "pnl_pct": _mm_sf(_pick(_dct, "pnl_pct","gain_pct","pl_pct","profit_pct")),
+                    })
+    
+                def _nearest(sym, ts_utc, max_delta=7200):
+                    try:
+                        ts_utc = int(ts_utc)
+                    except Exception:
+                        return None
+                    best = None
+                    bestd = None
+                    for x in (_rt_by_sym.get(sym) or []):
+                        if x.get("ts") is None:
+                            continue
+                        d = abs(ts_utc - int(x["ts"]))
+                        if bestd is None or d < bestd:
+                            bestd = d
+                            best = x
+                    if best is not None and bestd is not None and bestd <= max_delta:
+                        return best
+                    return None
+    
+                for s in _sells_ref:
+                    if not isinstance(s, dict):
+                        continue
+                    sym = str(s.get("symbol") or "").strip().upper()
+                    if not sym:
+                        continue
+                    s.setdefault("open", None)
+                    s.setdefault("close", None)
+                    s.setdefault("pnl_pct", None)
+                    if s.get("close") is None and s.get("price") is not None:
+                        s["close"] = s.get("price")
+                    if s.get("close") is None or s.get("pnl") is None:
+                        r = _nearest(sym, s.get("ts_utc"))
+                        if r:
+                            if s.get("open") is None: s["open"] = r.get("open")
+                            if s.get("close") is None:
+                                s["close"] = r.get("close")
+                                if s.get("price") is None:
+                                    s["price"] = r.get("close")
+                            if s.get("pnl") is None: s["pnl"] = r.get("pnl")
+                            if s.get("pnl_pct") is None: s["pnl_pct"] = r.get("pnl_pct")
+                            s.setdefault("time_et_realized", r.get("time_et"))
+    
+            _con.close()
+    except Exception:
+        pass
+    # --- /MM_DAILY_ENRICH_SELLS_FROM_REALIZED_V3 ---
 @app.route("/analytics")
 def analytics_page():
     # --- analytics date override ---
@@ -7071,78 +7059,6 @@ def api_trade_review():
     except Exception:
         pass
     # --- MM_TRV_FORCE_EMPTY_SELLS_WHEN_SELL_CT_ZERO_V1_END ---
-    # --- MM_DAILY_SELL_ENRICH_V3_START ---
-    try:
-        import sqlite3 as _sqlite3
-        _conn_mm = _sqlite3.connect(db_path)
-        _conn_mm.row_factory = _sqlite3.Row
-        _cur_mm = _conn_mm.cursor()
-
-        _day_mm = str(base_date)
-        _sells_mm = out.get("sells") or []
-        if isinstance(_sells_mm, list):
-            for _row in _sells_mm:
-                if not isinstance(_row, dict):
-                    continue
-
-                _sym = str(_row.get("symbol") or "").strip().upper()
-                _time_et = str(_row.get("time_et") or "").strip()
-                _trade_id = _row.get("trade_id")
-                _ts = _row.get("ts")
-
-                if (_trade_id not in (None, "", 0, "0")) and str(_ts or "").strip():
-                    continue
-                if not _sym:
-                    continue
-
-                _match = None
-
-                if _time_et:
-                    _match = _cur_mm.execute(
-                        """
-                        SELECT id, symbol, trade_time, ts_et, ts_utc
-                        FROM trades
-                        WHERE UPPER(COALESCE(symbol,'')) = ?
-                          AND UPPER(COALESCE(action,'')) = 'SELL'
-                          AND COALESCE(ts_et, trade_time, '') = ?
-                        ORDER BY id DESC
-                        LIMIT 1
-                        """,
-                        (_sym, _time_et)
-                    ).fetchone()
-
-                if _match is None and _day_mm:
-                    _match = _cur_mm.execute(
-                        """
-                        SELECT id, symbol, trade_time, ts_et, ts_utc
-                        FROM trades
-                        WHERE UPPER(COALESCE(symbol,'')) = ?
-                          AND UPPER(COALESCE(action,'')) = 'SELL'
-                          AND substr(COALESCE(ts_et, trade_time, ''), 1, 10) = ?
-                        ORDER BY id DESC
-                        LIMIT 1
-                        """,
-                        (_sym, _day_mm)
-                    ).fetchone()
-
-                if _match is not None:
-                    if _row.get("trade_id") in (None, "", 0, "0"):
-                        _row["trade_id"] = _match["id"]
-                    if not str(_row.get("ts") or "").strip():
-                        _row["ts"] = _match["ts_et"] or _match["trade_time"] or ""
-                    if not str(_row.get("time_et") or "").strip():
-                        _row["time_et"] = _match["ts_et"] or _match["trade_time"] or ""
-
-        _conn_mm.close()
-    except Exception as _e_mm:
-        try:
-            out.setdefault("errors", [])
-            out["errors"].append(f"daily sell enrich error: {_e_mm!r}")
-        except Exception:
-            pass
-    # --- MM_DAILY_SELL_ENRICH_V3_END ---
-
-
     return jsonify(out)
     # --- /MM_TRADE_REVIEW_ANCHOR_FROM_DB_V1D ---
 @app.route("/__fingerprint")
@@ -7796,15 +7712,9 @@ def trade_review():
             else:
                 row = cur.execute("""
                     SELECT id FROM trades
-                    WHERE symbol = ? AND (action='SELL' OR side='SELL')
+                    WHERE symbol = ?
                     ORDER BY id DESC LIMIT 1
                 """, (symbol,)).fetchone()
-                if not row:
-                    row = cur.execute("""
-                        SELECT id FROM trades
-                        WHERE symbol = ?
-                        ORDER BY id DESC LIMIT 1
-                    """, (symbol,)).fetchone()
             con.close()
             if row and row['id']:
                 return redirect(url_for('trade_review', trade_id=int(row['id'])))

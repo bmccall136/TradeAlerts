@@ -83,7 +83,7 @@
   "supertrend_signal": 0,
   "supertrend_slow": 3,
   "vol_mult": 1.5,
-  "vol_on": true,
+  "vol_on": false,
   "vwap_on": true,
   "vwap_threshold": 0
 }

@@ -83,12 +83,6 @@
       var qty    = meta.anchor_qty;
 
       try{
-        if((sellPx == null || Number(sellPx||0) === 0) && Array.isArray(j.sells) && j.sells.length){
-          var s0 = j.sells[0] || {};
-          if(s0.price != null && String(s0.price).trim() !== ""){
-            sellPx = s0.price;
-          }
-        }
         if((sellPx == null || Number(sellPx||0) === 0) && meta.anchor_sell_price != null){
           sellPx = meta.anchor_sell_price;
         }
@@ -112,19 +106,12 @@
         }
       }
 
-      // If we *can* canonicalize to /trade_review/trade/<id>, do it (no reload),
-      // but preserve any explicit trade_id already requested via path or querystring.
+      // If we *can* canonicalize to /trade_review/trade/<id>, do it (no reload)
       try{
-        var pathNow = String(window.location.pathname || "");
-        var qsNow = new URLSearchParams(String(window.location.search || ""));
-        var mPathTid = pathNow.match(/\/trade_review\/trade\/(\d+)/i);
-        var existingTid = mPathTid ? String(mPathTid[1] || "").trim() : String(qsNow.get("trade_id") || "").trim();
-        var anchorTid = (meta && meta.anchor_trade_id != null) ? String(meta.anchor_trade_id).trim() : "";
-        var finalTid = existingTid || anchorTid;
-        if(finalTid){
-          var want = "/trade_review/trade/" + encodeURIComponent(finalTid);
-          if(pathNow !== want){
-            window.history.replaceState({}, "", want);
+        if(meta.anchor_trade_id){
+          var tid = String(meta.anchor_trade_id);
+          if(tid && !/\/trade_review\/trade\/\d+/i.test(window.location.pathname||"")){
+            window.history.replaceState({}, "", "/trade_review/trade/" + encodeURIComponent(tid));
           }
         }
       }catch(_e){}
