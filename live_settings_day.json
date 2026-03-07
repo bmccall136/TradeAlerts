@@ -59,11 +59,12 @@
       "time_mult": 1
     }
   },
-  "require_sma20": false,
+  "require_sma20": true,
   "required_filters": [
     "macd",
     "vwap",
-    "adx"
+    "adx",
+    "sma20"
   ],
   "required_signals_min": 2,
   "rsi_len": 14,

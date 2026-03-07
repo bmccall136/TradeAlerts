@@ -24,13 +24,13 @@
 
     <a class="btn btn-sm btn-outline-warning" id="ax-yesterday" href="#">Yesterday</a>
 
-    <input
-      type="date"
-      class="ax-date-input"
-      value="{{ request.args.get('date','') }}"
-      aria-label="Select date"
-    />
-
+	<input
+	  id="ax-datepick"
+	  type="date"
+	  class="ax-date-input"
+	  value="{{ request.args.get('date','') }}"
+	  aria-label="Select date"
+	/>
     <a class="btn btn-sm btn-outline-warning" id="ax-datego" href="#">Go</a>
 
     <a class="btn btn-sm btn-outline-secondary" id="ax-live" href="/analytics">Live</a>
@@ -250,7 +250,54 @@
           <tbody id="rows"></tbody>
         </table>
       </div>
+<div class="card mm-card" style="margin-top:14px;">
+  <div class="card-body">
+    <div class="mm-row" style="margin-bottom:10px;">
+      <div>
+        <div style="font-size:18px;font-weight:800;">Indicator Combo Performance</div>
+        <div class="mm-muted" id="comboMetaText">Matched closed trades only.</div>
+      </div>
+    </div>
 
+    <div style="overflow:auto; margin-bottom:18px;">
+      <table class="mm-table">
+        <thead>
+          <tr>
+            <th style="min-width:320px;">Combo</th>
+            <th style="min-width:90px;">Trades</th>
+            <th style="min-width:90px;">Wins</th>
+            <th style="min-width:90px;">Loss</th>
+            <th style="min-width:100px;">WinRate</th>
+            <th style="min-width:100px;">AvgPct</th>
+            <th style="min-width:100px;">NetGain</th>
+          </tr>
+        </thead>
+        <tbody id="comboRows"></tbody>
+      </table>
+    </div>
+
+    <div class="mm-row" style="margin-bottom:10px;">
+      <div style="font-size:18px;font-weight:800;">Indicator Performance</div>
+    </div>
+
+    <div style="overflow:auto;">
+      <table class="mm-table">
+        <thead>
+          <tr>
+            <th style="min-width:180px;">Indicator</th>
+            <th style="min-width:90px;">Trades</th>
+            <th style="min-width:90px;">Wins</th>
+            <th style="min-width:90px;">Loss</th>
+            <th style="min-width:100px;">WinRate</th>
+            <th style="min-width:100px;">AvgPct</th>
+            <th style="min-width:100px;">NetGain</th>
+          </tr>
+        </thead>
+        <tbody id="indicatorRows"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
       <div class="mm-note">
         Next upgrades (when you want): candidate-only fires, candidate→buy funnel, combos, hour-of-day heatmap.
       </div>
@@ -320,43 +367,75 @@ function mmNormBucket(b) {
     }[c]));
   }
 
-  
-async function loadFunnel(bucket) {
-  try {
-    // Funnel for Source=candidate should come from candidate_fires payload
-    const b = mmNormBucket(bucket);
-    const r = await fetch(`/api/analytics/candidate_fires?bucket=${encodeURIComponent(b)}`, { cache: 'no-store' });
-    let j = await r.json();
-    if (!j || !j.ok) return;
+  function fmtNum(v, digits=2){
+    const n = Number(v || 0);
+    return n.toLocaleString(undefined, {minimumFractionDigits:digits, maximumFractionDigits:digits});
+  }
 
-    // Normalize schema so UI never shows "?"
-    j = mmNormCandidatePayload(j);
+  async function loadComboReport(){
+    try{
+      const bucket = $("bucketSel").value || "7d";
+      const j = await mmFetchJson(`/api/analytics/combo_report?bucket=${encodeURIComponent(bucket)}`);
 
-    const fmtInt = (n) => (n == null ? '?' : Number(n).toLocaleString());
+      const comboMeta = $("comboMetaText");
+      const comboRows = $("comboRows");
+      const indicatorRows = $("indicatorRows");
 
-    document.getElementById('fCand').textContent    = fmtInt(j.cand);
-    document.getElementById('fReq').textContent     = fmtInt(j.req);
-    document.getElementById('fStrict').textContent  = fmtInt(j.strict);
-    document.getElementById('fBuyable').textContent = fmtInt(j.buyable);
-    document.getElementById('fBought').textContent  = fmtInt(j.bought);
+      if (comboMeta) {
+        comboMeta.textContent =
+          `Matched trades: ${(j.matched || 0).toLocaleString()} • Lookback: ${j.lookback_days || 30}d • Closed trades only`;
+      }
 
-    const strictN = (j.strict_n == null ? '—' : j.strict_n);
-    document.getElementById('funnelMeta').textContent = `Bucket: ${j.bucket || b}  •  Strict>=${strictN}`;
-  } catch (e) {}
-}
+      if (comboRows) comboRows.innerHTML = "";
+      if (indicatorRows) indicatorRows.innerHTML = "";
 
-function syncFunnelVisibility() {
-  try {
-    const sel = document.getElementById('sourceSel');
-    const source = (sel && sel.value) ? sel.value : 'pregate';
-    const el = document.getElementById('funnelCard');
-    if (!el) return;
-    el.style.display = (source === 'candidate') ? '' : 'none';
-  } catch(e) {}
-}
+      const combos = j.combos || [];
+      const indicators = j.indicators || [];
 
+      if (comboRows){
+        if (!combos.length){
+          comboRows.innerHTML = `<tr><td colspan="7" class="mm-muted">No combo data.</td></tr>`;
+        } else {
+          comboRows.innerHTML = combos.map(r => `
+            <tr>
+              <td><b>${esc(r.combo)}</b></td>
+              <td>${Number(r.trades || 0).toLocaleString()}</td>
+              <td>${Number(r.wins || 0).toLocaleString()}</td>
+              <td>${Number(r.losses || 0).toLocaleString()}</td>
+              <td>${fmtNum(r.winrate,1)}%</td>
+              <td>${fmtNum(r.avg_pct,2)}</td>
+              <td>${fmtNum(r.net_gain,2)}</td>
+            </tr>
+          `).join("");
+        }
+      }
 
-async function load(){
+      if (indicatorRows){
+        if (!indicators.length){
+          indicatorRows.innerHTML = `<tr><td colspan="7" class="mm-muted">No indicator data.</td></tr>`;
+        } else {
+          indicatorRows.innerHTML = indicators.map(r => `
+            <tr>
+              <td><b>${esc(r.indicator)}</b></td>
+              <td>${Number(r.trades || 0).toLocaleString()}</td>
+              <td>${Number(r.wins || 0).toLocaleString()}</td>
+              <td>${Number(r.losses || 0).toLocaleString()}</td>
+              <td>${fmtNum(r.winrate,1)}%</td>
+              <td>${fmtNum(r.avg_pct,2)}</td>
+              <td>${fmtNum(r.net_gain,2)}</td>
+            </tr>
+          `).join("");
+        }
+      }
+    }catch(e){
+      const comboMeta = $("comboMetaText");
+      if (comboMeta) comboMeta.textContent = `Combo load failed: ${e.message}`;
+      if ($("comboRows")) $("comboRows").innerHTML = `<tr><td colspan="7" class="mm-muted">Load failed.</td></tr>`;
+      if ($("indicatorRows")) $("indicatorRows").innerHTML = `<tr><td colspan="7" class="mm-muted">Load failed.</td></tr>`;
+    }
+  }
+
+  async function load(){
 
   // keep funnel visibility aligned to Source
   if (typeof syncFunnelVisibility === 'function') syncFunnelVisibility();
@@ -411,6 +490,7 @@ async function load(){
       `);
     }
     $("rows").innerHTML = frag.join("");
+	await loadComboReport();
   }
 
   document.addEventListener("DOMContentLoaded", ()=>{
@@ -422,7 +502,6 @@ async function load(){
 })();
 </script>
 {% endblock %}
-'@ | Set-Content -Encoding UTF8 C:\TradeAlerts\templates\analytics_buy.html
 
 
 

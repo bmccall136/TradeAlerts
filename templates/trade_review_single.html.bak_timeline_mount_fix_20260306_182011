@@ -704,7 +704,7 @@
       const holdTxt = mmFmtDur(holdMs);
       const sellTxt = sellEt ? mmFmtClock(sellEt) : 'LIVE';
 
-      const host = document.querySelector('img.trade-chart-img');
+      const host = mmFindChartMount();
       if(!host) return;
 
       const old = document.getElementById('mm-trv-timeline-strip');
@@ -732,7 +732,7 @@
         </div>
       `;
 
-      host.parentNode.insertBefore(div, host.nextSibling);
+      host.insertAdjacentElement('afterend', div);
     }catch(_e){
       // stay silent; never break Trade Review
     }

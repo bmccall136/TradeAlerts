@@ -6584,7 +6584,7 @@ def _tr__yahoo_intraday_series(symbol, interval="5m"):
     except Exception:
         return []
         
-@app.get("/api/analytics/combo_report")
+        @app.get("/api/analytics/combo_report")
 def api_analytics_combo_report():
     import sqlite3
     from datetime import datetime, timedelta
@@ -6923,84 +6923,6 @@ def api_trade_review():
     except Exception:
         pass
     # --- /MM_TRV_META_COUNTS_ANY_JSONIFY_RETURN_V3 ---
-
-
-    # --- MM_TRV_SELL_FIFO_EXACT_V1_START ---
-    try:
-        _req_tid = (request.args.get("trade_id") or "").strip()
-        if _req_tid:
-            import sqlite3, datetime as _dt
-            _con2 = sqlite3.connect(r"C:\TradeAlerts\live.db")
-            _con2.row_factory = sqlite3.Row
-            _cur2 = _con2.cursor()
-
-            _sell = _cur2.execute(
-                "SELECT id, symbol, action, qty, price, ts_et, ts_utc FROM trades WHERE id=? AND action='SELL'",
-                (_req_tid,)
-            ).fetchone()
-
-            if _sell:
-                _sym = _sell["symbol"]
-                _sell_qty = float(_sell["qty"] or 0)
-                _sell_ts_et = _sell["ts_et"] or ""
-
-                _buys = _cur2.execute(
-                    "SELECT id, symbol, action, qty, price, ts_et, ts_utc FROM trades WHERE symbol=? AND action='BUY' AND ts_et < ? ORDER BY ts_et ASC, id ASC",
-                    (_sym, _sell_ts_et)
-                ).fetchall()
-
-                _take = []
-                _need = _sell_qty
-                for _b in _buys:
-                    _bqty = float(_b["qty"] or 0)
-                    if _bqty <= 0:
-                        continue
-                    _take.append(_b)
-                    _need -= _bqty
-                    if _need <= 1e-9:
-                        break
-
-                _sum_qty = sum(float(x["qty"] or 0) for x in _take)
-                if _take and (_sum_qty + 1e-9 >= _sell_qty):
-                    _sum_pxq = sum(float(x["price"] or 0) * float(x["qty"] or 0) for x in _take)
-                    _avg_buy = (_sum_pxq / _sum_qty) if _sum_qty > 0 else 0.0
-                    _first = _take[0]
-
-                    _epoch = None
-                    try:
-                        _epoch = int(_dt.datetime.fromisoformat(str(_first["ts_utc"])).timestamp())
-                    except Exception:
-                        _epoch = None
-
-                    if not isinstance(out.get("meta"), dict):
-                        out["meta"] = {}
-
-                    out["meta"]["symbol"] = _sym
-                    out["meta"]["anchor_trade_id"] = int(_first["id"])
-                    out["meta"]["anchor_buy_price"] = round(_avg_buy, 4)
-                    out["meta"]["anchor_buy_time_et"] = _first["ts_et"]
-                    if _epoch is not None:
-                        out["meta"]["anchor_buy_ts_utc_epoch"] = _epoch
-                    out["meta"]["anchor_qty"] = float(_sell_qty)
-                    out["meta"]["buy_ct"] = len(_take)
-                    out["meta"]["sell_ct"] = 1
-
-                    out["sells"] = [{
-                        "trade_id": int(_sell["id"]),
-                        "symbol": _sell["symbol"],
-                        "side": "SELL",
-                        "qty": float(_sell["qty"] or 0),
-                        "price": float(_sell["price"] or 0),
-                        "time_et": _sell["ts_et"],
-                        "ts_utc": _sell["ts_utc"],
-                    }]
-            try:
-                _con2.close()
-            except Exception:
-                pass
-    except Exception:
-        pass
-    # --- MM_TRV_SELL_FIFO_EXACT_V1_END ---
 
     # --- MM_TRV_FORCE_EMPTY_SELLS_WHEN_SELL_CT_ZERO_V1_START ---
     try:
