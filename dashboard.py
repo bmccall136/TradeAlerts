@@ -6600,7 +6600,7 @@ def api_analytics_combo_report():
             return None
         try:
             return datetime.fromisoformat(str(s).replace(" ", "T"))
-        except:
+        except Exception:
             return None
 
     conn = sqlite3.connect(DB)
@@ -6631,19 +6631,25 @@ def api_analytics_combo_report():
     conn.close()
 
     trig_by_sym = defaultdict(list)
-    for t in triggers:
-        trig_by_sym[t[1]].append(t)
+    for tr in triggers:
+        try:
+            trig_by_sym[tr[1]].append(tr)
+        except Exception:
+            pass
 
     rz_by_sym = defaultdict(list)
-    for r in realized:
-        rz_by_sym[r[0]].append(r)
+    for rz in realized:
+        try:
+            rz_by_sym[rz[0]].append(rz)
+        except Exception:
+            pass
 
-    combo_stats = defaultdict(lambda: {"trades":0,"wins":0,"loss":0,"net":0})
+    combo_stats = defaultdict(lambda: {"trades": 0, "wins": 0, "losses": 0, "net_gain": 0.0})
+    indicator_stats = defaultdict(lambda: {"trades": 0, "wins": 0, "losses": 0, "net_gain": 0.0})
 
     matched = 0
 
     for b in buys:
-
         buy_dt = parse_dt(b[1])
         if not buy_dt:
             continue
@@ -6652,9 +6658,11 @@ def api_analytics_combo_report():
         buy_epoch = int(buy_dt.timestamp())
 
         best_tr = None
-
-        for tr in trig_by_sym.get(sym,[]):
-            delta = buy_epoch - int(tr[0])
+        for tr in trig_by_sym.get(sym, []):
+            try:
+                delta = buy_epoch - int(tr[0])
+            except Exception:
+                continue
             if 0 <= delta <= TRIGGER_LOOKBACK_SEC:
                 best_tr = tr
                 break
@@ -6663,8 +6671,7 @@ def api_analytics_combo_report():
             continue
 
         best_rz = None
-
-        for rz in rz_by_sym.get(sym,[]):
+        for rz in rz_by_sym.get(sym, []):
             od = parse_dt(rz[1])
             if not od:
                 continue
@@ -6678,40 +6685,77 @@ def api_analytics_combo_report():
 
         matched += 1
 
-        combo = best_tr[2] or "<none>"
-        gain = float(best_rz[2] or 0)
+        combo = (best_tr[2] or "<none>").strip()
+        try:
+            gain = float(best_rz[2] or 0.0)
+        except Exception:
+            gain = 0.0
 
-        s = combo_stats[combo]
-        s["trades"] += 1
-        s["net"] += gain
-
+        cs = combo_stats[combo]
+        cs["trades"] += 1
+        cs["net_gain"] += gain
         if gain > 0:
-            s["wins"] += 1
+            cs["wins"] += 1
         elif gain < 0:
-            s["loss"] += 1
+            cs["losses"] += 1
 
-    rows = []
+        parts = [p.strip() for p in combo.split(",") if p and p.strip()]
+        for ind in parts:
+            ist = indicator_stats[ind]
+            ist["trades"] += 1
+            ist["net_gain"] += gain
+            if gain > 0:
+                ist["wins"] += 1
+            elif gain < 0:
+                ist["losses"] += 1
 
+    combos = []
     for combo, s in combo_stats.items():
+        trades = int(s["trades"])
+        wins = int(s["wins"])
+        losses = int(s["losses"])
+        net_gain = float(s["net_gain"])
+        winrate = round((wins / trades * 100.0), 1) if trades else 0.0
+        avg_gain = round((net_gain / trades), 2) if trades else 0.0
 
-        wr = (s["wins"]/s["trades"]*100) if s["trades"] else 0
-
-        rows.append({
+        combos.append({
             "combo": combo,
-            "trades": s["trades"],
-            "wins": s["wins"],
-            "loss": s["loss"],
-            "winrate": round(wr,1),
-            "net": round(s["net"],2)
+            "trades": trades,
+            "wins": wins,
+            "losses": losses,
+            "winrate": winrate,
+            "avg_gain": avg_gain,
+            "net_gain": round(net_gain, 2),
         })
 
-    rows.sort(key=lambda x: x["net"], reverse=True)
+    indicators = []
+    for ind, s in indicator_stats.items():
+        trades = int(s["trades"])
+        wins = int(s["wins"])
+        losses = int(s["losses"])
+        net_gain = float(s["net_gain"])
+        winrate = round((wins / trades * 100.0), 1) if trades else 0.0
+        avg_gain = round((net_gain / trades), 2) if trades else 0.0
+
+        indicators.append({
+            "indicator": ind,
+            "trades": trades,
+            "wins": wins,
+            "losses": losses,
+            "winrate": winrate,
+            "avg_gain": avg_gain,
+            "net_gain": round(net_gain, 2),
+        })
+
+    combos.sort(key=lambda x: (x["net_gain"], x["winrate"], x["trades"]), reverse=True)
+    indicators.sort(key=lambda x: (x["net_gain"], x["winrate"], x["trades"]), reverse=True)
 
     return {
         "matched": matched,
-        "rows": rows[:25]
+        "lookback_days": LOOKBACK_DAYS,
+        "combos": combos[:25],
+        "indicators": indicators[:25],
     }
-    
 @app.route('/api/trade_review')
 def api_trade_review():
     # --- MM_TRADE_REVIEW_ANCHOR_FROM_DB_V1D ---

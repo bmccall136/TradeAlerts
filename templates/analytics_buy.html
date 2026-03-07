@@ -268,7 +268,7 @@
             <th style="min-width:90px;">Wins</th>
             <th style="min-width:90px;">Loss</th>
             <th style="min-width:100px;">WinRate</th>
-            <th style="min-width:100px;">AvgPct</th>
+            <th style="min-width:100px;">AvgGain</th>
             <th style="min-width:100px;">NetGain</th>
           </tr>
         </thead>
@@ -289,7 +289,7 @@
             <th style="min-width:90px;">Wins</th>
             <th style="min-width:90px;">Loss</th>
             <th style="min-width:100px;">WinRate</th>
-            <th style="min-width:100px;">AvgPct</th>
+            <th style="min-width:100px;"AvgGain</th>
             <th style="min-width:100px;">NetGain</th>
           </tr>
         </thead>
@@ -403,7 +403,7 @@ function mmNormBucket(b) {
               <td>${Number(r.wins || 0).toLocaleString()}</td>
               <td>${Number(r.losses || 0).toLocaleString()}</td>
               <td>${fmtNum(r.winrate,1)}%</td>
-              <td>${fmtNum(r.avg_pct,2)}</td>
+              <td>${fmtNum(r.avg_gain,2)}</td>
               <td>${fmtNum(r.net_gain,2)}</td>
             </tr>
           `).join("");
@@ -421,7 +421,7 @@ function mmNormBucket(b) {
               <td>${Number(r.wins || 0).toLocaleString()}</td>
               <td>${Number(r.losses || 0).toLocaleString()}</td>
               <td>${fmtNum(r.winrate,1)}%</td>
-              <td>${fmtNum(r.avg_pct,2)}</td>
+             <td>${fmtNum(r.avg_gain,2)}</td>>
               <td>${fmtNum(r.net_gain,2)}</td>
             </tr>
           `).join("");
