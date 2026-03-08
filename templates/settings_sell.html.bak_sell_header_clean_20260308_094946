@@ -192,7 +192,10 @@
 
 <div id="settings-page" class="container-fluid">
 <div style="margin:18px 0 10px 0;">
-  <div style="font-size:22px;font-weight:800;">Settings</div>
+  <h2>$$Machine — SELL Settings</h2>
+  <div class="mm-muted" style="font-size:.95rem;">
+    Edits <code>sell_guard_settings_{day|swing}.json</code> (plus Regime Exit Overlay persisted in <code>live_settings_{day|swing}.json</code>).
+  </div>
 </div>
 
 <div class="mm-stickybar mb-3">
@@ -206,10 +209,12 @@
         <a class="btn btn-sm btn-dark" href="/settings/buy">BUY</a>
         <a class="btn btn-sm btn-warning" href="/settings/sell">SELL</a>
       </div>
+
       <select id="mm-profile" class="form-select form-select-sm" style="width:130px;">
         <option value="day">DAY</option>
         <option value="swing">SWING</option>
       </select>
+
       <button class="btn btn-sm btn-outline-light" id="mm-reload"><i class="bi bi-arrow-clockwise"></i> Reload</button>
       <button class="btn btn-sm btn-primary" id="mm-save"><i class="bi bi-save2"></i> Save</button>
     </div>
@@ -248,14 +253,6 @@
           <label class="form-label">Sell window end (ET)</label>
           <input class="form-control" data-path="sell_guard.sell_window_end_et" placeholder="15:58">
         </div>
-
-        <!-- MM_HOUR_BLOCK_SELL_FIELD_V1_START -->
-        <div class="col-md-4">
-          <label class="form-label">Avoid sell hours (ET)</label>
-          <input class="form-control" id="avoidSellHours" placeholder="12,13">
-          <div class="form-text">Comma-separated hours like 12,13 for 12:00–1:59 PM ET.</div>
-        </div>
-        <!-- MM_HOUR_BLOCK_SELL_FIELD_V1_END -->
 
         <div class="col-md-4">
           <label class="form-label">Max place attempts</label>
@@ -520,6 +517,7 @@
     </div>
     <div class="card-body">
       <div class="text-muted small mb-2">These multiply Sell Guard behavior by market regime.</div>
+      <div id="mm-reo-status" class="small mb-2" style="color:#f5d400;"></div>
       <div class="table-responsive">
         <table class="table table-sm table-dark align-middle">
           <thead>
@@ -546,40 +544,6 @@
     </div>
   </div>
 
-
-  <!-- MM_TRADE_OUTCOME_CARD_V1_START -->
-  <div class="card mb-4" id="mm-trade-outcome-card">
-    <div class="card-header d-flex align-items-center justify-content-between">
-      <div class="fw-semibold"><i class="bi bi-bar-chart-steps"></i> Trade Outcome Overlay</div>
-      <span class="badge bg-secondary">Recent exits</span>
-    </div>
-    <div class="card-body">
-      <div class="small text-muted mb-2">
-        Recent closed exits with best-available exit-rule context from the DB.
-      </div>
-      <div id="mm-too-note" class="small mb-2" style="color:#f5d400;"></div>
-      <div class="table-responsive">
-        <table class="table table-sm table-dark align-middle mb-0">
-          <thead>
-            <tr>
-              <th style="width:170px;">Time (ET)</th>
-              <th style="width:90px;">Symbol</th>
-              <th style="width:130px;">Exit rule</th>
-              <th style="width:90px;">Regime</th>
-              <th style="width:90px;">Mode</th>
-              <th style="width:90px;">P/L %</th>
-              <th>Event</th>
-            </tr>
-          </thead>
-          <tbody id="mm-too-body">
-            <tr><td colspan="7" class="text-muted">Loading…</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-  <!-- MM_TRADE_OUTCOME_CARD_V1_END -->
-
 </div>
 
 <script>
@@ -595,71 +559,6 @@
   function setStatus(msg){
     qs("mm-status").textContent = msg || "";
   }
-
-
-  // MM_TRADE_OUTCOME_JS_V1
-  function mmEsc(s){
-    return String(s == null ? "" : s)
-      .replace(/&/g,"&amp;")
-      .replace(/</g,"&lt;")
-      .replace(/>/g,"&gt;")
-      .replace(/"/g,"&quot;")
-      .replace(/'/g,"&#39;");
-  }
-
-  function mmTooClass(reason){
-    const r = String(reason||"").toLowerCase();
-    if(r.includes("target")) return "style=\"color:#52d273;font-weight:700;\"";
-    if(r.includes("trail")) return "style=\"color:#6cb8ff;font-weight:700;\"";
-    if(r.includes("stop")) return "style=\"color:#ff7a7a;font-weight:700;\"";
-    if(r.includes("timeout")) return "style=\"color:#ffbe5c;font-weight:700;\"";
-    if(r.includes("stale")) return "style=\"color:#d78cff;font-weight:700;\"";
-    if(r.includes("protect")) return "style=\"color:#7ce2d1;font-weight:700;\"";
-    if(r.includes("ai")) return "style=\"color:#73d5ff;font-weight:700;\"";
-    return "";
-  }
-
-  async function fetchTradeOutcomes(){
-    const body = qs("mm-too-body");
-    const note = qs("mm-too-note");
-    if(!body) return;
-    body.innerHTML = '<tr><td colspan="7" class="text-muted">Loading…</td></tr>';
-    if(note) note.textContent = "";
-    try{
-      const res = await fetch(`/api/settings/trade_outcomes?limit=20&v=${Date.now()}`, {cache:"no-store"});
-      const txt = await res.text();
-      let j = null;
-      try{ j = JSON.parse(txt); } catch(e){ j = null; }
-      if(!res.ok || !j || !j.ok){
-        throw new Error((j && j.error) ? j.error : (`HTTP ${res.status}`));
-      }
-      const rows = Array.isArray(j.rows) ? j.rows : [];
-      if(note){
-        note.textContent = rows.length
-          ? 'Color key: target green, trailing blue, stop red, timeout orange, stale purple, protect teal, AI cyan.'
-          : 'No recent closed exits found.';
-      }
-      if(!rows.length){
-        body.innerHTML = '<tr><td colspan="7" class="text-muted">No recent closed exits found.</td></tr>';
-        return;
-      }
-      body.innerHTML = rows.map(r => `
-        <tr>
-          <td>${mmEsc(r.time_et || "")}</td>
-          <td><strong>${mmEsc(r.symbol || "")}</strong></td>
-          <td ${mmTooClass(r.exit_reason)}>${mmEsc(r.exit_reason || "")}</td>
-          <td>${mmEsc(r.regime || "")}</td>
-          <td>${mmEsc(r.mode || "")}</td>
-          <td>${mmEsc(r.pnl_pct || "")}</td>
-          <td>${mmEsc(r.event || "")}</td>
-        </tr>
-      `).join("");
-    }catch(err){
-      if(note) note.textContent = "Trade outcomes unavailable.";
-      body.innerHTML = `<tr><td colspan="7" class="text-danger">${mmEsc(err.message || String(err))}</td></tr>`;
-    }
-  }
-
 
   function getPath(obj, path){
     if(!obj) return undefined;
@@ -685,27 +584,45 @@
     }
   }
 
-
-  // MM_HOUR_BLOCK_SELL_JS_V1
-  function mmHoursToCsv(arr){
-    if (!Array.isArray(arr)) return "";
-    return arr
-      .map(v => Number(v))
-      .filter(v => Number.isFinite(v) && v >= 0 && v <= 23)
-      .join(",");
-  }
-
-  function mmCsvToHours(s){
-    return String(s || "")
-      .split(",")
-      .map(x => x.trim())
-      .filter(Boolean)
-      .map(x => Number(x))
-      .filter(v => Number.isFinite(v) && v >= 0 && v <= 23);
-  }
-
   function profile(){
     return (qs("mm-profile").value || "day").toLowerCase();
+  }
+
+
+  // MM_REO_STATUS_HELPER_V1
+  function mmUpdateReoStatus(){
+    try{
+      const host = document.getElementById("mm-reo-status");
+      if(!host) return;
+
+      const keys = ["TREND","CHOP","DEAD","UNKNOWN"];
+      let overlay = null;
+
+      if (window.__MM_DATA__ && window.__MM_DATA__.regime_exit_overlay) {
+        overlay = window.__MM_DATA__.regime_exit_overlay;
+      }
+
+      if(!overlay || typeof overlay !== "object"){
+        host.textContent = "Regime overlay status: not loaded.";
+        return;
+      }
+
+      let neutral = true;
+      for (const r of keys){
+        const row = overlay[r] || {};
+        const stop = Number(row.stop_mult ?? 1);
+        const target = Number(row.target_mult ?? 1);
+        const time = Number(row.time_mult ?? 1);
+        if (stop !== 1 || target !== 1 || time !== 1){
+          neutral = false;
+          break;
+        }
+      }
+
+      host.textContent = neutral
+        ? "Regime overlay status: neutral / no-op (all multipliers are 1.00)."
+        : "Regime overlay status: configured (at least one multiplier differs from 1.00).";
+    }catch(e){}
   }
 
   async function apiLoad(){
@@ -727,7 +644,8 @@
     if(!j.ok) throw new Error(j.error || "Load failed");
     window.__MM_DATA__ = j.data || {};
     hydrateForm();
-    setStatus(`Editing: SELL / ${j.profile.toUpperCase()}`);
+    mmUpdateReoStatus();
+    setStatus(`Loaded: ${j.path} (${j.profile.toUpperCase()})`);
   }
 
   function parseInputValue(el){
@@ -759,11 +677,6 @@
         el.value = (v === undefined || v === null) ? "" : v;
       }
     });
-
-    try {
-      const el = document.getElementById("avoidSellHours");
-      if (el) el.value = mmHoursToCsv(getPath(data, "sell_guard.avoid_sell_hours") || []);
-    } catch(e) {}
   }
 
   function collectForm(){
@@ -775,12 +688,6 @@
       const v = parseInputValue(el);
       setPath(data, path, v);
     });
-
-    try {
-      const el = document.getElementById("avoidSellHours");
-      if (el) setPath(data, "sell_guard.avoid_sell_hours", mmCsvToHours(el.value));
-    } catch(e) {}
-
     return data;
   }
 
@@ -801,7 +708,7 @@
     let j = null;
     try{ j = JSON.parse(bodyText); } catch(e){ j = {ok:false, error:"Non-JSON save response"}; }
     if(!j.ok) throw new Error(j.error || "Save failed");
-    setStatus(`Editing: SELL / ${profile().toUpperCase()}`);
+    setStatus(`Saved: ${j.path} (${profile().toUpperCase()})`);
     // reload so persisted overlay comes back in
     await apiLoad();
   }
@@ -811,7 +718,6 @@
 
   document.addEventListener("DOMContentLoaded", ()=>{
     apiLoad().catch(err=>{ showError(err.message||String(err)); setStatus(""); });
-    try{ fetchTradeOutcomes(); }catch(e){}
   });
 })();
 </script>

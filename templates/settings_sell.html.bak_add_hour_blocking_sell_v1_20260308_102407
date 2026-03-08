@@ -249,14 +249,6 @@
           <input class="form-control" data-path="sell_guard.sell_window_end_et" placeholder="15:58">
         </div>
 
-        <!-- MM_HOUR_BLOCK_SELL_FIELD_V1_START -->
-        <div class="col-md-4">
-          <label class="form-label">Avoid sell hours (ET)</label>
-          <input class="form-control" id="avoidSellHours" placeholder="12,13">
-          <div class="form-text">Comma-separated hours like 12,13 for 12:00–1:59 PM ET.</div>
-        </div>
-        <!-- MM_HOUR_BLOCK_SELL_FIELD_V1_END -->
-
         <div class="col-md-4">
           <label class="form-label">Max place attempts</label>
           <input type="number" step="1" class="form-control" data-path="sell_guard.max_place_attempts">
@@ -685,25 +677,6 @@
     }
   }
 
-
-  // MM_HOUR_BLOCK_SELL_JS_V1
-  function mmHoursToCsv(arr){
-    if (!Array.isArray(arr)) return "";
-    return arr
-      .map(v => Number(v))
-      .filter(v => Number.isFinite(v) && v >= 0 && v <= 23)
-      .join(",");
-  }
-
-  function mmCsvToHours(s){
-    return String(s || "")
-      .split(",")
-      .map(x => x.trim())
-      .filter(Boolean)
-      .map(x => Number(x))
-      .filter(v => Number.isFinite(v) && v >= 0 && v <= 23);
-  }
-
   function profile(){
     return (qs("mm-profile").value || "day").toLowerCase();
   }
@@ -759,11 +732,6 @@
         el.value = (v === undefined || v === null) ? "" : v;
       }
     });
-
-    try {
-      const el = document.getElementById("avoidSellHours");
-      if (el) el.value = mmHoursToCsv(getPath(data, "sell_guard.avoid_sell_hours") || []);
-    } catch(e) {}
   }
 
   function collectForm(){
@@ -775,12 +743,6 @@
       const v = parseInputValue(el);
       setPath(data, path, v);
     });
-
-    try {
-      const el = document.getElementById("avoidSellHours");
-      if (el) setPath(data, "sell_guard.avoid_sell_hours", mmCsvToHours(el.value));
-    } catch(e) {}
-
     return data;
   }
 

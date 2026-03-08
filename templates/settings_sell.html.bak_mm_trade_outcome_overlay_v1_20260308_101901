@@ -249,14 +249,6 @@
           <input class="form-control" data-path="sell_guard.sell_window_end_et" placeholder="15:58">
         </div>
 
-        <!-- MM_HOUR_BLOCK_SELL_FIELD_V1_START -->
-        <div class="col-md-4">
-          <label class="form-label">Avoid sell hours (ET)</label>
-          <input class="form-control" id="avoidSellHours" placeholder="12,13">
-          <div class="form-text">Comma-separated hours like 12,13 for 12:00–1:59 PM ET.</div>
-        </div>
-        <!-- MM_HOUR_BLOCK_SELL_FIELD_V1_END -->
-
         <div class="col-md-4">
           <label class="form-label">Max place attempts</label>
           <input type="number" step="1" class="form-control" data-path="sell_guard.max_place_attempts">
@@ -546,40 +538,6 @@
     </div>
   </div>
 
-
-  <!-- MM_TRADE_OUTCOME_CARD_V1_START -->
-  <div class="card mb-4" id="mm-trade-outcome-card">
-    <div class="card-header d-flex align-items-center justify-content-between">
-      <div class="fw-semibold"><i class="bi bi-bar-chart-steps"></i> Trade Outcome Overlay</div>
-      <span class="badge bg-secondary">Recent exits</span>
-    </div>
-    <div class="card-body">
-      <div class="small text-muted mb-2">
-        Recent closed exits with best-available exit-rule context from the DB.
-      </div>
-      <div id="mm-too-note" class="small mb-2" style="color:#f5d400;"></div>
-      <div class="table-responsive">
-        <table class="table table-sm table-dark align-middle mb-0">
-          <thead>
-            <tr>
-              <th style="width:170px;">Time (ET)</th>
-              <th style="width:90px;">Symbol</th>
-              <th style="width:130px;">Exit rule</th>
-              <th style="width:90px;">Regime</th>
-              <th style="width:90px;">Mode</th>
-              <th style="width:90px;">P/L %</th>
-              <th>Event</th>
-            </tr>
-          </thead>
-          <tbody id="mm-too-body">
-            <tr><td colspan="7" class="text-muted">Loading…</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-  <!-- MM_TRADE_OUTCOME_CARD_V1_END -->
-
 </div>
 
 <script>
@@ -595,71 +553,6 @@
   function setStatus(msg){
     qs("mm-status").textContent = msg || "";
   }
-
-
-  // MM_TRADE_OUTCOME_JS_V1
-  function mmEsc(s){
-    return String(s == null ? "" : s)
-      .replace(/&/g,"&amp;")
-      .replace(/</g,"&lt;")
-      .replace(/>/g,"&gt;")
-      .replace(/"/g,"&quot;")
-      .replace(/'/g,"&#39;");
-  }
-
-  function mmTooClass(reason){
-    const r = String(reason||"").toLowerCase();
-    if(r.includes("target")) return "style=\"color:#52d273;font-weight:700;\"";
-    if(r.includes("trail")) return "style=\"color:#6cb8ff;font-weight:700;\"";
-    if(r.includes("stop")) return "style=\"color:#ff7a7a;font-weight:700;\"";
-    if(r.includes("timeout")) return "style=\"color:#ffbe5c;font-weight:700;\"";
-    if(r.includes("stale")) return "style=\"color:#d78cff;font-weight:700;\"";
-    if(r.includes("protect")) return "style=\"color:#7ce2d1;font-weight:700;\"";
-    if(r.includes("ai")) return "style=\"color:#73d5ff;font-weight:700;\"";
-    return "";
-  }
-
-  async function fetchTradeOutcomes(){
-    const body = qs("mm-too-body");
-    const note = qs("mm-too-note");
-    if(!body) return;
-    body.innerHTML = '<tr><td colspan="7" class="text-muted">Loading…</td></tr>';
-    if(note) note.textContent = "";
-    try{
-      const res = await fetch(`/api/settings/trade_outcomes?limit=20&v=${Date.now()}`, {cache:"no-store"});
-      const txt = await res.text();
-      let j = null;
-      try{ j = JSON.parse(txt); } catch(e){ j = null; }
-      if(!res.ok || !j || !j.ok){
-        throw new Error((j && j.error) ? j.error : (`HTTP ${res.status}`));
-      }
-      const rows = Array.isArray(j.rows) ? j.rows : [];
-      if(note){
-        note.textContent = rows.length
-          ? 'Color key: target green, trailing blue, stop red, timeout orange, stale purple, protect teal, AI cyan.'
-          : 'No recent closed exits found.';
-      }
-      if(!rows.length){
-        body.innerHTML = '<tr><td colspan="7" class="text-muted">No recent closed exits found.</td></tr>';
-        return;
-      }
-      body.innerHTML = rows.map(r => `
-        <tr>
-          <td>${mmEsc(r.time_et || "")}</td>
-          <td><strong>${mmEsc(r.symbol || "")}</strong></td>
-          <td ${mmTooClass(r.exit_reason)}>${mmEsc(r.exit_reason || "")}</td>
-          <td>${mmEsc(r.regime || "")}</td>
-          <td>${mmEsc(r.mode || "")}</td>
-          <td>${mmEsc(r.pnl_pct || "")}</td>
-          <td>${mmEsc(r.event || "")}</td>
-        </tr>
-      `).join("");
-    }catch(err){
-      if(note) note.textContent = "Trade outcomes unavailable.";
-      body.innerHTML = `<tr><td colspan="7" class="text-danger">${mmEsc(err.message || String(err))}</td></tr>`;
-    }
-  }
-
 
   function getPath(obj, path){
     if(!obj) return undefined;
@@ -683,25 +576,6 @@
         cur = cur[p];
       }
     }
-  }
-
-
-  // MM_HOUR_BLOCK_SELL_JS_V1
-  function mmHoursToCsv(arr){
-    if (!Array.isArray(arr)) return "";
-    return arr
-      .map(v => Number(v))
-      .filter(v => Number.isFinite(v) && v >= 0 && v <= 23)
-      .join(",");
-  }
-
-  function mmCsvToHours(s){
-    return String(s || "")
-      .split(",")
-      .map(x => x.trim())
-      .filter(Boolean)
-      .map(x => Number(x))
-      .filter(v => Number.isFinite(v) && v >= 0 && v <= 23);
   }
 
   function profile(){
@@ -759,11 +633,6 @@
         el.value = (v === undefined || v === null) ? "" : v;
       }
     });
-
-    try {
-      const el = document.getElementById("avoidSellHours");
-      if (el) el.value = mmHoursToCsv(getPath(data, "sell_guard.avoid_sell_hours") || []);
-    } catch(e) {}
   }
 
   function collectForm(){
@@ -775,12 +644,6 @@
       const v = parseInputValue(el);
       setPath(data, path, v);
     });
-
-    try {
-      const el = document.getElementById("avoidSellHours");
-      if (el) setPath(data, "sell_guard.avoid_sell_hours", mmCsvToHours(el.value));
-    } catch(e) {}
-
     return data;
   }
 
@@ -811,7 +674,6 @@
 
   document.addEventListener("DOMContentLoaded", ()=>{
     apiLoad().catch(err=>{ showError(err.message||String(err)); setStatus(""); });
-    try{ fetchTradeOutcomes(); }catch(e){}
   });
 })();
 </script>

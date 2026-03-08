@@ -73,6 +73,7 @@
   "rsi_oversold": 30,
   "rsi_slope_on": true,
   "scan_sleep_secs": 20,
+  "avoid_buy_hours": [],
   "single_entry_only": true,
   "sma20_on": true,
   "sma_len": 50,

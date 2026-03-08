@@ -289,20 +289,6 @@
   </div>
 
 
-  <!-- MM_HOUR_BLOCK_CARD_V1_START -->
-  <div class="card mm-card mb-3" id="hourBlockCard" style="display:block; max-width:1100px; margin-left:auto; margin-right:auto;">
-    <div class="card-body">
-      <div class="mm-section-title">Hour Blocking</div>
-      <div class="mm-muted mm-subtitle">Hours are ET. New BUY entries will be skipped during these hours.</div>
-      <div class="mm-grid">
-        <label for="avoidBuyHours">Avoid Buy Hours (comma-separated)</label>
-        <input id="avoidBuyHours" type="text" placeholder="10,14">
-      </div>
-    </div>
-  </div>
-  <!-- MM_HOUR_BLOCK_CARD_V1_END -->
-
-
   <!-- MM_REGIME_EXIT_OVERLAY_UI_V5_START -->
 <style>
   /* MM_REO_DARKSTYLE_V1 */
@@ -753,25 +739,6 @@ function MM_REO_MERGE_SETTINGS_OBJ(obj){
     }
   }
 
-
-  // MM_HOUR_BLOCK_BUY_JS_V1
-  function mmHoursToCsv(arr){
-    if (!Array.isArray(arr)) return "";
-    return arr
-      .map(v => Number(v))
-      .filter(v => Number.isFinite(v) && v >= 0 && v <= 23)
-      .join(",");
-  }
-
-  function mmCsvToHours(s){
-    return String(s || "")
-      .split(",")
-      .map(x => x.trim())
-      .filter(Boolean)
-      .map(x => Number(x))
-      .filter(v => Number.isFinite(v) && v >= 0 && v <= 23);
-  }
-
   function renderOther(){
     const host = byId("otherFields");
     if (!host) return;
@@ -849,12 +816,6 @@ function MM_REO_MERGE_SETTINGS_OBJ(obj){
     renderGate();
     renderCards();
     renderOther();
-
-    try {
-      const hb = byId("avoidBuyHours");
-      if (hb) hb.value = mmHoursToCsv(SETTINGS.avoid_buy_hours || []);
-    } catch(e) {}
-
     try { if (window.MM_REO && window.MM_REO.pullFromSettings) window.MM_REO.pullFromSettings(SETTINGS); } catch(e) {}
     mmUpdateReoStatus();
   }
@@ -865,12 +826,6 @@ function MM_REO_MERGE_SETTINGS_OBJ(obj){
     if (msg2) msg2.textContent = "Saving...";
     try {
       cleanRequiredFilters();
-
-      try {
-        const hb = byId("avoidBuyHours");
-        if (hb) SETTINGS.avoid_buy_hours = mmCsvToHours(hb.value);
-      } catch(e) {}
-
       await apiSave(prof, SETTINGS);
       if (msg2) msg2.textContent = "Saved.";
       setTimeout(() => { if (msg2) msg2.textContent = ""; }, 1500);
