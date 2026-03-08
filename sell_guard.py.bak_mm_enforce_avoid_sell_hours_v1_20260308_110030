@@ -1615,41 +1615,6 @@ def parse_positions(rows) -> List[PositionRow]:
     return holdings
 
 
-
-# --- MM_AVOID_SELL_HOURS_HELPER_V1_START ---
-def _mm_blocked_sell_hour(loop_start, sg: dict, symbol: str = "", reason: str = "") -> tuple[bool, int | None]:
-    """
-    Cautious SELL hour suppression:
-    - reads sell_guard.avoid_sell_hours
-    - returns (blocked, current_et_hour)
-    - intended ONLY for soft exits (target/timeout/stale relief)
-    """
-    try:
-        blocked_hours = (sg or {}).get("avoid_sell_hours", []) or []
-        if isinstance(blocked_hours, str):
-            blocked_hours = [int(x.strip()) for x in str(blocked_hours).split(",") if str(x).strip().isdigit()]
-        elif isinstance(blocked_hours, (tuple, set)):
-            blocked_hours = [int(x) for x in blocked_hours]
-        elif not isinstance(blocked_hours, list):
-            blocked_hours = []
-
-        now_et_hour = int(loop_start.astimezone(ET).hour)
-        blocked_norm = [int(x) for x in blocked_hours if str(x).strip() != ""]
-        if now_et_hour in blocked_norm:
-            try:
-                LOG.info("[AVOID_SELL_HOURS] %s BLOCK %s hour=%s blocked=%s", symbol, reason, now_et_hour, blocked_norm)
-            except Exception:
-                pass
-            return True, now_et_hour
-        return False, now_et_hour
-    except Exception as e:
-        try:
-            LOG.warning("[AVOID_SELL_HOURS] check failed for %s: %s", symbol, e)
-        except Exception:
-            pass
-        return False, None
-# --- MM_AVOID_SELL_HOURS_HELPER_V1_END ---
-
 def within_session(now: datetime, cfg: SellGuardConfig) -> bool:
     """
     Return True if now is within the configured market session.
@@ -2184,22 +2149,6 @@ def main() -> None:
                     _do, _why = _should_stale_relief_exit(_holding, _now_ts, sg, regime=None)
 
                     if _do:
-                        _blk, _blk_hour = _mm_blocked_sell_hour(loop_start, sg, s, "STALE_RELIEF_EXIT")
-                        if _blk:
-                            try:
-                                emit_sell_event(
-                                    event="AVOID_SELL_HOURS_SKIP",
-                                    symbol=s,
-                                    qty=qty,
-                                    pl_pct=pl_pct,
-                                    hold_min=hold_min,
-                                    reason=f"BLOCK avoid_sell_hours hour={_blk_hour} stale_relief",
-                                    details={"mode": cfg.mode, "exit_type": "stale_relief_exit", "blocked_hour": _blk_hour},
-                                )
-                            except Exception:
-                                pass
-                            continue
-
                         LOG.info("[STALE_RELIEF_EXIT] %s -> %s", s, _why)
                         try:
                             emit_sell_event(
@@ -2444,23 +2393,6 @@ def main() -> None:
                             cfg.max_hold_minutes,
                             pl_pct,
                         )
-                        _blk, _blk_hour = _mm_blocked_sell_hour(loop_start, sg, s, "TIMEOUT")
-                        if _blk:
-                            try:
-                                emit_sell_event(
-                                    event="AVOID_SELL_HOURS_SKIP",
-                                    action="SELL",
-                                    symbol=s,
-                                    qty=qty,
-                                    pl_pct=pl_pct,
-                                    hold_min=hold_min,
-                                    reason=f"BLOCK avoid_sell_hours hour={_blk_hour} timeout",
-                                    details={"mode": cfg.mode, "exit_type": "timeout", "blocked_hour": _blk_hour},
-                                )
-                            except Exception:
-                                pass
-                            continue
-
                         try:
                             emit_sell_event(event="TIMEOUT_DECISION", action="SELL", symbol=s, qty=qty, pl_pct=pl_pct, hold_min=hold_min, reason="TIMEOUT")
                         except Exception:
@@ -2642,22 +2574,6 @@ def main() -> None:
                         except Exception:
                             pass
                     else:
-                        _blk, _blk_hour = _mm_blocked_sell_hour(loop_start, sg, s, "TARGET_EXIT")
-                        if _blk:
-                            try:
-                                emit_sell_event(
-                                    event="AVOID_SELL_HOURS_SKIP",
-                                    symbol=s,
-                                    qty=qty,
-                                    pl_pct=pl_pct,
-                                    hold_min=hold_min,
-                                    reason=f"BLOCK avoid_sell_hours hour={_blk_hour} target_exit",
-                                    details={"mode": cfg.mode, "exit_type": "target_exit", "blocked_hour": _blk_hour},
-                                )
-                            except Exception:
-                                pass
-                            continue
-
                         LOG.info(
                             "[TARGET_EXIT] %s pl=%.2f%% >= target_gain_pct=%.2f%% ? exit",
                             s,
