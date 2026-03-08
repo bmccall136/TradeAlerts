@@ -1224,23 +1224,6 @@ def run_live_loop(settings, symbols, broker_mode=None):
 
         purchased = False
         for sym, price, triggered in ranked:
-            # --- MM_AVOID_BUY_HOURS_ENFORCE_V2_START ---
-            try:
-                blocked_hours = getattr(settings, "avoid_buy_hours", []) or []
-                if isinstance(blocked_hours, str):
-                    blocked_hours = [int(x.strip()) for x in str(blocked_hours).split(",") if str(x).strip().isdigit()]
-                elif isinstance(blocked_hours, (tuple, set)):
-                    blocked_hours = [int(x) for x in blocked_hours]
-                elif not isinstance(blocked_hours, list):
-                    blocked_hours = []
-
-                now_et_hour = datetime.now(_ET).hour
-                if int(now_et_hour) in [int(x) for x in blocked_hours if str(x).strip() != ""]:
-                    _dbg_gate(sym, f"BLOCK avoid_buy_hours hour={now_et_hour}", force=True)
-                    continue
-            except Exception as e:
-                log.warning("[LIVE] avoid_buy_hours check failed for %s: %s", sym, e)
-            # --- MM_AVOID_BUY_HOURS_ENFORCE_V2_END ---
             # --- guardrails: skip symbols with open/pending BUY orders or recent buys ---
             if sym in open_buy_syms:
                 _dbg_gate(sym, "BLOCK open/pending BUY order", force=False)
