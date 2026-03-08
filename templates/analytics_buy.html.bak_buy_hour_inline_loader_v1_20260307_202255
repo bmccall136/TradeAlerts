@@ -3,24 +3,40 @@
   {% include "_analytics_tape.html" %}
 
 
-
-
-
-
-
-
+<!-- MM_BUY_HOUR_PANEL_V1_START -->
+<div class="card" id="mm-hour-card" style="margin-top:16px;">
+  <div class="card-header">
+    <h3 style="margin:0;">Winrate by Hour</h3>
+    <div id="mm-hour-meta" style="opacity:.85; font-size:.95em; margin-top:6px;"></div>
+  </div>
+  <div class="card-body">
+    <div id="mm-hour-chart" style="width:100%; margin-bottom:14px;"></div>
+    <div style="overflow-x:auto;">
+      <table class="table" style="width:100%;">
+        <thead>
+          <tr>
+            <th>Hour</th>
+            <th>Trades</th>
+            <th>Wins</th>
+            <th>Losses</th>
+            <th>Winrate</th>
+            <th>AvgGain</th>
+            <th>NetGain</th>
+          </tr>
+        </thead>
+        <tbody id="mm-hour-tbody">
+          <tr><td colspan="7" style="opacity:.75;">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<!-- MM_BUY_HOUR_PANEL_V1_END -->
 
 
 {% endblock %}
 
-
 {% block content %}
-
-<!-- MM_FIX_BUY_HOUR_TEMPLATE_PLACEMENT_V1 -->
-
-
-
-
 
 <!-- MM_ANALYTICS_TOOLBAR_GLOBAL_V1 -->
 <div class="d-flex align-items-center justify-content-between mb-2">
@@ -267,149 +283,6 @@
           <tbody id="rows"></tbody>
         </table>
       </div>
-
-<!-- MM_FIX_BUY_HOUR_POSITION_AND_THEME_V1_START -->
-<div class="card mm-card" id="mm-hour-card" style="margin-top:14px;">
-  <div class="card-body">
-    <div class="mm-row" style="margin-bottom:10px;">
-      <div>
-        <div style="font-size:18px;font-weight:800;">Winrate by Hour</div>
-        <div class="mm-muted" id="mm-hour-meta">Loading...</div>
-      </div>
-    </div>
-
-    <div id="mm-hour-chart" style="width:100%; margin-bottom:14px;"></div>
-
-    <div style="overflow:auto;">
-      <table class="mm-table">
-        <thead>
-          <tr>
-            <th style="min-width:90px;">Hour</th>
-            <th style="min-width:90px;">Trades</th>
-            <th style="min-width:90px;">Wins</th>
-            <th style="min-width:90px;">Losses</th>
-            <th style="min-width:100px;">Winrate</th>
-            <th style="min-width:100px;">AvgGain</th>
-            <th style="min-width:100px;">NetGain</th>
-          </tr>
-        </thead>
-        <tbody id="mm-hour-tbody">
-          <tr><td colspan="7" class="mm-muted">Loading...</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-<script>
-/* MM_FIX_BUY_HOUR_POSITION_AND_THEME_V1 */
-(function(){
-  function mmEsc(s){
-    return String(s == null ? '' : s)
-      .replace(/&/g,'&amp;')
-      .replace(/</g,'&lt;')
-      .replace(/>/g,'&gt;');
-  }
-
-  function mmHourColor(w){
-    w = Number(w || 0);
-    if (w >= 60) return '#22c55e';
-    if (w >= 45) return '#eab308';
-    return '#ef4444';
-  }
-
-  function mmRenderHourTable(rows){
-    var tb = document.getElementById('mm-hour-tbody');
-    if (!tb) return;
-    if (!rows || !rows.length){
-      tb.innerHTML = '<tr><td colspan="7" class="mm-muted">No hour data.</td></tr>';
-      return;
-    }
-    tb.innerHTML = rows.map(function(r){
-      return '' +
-        '<tr>' +
-          '<td>' + mmEsc(r.label || '') + '</td>' +
-          '<td>' + Number(r.trades || 0) + '</td>' +
-          '<td>' + Number(r.wins || 0) + '</td>' +
-          '<td>' + Number(r.losses || 0) + '</td>' +
-          '<td>' + Number(r.winrate || 0).toFixed(1) + '%</td>' +
-          '<td>' + Number(r.avgGain || 0).toFixed(2) + '</td>' +
-          '<td>' + Number(r.netGain || 0).toFixed(2) + '</td>' +
-        '</tr>';
-    }).join('');
-  }
-
-  function mmRenderHourChart(rows){
-    var host = document.getElementById('mm-hour-chart');
-    if (!host) return;
-    if (!rows || !rows.length){
-      host.innerHTML = '<div class="mm-muted">No hour data.</div>';
-      return;
-    }
-
-    var maxWR = 1;
-    rows.forEach(function(r){
-      var wr = Number(r.winrate || 0);
-      if (wr > maxWR) maxWR = wr;
-    });
-
-    host.innerHTML =
-      '<div style="display:flex;align-items:flex-end;gap:12px;min-height:220px;padding:8px 4px 0 4px;overflow-x:auto;">' +
-      rows.map(function(r){
-        var wr = Number(r.winrate || 0);
-        var trades = Number(r.trades || 0);
-        var h = Math.max(8, Math.round((wr / maxWR) * 170));
-        return '' +
-          '<div style="display:flex;flex-direction:column;align-items:center;justify-content:flex-end;width:72px;">' +
-            '<div title="' + mmEsc((r.label || '') + ' | ' + wr.toFixed(1) + '% | trades=' + trades) + '"' +
-                 ' style="width:44px;height:' + h + 'px;background:' + mmHourColor(wr) + ';border-radius:8px 8px 0 0;box-shadow:0 0 0 1px rgba(255,255,255,.08) inset;"></div>' +
-            '<div style="margin-top:6px;font-size:.9em;color:#e9edf6;">' + mmEsc(String(r.label || '').replace(':00','')) + '</div>' +
-            '<div style="font-size:.82em;opacity:.85;color:#cfd6e6;">' + wr.toFixed(1) + '%</div>' +
-            '<div style="font-size:.78em;opacity:.65;color:#aab4c8;">n=' + trades + '</div>' +
-          '</div>';
-      }).join('') +
-      '</div>';
-  }
-
-  function mmLoadBuyHour(){
-    var meta = document.getElementById('mm-hour-meta');
-    var tb = document.getElementById('mm-hour-tbody');
-    var host = document.getElementById('mm-hour-chart');
-    if (!tb || !host) return;
-
-    fetch('/api/analytics/winrate_by_hour?days=30&v=' + Math.random(), {cache:'no-store'})
-      .then(function(r){ return r.json(); })
-      .then(function(j){
-        var rows = (j && j.rows) ? j.rows : [];
-        mmRenderHourChart(rows);
-        mmRenderHourTable(rows);
-        if (meta){
-          meta.textContent =
-            'Matched closed trades: ' + Number(j.matched_closed_trades || 0) +
-            ' | Unmatched buys: ' + Number(j.unmatched_buys || 0) +
-            ' | Lookback: ' + Number(j.lookback_days || 30) + 'd';
-        }
-      })
-      .catch(function(err){
-        console.error('mmLoadBuyHour failed', err);
-        if (meta) meta.textContent = 'Hour-of-day load failed';
-        tb.innerHTML = '<tr><td colspan="7" style="color:#f87171;">Load failed</td></tr>';
-        host.innerHTML = '<div style="color:#f87171;">Load failed</div>';
-      });
-  }
-
-  if (document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', mmLoadBuyHour);
-  } else {
-    mmLoadBuyHour();
-  }
-
-  window.mmLoadBuyHour = mmLoadBuyHour;
-})();
-</script>
-<!-- MM_FIX_BUY_HOUR_POSITION_AND_THEME_V1_END -->
-
-
 <div class="card mm-card" style="margin-top:14px;">
   <div class="card-body">
     <div class="mm-row" style="margin-bottom:10px;">
@@ -449,7 +322,7 @@
             <th style="min-width:90px;">Wins</th>
             <th style="min-width:90px;">Loss</th>
             <th style="min-width:100px;">WinRate</th>
-            <th style="min-width:100px;">AvgGain</th>
+            <th style="min-width:100px;"AvgGain</th>
             <th style="min-width:100px;">NetGain</th>
           </tr>
         </thead>
@@ -581,7 +454,7 @@ function mmNormBucket(b) {
               <td>${Number(r.wins || 0).toLocaleString()}</td>
               <td>${Number(r.losses || 0).toLocaleString()}</td>
               <td>${fmtNum(r.winrate,1)}%</td>
-             <td>${fmtNum(r.avg_gain,2)}</td>
+             <td>${fmtNum(r.avg_gain,2)}</td>>
               <td>${fmtNum(r.net_gain,2)}</td>
             </tr>
           `).join("");

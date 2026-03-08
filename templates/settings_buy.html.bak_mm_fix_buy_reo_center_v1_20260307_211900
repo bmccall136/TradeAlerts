@@ -287,79 +287,6 @@
       <div id="otherFields" class="mm-grid"></div>
     </div>
   </div>
-
-
-  <!-- MM_REGIME_EXIT_OVERLAY_UI_V5_START -->
-<style>
-  /* MM_REO_DARKSTYLE_V1 */
-  #mm-regime-exit-overlay-card{
-    background: rgba(255,255,255,.04);
-    border: 1px solid rgba(255,255,255,.10);
-    color: rgba(255,255,255,.92);
-  }
-  #mm-regime-exit-overlay-card .card-header{
-    background: rgba(0,0,0,.25);
-    border-bottom: 1px solid rgba(255,255,255,.10);
-    color: rgba(255,255,255,.95);
-    font-weight: 600;
-  }
-  #mm-regime-exit-overlay-card label{
-    color: rgba(255,255,255,.70);
-    font-size: 12px;
-  }
-  #mm-regime-exit-overlay-card .form-control,
-  #mm-regime-exit-overlay-card .form-select{
-    background: rgba(0,0,0,.35);
-    border: 1px solid rgba(255,255,255,.12);
-    color: rgba(255,255,255,.92);
-  }
-</style>
-
-<style>
-/* MM_BUY_REO_CENTER_V1 */
-#mm-regime-exit-overlay-card{
-  max-width:1100px;
-  margin:12px auto 0 auto !important;
-}
-#mm-regime-exit-overlay-card .card-body{
-  overflow-x:auto;
-}
-</style>
-
-
-<div class="card mb-3" id="mm-regime-exit-overlay-card" style="max-width:1100px; margin:12px auto 0 auto;">
-  <div class="card-header d-flex align-items-center justify-content-between">
-    <div>Regime Exit Overlay</div>
-    <div style="opacity:.65;font-size:12px;">target_mult / stop_mult / time_mult</div>
-  </div>
-  <div class="card-body">
-    <div class="row g-2 align-items-center">
-      <div class="col-12" style="opacity:.65;font-size:12px;">
-        Applies on regime changes only. Stored in <code>regime_exit_overlay</code>. Active file is chosen by <code>live_mode.txt</code>.
-      </div>
-      <div class="col-12">
-        <div id="mm-reo-status" style="color:#f5d400;font-size:12px;"></div>
-      </div>
-
-      {% for r in ["TREND","CHOP","DEAD","UNKNOWN"] %}
-      <div class="col-12 col-lg-3"><strong>{{r}}</strong></div>
-      <div class="col-4 col-lg-3">
-        <label class="form-label mb-1">target</label>
-        <input class="form-control form-control-sm" type="number" step="0.01" data-reo="{{r}}" data-reo-k="target_mult">
-      </div>
-      <div class="col-4 col-lg-3">
-        <label class="form-label mb-1">stop</label>
-        <input class="form-control form-control-sm" type="number" step="0.01" data-reo="{{r}}" data-reo-k="stop_mult">
-      </div>
-      <div class="col-4 col-lg-3">
-        <label class="form-label mb-1">time</label>
-        <input class="form-control form-control-sm" type="number" step="0.01" data-reo="{{r}}" data-reo-k="time_mult">
-      </div>
-      {% endfor %}
-    </div>
-  </div>
-</div>
-<!-- MM_REGIME_EXIT_OVERLAY_UI_V5_END -->
 </div>
 
 <script>
@@ -785,13 +712,9 @@ function MM_REO_MERGE_SETTINGS_OBJ(obj){
 
     try {
       SETTINGS = await apiLoad(prof);
-      window.__MM_BUY_SETTINGS__ = SETTINGS;
-      window.SETTINGS = SETTINGS;
     } catch(e) {
       console.error(e);
       SETTINGS = {};
-      window.__MM_BUY_SETTINGS__ = SETTINGS;
-      window.SETTINGS = SETTINGS;
     }
 
     if (!SETTINGS.ai || typeof SETTINGS.ai !== "object") {
@@ -816,7 +739,6 @@ function MM_REO_MERGE_SETTINGS_OBJ(obj){
     renderGate();
     renderCards();
     renderOther();
-    try { if (window.MM_REO && window.MM_REO.pullFromSettings) window.MM_REO.pullFromSettings(SETTINGS); } catch(e) {}
     mmUpdateReoStatus();
   }
 
@@ -848,73 +770,64 @@ function MM_REO_MERGE_SETTINGS_OBJ(obj){
 
 </script>
 
-
-
-
-<script>
-// MM_BUY_REO_BRIDGE_V1
-(function(){
-  function qsa(sel){ return Array.from(document.querySelectorAll(sel)); }
-
-  function normalizeOverlay(ov){
-    const keys = ["TREND","CHOP","DEAD","UNKNOWN"];
-    const out = {};
-    keys.forEach(function(k){
-      const row = (ov && ov[k]) || {};
-      out[k] = {
-        target_mult: Number(row.target_mult ?? 1),
-        stop_mult:   Number(row.stop_mult   ?? 1),
-        time_mult:   Number(row.time_mult   ?? 1),
-      };
-    });
-    return out;
+<!-- MM_REGIME_EXIT_OVERLAY_UI_V5_START -->
+<style>
+  /* MM_REO_DARKSTYLE_V1 */
+  #mm-regime-exit-overlay-card{
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.10);
+    color: rgba(255,255,255,.92);
   }
+  #mm-regime-exit-overlay-card .card-header{
+    background: rgba(0,0,0,.25);
+    border-bottom: 1px solid rgba(255,255,255,.10);
+    color: rgba(255,255,255,.95);
+    font-weight: 600;
+  }
+  #mm-regime-exit-overlay-card label{
+    color: rgba(255,255,255,.70);
+    font-size: 12px;
+  }
+  #mm-regime-exit-overlay-card .form-control,
+  #mm-regime-exit-overlay-card .form-select{
+    background: rgba(0,0,0,.35);
+    border: 1px solid rgba(255,255,255,.12);
+    color: rgba(255,255,255,.92);
+  }
+</style>
 
-  window.MM_REO = window.MM_REO || {};
+<div class="card mb-3" id="mm-regime-exit-overlay-card">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <div>Regime Exit Overlay</div>
+    <div style="opacity:.65;font-size:12px;">target_mult / stop_mult / time_mult</div>
+  </div>
+  <div class="card-body">
+    <div class="row g-2 align-items-center">
+      <div class="col-12" style="opacity:.65;font-size:12px;">
+        Applies on regime changes only. Stored in <code>regime_exit_overlay</code>. Active file is chosen by <code>live_mode.txt</code>.
+      </div>
+      <div class="col-12">
+        <div id="mm-reo-status" style="color:#f5d400;font-size:12px;"></div>
+      </div>
 
-  window.MM_REO.getOverlay = function(){
-    const out = normalizeOverlay({});
-    qsa('[data-reo]').forEach(function(el){
-      const r = String(el.getAttribute('data-reo') || '').toUpperCase();
-      const k = String(el.getAttribute('data-reo-k') || '');
-      if(!r || !k || !out[r]) return;
-      const n = Number(el.value);
-      out[r][k] = Number.isFinite(n) ? n : 1;
-    });
-    return out;
-  };
-
-  window.MM_REO.push = function(){
-    return window.MM_REO.getOverlay();
-  };
-
-  window.MM_REO.pullFromSettings = function(settingsObj){
-    const ov = normalizeOverlay(settingsObj && settingsObj.regime_exit_overlay);
-    qsa('[data-reo]').forEach(function(el){
-      const r = String(el.getAttribute('data-reo') || '').toUpperCase();
-      const k = String(el.getAttribute('data-reo-k') || '');
-      if(!r || !k || !ov[r]) return;
-      el.value = ov[r][k];
-    });
-
-    try{
-      const host = document.getElementById("mm-reo-status");
-      if(host){
-        let neutral = true;
-        ["TREND","CHOP","DEAD","UNKNOWN"].forEach(function(r){
-          const row = ov[r] || {};
-          if (Number(row.target_mult) !== 1 || Number(row.stop_mult) !== 1 || Number(row.time_mult) !== 1){
-            neutral = false;
-          }
-        });
-        host.textContent = neutral
-          ? "Regime overlay status: neutral / no-op (all multipliers are 1.00)."
-          : "Regime overlay status: configured (at least one multiplier differs from 1.00).";
-      }
-    }catch(e){}
-  };
-})();
-</script>
-
+      {% for r in ["TREND","CHOP","DEAD","UNKNOWN"] %}
+      <div class="col-12 col-lg-3"><strong>{{r}}</strong></div>
+      <div class="col-4 col-lg-3">
+        <label class="form-label mb-1">target</label>
+        <input class="form-control form-control-sm" type="number" step="0.01" data-reo="{{r}}" data-reo-k="target_mult">
+      </div>
+      <div class="col-4 col-lg-3">
+        <label class="form-label mb-1">stop</label>
+        <input class="form-control form-control-sm" type="number" step="0.01" data-reo="{{r}}" data-reo-k="stop_mult">
+      </div>
+      <div class="col-4 col-lg-3">
+        <label class="form-label mb-1">time</label>
+        <input class="form-control form-control-sm" type="number" step="0.01" data-reo="{{r}}" data-reo-k="time_mult">
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+<!-- MM_REGIME_EXIT_OVERLAY_UI_V5_END -->
 
 {% endblock %}

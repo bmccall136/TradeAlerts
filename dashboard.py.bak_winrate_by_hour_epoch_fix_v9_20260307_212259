@@ -6604,11 +6604,9 @@ def _tr__yahoo_intraday_series(symbol, interval="5m"):
 
 
 # --- MM_WINRATE_BY_HOUR_TRIGGER_UNFILTERED_V8_START ---
-# MM_WINRATE_BY_HOUR_EPOCH_FIX_V9
 @app.get("/api/analytics/winrate_by_hour")
 def api_analytics_winrate_by_hour():
     import sqlite3
-    import re
     from datetime import datetime, timedelta
     from collections import defaultdict
 
@@ -6618,35 +6616,9 @@ def api_analytics_winrate_by_hour():
     OPEN_MATCH_SEC = 86400
 
     def parse_dt(s):
-        if s is None or s == "":
+        if not s:
             return None
-
-        # epoch numeric support (trigger_fires.ts_utc)
-        try:
-            if isinstance(s, (int, float)):
-                n = float(s)
-                if n > 1000000000000:
-                    return datetime.utcfromtimestamp(n / 1000.0)
-                if n > 1000000000:
-                    return datetime.utcfromtimestamp(n)
-        except Exception:
-            pass
-
-        ss = str(s).strip()
-        if not ss:
-            return None
-
-        try:
-            if re.fullmatch(r"\d+(?:\.\d+)?", ss):
-                n = float(ss)
-                if n > 1000000000000:
-                    return datetime.utcfromtimestamp(n / 1000.0)
-                if n > 1000000000:
-                    return datetime.utcfromtimestamp(n)
-        except Exception:
-            pass
-
-        ss = ss.replace("T", " ").replace("Z", "")
+        s = str(s).strip().replace("T", " ").replace("Z", "")
         for fmt in (
             "%Y-%m-%d %H:%M:%S.%f",
             "%Y-%m-%d %H:%M:%S",
@@ -6654,11 +6626,11 @@ def api_analytics_winrate_by_hour():
             "%Y-%m-%d",
         ):
             try:
-                return datetime.strptime(ss[:26], fmt)
+                return datetime.strptime(s[:26], fmt)
             except Exception:
                 pass
         try:
-            return datetime.fromisoformat(ss.replace(" ", "T"))
+            return datetime.fromisoformat(s.replace(" ", "T"))
         except Exception:
             return None
 

@@ -6601,52 +6601,22 @@ def _tr__yahoo_intraday_series(symbol, interval="5m"):
 
 
 
-
-
-# --- MM_WINRATE_BY_HOUR_TRIGGER_UNFILTERED_V8_START ---
-# MM_WINRATE_BY_HOUR_EPOCH_FIX_V9
+# --- MM_WINRATE_BY_HOUR_TZFIX_V6_START ---
 @app.get("/api/analytics/winrate_by_hour")
 def api_analytics_winrate_by_hour():
     import sqlite3
-    import re
     from datetime import datetime, timedelta
     from collections import defaultdict
 
     DB = LIVE_DB
     LOOKBACK_DAYS = int(request.args.get("days") or 30)
-    TRIGGER_LOOKBACK_SEC = 86400
+    TRIGGER_LOOKBACK_SEC = 1800
     OPEN_MATCH_SEC = 86400
 
     def parse_dt(s):
-        if s is None or s == "":
+        if not s:
             return None
-
-        # epoch numeric support (trigger_fires.ts_utc)
-        try:
-            if isinstance(s, (int, float)):
-                n = float(s)
-                if n > 1000000000000:
-                    return datetime.utcfromtimestamp(n / 1000.0)
-                if n > 1000000000:
-                    return datetime.utcfromtimestamp(n)
-        except Exception:
-            pass
-
-        ss = str(s).strip()
-        if not ss:
-            return None
-
-        try:
-            if re.fullmatch(r"\d+(?:\.\d+)?", ss):
-                n = float(ss)
-                if n > 1000000000000:
-                    return datetime.utcfromtimestamp(n / 1000.0)
-                if n > 1000000000:
-                    return datetime.utcfromtimestamp(n)
-        except Exception:
-            pass
-
-        ss = ss.replace("T", " ").replace("Z", "")
+        s = str(s).strip().replace("T", " ").replace("Z", "")
         for fmt in (
             "%Y-%m-%d %H:%M:%S.%f",
             "%Y-%m-%d %H:%M:%S",
@@ -6654,11 +6624,11 @@ def api_analytics_winrate_by_hour():
             "%Y-%m-%d",
         ):
             try:
-                return datetime.strptime(ss[:26], fmt)
+                return datetime.strptime(s[:26], fmt)
             except Exception:
                 pass
         try:
-            return datetime.fromisoformat(ss.replace(" ", "T"))
+            return datetime.fromisoformat(s.replace(" ", "T"))
         except Exception:
             return None
 
@@ -6704,6 +6674,7 @@ def api_analytics_winrate_by_hour():
     trigger_cols  = table_cols(cur, "trigger_fires")
     realized_cols = table_cols(cur, "realized_trades")
 
+    # trades
     t_id     = first_col(trades_cols,   ["id"])
     t_sym    = first_col(trades_cols,   ["symbol", "sym", "ticker"])
     t_side   = first_col(trades_cols,   ["action", "side", "trade_side"])
@@ -6711,6 +6682,7 @@ def api_analytics_winrate_by_hour():
     t_price  = first_col(trades_cols,   ["price", "fill_price"])
     t_ts1    = first_col(trades_cols,   ["ts_et", "trade_time", "ts_utc", "timestamp", "time", "created_at"])
 
+    # trigger_fires
     f_id     = first_col(trigger_cols,  ["id"])
     f_sym    = first_col(trigger_cols,  ["symbol", "sym", "ticker"])
     f_side   = first_col(trigger_cols,  ["side", "action", "trade_side"])
@@ -6718,19 +6690,20 @@ def api_analytics_winrate_by_hour():
     f_sig    = first_col(trigger_cols,  ["signals_pretty", "signals", "signal", "trigger", "detail"])
     f_ts1    = first_col(trigger_cols,  ["ts_et", "ts_utc", "timestamp", "time_et", "time", "created_at", "fired_at"])
 
+    # realized_trades
     r_id     = first_col(realized_cols, ["id"])
     r_sym    = first_col(realized_cols, ["symbol", "sym", "ticker"])
     r_gain   = first_col(realized_cols, ["gain", "net_gain", "pnl", "profit", "gain_loss"])
     r_close  = first_col(realized_cols, ["close_date", "ts_et", "ts_utc", "timestamp", "time", "created_at"])
 
-    if not (t_sym and t_side and t_ts1 and f_sym and f_ts1 and r_sym and r_gain and r_close):
+    if not (t_sym and t_side and t_ts1 and f_sym and f_side and f_ts1 and r_sym and r_gain and r_close):
         return jsonify({
             "ok": False,
             "error": "schema_missing_required_columns",
             "trades_cols": trades_cols,
             "trigger_cols": trigger_cols,
             "realized_cols": realized_cols,
-            "marker": "MM_WINRATE_BY_HOUR_TRIGGER_UNFILTERED_V8"
+            "marker": "MM_WINRATE_BY_HOUR_TZFIX_V6"
         }), 500
 
     buys_sql = """
@@ -6754,15 +6727,17 @@ def api_analytics_winrate_by_hour():
     triggers_sql = """
         SELECT {id_col} AS id, {ts_col} AS trig_ts, {sym_col} AS symbol, {sig_col} AS signals_pretty, {side_col} AS side, {stage_col} AS stage
         FROM trigger_fires
-        WHERE COALESCE({sym_col}, '') <> ''
+        WHERE UPPER(COALESCE({side_col},''))='BUY'
+          AND {ts_filter} >= ?
         ORDER BY {ts_sort} ASC, {id_sort} ASC
     """.format(
         id_col=f_id or "rowid",
         ts_col=f_ts1,
         sym_col=f_sym,
         sig_col=(f_sig or "NULL"),
-        side_col=(f_side or "NULL"),
+        side_col=f_side,
         stage_col=(f_stage or "NULL"),
+        ts_filter=coalesce_expr([f_ts1]),
         ts_sort=coalesce_expr([f_ts1]),
         id_sort=(f_id or "rowid")
     )
@@ -6783,20 +6758,21 @@ def api_analytics_winrate_by_hour():
     )
 
     buys = cur.execute(buys_sql, (since_str,)).fetchall()
+    triggers = cur.execute(triggers_sql, (since_str,)).fetchall()
     realized = cur.execute(realized_sql, (since_day,)).fetchall()
 
-    buy_syms = sorted({str(r["symbol"] or "").strip().upper() for r in buys if str(r["symbol"] or "").strip()})
-    triggers_all = cur.execute(triggers_sql).fetchall()
     conn.close()
 
+    # timezone normalization:
+    # if trades are ET and triggers are UTC, shift trigger timestamps to ET for comparison
     trigger_shift_hours = 0
     if (t_ts1 or "").lower().endswith("et") and (f_ts1 or "").lower().endswith("utc"):
         trigger_shift_hours = -5
 
     trig_by_sym = defaultdict(list)
-    for tr in triggers_all:
+    for tr in triggers:
         sym = str(tr["symbol"] or "").strip().upper()
-        if sym and (not buy_syms or sym in buy_syms):
+        if sym:
             trig_by_sym[sym].append(tr)
 
     rz_by_sym = defaultdict(list)
@@ -6806,7 +6782,16 @@ def api_analytics_winrate_by_hour():
             rz_by_sym[sym].append(rz)
 
     buckets = {
-        h: {"hour": h, "label": ("%02d:00" % h), "trades": 0, "wins": 0, "losses": 0, "winrate": 0.0, "avgGain": 0.0, "netGain": 0.0}
+        h: {
+            "hour": h,
+            "label": ("%02d:00" % h),
+            "trades": 0,
+            "wins": 0,
+            "losses": 0,
+            "winrate": 0.0,
+            "avgGain": 0.0,
+            "netGain": 0.0
+        }
         for h in range(9, 16)
     }
 
@@ -6907,8 +6892,6 @@ def api_analytics_winrate_by_hour():
         "trigger_lookback_sec": TRIGGER_LOOKBACK_SEC,
         "open_match_sec": OPEN_MATCH_SEC,
         "trigger_shift_hours": trigger_shift_hours,
-        "trigger_rows": len(triggers_all),
-        "buy_symbols": len(buy_syms),
         "schema": {
             "picked": {
                 "trades": {"symbol": t_sym, "side": t_side, "ts": t_ts1},
@@ -6916,11 +6899,9 @@ def api_analytics_winrate_by_hour():
                 "realized_trades": {"symbol": r_sym, "gain": r_gain, "close": r_close}
             }
         },
-        "marker": "MM_WINRATE_BY_HOUR_TRIGGER_UNFILTERED_V8"
+        "marker": "MM_WINRATE_BY_HOUR_TZFIX_V6"
     })
-# --- MM_WINRATE_BY_HOUR_TRIGGER_UNFILTERED_V8_END ---
-
-
+# --- MM_WINRATE_BY_HOUR_TZFIX_V6_END ---
 
 
 
