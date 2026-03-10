@@ -50,7 +50,7 @@
     "intraday_stoploss_pct": 1,
     "limit_from": "BID",
     "limit_offset_bps": -1,
-    "max_hold_minutes": 120,
+    "max_hold_minutes": 60,
     "max_place_attempts": 6,
     "min_hold_days": 0,
     "min_hold_minutes": 5,
