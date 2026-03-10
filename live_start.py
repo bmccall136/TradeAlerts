@@ -162,9 +162,15 @@ def main():
     base_symbols = load_symbols(SYMS_PATH)
 
     from services.universe_cache import load_cached_universe
-    symbols = load_cached_universe(base_symbols)
+    adaptive_symbols = load_cached_universe(base_symbols)
 
-    log.info("Universe loaded: %d symbols (base=%d)", len(symbols), len(base_symbols))
+    if adaptive_symbols:
+        symbols = adaptive_symbols
+        log.info("Adaptive universe loaded: %d symbols (base=%d)", len(symbols), len(base_symbols))
+    else:
+        symbols = base_symbols
+        log.warning("Adaptive universe empty; falling back to base universe (%d symbols)", len(base_symbols))
+
     log.info("Scanning %d symbols from %s", len(symbols), SYMS_PATH)
 
     from services.universe_builder import start_universe_builder
@@ -174,7 +180,7 @@ def main():
 
     log.info("🔧 Using live settings from %s", settings_path)
     log.info("▶️  Live loop starting (mode=%s)", mode)
-
+    
     run_live_loop(data, symbols, broker_mode=mode)
 
 

@@ -1,4 +1,7 @@
 from __future__ import annotations
+from zoneinfo import ZoneInfo
+ET = ZoneInfo("America/New_York")
+from datetime import datetime
 
 # MM_REGIME_EXIT_OVERLAY_FROM_SETTINGS_V3
 
@@ -1006,7 +1009,7 @@ ETZ = ZoneInfo("America/New_York")
 def _hold_minutes(opened_et: datetime | None) -> float:
     if not opened_et:
         return 0.0
-    now_et = datetime.now(ETZ)
+    now_et = datetime.now(ET)
     return max(0.0, (now_et - opened_et).total_seconds() / 60.0)
 
 

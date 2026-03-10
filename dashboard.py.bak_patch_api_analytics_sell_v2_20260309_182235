@@ -11649,6 +11649,14 @@ def api_analytics_sell():
             except Exception:
                 return float(default)
 
+        def _to_int(v, default=0):
+            try:
+                if v is None or str(v).strip() == "":
+                    return int(default)
+                return int(v)
+            except Exception:
+                return int(default)
+
         def _hour_et_from_epoch(ts_utc):
             try:
                 ts = int(float(ts_utc))
@@ -11660,14 +11668,12 @@ def api_analytics_sell():
         con.row_factory = sqlite3.Row
         cur = con.cursor()
 
-        # Reasons: sell_events.reason counts
+        # Reasons: sell_events.reason where event='FILLED'
         try:
             rows = cur.execute("""
                 SELECT COALESCE(reason,'(none)') AS reason, COUNT(1) AS ct
                 FROM sell_events
-                WHERE ts_utc >= ?
-                  AND reason IS NOT NULL
-                  AND TRIM(COALESCE(reason, '')) <> ''
+                WHERE ts_utc >= ? AND event='FILLED'
                 GROUP BY COALESCE(reason,'(none)')
                 ORDER BY ct DESC
             """, (since_ts_utc,)).fetchall()
@@ -11688,16 +11694,29 @@ def api_analytics_sell():
         except Exception as e:
             out["outcomes_error"] = str(e)
 
-        # Hold buckets: schema currently has no hold_bucket column
-        out["hold_buckets"] = []
+        # Hold buckets: use hold_bucket if present, else placeholder
+        try:
+            rows = cur.execute("""
+                SELECT COALESCE(hold_bucket,'(none)') AS bucket, COUNT(1) AS ct
+                FROM sell_events
+                WHERE ts_utc >= ? AND event='FILLED'
+                GROUP BY COALESCE(hold_bucket,'(none)')
+                ORDER BY ct DESC
+            """, (since_ts_utc,)).fetchall()
+            out["hold_buckets"] = [{"bucket": r["bucket"], "ct": int(r["ct"])} for r in rows]
+        except Exception as e:
+            out["hold_buckets_error"] = str(e)
 
-        # SELL HOUR STATS from realized_trades
+        # SELL HOUR STATS: realized_trades is source of truth for closed-trade results
         try:
             rt_rows = cur.execute("""
                 SELECT
                     close_ts_utc,
+                    pnl_pct,
+                    pnl,
                     gain_pct,
                     gain,
+                    exit_reason,
                     symbol
                 FROM realized_trades
                 WHERE close_ts_utc >= ?
@@ -11705,16 +11724,32 @@ def api_analytics_sell():
             """, (since_ts_utc,)).fetchall()
 
             by_hour = {}
+            by_reason_hour = {}
 
             for r in rt_rows:
                 hr = _hour_et_from_epoch(r["close_ts_utc"])
                 if hr is None:
                     continue
 
-                pct = _to_float(r["gain_pct"], 0.0)
-                pnl = _to_float(r["gain"], 0.0)
+                pct = None
+                for k in ("pnl_pct", "gain_pct", "gain"):
+                    if k in r.keys():
+                        val = r[k]
+                        if val is not None and str(val).strip() != "":
+                            pct = _to_float(val, 0.0)
+                            break
+                if pct is None:
+                    pct = 0.0
 
-                row = by_hour.setdefault(hr, {
+                pnl = 0.0
+                if "pnl" in r.keys():
+                    pnl = _to_float(r["pnl"], 0.0)
+
+                reason = "(none)"
+                if "exit_reason" in r.keys() and r["exit_reason"] not in (None, ""):
+                    reason = str(r["exit_reason"])
+
+                bucket_row = by_hour.setdefault(hr, {
                     "hour_et": hr,
                     "trades": 0,
                     "wins": 0,
@@ -11723,15 +11758,36 @@ def api_analytics_sell():
                     "sum_pct": 0.0,
                     "sum_pnl": 0.0,
                 })
-                row["trades"] += 1
-                row["sum_pct"] += pct
-                row["sum_pnl"] += pnl
+                bucket_row["trades"] += 1
+                bucket_row["sum_pct"] += pct
+                bucket_row["sum_pnl"] += pnl
                 if pct > 0:
-                    row["wins"] += 1
+                    bucket_row["wins"] += 1
                 elif pct < 0:
-                    row["losses"] += 1
+                    bucket_row["losses"] += 1
                 else:
-                    row["flat"] += 1
+                    bucket_row["flat"] += 1
+
+                rh_key = (reason, hr)
+                rh = by_reason_hour.setdefault(rh_key, {
+                    "reason": reason,
+                    "hour_et": hr,
+                    "trades": 0,
+                    "wins": 0,
+                    "losses": 0,
+                    "flat": 0,
+                    "sum_pct": 0.0,
+                    "sum_pnl": 0.0,
+                })
+                rh["trades"] += 1
+                rh["sum_pct"] += pct
+                rh["sum_pnl"] += pnl
+                if pct > 0:
+                    rh["wins"] += 1
+                elif pct < 0:
+                    rh["losses"] += 1
+                else:
+                    rh["flat"] += 1
 
             sell_hours = []
             for hr in sorted(by_hour.keys()):
@@ -11750,52 +11806,28 @@ def api_analytics_sell():
                     "net_pnl": round(x["sum_pnl"], 2),
                 })
 
-            out["sell_hours"] = sell_hours
-
-        except Exception as e:
-            out["sell_hours_error"] = str(e)
-
-        # REASON x HOUR from sell_events
-        try:
-            se_rows = cur.execute("""
-                SELECT
-                    ts_utc,
-                    COALESCE(reason, '(none)') AS reason
-                FROM sell_events
-                WHERE ts_utc >= ?
-                  AND reason IS NOT NULL
-                  AND TRIM(COALESCE(reason, '')) <> ''
-            """, (since_ts_utc,)).fetchall()
-
-            by_reason_hour = {}
-
-            for r in se_rows:
-                hr = _hour_et_from_epoch(r["ts_utc"])
-                if hr is None:
-                    continue
-
-                reason = str(r["reason"] or "(none)")
-                key = (reason, hr)
-
-                row = by_reason_hour.setdefault(key, {
-                    "reason": reason,
-                    "hour_et": hr,
-                    "events": 0,
-                })
-                row["events"] += 1
-
             reason_hours = []
-            for _, x in sorted(by_reason_hour.items(), key=lambda kv: (-kv[1]["events"], kv[1]["hour_et"], kv[1]["reason"])):
+            for _, x in sorted(by_reason_hour.items(), key=lambda kv: (-kv[1]["trades"], kv[1]["hour_et"], kv[1]["reason"])):
+                trades = max(1, int(x["trades"]))
                 reason_hours.append({
                     "reason": str(x["reason"]),
                     "hour_et": int(x["hour_et"]),
-                    "events": int(x["events"]),
+                    "trades": int(x["trades"]),
+                    "wins": int(x["wins"]),
+                    "losses": int(x["losses"]),
+                    "flat": int(x["flat"]),
+                    "win_rate": round((100.0 * x["wins"] / trades), 1),
+                    "avg_pct": round(x["sum_pct"] / trades, 3),
+                    "avg_pnl": round(x["sum_pnl"] / trades, 2),
+                    "net_pct": round(x["sum_pct"], 3),
+                    "net_pnl": round(x["sum_pnl"], 2),
                 })
 
+            out["sell_hours"] = sell_hours
             out["reason_hours"] = reason_hours
 
         except Exception as e:
-            out["reason_hours_error"] = str(e)
+            out["sell_hours_error"] = str(e)
 
         con.close()
     except Exception as e:
@@ -11803,9 +11835,7 @@ def api_analytics_sell():
         out["error"] = str(e)
 
     return _mm_jsonify(out), 200
-
-
-
+    
 @app.route("/api/analytics/sell_regime")
 def api_analytics_sell_regime():
     bucket = _mm_bucket_norm(request.args.get("bucket") or "today")

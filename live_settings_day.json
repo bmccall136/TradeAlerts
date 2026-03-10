@@ -12,6 +12,10 @@
   "atr_pct_enabled": false,
   "atr_pct_on": false,
   "atr_threshold": 0,
+  "avoid_buy_hours": [
+    10,
+    14
+  ],
   "bb_break_on": true,
   "bb_breakout_enabled": false,
   "bb_len": 20,
@@ -38,11 +42,6 @@
   "range_on": true,
   "range_pct": 0.8,
   "regime_exit_overlay": {
-    "TREND": {
-      "stop_mult": 0.9,
-      "target_mult": 1.25,
-      "time_mult": 1.2
-    },
     "CHOP": {
       "stop_mult": 1.05,
       "target_mult": 0.9,
@@ -53,8 +52,13 @@
       "target_mult": 0.75,
       "time_mult": 0.7
     },
+    "TREND": {
+      "stop_mult": 0.9,
+      "target_mult": 1.25,
+      "time_mult": 1.2
+    },
     "UNKNOWN": {
-      "stop_mult": 1.0,
+      "stop_mult": 1,
       "target_mult": 0.9,
       "time_mult": 0.9
     }
@@ -73,7 +77,6 @@
   "rsi_oversold": 30,
   "rsi_slope_on": true,
   "scan_sleep_secs": 20,
-  "avoid_buy_hours": [],
   "single_entry_only": true,
   "sma20_on": true,
   "sma_len": 50,

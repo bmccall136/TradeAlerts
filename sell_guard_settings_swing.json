@@ -69,7 +69,11 @@
       "if_gain_gte_pct": 3.0,
       "arm_hard_stop_pct": 1.0,
       "arm_trailing_pct": 3.0
-    }
+    },
+    "avoid_sell_hours": [
+      12,
+      13
+    ]
   },
   "stale_relief_exit": {
     "enabled": true,

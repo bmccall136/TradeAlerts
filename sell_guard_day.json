@@ -47,7 +47,11 @@
     "timeout_exit_pct": -0.4,
     "trail_arm_gain_pct": 1.0,
     "trail_backoff_pct": 1.0,
-    "use_extended_hours": true
+    "use_extended_hours": true,
+    "avoid_sell_hours": [
+      12,
+      13
+    ]
   },
   "target_gain_pct": 1.0,
   "timeout_exit_pct": -0.3,

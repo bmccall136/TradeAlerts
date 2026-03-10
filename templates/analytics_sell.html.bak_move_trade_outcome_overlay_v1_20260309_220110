@@ -409,41 +409,6 @@
 </div>
 <!-- MM_SELL_HEATMAP_CARD_V1_END -->
 
-<!-- MM_SELL_TRADE_OUTCOME_CARD_V1_START -->
-<div class="mm-card" id="mm-sell-trade-outcome-card">
-  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-    <div>
-      <div style="font-size:18px;font-weight:800;">Trade Outcome Overlay</div>
-      <div class="mm-muted">Recent closed exits with best-available exit-rule context from the DB.</div>
-    </div>
-    <div><span class="badge bg-secondary">Recent exits</span></div>
-  </div>
-
-  <div id="mm-too-note" class="small mb-2" style="color:#f5d400;margin-top:10px;"></div>
-  <div class="table-responsive">
-    <table class="table table-sm table-dark align-middle mb-0">
-      <thead>
-        <tr>
-          <th style="width:170px;">Time (ET)</th>
-          <th style="width:90px;">Symbol</th>
-          <th style="width:130px;">Exit rule</th>
-          <th style="width:90px;">Regime</th>
-          <th style="width:90px;">Mode</th>
-          <th style="width:90px;">P/L %</th>
-          <th>Event</th>
-        </tr>
-      </thead>
-      <tbody id="mm-too-body">
-        <tr><td colspan="7" class="text-muted">Loading…</td></tr>
-      </tbody>
-    </table>
-  </div>
-</div>
-<!-- MM_SELL_TRADE_OUTCOME_CARD_V1_END -->
-
-
-
-
 <script src="/static/js/analytics_sell.js"></script>
 
 </div>

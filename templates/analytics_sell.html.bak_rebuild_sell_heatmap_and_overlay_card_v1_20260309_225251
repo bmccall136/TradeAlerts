@@ -361,6 +361,46 @@
     </div>
     <div class="mm-muted" style="font-size:12px;">Bucket: <span id="mm-sell-heatmap-bucket-label"></span></div>
   </div>
+<!-- MM_TRADE_OUTCOME_OVERLAY_REMOVED_FROM_SETTINGS_V1 -->
+
+      <span class="badge bg-secondary">Recent exits</span>
+    </div>
+    <div class="card-body">
+      
+<!-- MM_OVERLAY_MOVED_V1 -->
+
+      <div id="mm-too-note" class="small mb-2" style="color:#f5d400;"></div>
+      <div class="table-responsive">
+        <table class="table table-sm table-dark align-middle mb-0">
+          <thead>
+            <tr>
+              <th style="width:170px;">Time (ET)</th>
+              <th style="width:90px;">Symbol</th>
+              <th style="width:130px;">Exit rule</th>
+              <th style="width:90px;">Regime</th>
+              <th style="width:90px;">Mode</th>
+              <th style="width:90px;">P/L %</th>
+              <th>Event</th>
+            </tr>
+          </thead>
+          <tbody id="mm-too-body">
+            <tr><td colspan="7" class="text-muted">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+<!-- MM_SELL_ANALYTICS_OVERLAY_BOXED_V1_START -->
+
+<div class="mm-card" id="mm-sell-trade-outcome-card">
+<div class="small text-muted mb-2">
+        Recent closed exits with best-available exit-rule context from the DB.
+      </div>
+</div>
+
+<!-- MM_SELL_ANALYTICS_OVERLAY_BOXED_V1_END -->
+
+  <!-- MM_TRADE_OUTCOME_CARD_V1_END -->
 
   <style>
     #mm-sell-heatmap-card .mm-heat-wrap{overflow:auto;margin-top:10px;}
@@ -407,42 +447,27 @@
     </table>
   </div>
 </div>
+<!-- MM_MOVE_TRADE_OUTCOME_OVERLAY_TO_SELL_ANALYTICS_V2_START -->
+<div class="card-header d-flex align-items-center justify-content-between">
+      <div class="fw-semibold"><i class="bi bi-bar-chart-steps"></i> Trade Outcome Overlay</div>
+      <span class="badge bg-secondary">Recent exits</span>
+    </div>
+<!-- MM_MOVE_TRADE_OUTCOME_OVERLAY_TO_SELL_ANALYTICS_V2_END -->
+
 <!-- MM_SELL_HEATMAP_CARD_V1_END -->
 
-<!-- MM_SELL_TRADE_OUTCOME_CARD_V1_START -->
-<div class="mm-card" id="mm-sell-trade-outcome-card">
-  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-    <div>
-      <div style="font-size:18px;font-weight:800;">Trade Outcome Overlay</div>
-      <div class="mm-muted">Recent closed exits with best-available exit-rule context from the DB.</div>
-    </div>
-    <div><span class="badge bg-secondary">Recent exits</span></div>
-  </div>
 
-  <div id="mm-too-note" class="small mb-2" style="color:#f5d400;margin-top:10px;"></div>
-  <div class="table-responsive">
-    <table class="table table-sm table-dark align-middle mb-0">
-      <thead>
-        <tr>
-          <th style="width:170px;">Time (ET)</th>
-          <th style="width:90px;">Symbol</th>
-          <th style="width:130px;">Exit rule</th>
-          <th style="width:90px;">Regime</th>
-          <th style="width:90px;">Mode</th>
-          <th style="width:90px;">P/L %</th>
-          <th>Event</th>
-        </tr>
-      </thead>
-      <tbody id="mm-too-body">
-        <tr><td colspan="7" class="text-muted">Loading…</td></tr>
-      </tbody>
-    </table>
-  </div>
-</div>
-<!-- MM_SELL_TRADE_OUTCOME_CARD_V1_END -->
-
-
-
+<!-- MM_SELL_ANALYTICS_OVERLAY_BOXED_V1_STYLE -->
+<style>
+#mm-sell-trade-outcome-card{
+  margin-top:14px;
+}
+#mm-sell-trade-outcome-card .card,
+#mm-sell-trade-outcome-card .mm-card,
+#mm-sell-trade-outcome-card .panel{
+  width:100%;
+}
+</style>
 
 <script src="/static/js/analytics_sell.js"></script>
 

@@ -1,221 +1,367 @@
-{% extends "layout.html" %}
+﻿{% extends "analytics_layout.html" %}
+
+<!-- MM_SELL_ANALYTICS_BODY_CARD_ONLY_V1_START -->
+<style>
+  /* Keep header/toolbar normal. Center only the BODY panels inside a single outer card. */
+
+  /* Root stays the normal analytics width (match other pages) */
+  #mm-sell-analytics-root{
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 16px 24px 16px;
+  }
+
+  /* Outer body card: centered, narrower */
+  #mm-sell-body-card{
+    max-width: 760px;
+    width: 100%;
+    margin: 14px auto 0 auto;
+    padding: 14px;
+    border-radius: 14px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.08);
+    box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  }
+
+  /* Inside the outer card, remove the extra margins your mm-card panels already add */
+  #mm-sell-body-card .mm-card{
+    margin: 12px 0 !important;
+  }
+</style>
+<!-- MM_SELL_ANALYTICS_BODY_CARD_ONLY_V1_END -->
+{% block analytics_tape %}
+  {% include "_analytics_tape.html" %}
+
+{% endblock %}
+
+
 {% block content %}
+
+
+
+<div id="mm-sell-analytics-wrap" class="mm-ax-container">
+
+<!-- MM_SELL_ANALYTICS_WRAP_START -->
+<div id="mm-sell-analytics-root">
+
 <style>
-  .mm-card { background:#0f1118; border:1px solid #222531; border-radius:10px; }
-  .mm-muted { opacity:.82; color:#cfd6e4; }
-  .mm-stickybar {
-    position: sticky; top: 10px; z-index: 50;
-    background: rgba(15,17,24,.95);
-    border: 1px solid #222531;
-    border-radius: 10px;
-    padding: 10px 12px;
-    backdrop-filter: blur(6px);
-  }
-  .mm-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-  .mm-section-title { font-size:18px; font-weight:800; margin-bottom:6px; color:#e9edf6; }
-  .mm-subtitle { margin-top:0; margin-bottom:10px; color:#b8c0cf; }
-  .mm-divider { height:1px; background:#222531; margin: 14px 0; }
+  /* MM_SELL_ANALYTICS_FINAL_V1 */
 
-  #settings-page{
-    max-width:1100px;
-    margin-left:auto;
-    margin-right:auto;
-    color:#e8e8e8;
-  }
-
-  #settings-page h2{
-    color:#ffffff;
-    font-weight:800;
-    margin:0;
-  }
-
-  #settings-page .text-muted,
-  #settings-page .small,
-  #settings-page .form-text{
-    color:#aeb7c7 !important;
-  }
-
-  #settings-page code{
-    color:#ff4fd8;
-    background:transparent;
-  }
-
-  #settings-page .card{
-    background:#0f1118;
-    border:1px solid #222531;
+  .mm-err{
+    display:none;
+    margin:10px 14px;
+    padding:10px 12px;
     border-radius:10px;
-    color:#e8e8e8;
+    border:1px solid rgba(255,80,80,.35);
+    background: rgba(255,80,80,.10);
+    color:#ffb3b3;
+    white-space:pre-wrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size:12px;
   }
 
-  #settings-page .card-header{
-    background:#0b0d14;
-    border-bottom:1px solid #222531;
-    color:#f0f3f9;
-    font-weight:700;
+  .mm-card{
+    margin:14px 14px;
+    padding:14px 14px;
+    border-radius:14px;
+    background: rgba(255,255,255,.04);
+    border:1px solid rgba(255,255,255,.08);
+  }
+  .mm-card h3{ margin:0 0 10px 0; font-size:16px; }
+  .mm-row{ display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+  .mm-mini{
+    min-width:280px;
+    padding:10px 12px;border-radius:12px;
+    background: rgba(0,0,0,.22);
+    border:1px solid rgba(255,255,255,.08);
   }
 
-  #settings-page .card-body{
-    background:transparent;
-    color:#e8e8e8;
+  table.mm-t{ width:100%; border-collapse:collapse; }
+  table.mm-t td{ padding:6px 4px; border-bottom:1px solid rgba(255,255,255,.06); font-size:13px; }
+  table.mm-t td.k{ opacity:.85; }
+  table.mm-t td.v{ text-align:right; font-weight:800; }
+
+  /* force small select to behave in dark theme */
+  #mm-sell-bucket.form-select.form-select-sm{
+    background-color: rgba(0,0,0,.15) !important;
+    color: #e8e8e8 !important;
+    border-color: rgba(255,255,255,.20) !important;
+    max-width: 260px;
   }
 
-  #settings-page .badge.bg-secondary{
-    background:#2a3040 !important;
-    color:#dfe6f2 !important;
-    border:1px solid #394155;
+  .ax-date-wrap { display:flex; align-items:center; gap:8px; flex-wrap:nowrap; }
+  .ax-date-input {
+    background: transparent;
+    border: 1px solid #6c757d;
+    color: #e8e8e8;
+    border-radius: 6px;
+    padding: 4px 8px;
+    height: 31px; /* btn-sm height */
   }
-
-  #settings-page .form-label,
-  #settings-page .form-check-label{
-    color:#d7dbe6;
-    font-weight:700;
-  }
-
-  #settings-page .form-control,
-  #settings-page .form-select{
-    background:#0b0d14;
-    border:1px solid #262a38;
-    border-radius:8px;
-    color:#e8e8e8;
-    box-shadow:none;
-  }
-
-  #settings-page .form-control:focus,
-  #settings-page .form-select:focus{
-    background:#0b0d14;
-    color:#fff;
-    border-color:#f5d400;
-    box-shadow:0 0 0 2px rgba(245,212,0,.18);
-  }
-
-  #settings-page .form-control::placeholder{
-    color:#7f8899;
-  }
-
-  #settings-page input[type="checkbox"]{
-    accent-color:#f5d400;
-  }
-
-  #settings-page .form-check-input{
-    background-color:#0b0d14;
-    border-color:#3a4153;
-  }
-
-  #settings-page .form-check-input:checked{
-    background-color:#f5d400;
-    border-color:#f5d400;
-  }
-
-  #settings-page .btn-outline-light{
-    color:#e8e8e8;
-    border-color:#394155;
-    background:#0b0d14;
-  }
-
-  #settings-page .btn-outline-light:hover{
-    background:#171b25;
-    border-color:#59627a;
-    color:#fff;
-  }
-
-  #settings-page .btn-primary{
-    background:#f5d400;
-    border-color:#f5d400;
-    color:#111;
-    font-weight:700;
-  }
-
-  #settings-page .btn-primary:hover{
-    background:#ffdf33;
-    border-color:#ffdf33;
-    color:#000;
-  }
-
-  #settings-page hr{
-    border-color:#222531;
-    opacity:1;
-  }
-
-  #mm-error.alert-danger{
-    background:#3a1114;
-    color:#ffd7db;
-    border:1px solid #6a2229;
-  }
-
-  #mm-regime-exit-overlay-card .table{
-    margin-bottom:0;
-  }
-
-  #mm-regime-exit-overlay-card.table-responsive,
-  #mm-regime-exit-overlay-card .table-responsive{
-    border-radius:8px;
-  }
-
-  #mm-regime-exit-overlay-card .table-dark{
-    --bs-table-bg:#0b0d14;
-    --bs-table-striped-bg:#121622;
-    --bs-table-color:#e8e8e8;
-    --bs-table-border-color:#262a38;
-  }
-
-  #mm-regime-exit-overlay-card .table-dark input.form-control{
-    background:#0f1118;
-    color:#e8e8e8;
-    border:1px solid #262a38;
-  }
+  .ax-date-input:focus { outline: none; box-shadow: none; border-color: #8b94a3; }
 </style>
 
+<!-- MM_SELL_BODY_CENTERED_OUTERCARD_V2_START -->
 <style>
-/* MM_SELL_TABS_CSS_V1 */
-#settings-page .btn-group .btn-dark{
-  background:#1d2230;
-  border-color:#2d3447;
-  color:#e8e8e8;
-}
-#settings-page .btn-group .btn-dark:hover{
-  background:#252b3b;
-  border-color:#3a4258;
-  color:#fff;
-}
-#settings-page .btn-group .btn-warning{
-  background:#f5d400;
-  border-color:#f5d400;
-  color:#111;
-  font-weight:700;
-}
-#settings-page .btn-group .btn-warning:hover{
-  background:#ffdf33;
-  border-color:#ffdf33;
-  color:#000;
-}
-</style>
+  /* Sell Analytics: make the BODY a centered big card (like Buy Analytics vibe) */
+  #mm-sell-outer-card{
+    max-width: 1100px !important;
+    margin: 14px auto 28px auto !important;
+    padding: 14px 14px !important;
+    border-radius: 16px !important;
+    background: rgba(255,255,255,.04) !important;
+    border: 1px solid rgba(255,255,255,.10) !important;
+    box-shadow: 0 10px 30px rgba(0,0,0,.35) !important;
+  }
 
-<div id="settings-page" class="container-fluid">
-<div style="margin:18px 0 10px 0;">
-  <div style="font-size:22px;font-weight:800;">Settings</div>
+  /* Inside the big body card, make each section card flush/clean */
+  #mm-sell-outer-card .mm-card{
+    margin: 12px 0 !important;
+  }
+
+  /* Keep minis readable */
+  #mm-sell-outer-card .mm-mini{
+    background: rgba(0,0,0,.22) !important;
+  }
+</style>
+<!-- MM_SELL_BODY_CENTERED_OUTERCARD_V2_END -->
+
+<!-- MM_SELL_BUCKET_ALIGN_WITH_CARD_V1_START -->
+<style>
+  /* Align the Bucket row with the centered body card (keep toolbar full-width) */
+  #mm-sell-bucket-row{
+    max-width: 1100px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+</style>
+<!-- MM_SELL_BUCKET_ALIGN_WITH_CARD_V1_END -->
+
+
+
+
+<!-- MM_SELL_TOOLBAR_RIGHT_ALIGN_V1_START -->
+<style>
+  /* Sell Analytics: FORCE toolbar links/date controls to the RIGHT (title stays left) */
+  #mm-sell-analytics-wrap .mm-ax-container > .d-flex.align-items-center.justify-content-between.mb-2{
+    width: 100% !important;
+  }
+  #mm-sell-analytics-wrap .mm-ax-container > .d-flex.align-items-center.justify-content-between.mb-2 > div:nth-child(2){
+    margin-left: auto !important;
+    justify-content: flex-end !important;
+    text-align: right !important;
+  }
+</style>
+<!-- MM_SELL_TOOLBAR_RIGHT_ALIGN_V1_END -->
+
+<!-- MM_SELL_TOOLBAR_RIGHT_ALIGN_V2_START -->
+<style>
+  /* Sell Analytics: HARD FORCE toolbar alignment (left title / right links) */
+  #mm-sell-analytics-wrap .mm-ax-container > .d-flex.align-items-center.justify-content-between.mb-2{
+    display:flex !important;
+    justify-content:space-between !important;
+    align-items:center !important;
+    width:100% !important;
+  }
+
+  /* Right-side group: shove to the far right and keep right-aligned */
+  #mm-sell-analytics-wrap .mm-ax-container > .d-flex.align-items-center.justify-content-between.mb-2 > div:nth-child(2){
+    display:flex !important;
+    margin-left:auto !important;
+    justify-content:flex-end !important;
+    align-items:center !important;
+    text-align:right !important;
+    width:auto !important;
+  }
+</style>
+<!-- MM_SELL_TOOLBAR_RIGHT_ALIGN_V2_END -->
+
+
+
+
+
+<div class="mm-ax-container" style="padding-top:0;">
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <div class="d-flex align-items-center justify-content-between gap-2">
+      <img src="/static/Max.png" style="height:36px;width:36px;border-radius:8px;" alt="Max"/>
+      <div>
+        <div class="h4 mb-0">Sell Analytics</div>
+        <div class="text-secondary small" id="mm-sell-sub">Today</div>
+      </div>
+    </div>
+
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <a class="btn btn-sm btn-outline-info" href="/analytics">Daily</a>
+      <a class="btn btn-sm btn-outline-info" href="/analytics/buy">Buy Analytics</a>
+      <a class="btn btn-sm btn-outline-info" href="/analytics/sell">Sell Analytics</a>
+      <a class="btn btn-sm btn-outline-info" href="/analytics/buy_regime">Buy Regime</a>
+      <a class="btn btn-sm btn-outline-info" href="/analytics/sell_regime">Sell Regime</a>
+
+      <div class="ax-date-wrap ms-2">
+        <a class="btn btn-sm btn-outline-warning" id="ax-yesterday" href="#">Yesterday</a>
+        <input type="date" class="ax-date-input" id="ax-datepick" value="{{ request.args.get('date','') }}" aria-label="Select date"/>
+        <a class="btn btn-sm btn-outline-warning" id="ax-datego" href="#">Go</a>
+      </div>
+
+      <a class="btn btn-sm btn-outline-secondary" id="ax-live" href="/analytics/sell">Live</a>
+    </div>
+  </div>
+
+  <div class="text-secondary small" style="margin-top:2px;opacity:.82;">
+    This page focuses on exit reasons, execution outcomes, and time-in-position. (Counts stay off the SELL Settings page.)
+  </div>
+
+  <div id="mm-sell-bucket-row" class="d-flex align-items-center gap-2 flex-wrap" style="margin-top:10px;">
+    <div class="fw-bold" style="opacity:.8; min-width:70px;">Bucket</div>
+    <select id="mm-sell-bucket" class="form-select form-select-sm">
+      <option value="today">TODAY</option>
+      <option value="7d">7D</option>
+      <option value="30d">30D</option>
+      <option value="all">ALL</option>
+    </select>
+  </div>
 </div>
 
-<div class="mm-stickybar mb-3">
+<div id="mm-sell-err" class="mm-err"></div>
+
+<div id="mm-sell-outer-card">
+
+<div id="mm-sell-body-card">
+<div class="mm-card">
+  <h3>Exit reason breakdown</h3>
   <div class="mm-row">
-    <div>
-      <div id="mm-status" class="small mm-muted"></div>
-      <div id="mm-error" class="alert alert-danger py-2 px-3 d-none mt-2 mb-0"></div>
+    <div class="mm-mini">
+      <div class="text-secondary small" id="mm-exit-loading">Loading?</div>
+      <div id="mm-exit-box"></div>
     </div>
-    <div class="d-flex align-items-center gap-2">
-      <div class="btn-group" role="group" aria-label="settings tabs">
-        <a class="btn btn-sm btn-dark" href="/settings/buy">BUY</a>
-        <a class="btn btn-sm btn-warning" href="/settings/sell">SELL</a>
-      </div>
-      <select id="mm-profile" class="form-select form-select-sm" style="width:130px;">
-        <option value="day">DAY</option>
-        <option value="swing">SWING</option>
-      </select>
-      <button class="btn btn-sm btn-outline-light" id="mm-reload"><i class="bi bi-arrow-clockwise"></i> Reload</button>
-      <button class="btn btn-sm btn-primary" id="mm-save"><i class="bi bi-save2"></i> Save</button>
+    <div class="text-secondary small" style="padding-top:6px;">
+      Reason counts come from <span style="color:#ff66cc;font-family:monospace;">sell_events</span> where <span style="color:#ff66cc;font-family:monospace;">event=FILLED</span>.
     </div>
   </div>
 </div>
-  <!-- SELL GUARD -->
+
+<div class="mm-card">
+  <h3>Execution outcomes</h3>
+  <div class="mm-row">
+    <div class="mm-mini">
+      <div class="text-secondary small" id="mm-outcome-loading">Loading?</div>
+      <div id="mm-outcome-box"></div>
+    </div>
+    <div class="text-secondary small" style="padding-top:6px;">
+      Outcomes come from all <span style="color:#ff66cc;font-family:monospace;">sell_events</span> rows in the bucket.
+    </div>
+  </div>
+</div>
+
+<div class="mm-card">
+  <h3>Hold-time buckets</h3>
+  <div class="mm-row">
+    <div class="mm-mini">
+      <div class="text-secondary small" id="mm-hold-loading">Loading?</div>
+      <div id="mm-hold-box"></div>
+    </div>
+    <div class="text-secondary small" style="padding-top:6px;">
+      Hold time is computed from open?close timestamps when available. Missing data shows as empty bucket.
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  function pad2(n){ return String(n).padStart(2,'0'); }
+  function fmtDate(d){ return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); }
+  function setUrlDate(dateStr){
+    if(!dateStr) return;
+    const u = new URL(window.location.href);
+    u.searchParams.set("date", dateStr);
+    window.location.href = u.toString();
+  }
+
+  const yBtn = document.getElementById("ax-yesterday");
+  const pick = document.getElementById("ax-datepick");
+  const go   = document.getElementById("ax-datego");
+
+  if(yBtn){
+    const yd = new Date();
+    yd.setDate(yd.getDate()-1);
+    const u = new URL(window.location.href);
+    u.searchParams.set("date", fmtDate(yd));
+    yBtn.href = u.toString();
+  }
+  if(go){
+    go.addEventListener("click", function(e){
+      e.preventDefault();
+      setUrlDate(pick ? pick.value : "");
+    });
+  }
+  if(pick){
+    pick.addEventListener("keydown", function(e){
+      if(e.key === "Enter") setUrlDate(pick.value);
+    });
+  }
+
+  // live button accent when NOT on today
+  const liveBtn = document.getElementById("ax-live");
+  if(liveBtn){
+    const u = new URL(window.location.href);
+    const cur = (u.searchParams.get("date") || "").trim();
+    const now = new Date();
+    const today = now.getFullYear()+"-"+pad2(now.getMonth()+1)+"-"+pad2(now.getDate());
+    const onToday = (!cur) || (cur === today);
+    liveBtn.classList.remove("btn-outline-secondary","btn-outline-warning");
+    liveBtn.classList.add(onToday ? "btn-outline-secondary" : "btn-outline-warning");
+  }
+})();
+</script>
+
+
+</div>
+
+<!-- MM_SELL_HOUR_CARD_V2_START -->
+<div class="mm-card" id="mm-sell-hour-card">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+    <div>
+      <div style="font-size:18px;font-weight:800;">Winrate by Hour</div>
+      <div class="mm-muted" id="mm-sell-hour-sub">Loading...</div>
+    </div>
+    <div class="mm-muted" style="font-size:12px;">Bucket: <span id="mm-sell-hour-bucket-label"></span></div>
+  </div>
+
+  <div id="mm-sell-hour-bars"
+       style="display:flex;align-items:flex-end;gap:18px;height:150px;margin:10px 0 10px 0;padding:8px 4px 4px 4px;overflow-x:auto;">
+  </div>
+
+  <div style="overflow:auto;">
+    <table class="mm-table" style="width:100%;">
+      <thead>
+        <tr>
+          <th style="min-width:90px;">Hour</th>
+          <th style="min-width:90px;">Trades</th>
+          <th style="min-width:90px;">Wins</th>
+          <th style="min-width:90px;">Losses</th>
+          <th style="min-width:100px;">WinRate</th>
+          <th style="min-width:100px;">AvgGain</th>
+          <th style="min-width:100px;">NetGain</th>
+        </tr>
+      </thead>
+      <tbody id="mm-sell-hour-tbody">
+        <tr><td colspan="7" class="mm-muted">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+<!-- MM_SELL_HOUR_CARD_V2_END -->
+
+<!-- MM_SELL_HEATMAP_CARD_V1_START -->
+<div class="mm-card" id="mm-sell-heatmap-card">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+    <div>
+      <div style="font-size:18px;font-weight:800;">Exit Reason × Hour</div>
+      <div class="mm-muted" id="mm-sell-heatmap-sub">Loading...</div>
+    </div>
+
+<!-- MM_MOVE_TRADE_OUTCOME_OVERLAY_TO_SELL_ANALYTICS_V1_START -->
+<div class="mm-card" id="mm-sell-trade-outcome-overlay-card">
   <div class="card mb-3">
     <div class="card-header d-flex align-items-center justify-content-between">
       <div class="fw-semibold"><i class="bi bi-shield-check"></i> Sell Guard</div>
@@ -545,240 +691,94 @@
       <div class="small text-muted">Tip: To “let winners run” in TREND, raise target_mult and time_mult while keeping stop_mult reasonable.</div>
     </div>
   </div>
+
+
+  <!-- MM_TRADE_OUTCOME_CARD_V1_START -->
+  <div class="card mb-4" id="mm-trade-outcome-card">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <div class="fw-semibold"><i class="bi bi-bar-chart-steps"></i> Trade Outcome Overlay</div>
+      <span class="badge bg-secondary">Recent exits</span>
+    </div>
+    <div class="card-body">
+      <div class="small text-muted mb-2">
+        Recent closed exits with best-available exit-rule context from the DB.
+      </div>
+      <div id="mm-too-note" class="small mb-2" style="color:#f5d400;"></div>
+      <div class="table-responsive">
+        <table class="table table-sm table-dark align-middle mb-0">
+          <thead>
+            <tr>
+              <th style="width:170px;">Time (ET)</th>
+              <th style="width:90px;">Symbol</th>
+              <th style="width:130px;">Exit rule</th>
+              <th style="width:90px;">Regime</th>
+              <th style="width:90px;">Mode</th>
+              <th style="width:90px;">P/L %</th>
+              <th>Event</th>
+            </tr>
+          </thead>
+          <tbody id="mm-too-body">
+            <tr><td colspan="7" class="text-muted">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
 </div>
-
-<script>
-(function(){
-  const GROUP = "sell";
-
-  function qs(id){ return document.getElementById(id); }
-  function showError(msg){
-    const el = qs("mm-error");
-    el.textContent = msg || "";
-    el.classList.toggle("d-none", !msg);
-  }
-  function setStatus(msg){
-    qs("mm-status").textContent = msg || "";
-  }
+<!-- MM_MOVE_TRADE_OUTCOME_OVERLAY_TO_SELL_ANALYTICS_V1_END -->
 
 
-  // MM_TRADE_OUTCOME_JS_V1
-  function mmEsc(s){
-    return String(s == null ? "" : s)
-      .replace(/&/g,"&amp;")
-      .replace(/</g,"&lt;")
-      .replace(/>/g,"&gt;")
-      .replace(/"/g,"&quot;")
-      .replace(/'/g,"&#39;");
-  }
+    <div class="mm-muted" style="font-size:12px;">Bucket: <span id="mm-sell-heatmap-bucket-label"></span></div>
+  </div>
 
-  function mmTooClass(reason){
-    const r = String(reason||"").toLowerCase();
-    if(r.includes("target")) return "style=\"color:#52d273;font-weight:700;\"";
-    if(r.includes("trail")) return "style=\"color:#6cb8ff;font-weight:700;\"";
-    if(r.includes("stop")) return "style=\"color:#ff7a7a;font-weight:700;\"";
-    if(r.includes("timeout")) return "style=\"color:#ffbe5c;font-weight:700;\"";
-    if(r.includes("stale")) return "style=\"color:#d78cff;font-weight:700;\"";
-    if(r.includes("protect")) return "style=\"color:#7ce2d1;font-weight:700;\"";
-    if(r.includes("ai")) return "style=\"color:#73d5ff;font-weight:700;\"";
-    return "";
-  }
-
-  async function fetchTradeOutcomes(){
-    const body = qs("mm-too-body");
-    const note = qs("mm-too-note");
-    if(!body) return;
-    body.innerHTML = '<tr><td colspan="7" class="text-muted">Loading…</td></tr>';
-    if(note) note.textContent = "";
-    try{
-      const res = await fetch(`/api/settings/trade_outcomes?limit=20&v=${Date.now()}`, {cache:"no-store"});
-      const txt = await res.text();
-      let j = null;
-      try{ j = JSON.parse(txt); } catch(e){ j = null; }
-      if(!res.ok || !j || !j.ok){
-        throw new Error((j && j.error) ? j.error : (`HTTP ${res.status}`));
-      }
-      const rows = Array.isArray(j.rows) ? j.rows : [];
-      if(note){
-        note.textContent = rows.length
-          ? 'Color key: target green, trailing blue, stop red, timeout orange, stale purple, protect teal, AI cyan.'
-          : 'No recent closed exits found.';
-      }
-      if(!rows.length){
-        body.innerHTML = '<tr><td colspan="7" class="text-muted">No recent closed exits found.</td></tr>';
-        return;
-      }
-      body.innerHTML = rows.map(r => `
-        <tr>
-          <td>${mmEsc(r.time_et || "")}</td>
-          <td><strong>${mmEsc(r.symbol || "")}</strong></td>
-          <td ${mmTooClass(r.exit_reason)}>${mmEsc(r.exit_reason || "")}</td>
-          <td>${mmEsc(r.regime || "")}</td>
-          <td>${mmEsc(r.mode || "")}</td>
-          <td>${mmEsc(r.pnl_pct || "")}</td>
-          <td>${mmEsc(r.event || "")}</td>
-        </tr>
-      `).join("");
-    }catch(err){
-      if(note) note.textContent = "Trade outcomes unavailable.";
-      body.innerHTML = `<tr><td colspan="7" class="text-danger">${mmEsc(err.message || String(err))}</td></tr>`;
+  <style>
+    #mm-sell-heatmap-card .mm-heat-wrap{overflow:auto;margin-top:10px;}
+    #mm-sell-heatmap-card .mm-heat{
+      width:100%;
+      border-collapse:separate;
+      border-spacing:6px;
+      min-width:760px;
     }
-  }
-
-
-  function getPath(obj, path){
-    if(!obj) return undefined;
-    const parts = (path||"").split(".");
-    let cur = obj;
-    for(const p of parts){
-      if(cur == null) return undefined;
-      cur = cur[p];
+    #mm-sell-heatmap-card .mm-heat th{
+      font-size:12px;
+      opacity:.8;
+      padding:4px 6px;
+      text-align:center;
+      white-space:nowrap;
     }
-    return cur;
-  }
-  function setPath(obj, path, val){
-    const parts = (path||"").split(".");
-    let cur = obj;
-    for(let i=0;i<parts.length;i++){
-      const p = parts[i];
-      if(i === parts.length-1){
-        cur[p] = val;
-      } else {
-        if(typeof cur[p] !== "object" || cur[p] === null) cur[p] = {};
-        cur = cur[p];
-      }
+    #mm-sell-heatmap-card .mm-heat td{
+      padding:8px 10px;
+      border-radius:10px;
+      text-align:center;
+      font-weight:700;
+      border:1px solid rgba(255,255,255,.06);
+      min-width:62px;
     }
-  }
-
-
-  // MM_HOUR_BLOCK_SELL_JS_V1
-  function mmHoursToCsv(arr){
-    if (!Array.isArray(arr)) return "";
-    return arr
-      .map(v => Number(v))
-      .filter(v => Number.isFinite(v) && v >= 0 && v <= 23)
-      .join(",");
-  }
-
-  function mmCsvToHours(s){
-    return String(s || "")
-      .split(",")
-      .map(x => x.trim())
-      .filter(Boolean)
-      .map(x => Number(x))
-      .filter(v => Number.isFinite(v) && v >= 0 && v <= 23);
-  }
-
-  function profile(){
-    return (qs("mm-profile").value || "day").toLowerCase();
-  }
-
-  async function apiLoad(){
-    showError("");
-    setStatus("Loading…");
-    const url = `/api/settings/load?group=${encodeURIComponent(GROUP)}&profile=${encodeURIComponent(profile())}`;
-    const res = await fetch(url, {cache:"no-store"});
-    const ct = (res.headers.get("content-type")||"").toLowerCase();
-    const bodyText = await res.text();
-    if(!res.ok){
-      throw new Error(`HTTP ${res.status} ${res.statusText}: ${bodyText.slice(0,400)}`);
+    #mm-sell-heatmap-card .mm-heat td.mm-rowlabel{
+      text-align:left;
+      min-width:160px;
+      background:rgba(255,255,255,.04);
+      font-weight:800;
+      white-space:nowrap;
     }
-    let j = null;
-    try{
-      j = ct.includes("application/json") ? JSON.parse(bodyText) : JSON.parse(bodyText);
-    }catch(e){
-      throw new Error("Non-JSON response from /api/settings/load");
+    #mm-sell-heatmap-card .mm-heat td.mm-zero{
+      opacity:.38;
+      background:rgba(255,255,255,.03);
     }
-    if(!j.ok) throw new Error(j.error || "Load failed");
-    window.__MM_DATA__ = j.data || {};
-    hydrateForm();
-    setStatus(`Editing: SELL / ${j.profile.toUpperCase()}`);
-  }
+  </style>
 
-  function parseInputValue(el){
-    const path = el.getAttribute("data-path") || "";
-    const raw = (el.type === "checkbox") ? el.checked : el.value;
+  <div class="mm-heat-wrap">
+    <table class="mm-heat" id="mm-sell-heatmap-table">
+      <thead id="mm-sell-heatmap-head"></thead>
+      <tbody id="mm-sell-heatmap-body">
+        <tr><td class="mm-muted">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+<!-- MM_SELL_HEATMAP_CARD_V1_END -->
 
-    // numbers
-    if(el.type === "number"){
-      if(raw === "" || raw === null || raw === undefined) return 0;
-      const n = Number(raw);
-      return Number.isFinite(n) ? n : 0;
-    }
-    // booleans
-    if(el.type === "checkbox") return !!raw;
+<script src="/static/js/analytics_sell.js"></script>
 
-    // strings default
-    return String(raw ?? "");
-  }
-
-  function hydrateForm(){
-    const data = window.__MM_DATA__ || {};
-    const inputs = document.querySelectorAll("[data-path]");
-    inputs.forEach(el => {
-      const path = el.getAttribute("data-path");
-      const v = getPath(data, path);
-      if(el.type === "checkbox"){
-        el.checked = !!v;
-      } else {
-        el.value = (v === undefined || v === null) ? "" : v;
-      }
-    });
-
-    try {
-      const el = document.getElementById("avoidSellHours");
-      if (el) el.value = mmHoursToCsv(getPath(data, "sell_guard.avoid_sell_hours") || []);
-    } catch(e) {}
-  }
-
-  function collectForm(){
-    const base = window.__MM_DATA__ || {};
-    const data = JSON.parse(JSON.stringify(base)); // clone
-    const inputs = document.querySelectorAll("[data-path]");
-    inputs.forEach(el => {
-      const path = el.getAttribute("data-path");
-      const v = parseInputValue(el);
-      setPath(data, path, v);
-    });
-
-    try {
-      const el = document.getElementById("avoidSellHours");
-      if (el) setPath(data, "sell_guard.avoid_sell_hours", mmCsvToHours(el.value));
-    } catch(e) {}
-
-    return data;
-  }
-
-  async function apiSave(){
-    showError("");
-    setStatus("Saving…");
-    const data = collectForm();
-    const url = `/api/settings/save?group=${encodeURIComponent(GROUP)}&profile=${encodeURIComponent(profile())}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {"content-type":"application/json"},
-      body: JSON.stringify(data)
-    });
-    const bodyText = await res.text();
-    if(!res.ok){
-      throw new Error(`HTTP ${res.status} ${res.statusText}: ${bodyText.slice(0,400)}`);
-    }
-    let j = null;
-    try{ j = JSON.parse(bodyText); } catch(e){ j = {ok:false, error:"Non-JSON save response"}; }
-    if(!j.ok) throw new Error(j.error || "Save failed");
-    setStatus(`Editing: SELL / ${profile().toUpperCase()}`);
-    // reload so persisted overlay comes back in
-    await apiLoad();
-  }
-
-  qs("mm-reload").addEventListener("click", (e)=>{ e.preventDefault(); apiLoad().catch(err=>{ showError(err.message||String(err)); setStatus(""); });});
-  qs("mm-save").addEventListener("click", (e)=>{ e.preventDefault(); apiSave().catch(err=>{ showError(err.message||String(err)); setStatus(""); });});
-
-  document.addEventListener("DOMContentLoaded", ()=>{
-    apiLoad().catch(err=>{ showError(err.message||String(err)); setStatus(""); });
-    try{ fetchTradeOutcomes(); }catch(e){}
-  });
-})();
-</script>
-
+</div>
 {% endblock %}
+

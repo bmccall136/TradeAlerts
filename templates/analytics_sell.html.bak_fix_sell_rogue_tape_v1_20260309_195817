@@ -1,4 +1,4 @@
-﻿{% extends "analytics_layout.html" %}
+{% extends "analytics_layout.html" %}
 
 <!-- MM_SELL_ANALYTICS_BODY_CARD_ONLY_V1_START -->
 <style>
@@ -32,6 +32,8 @@
 {% block analytics_tape %}
   {% include "_analytics_tape.html" %}
 
+<!-- MM_SELL_ANALYTICS_WRAP_END -->
+</div>
 {% endblock %}
 
 
@@ -43,6 +45,16 @@
 
 <!-- MM_SELL_ANALYTICS_WRAP_START -->
 <div id="mm-sell-analytics-root">
+<!-- ====== REGIME TAPE (Analytics pages only) ====== -->
+<div id="mm-ax-tape-meta" style="font-size:12px;opacity:.70;"></div>
+  <div style="position:relative;">
+    <div id="mm-ax-ticks" style="position:absolute;left:0;top:-16px;right:0;height:14px;font-size:11px;opacity:.65;pointer-events:none;"></div>
+    <div id="mm-ax-tape"
+         style="height:14px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.10);
+                background:rgba(255,255,255,.04);">
+    </div>
+  </div>
+</div>
 
 <style>
   /* MM_SELL_ANALYTICS_FINAL_V1 */
@@ -352,100 +364,7 @@
 </div>
 <!-- MM_SELL_HOUR_CARD_V2_END -->
 
-<!-- MM_SELL_HEATMAP_CARD_V1_START -->
-<div class="mm-card" id="mm-sell-heatmap-card">
-  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-    <div>
-      <div style="font-size:18px;font-weight:800;">Exit Reason × Hour</div>
-      <div class="mm-muted" id="mm-sell-heatmap-sub">Loading...</div>
-    </div>
-    <div class="mm-muted" style="font-size:12px;">Bucket: <span id="mm-sell-heatmap-bucket-label"></span></div>
-  </div>
-
-  <style>
-    #mm-sell-heatmap-card .mm-heat-wrap{overflow:auto;margin-top:10px;}
-    #mm-sell-heatmap-card .mm-heat{
-      width:100%;
-      border-collapse:separate;
-      border-spacing:6px;
-      min-width:760px;
-    }
-    #mm-sell-heatmap-card .mm-heat th{
-      font-size:12px;
-      opacity:.8;
-      padding:4px 6px;
-      text-align:center;
-      white-space:nowrap;
-    }
-    #mm-sell-heatmap-card .mm-heat td{
-      padding:8px 10px;
-      border-radius:10px;
-      text-align:center;
-      font-weight:700;
-      border:1px solid rgba(255,255,255,.06);
-      min-width:62px;
-    }
-    #mm-sell-heatmap-card .mm-heat td.mm-rowlabel{
-      text-align:left;
-      min-width:160px;
-      background:rgba(255,255,255,.04);
-      font-weight:800;
-      white-space:nowrap;
-    }
-    #mm-sell-heatmap-card .mm-heat td.mm-zero{
-      opacity:.38;
-      background:rgba(255,255,255,.03);
-    }
-  </style>
-
-  <div class="mm-heat-wrap">
-    <table class="mm-heat" id="mm-sell-heatmap-table">
-      <thead id="mm-sell-heatmap-head"></thead>
-      <tbody id="mm-sell-heatmap-body">
-        <tr><td class="mm-muted">Loading...</td></tr>
-      </tbody>
-    </table>
-  </div>
-</div>
-<!-- MM_SELL_HEATMAP_CARD_V1_END -->
-
-<!-- MM_SELL_TRADE_OUTCOME_CARD_V1_START -->
-<div class="mm-card" id="mm-sell-trade-outcome-card">
-  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-    <div>
-      <div style="font-size:18px;font-weight:800;">Trade Outcome Overlay</div>
-      <div class="mm-muted">Recent closed exits with best-available exit-rule context from the DB.</div>
-    </div>
-    <div><span class="badge bg-secondary">Recent exits</span></div>
-  </div>
-
-  <div id="mm-too-note" class="small mb-2" style="color:#f5d400;margin-top:10px;"></div>
-  <div class="table-responsive">
-    <table class="table table-sm table-dark align-middle mb-0">
-      <thead>
-        <tr>
-          <th style="width:170px;">Time (ET)</th>
-          <th style="width:90px;">Symbol</th>
-          <th style="width:130px;">Exit rule</th>
-          <th style="width:90px;">Regime</th>
-          <th style="width:90px;">Mode</th>
-          <th style="width:90px;">P/L %</th>
-          <th>Event</th>
-        </tr>
-      </thead>
-      <tbody id="mm-too-body">
-        <tr><td colspan="7" class="text-muted">Loading…</td></tr>
-      </tbody>
-    </table>
-  </div>
-</div>
-<!-- MM_SELL_TRADE_OUTCOME_CARD_V1_END -->
-
-
-
-
 <script src="/static/js/analytics_sell.js"></script>
 
 </div>
 {% endblock %}
-
