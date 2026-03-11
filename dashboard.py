@@ -1,3 +1,16 @@
+
+
+# --- MM_FIX_REALIZED_YEAR_PCT_V1_START ---
+from __future__ import annotations
+def _mm_safe_pct(pnl,basis):
+    try:
+        if not basis:
+            return 0.0
+        return round((pnl/basis)*100,2)
+    except:
+        return 0.0
+# --- MM_FIX_REALIZED_YEAR_PCT_V1_END ---
+
 # -*- coding: utf-8 -*-
 """
 TradeAlerts – LIVE Dashboard
@@ -17,7 +30,6 @@ This file exposes:
 - /auth/etrade/reconnect, /checkpoint helpers
 """
 
-from __future__ import annotations
 import re
 import json
 import logging

@@ -906,21 +906,28 @@ def run_live_loop(settings, symbols, broker_mode=None):
             log.info("[LIVE] funds: settled=%s, bp=%s (using=%s)", sc_str, bp_str, src)
 
         # --- MM_GUARDRAIL_LOG_AFTER_FUNDS_V2_START ---
+        # --- MM_REPAIR_GUARDRAIL_DEBUG_BLOCK_V1 ---
         try:
             _gp_max_positions = int(getattr(settings, "max_positions", 0) or 0)
         except Exception:
             _gp_max_positions = 0
+
         try:
             _gp_max_new_positions_per_cycle = int(getattr(settings, "max_new_positions_per_cycle", 0) or 0)
         except Exception:
             _gp_max_new_positions_per_cycle = 0
+
         try:
-            _gp_open_positions_now = sum(
-                1 for _sym, _pos in (holdingsL or {}).items()
-                if int((_pos or {}).get("qty", 0) or 0) > 0
-            )
+            _holdings_src = locals().get("holdingsL", None)
+            if isinstance(_holdings_src, dict):
+                _gp_open_positions_now = sum(
+                    1 for _sym, _pos in _holdings_src.items()
+                    if int((_pos or {}).get("qty", 0) or 0) > 0
+                )
+            else:
+                _gp_open_positions_now = 0
         except Exception:
-            _gp_open_positions_now = -1
+            _gp_open_positions_now = 0
 
         log.warning(
             "[GUARDRAILS ACTIVE] open_positions=%s max_positions=%s max_new_positions_per_cycle=%s",
