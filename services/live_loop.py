@@ -1197,6 +1197,14 @@ def run_live_loop(settings, symbols, broker_mode=None):
             if int((_pos or {}).get("qty", 0) or 0) > 0
         )
 
+        log.warning(
+            "[GUARDRAILS ACTIVE] open_positions=%d max_positions=%s cycle_new_positions=%d max_new_positions_per_cycle=%s",
+            int(open_positions_now),
+            (max_positions if max_positions > 0 else "OFF"),
+            int(cycle_new_positions),
+            (max_new_positions_per_cycle if max_new_positions_per_cycle > 0 else "OFF"),
+        )
+
         log.info(
             "[GUARDRAIL] buy limits: open_positions=%d max_positions=%s cycle_new_positions=%d max_new_positions_per_cycle=%s",
             int(open_positions_now),
