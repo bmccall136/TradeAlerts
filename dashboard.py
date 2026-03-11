@@ -373,11 +373,18 @@ def _fmt_opened_et(opened_utc):
         except Exception:
             return ""
 
+
+# --- MM_REPLACE_REALIZED_SUMMARY_FROM_LIVE_DB_V2_START ---
 def _realized_summary_from_live_db(db_path):
     """
-    Returns realized P&L buckets based on realized_trades.close_date:
-      day/week/month/year (YTD from Jan 1).
-    pct is pnl / sum(cost_basis) * 100 (0 if denom missing).
+    Returns realized P&L buckets from live.db.realized_trades:
+      day / week / month / year
+    pct = pnl / summed basis * 100
+
+    Basis preference per row:
+      1) cost_basis
+      2) total_cost
+      3) proceeds - gain
     """
     try:
         import sqlite3
@@ -388,452 +395,131 @@ def _realized_summary_from_live_db(db_path):
         except Exception:
             ET = None
 
+        def _to_num(x):
+            try:
+                if x is None or x == "":
+                    return 0.0
+                return float(x)
+            except Exception:
+                return 0.0
+
         def _parse_dt(x):
             if x is None:
                 return None
-            # epoch seconds / ms
-            if isinstance(x, (int, float)):
-                v = float(x)
-                if v > 10_000_000_000:  # ms
-                    v = v / 1000.0
-                return datetime.fromtimestamp(v, tz=timezone.utc)
-            s = str(x).strip()
-            if not s:
-                return None
-            # numeric-as-string
-            if s.isdigit():
-                v = float(s)
-                if v > 10_000_000_000:
-                    v = v / 1000.0
-                return datetime.fromtimestamp(v, tz=timezone.utc)
-            # ISO-ish
-            s2 = s.replace("Z", "").replace("T", " ").strip()
             try:
-                # allow "YYYY-MM-DD HH:MM:SS" or with fractions
-                d = datetime.fromisoformat(s2)
-                # assume ET if naive
-                if d.tzinfo is None:
-                    if ET:
-                        d = d.replace(tzinfo=ET).astimezone(timezone.utc)
-                    else:
-                        d = d.replace(tzinfo=timezone.utc)
-                else:
-                    d = d.astimezone(timezone.utc)
-                return d
+                s = str(x).strip()
+                if not s:
+                    return None
+                s = s.replace("T", " ").replace("Z", "+00:00")
+                dtv = datetime.fromisoformat(s)
+                if dtv.tzinfo is None:
+                    dtv = dtv.replace(tzinfo=timezone.utc)
+                return dtv.astimezone(timezone.utc)
             except Exception:
-                return None
+                try:
+                    s = str(x).strip().replace("T", " ")
+                    dtv = datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S")
+                    dtv = dtv.replace(tzinfo=timezone.utc)
+                    return dtv
+                except Exception:
+                    return None
 
         def _bucket(rows, start_utc, end_utc):
             pnl = 0.0
-            denom = 0.0
-            for row in rows:
-                # row: (close_date, gain, cost_basis, total_cost, proceeds)
-                close_date = row[0] if len(row) > 0 else None
-                gain       = row[1] if len(row) > 1 else 0.0
-                cost_basis = row[2] if len(row) > 2 else None
-                total_cost = row[3] if len(row) > 3 else None
-                proceeds   = row[4] if len(row) > 4 else None
+            basis = 0.0
 
-                dtu = _parse_dt(close_date)
-                if not dtu:
+            for close_date, gain, cost_basis, total_cost, proceeds in rows:
+                dtv = _parse_dt(close_date)
+                if dtv is None:
                     continue
-                if dtu < start_utc or dtu >= end_utc:
+                if dtv < start_utc or dtv > end_utc:
                     continue
 
-                try:
-                    g = float(gain or 0.0)
-                except Exception:
-                    g = 0.0
+                g  = _to_num(gain)
+                cb = abs(_to_num(cost_basis))
+                tc = abs(_to_num(total_cost))
+                pr = abs(_to_num(proceeds))
+
                 pnl += g
 
-                # Denominator preference:
-                # 1) cost_basis (best)
-                # 2) total_cost (often populated when cost_basis is NULL)
-                # 3) proceeds - gain (since gain = proceeds - cost)
-                cb = 0.0
-                tc = 0.0
-                pr = 0.0
-                try:
-                    cb = float(cost_basis or 0.0)
-                except Exception:
-                    cb = 0.0
-                try:
-                    tc = float(total_cost or 0.0)
-                except Exception:
-                    tc = 0.0
-                try:
-                    pr = float(proceeds or 0.0)
-                except Exception:
-                    pr = 0.0
-
                 if cb > 0:
-                    denom += cb
+                    basis += cb
                 elif tc > 0:
-                    denom += tc
+                    basis += tc
                 elif pr > 0:
-                    denom += max(pr - g, 0.0)
+                    # if proceeds and gain are known, infer entry cost
+                    inferred = abs(pr - g)
+                    if inferred > 0:
+                        basis += inferred
 
-            pct = (pnl / denom * 100.0) if denom > 0 else 0.0
-            out = {"pnl": round(pnl, 2), "pct": round(pct, 2)}
-            
-            # --- TRUE YTD FIX: recompute YEAR from Jan 1 (do not reuse month/week slice) ---
-            try:
-                # prefer existing now_utc if present; else define
-                now_utc = locals().get('now_utc')
-                if now_utc is None:
-                    now_utc = dt.datetime.utcnow()
-                year_start = now_utc.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-                # use the same cursor/connection if available
-                cur = locals().get('cur')
-                if cur is not None:
-                    cur.execute("""SELECT close_date, gain, cost_basis, total_cost, proceeds
-               FROM realized_trades
-               WHERE close_date >= ? AND source_file = 'ETRADE_GAINS_LOSSES_CSV'""",
-            (year_start.strftime("%Y-%m-%d %H:%M:%S"),))
-                    year_rows = cur.fetchall()
-                    _bucket = locals().get('_bucket')
-                    if callable(_bucket):
-                        out['year'] = _bucket(year_rows, year_start, now_utc)
-            except Exception:
-                pass
-            
-            return out
+            pct = (pnl / basis * 100.0) if basis > 0 else 0.0
+            return {
+                "pnl": round(pnl, 2),
+                "pct": round(pct, 2),
+            }
+
         con = sqlite3.connect(db_path)
         cur = con.cursor()
 
-        # We prefer close_date, gain, cost_basis
         try:
-            rows = cur.execute("SELECT close_date, gain, cost_basis, total_cost, proceeds FROM realized_trades").fetchall()
+            rows = cur.execute("""
+                SELECT close_date, gain, cost_basis, total_cost, proceeds
+                FROM realized_trades
+                WHERE symbol <> 'TEST'
+                  AND (
+                        action IS NULL
+                        OR TRIM(action) = ''
+                        OR UPPER(action) IN ('SELL','SOLD')
+                      )
+                ORDER BY close_date DESC
+            """).fetchall()
         except Exception:
-            # fallback if cost_basis not present
-            rows = cur.execute("SELECT close_date, gain, NULL, total_cost, proceeds FROM realized_trades").fetchall()
+            rows = cur.execute("""
+                SELECT close_date, gain, NULL, total_cost, proceeds
+                FROM realized_trades
+                WHERE symbol <> 'TEST'
+                ORDER BY close_date DESC
+            """).fetchall()
 
         con.close()
 
         now_utc = datetime.now(timezone.utc)
-        if ET:
+
+        if ET is not None:
             now_et = now_utc.astimezone(ET)
             day_start_et = now_et.replace(hour=0, minute=0, second=0, microsecond=0)
-            week_start_et = day_start_et - timedelta(days=day_start_et.weekday())  # Monday
+            week_start_et = day_start_et - timedelta(days=day_start_et.weekday())
             month_start_et = day_start_et.replace(day=1)
-            year_start_et  = day_start_et.replace(month=1, day=1)
-            day_start_utc   = day_start_et.astimezone(timezone.utc)
-            week_start_utc  = week_start_et.astimezone(timezone.utc)
+            year_start_et = day_start_et.replace(month=1, day=1)
+
+            day_start_utc = day_start_et.astimezone(timezone.utc)
+            week_start_utc = week_start_et.astimezone(timezone.utc)
             month_start_utc = month_start_et.astimezone(timezone.utc)
-            year_start_utc  = year_start_et.astimezone(timezone.utc)
+            year_start_utc = year_start_et.astimezone(timezone.utc)
         else:
-            # UTC fallback
-            day_start_utc   = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-            week_start_utc  = day_start_utc - timedelta(days=day_start_utc.weekday())
+            day_start_utc = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+            week_start_utc = day_start_utc - timedelta(days=day_start_utc.weekday())
             month_start_utc = day_start_utc.replace(day=1)
-            year_start_utc  = day_start_utc.replace(month=1, day=1)
+            year_start_utc = day_start_utc.replace(month=1, day=1)
 
         return {
-            "market_regime_label": (mr.get("label") if isinstance(mr, dict) else "UNKNOWN"), "market_regime_conf": (mr.get("confidence") if isinstance(mr, dict) else 0), "market_regime_reason": (mr.get("reason") if isinstance(mr, dict) else ""), "market_regime_asof": (mr.get("asof_et") if isinstance(mr, dict) else ""), "market_regime_detail": (mr.get("detail") if isinstance(mr, dict) else {}), "day":   _bucket(rows, day_start_utc, now_utc),
+            "day":   _bucket(rows, day_start_utc, now_utc),
             "week":  _bucket(rows, week_start_utc, now_utc),
             "month": _bucket(rows, month_start_utc, now_utc),
             "year":  _bucket(rows, year_start_utc, now_utc),
         }
-    except Exception:
-        return {"day":{"pnl":0.0,"pct":0.0},"week":{"pnl":0.0,"pct":0.0},"month":{"pnl":0.0,"pct":0.0},"year":{"pnl":0.0,"pct":0.0}}
-        import datetime as _dt
-        from zoneinfo import ZoneInfo as _ZoneInfo
-        if opened_utc is None or opened_utc == "":
-            return ""
-        # numeric epoch seconds?
-        if isinstance(opened_utc, (int, float)):
-            dt = _dt.datetime.fromtimestamp(float(opened_utc), tz=_dt.timezone.utc)
-        else:
-            s = str(opened_utc).strip()
-            # allow "2026-01-28T19:53:10.798941+00:00" style
-            dt = _dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=_dt.timezone.utc)
-        et = dt.astimezone(_ZoneInfo("America/New_York"))
-        return et.strftime("%Y-%m-%d %H:%M")
-    except Exception:
-        return ""
-try:
-    from services.trade_source import load_trades_merged
-except ImportError:
-    def load_trades_merged(
-        days: int | None = None,
-        start_iso: str | None = None,
-        max_count: int = 5000,
-    ):
-        return []
-
-# -----------------------------------------------------------------------------#
-# Helpers
-# -----------------------------------------------------------------------------#
-def _mm_hydrate_holdings_opened_from_position_opened_and_trades(holdings, dbp):
-    """
-    1) hydrate holdings[*].opened_et from live.db.position_opened.opened_ts_utc
-    2) if missing, backfill position_opened from latest BUY in live.db.trades (then hydrate)
-    Always sets opened_et to a DISPLAY STRING (not a number) to stop JS epoch->midnight.
-    """
-    try:
-        import sqlite3, datetime as _dt
-        try:
-            from zoneinfo import ZoneInfo as _ZoneInfo
-            _ET = _ZoneInfo("America/New_York")
-        except Exception:
-            _ET = None
-
-        if not isinstance(holdings, list) or not holdings:
-            return holdings
-        con = sqlite3.connect(str(dbp), timeout=5)
-        cur = con.cursor()
-
-        # load map from position_opened
-        mm_map = {}
-        for sym, ts in cur.execute(
-            "SELECT symbol, opened_ts_utc FROM position_opened WHERE opened_ts_utc IS NOT NULL"
-        ):
-            if sym and ts:
-                mm_map[str(sym).upper()] = int(ts)
-
-        def _parse_trade_time_to_ts_utc(s):
-            if not s:
-                return None
-            t = str(s).strip().replace("T", " ").split(".")[0]
-            try:
-                dt = _dt.datetime.fromisoformat(t)
-            except Exception:
-                return None
-            # trades are typically stored as naive ET
-            if dt.tzinfo is None and _ET is not None:
-                dt = dt.replace(tzinfo=_ET)
-            try:
-                return int(dt.astimezone(_dt.timezone.utc).timestamp())
-            except Exception:
-                return None
-
-        # backfill missing symbols from trades BUY time
-        needed = []
-        for h in holdings:
-            if not isinstance(h, dict):
-                continue
-            sym = str(h.get("symbol") or h.get("Symbol") or "").upper().strip()
-            if sym and sym not in mm_map:
-                needed.append(sym)
-
-        for sym in sorted(set(needed)):
-            row = cur.execute(
-                "SELECT trade_time FROM trades WHERE symbol=? AND UPPER(action)='BUY' ORDER BY trade_time DESC, id DESC LIMIT 1",
-                (sym,),
-            ).fetchone()
-            if not row:
-                continue
-            ts_utc = _parse_trade_time_to_ts_utc(row[0])
-            if not ts_utc:
-                continue
-            try:
-                cur.execute(
-                    "INSERT OR REPLACE INTO position_opened(symbol, opened_ts_utc) VALUES (?, ?)",
-                    (sym, int(ts_utc)),
-                )
-                mm_map[sym] = int(ts_utc)
-            except Exception:
-                pass
-
-        try:
-            con.commit()
-        except Exception:
-            pass
-
-        # hydrate holdings opened_et as DISPLAY STRING
-        for h in holdings:
-            if not isinstance(h, dict):
-                continue
-            sym = str(h.get("symbol") or h.get("Symbol") or "").upper().strip()
-            ts = mm_map.get(sym)
-            if not ts:
-                continue
-
-            # preserve old numeric/epoch artifact if present
-            if "opened_et_epoch" not in h and "opened_et" in h:
-                h["opened_et_epoch"] = h.get("opened_et")
-
-            h["opened_ts_utc"] = int(ts)
-            try:
-                dtu = _dt.datetime.fromtimestamp(int(ts), tz=_dt.timezone.utc)
-                dte = dtu.astimezone(_ET) if _ET is not None else dtu
-                h["opened_et"] = dte.strftime("%m/%d/%Y, %I:%M %p")
-            except Exception:
-                h["opened_et"] = str(ts)
-
-
-        # --- MM_OPENED_ET_FINAL_NORMALIZE_V1_START ---
-        # Final safety: if opened_et is still numeric (epoch) OR opened_utc exists,
-        # convert to a display string so the frontend never sees an epoch and flashes 12:00 AM.
-        try:
-            for h in holdings or []:
-                if not isinstance(h, dict):
-                    continue
-
-                # If we already set a human string (contains "/"), leave it.
-                v = h.get("opened_et", None)
-                if isinstance(v, str) and "/" in v:
-                    continue
-
-                # Prefer opened_ts_utc if present, else opened_utc (E*TRADE epoch seconds), else numeric opened_et
-                epoch = None
-                try:
-                    if h.get("opened_ts_utc"):
-                        epoch = float(h.get("opened_ts_utc"))
-                except Exception:
-                    epoch = None
-
-                if epoch is None:
-                    try:
-                        if h.get("opened_utc") is not None:
-                            epoch = float(h.get("opened_utc"))
-                    except Exception:
-                        epoch = None
-
-                if epoch is None:
-                    try:
-                        if isinstance(v, (int, float)):
-                            epoch = float(v)
-                        elif isinstance(v, str):
-                            s = v.strip()
-                            if s and s.replace(".", "", 1).isdigit():
-                                epoch = float(s)
-                    except Exception:
-                        epoch = None
-
-                if epoch is None:
-                    continue
-
-                # preserve raw epoch artifact if not already present
-                if "opened_et_epoch" not in h:
-                    try:
-                        h["opened_et_epoch"] = str(v if v is not None else epoch)
-                    except Exception:
-                        pass
-
-                try:
-                    h["opened_ts_utc"] = int(epoch)
-                except Exception:
-                    pass
-
-                try:
-                    dtu = _dt.datetime.fromtimestamp(int(epoch), tz=_dt.timezone.utc)
-                    dte = dtu.astimezone(_ET) if _ET is not None else dtu
-
-                    # If it's midnight exactly, show date-only (midnight epoch is a placeholder, not a real fill time)
-                    if dte.hour == 0 and dte.minute == 0 and dte.second == 0:
-                        h["opened_et"] = dte.strftime("%m/%d/%Y, %I:%M %p")
-                    else:
-                        h["opened_et"] = dte.strftime("%m/%d/%Y, %I:%M %p")
-                except Exception:
-                    h["opened_et"] = str(int(epoch))
-        except Exception:
-            pass
-        # --- MM_OPENED_ET_FINAL_NORMALIZE_V1_END ---
-
-        try:
-            con.close()
-        except Exception:
-            pass
 
     except Exception:
-            return holdings
-    # --- MM_OPENED_ET_NORMALIZE_NUMERIC_V1_START ---
-    # If opened_et is still a numeric epoch (string/float), convert to display string
-    # so JS doesn't interpret it as an epoch and flash/force 12:00 AM.
-    try:
-        from datetime import datetime, timezone
-        try:
-            from zoneinfo import ZoneInfo
-            _ET = ZoneInfo("America/New_York")
-        except Exception:
-            _ET = None
-
-        for _h in (holdings or []):
-            try:
-                v = (_h or {}).get("opened_et", None)
-
-                # skip if it's already a display string like "02/12/2026, 03:26 PM"
-                if isinstance(v, str) and "/" in v:
-                    continue
-
-                # numeric epoch as float/int or numeric string
-                _epoch = None
-                if isinstance(v, (int, float)):
-                    _epoch = float(v)
-                elif isinstance(v, str):
-                    s = v.strip()
-                    if s and s.replace(".", "", 1).isdigit():
-                        _epoch = float(s)
-
-                if _epoch is None:
-                    continue
-
-                # preserve the raw epoch (useful for debugging)
-                if not (_h.get("opened_et_epoch")):
-                    _h["opened_et_epoch"] = str(v)
-
-                # also provide opened_ts_utc if missing
-                if not (_h.get("opened_ts_utc")):
-                    _h["opened_ts_utc"] = int(_epoch)
-
-                dt_utc = datetime.fromtimestamp(_epoch, tz=timezone.utc)
-                if _ET is not None:
-                    dt_et = dt_utc.astimezone(_ET)
-                else:
-                    dt_et = dt_utc
-
-                # If it's exactly midnight, show date-only (midnight is not a real fill-time)
-                if dt_et.hour == 0 and dt_et.minute == 0 and dt_et.second == 0:
-                    _h["opened_et"] = dt_et.strftime("%m/%d/%Y")
-                else:
-                    _h["opened_et"] = dt_et.strftime("%m/%d/%Y, %I:%M %p")
-            except Exception:
-                pass
-    except Exception:
-        pass
-    # --- MM_OPENED_ET_NORMALIZE_NUMERIC_V1_END ---
-
-def fifo_debug_unmatched_sells(days: int = 120) -> dict:
-    """
-    Returns unmatched SELL qty per symbol when FIFO has no lots.
-    Useful to explain small deltas vs broker reports.
-    """
-    fills = _iter_executed_fills(days=days)
-    lots: Dict[str, List[List[float]]] = {}
-    unmatched: Dict[str, float] = {}
-
-    for f in fills:
-        sym = f["symbol"]
-        side = f["side"]
-        qty = float(f["qty"])
-        price = float(f["price"])
-
-        lots.setdefault(sym, [])
-
-        if side == "BUY":
-            lots[sym].append([qty, price])
-            continue
-
-        sell_qty = qty
-        while sell_qty > 0 and lots[sym]:
-            lot_qty, lot_cost = lots[sym][0]
-            take = min(sell_qty, lot_qty)
-            lot_qty -= take
-            sell_qty -= take
-            if lot_qty <= 1e-9:
-                lots[sym].pop(0)
-            else:
-                lots[sym][0][0] = lot_qty
-
-        if sell_qty > 1e-9:
-            unmatched[sym] = unmatched.get(sym, 0.0) + sell_qty
-
-    return dict(sorted(unmatched.items(), key=lambda kv: kv[1], reverse=True))
+        return {
+            "day":   {"pnl": 0.0, "pct": 0.0},
+            "week":  {"pnl": 0.0, "pct": 0.0},
+            "month": {"pnl": 0.0, "pct": 0.0},
+            "year":  {"pnl": 0.0, "pct": 0.0},
+        }
+# --- MM_REPLACE_REALIZED_SUMMARY_FROM_LIVE_DB_V2_END ---
 
 def _calc_unrealized_all_time_from_holdings(holdings):
+
     """
     All-time unrealized P&L based on cost basis vs last price.
     Returns (pnl_dollars, pnl_pct).
@@ -12216,6 +11902,306 @@ def api_settings_trade_outcomes():
         return _jsonify_safe({"ok": False, "error": str(e), "rows": [], "debug": debug})
 # --- MM_TRADE_OUTCOME_OVERLAY_V1_END ---
 
+# --- MM_ADD_RECENT_SELLS_API_V1_START ---
+@app.get("/api/analytics/recent_sells")
+def api_analytics_recent_sells():
+    import sqlite3, json
+    from flask import request, jsonify
+
+    db = globals().get("LIVE_DB") or globals().get("DB_PATH") or r"C:\TradeAlerts\live.db"
+    limit = request.args.get("limit", "50")
+    try:
+        limit = max(1, min(500, int(limit)))
+    except:
+        limit = 50
+
+    def table_exists(cur, name):
+        try:
+            row = cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone()
+            return bool(row)
+        except:
+            return False
+
+    def cols(cur, table):
+        try:
+            return [r[1] for r in cur.execute(f"PRAGMA table_info({table})").fetchall()]
+        except:
+            return []
+
+    def first(cols_list, *names):
+        for n in names:
+            if n in cols_list:
+                return n
+        return None
+
+    out = {
+        "ok": True,
+        "limit": limit,
+        "db": db,
+        "sources_present": {},
+        "recent_sells": [],
+        "counts": {},
+        "marker": "MM_ADD_RECENT_SELLS_API_V1"
+    }
+
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    try:
+        for t in ("sell_events", "realized_trades", "trades"):
+            out["sources_present"][t] = table_exists(cur, t)
+
+        rows = []
+
+        # Preferred source: sell_events
+        if out["sources_present"]["sell_events"]:
+            c = cols(cur, "sell_events")
+            ts_col     = first(c, "ts_et", "ts_utc", "time_et", "time_utc", "created_at")
+            sym_col    = first(c, "symbol", "ticker")
+            event_col  = first(c, "event", "action", "side")
+            reason_col = first(c, "reason", "exit_reason")
+            detail_col = first(c, "detail", "notes", "message")
+            qty_col    = first(c, "qty", "quantity", "shares")
+            price_col  = first(c, "price", "fill_price", "avg_price")
+            order_col  = first(c, "order_id", "broker_order_id", "id")
+            pnl_col    = first(c, "pnl", "gain", "profit")
+            pct_col    = first(c, "pnl_pct", "gain_pct", "profit_pct")
+
+            if ts_col and sym_col:
+                q = f"""
+                    SELECT
+                        {ts_col}   AS ts,
+                        {sym_col}  AS symbol,
+                        {event_col if event_col else 'NULL'}  AS event,
+                        {reason_col if reason_col else 'NULL'} AS reason,
+                        {detail_col if detail_col else 'NULL'} AS detail,
+                        {qty_col if qty_col else 'NULL'}   AS qty,
+                        {price_col if price_col else 'NULL'} AS price,
+                        {order_col if order_col else 'NULL'} AS order_id,
+                        {pnl_col if pnl_col else 'NULL'}   AS pnl,
+                        {pct_col if pct_col else 'NULL'}   AS pnl_pct
+                    FROM sell_events
+                    WHERE UPPER(COALESCE({event_col if event_col else "'SELL'"} , '')) LIKE '%SELL%'
+                       OR UPPER(COALESCE({reason_col if reason_col else "''"}, '')) <> ''
+                    ORDER BY {ts_col} DESC
+                    LIMIT ?
+                """
+                for r in cur.execute(q, (limit,)).fetchall():
+                    rows.append({
+                        "source": "sell_events",
+                        "ts": r["ts"],
+                        "symbol": r["symbol"],
+                        "event": r["event"],
+                        "reason": r["reason"],
+                        "detail": r["detail"],
+                        "qty": r["qty"],
+                        "price": r["price"],
+                        "order_id": r["order_id"],
+                        "pnl": r["pnl"],
+                        "pnl_pct": r["pnl_pct"],
+                    })
+
+        # Fallback/additional source: realized_trades
+        if out["sources_present"]["realized_trades"]:
+            c = cols(cur, "realized_trades")
+            ts_col     = first(c, "close_ts_et", "close_ts_utc", "closed_utc", "ts_et", "ts_utc")
+            sym_col    = first(c, "symbol", "ticker")
+            qty_col    = first(c, "qty", "quantity", "shares")
+            price_col  = first(c, "sell_price", "exit_price", "price")
+            pnl_col    = first(c, "pnl", "gain", "profit")
+            pct_col    = first(c, "pnl_pct", "gain_pct", "profit_pct")
+            reason_col = first(c, "reason", "exit_reason")
+            id_col     = first(c, "trade_id", "id")
+
+            if ts_col and sym_col:
+                q = f"""
+                    SELECT
+                        {ts_col}   AS ts,
+                        {sym_col}  AS symbol,
+                        'SELL'     AS event,
+                        {reason_col if reason_col else 'NULL'} AS reason,
+                        NULL       AS detail,
+                        {qty_col if qty_col else 'NULL'}   AS qty,
+                        {price_col if price_col else 'NULL'} AS price,
+                        {id_col if id_col else 'NULL'}     AS order_id,
+                        {pnl_col if pnl_col else 'NULL'}   AS pnl,
+                        {pct_col if pct_col else 'NULL'}   AS pnl_pct
+                    FROM realized_trades
+                    ORDER BY {ts_col} DESC
+                    LIMIT ?
+                """
+                for r in cur.execute(q, (limit,)).fetchall():
+                    rows.append({
+                        "source": "realized_trades",
+                        "ts": r["ts"],
+                        "symbol": r["symbol"],
+                        "event": r["event"],
+                        "reason": r["reason"],
+                        "detail": r["detail"],
+                        "qty": r["qty"],
+                        "price": r["price"],
+                        "order_id": r["order_id"],
+                        "pnl": r["pnl"],
+                        "pnl_pct": r["pnl_pct"],
+                    })
+
+        # Fallback/additional source: trades table SELL rows
+        if out["sources_present"]["trades"]:
+            c = cols(cur, "trades")
+            ts_col     = first(c, "ts_et", "ts_utc", "time_et", "time_utc", "timestamp")
+            sym_col    = first(c, "symbol", "ticker")
+            act_col    = first(c, "action", "side", "event")
+            qty_col    = first(c, "qty", "quantity", "shares")
+            price_col  = first(c, "price", "fill_price", "avg_price")
+            pnl_col    = first(c, "pnl", "gain", "profit")
+            pct_col    = first(c, "pnl_pct", "gain_pct", "profit_pct")
+            name_col   = first(c, "name")
+
+            if ts_col and sym_col and act_col:
+                q = f"""
+                    SELECT
+                        {ts_col}  AS ts,
+                        {sym_col} AS symbol,
+                        {act_col} AS event,
+                        NULL      AS reason,
+                        {name_col if name_col else 'NULL'} AS detail,
+                        {qty_col if qty_col else 'NULL'}   AS qty,
+                        {price_col if price_col else 'NULL'} AS price,
+                        NULL      AS order_id,
+                        {pnl_col if pnl_col else 'NULL'}   AS pnl,
+                        {pct_col if pct_col else 'NULL'}   AS pnl_pct
+                    FROM trades
+                    WHERE UPPER(COALESCE({act_col}, ''))='SELL'
+                    ORDER BY {ts_col} DESC
+                    LIMIT ?
+                """
+                for r in cur.execute(q, (limit,)).fetchall():
+                    rows.append({
+                        "source": "trades",
+                        "ts": r["ts"],
+                        "symbol": r["symbol"],
+                        "event": r["event"],
+                        "reason": r["reason"],
+                        "detail": r["detail"],
+                        "qty": r["qty"],
+                        "price": r["price"],
+                        "order_id": r["order_id"],
+                        "pnl": r["pnl"],
+                        "pnl_pct": r["pnl_pct"],
+                    })
+
+        def sort_key(x):
+            v = x.get("ts")
+            return "" if v is None else str(v)
+
+        rows = sorted(rows, key=sort_key, reverse=True)
+        out["recent_sells"] = rows[:limit]
+
+        # small summary
+        counts = {"sell_events": 0, "realized_trades": 0, "trades": 0}
+        for r in out["recent_sells"]:
+            src = r.get("source")
+            if src in counts:
+                counts[src] += 1
+        out["counts"] = counts
+
+        return jsonify(out)
+    finally:
+        try:
+            conn.close()
+        except:
+            pass
+# --- MM_ADD_RECENT_SELLS_API_V1_END ---
+
+
+# --- MM_WRAP_LIVE_DATA_YEAR_FIX_V2_START ---
+def _mm_install_live_data_year_fix_v2():
+    from flask import jsonify
+    try:
+        target_endpoint = None
+        for _r in app.url_map.iter_rules():
+            if str(_r.rule) == "/live/data":
+                target_endpoint = _r.endpoint
+                break
+        if not target_endpoint:
+            print("MM_WRAP_LIVE_DATA_YEAR_FIX_V2: /live/data route not found")
+            return
+
+        _orig = app.view_functions.get(target_endpoint)
+        if not _orig:
+            print("MM_WRAP_LIVE_DATA_YEAR_FIX_V2: endpoint function not found")
+            return
+
+        if getattr(_orig, "_mm_year_fix_v2_wrapped", False):
+            print("MM_WRAP_LIVE_DATA_YEAR_FIX_V2: already wrapped")
+            return
+
+        def _wrapped(*args, **kwargs):
+            rv = _orig(*args, **kwargs)
+            try:
+                payload = None
+
+                # Normalize common Flask return shapes
+                if isinstance(rv, dict):
+                    payload = rv
+                elif isinstance(rv, tuple) and len(rv) >= 1:
+                    base = rv[0]
+                    if isinstance(base, dict):
+                        payload = base
+                    elif hasattr(base, "get_json"):
+                        payload = base.get_json(silent=True)
+                elif hasattr(rv, "get_json"):
+                    payload = rv.get_json(silent=True)
+
+                if not isinstance(payload, dict):
+                    return rv
+
+                y = _mm_realized_year_summary_v2()
+
+                payload["mm_year_fix"] = "MM_WRAP_LIVE_DATA_YEAR_FIX_V2"
+                payload["realized_year"] = y.get("realized", 0.0)
+                payload["realized_year_pct"] = y.get("pct", 0.0)
+                payload["year_realized"] = y.get("realized", 0.0)
+                payload["year_realized_pct"] = y.get("pct", 0.0)
+                payload["ytd_realized"] = y.get("realized", 0.0)
+                payload["ytd_realized_pct"] = y.get("pct", 0.0)
+                payload["realized_year_source"] = y.get("source")
+                payload["realized_year_rows"] = y.get("rows", 0)
+                payload["realized_year_cost_basis"] = y.get("cost_basis", 0.0)
+
+                if isinstance(payload.get("realized"), dict):
+                    if not isinstance(payload["realized"].get("year"), dict):
+                        payload["realized"]["year"] = {}
+                    payload["realized"]["year"]["pnl"] = y.get("realized", 0.0)
+                    payload["realized"]["year"]["pct"] = y.get("pct", 0.0)
+                    payload["realized"]["year"]["source"] = y.get("source")
+                    payload["realized"]["year"]["rows"] = y.get("rows", 0)
+                    payload["realized"]["year"]["cost_basis"] = y.get("cost_basis", 0.0)
+
+                if isinstance(payload.get("metrics"), dict):
+                    payload["metrics"]["realized_year"] = y.get("realized", 0.0)
+                    payload["metrics"]["realized_year_pct"] = y.get("pct", 0.0)
+
+                return jsonify(payload)
+            except Exception as _e:
+                try:
+                    print(f"MM_WRAP_LIVE_DATA_YEAR_FIX_V2 runtime error: {_e}")
+                except:
+                    pass
+                return rv
+
+        _wrapped._mm_year_fix_v2_wrapped = True
+        _wrapped.__name__ = getattr(_orig, "__name__", "live_data_wrapped_year_fix_v2")
+        app.view_functions[target_endpoint] = _wrapped
+        print(f"MM_WRAP_LIVE_DATA_YEAR_FIX_V2 installed on endpoint={target_endpoint}")
+    except Exception as e:
+        print(f"MM_WRAP_LIVE_DATA_YEAR_FIX_V2 install failed: {e}")
+
+_mm_install_live_data_year_fix_v2()
+# --- MM_WRAP_LIVE_DATA_YEAR_FIX_V2_END ---
+
+
 if __name__ == "__main__":
     import os, sys
 
@@ -12237,3 +12223,154 @@ if __name__ == "__main__":
 
     print("Launching $$Machine dashboard on http://127.0.0.1:%s (host=%s)" % (port, host))
     app.run(host=host, port=port, debug=debug, use_reloader=use_reloader)
+
+
+# --- MM_REALIZED_YEAR_HELPER_V2_START ---
+def _mm_realized_year_summary_v2():
+    import sqlite3
+    from datetime import datetime
+    try:
+        db = globals().get("LIVE_DB") or globals().get("DB_PATH") or r"C:\TradeAlerts\live.db"
+        conn = sqlite3.connect(db)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+
+        year = datetime.now().year
+        year_prefix = f"{year}-"
+
+        def table_exists(name):
+            try:
+                row = cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone()
+                return bool(row)
+            except:
+                return False
+
+        def cols(table):
+            try:
+                return [r[1] for r in cur.execute(f"PRAGMA table_info({table})").fetchall()]
+            except:
+                return []
+
+        def first(c, *names):
+            for n in names:
+                if n in c:
+                    return n
+            return None
+
+        def to_num(v):
+            try:
+                if v is None or v == "":
+                    return 0.0
+                return float(v)
+            except:
+                return 0.0
+
+        out = {
+            "year": year,
+            "source": None,
+            "realized": 0.0,
+            "cost_basis": 0.0,
+            "pct": 0.0,
+            "rows": 0,
+            "marker": "MM_REALIZED_YEAR_HELPER_V2"
+        }
+
+        # Preferred: realized_trades
+        if table_exists("realized_trades"):
+            c = cols("realized_trades")
+            ts_col   = first(c, "close_ts_et", "close_ts_utc", "closed_utc", "ts_et", "ts_utc")
+            pnl_col  = first(c, "gain", "pnl", "profit")
+            qty_col  = first(c, "qty", "quantity", "shares")
+            sell_col = first(c, "sell_price", "exit_price", "price", "close_price")
+            cost_col = first(c, "cost_basis", "entry_value")
+            if ts_col and pnl_col:
+                q = f"SELECT * FROM realized_trades WHERE SUBSTR(COALESCE({ts_col},''),1,5)=?"
+                rows = cur.execute(q, (year_prefix,)).fetchall()
+                realized = 0.0
+                basis = 0.0
+                n = 0
+                for r in rows:
+                    pnl = to_num(r[pnl_col])
+                    realized += pnl
+                    if cost_col and cost_col in r.keys():
+                        b = abs(to_num(r[cost_col]))
+                    else:
+                        qty = to_num(r[qty_col]) if qty_col else 0.0
+                        sell = to_num(r[sell_col]) if sell_col else 0.0
+                        proceeds = sell * qty
+                        b = abs(proceeds - pnl) if (proceeds or pnl) else 0.0
+                    if b > 0:
+                        basis += b
+                    n += 1
+                if n > 0:
+                    out["source"] = "realized_trades"
+                    out["realized"] = round(realized, 2)
+                    out["cost_basis"] = round(basis, 2)
+                    out["pct"] = round((realized / basis * 100.0), 2) if basis > 0 else 0.0
+                    out["rows"] = n
+                    conn.close()
+                    return out
+
+        # Fallback: trades SELL rows
+        if table_exists("trades"):
+            c = cols("trades")
+            ts_col    = first(c, "ts_et", "ts_utc", "time_et", "time_utc", "timestamp")
+            act_col   = first(c, "action", "side", "event")
+            pnl_col   = first(c, "pnl", "gain", "profit")
+            pct_col   = first(c, "pnl_pct", "gain_pct", "profit_pct")
+            qty_col   = first(c, "qty", "quantity", "shares")
+            price_col = first(c, "price", "fill_price", "avg_price")
+            paid_col  = first(c, "price_paid", "cost_price", "entry_price")
+            if ts_col and act_col and pnl_col:
+                q = f"""
+                    SELECT * FROM trades
+                    WHERE SUBSTR(COALESCE({ts_col},''),1,5)=?
+                      AND UPPER(COALESCE({act_col},''))='SELL'
+                """
+                rows = cur.execute(q, (year_prefix,)).fetchall()
+                realized = 0.0
+                basis = 0.0
+                n = 0
+                for r in rows:
+                    pnl = to_num(r[pnl_col])
+                    realized += pnl
+                    qty = to_num(r[qty_col]) if qty_col else 0.0
+                    paid = to_num(r[paid_col]) if paid_col else 0.0
+                    price = to_num(r[price_col]) if price_col else 0.0
+                    b = abs(paid * qty) if (paid and qty) else 0.0
+                    if b <= 0:
+                        proceeds = price * qty
+                        b = abs(proceeds - pnl) if (proceeds or pnl) else 0.0
+                    if b <= 0 and pct_col:
+                        pct = to_num(r[pct_col])
+                        if abs(pct) > 0 and abs(pnl) > 0:
+                            try:
+                                b = abs(pnl / (pct / 100.0))
+                            except:
+                                b = 0.0
+                    if b > 0:
+                        basis += b
+                    n += 1
+                out["source"] = "trades"
+                out["realized"] = round(realized, 2)
+                out["cost_basis"] = round(basis, 2)
+                out["pct"] = round((realized / basis * 100.0), 2) if basis > 0 else 0.0
+                out["rows"] = n
+                conn.close()
+                return out
+
+        conn.close()
+        return out
+    except Exception as e:
+        return {
+            "year": None,
+            "source": "error",
+            "realized": 0.0,
+            "cost_basis": 0.0,
+            "pct": 0.0,
+            "rows": 0,
+            "error": str(e),
+            "marker": "MM_REALIZED_YEAR_HELPER_V2"
+        }
+# --- MM_REALIZED_YEAR_HELPER_V2_END ---
+

@@ -1,0 +1,310 @@
+$$Machine — Development Punch List
+Last Updated: 2026-03-11
+
+========================================
+PRIORITY SYSTEM IMPROVEMENTS
+============================
+
+## [HIGH] Strategy Autotuning
+
+Automatically adjust entry filters using analytics data.
+
+Goals
+
+* Detect indicators that eliminate too many candidates
+* Adjust thresholds dynamically
+* Adapt strategy to market regime
+
+Possible adjustments
+
+* ADX threshold
+* MACD sensitivity
+* VWAP tolerance
+* SMA distance threshold
+* score threshold
+
+Example rule
+IF VWAP eliminates >80% of candidates
+THEN relax VWAP tolerance slightly
+
+Future
+
+* Regime-specific thresholds
+* Bayesian parameter optimization
+* Reinforcement learning entry tuning
+
+## [HIGH] Time-of-Day Weighting
+
+Analytics indicates entries perform differently by hour.
+
+Example observation
+09:00  ~37% winrate
+10:00  ~25%
+11:00  ~28%
+12:00  ~32%
+13:00  ~41%   <-- strongest
+14:00  ~21%
+15:00  ~22%
+
+Goal
+Weight entry confidence by time-of-day.
+
+Example
+entry_score *= hour_weight
+
+Possible weights
+09:00   1.1
+10:00   0.8
+11:00   0.9
+12:00   1.0
+13:00   1.2
+14:00   0.7
+15:00   0.7
+
+========================================
+TRADING ENGINE
+==============
+
+## [IN PROGRESS] Candidate Funnel Diagnostics
+
+Track where candidates are rejected in entry pipeline.
+
+Metrics
+universe
+adx_fail
+macd_fail
+vwap_fail
+sma_fail
+score_fail
+passed
+
+Output
+candidate_kill_stats table
+
+Analytics UI
+Candidate Funnel panel.
+
+## [TODO] Entry Rejection Logging
+
+Record reason when candidate rejected.
+
+entry_rejections table
+
+Fields
+symbol
+reason
+indicator
+ts
+
+Reasons
+adx_low
+macd_negative
+below_vwap
+below_sma20
+score_low
+max_positions
+funds
+
+## [TODO] Entry Signal Telemetry
+
+Record every indicator fire event.
+
+indicator_fires table
+
+Fields
+symbol
+indicator
+value
+passed
+ts
+
+Used for analytics.
+
+========================================
+BROKER / EXECUTION
+==================
+
+## [TODO] Sell Verification API
+
+Endpoint
+/api/analytics/recent_sells
+
+Purpose
+Verify executed sell orders and P&L.
+
+## [TODO] Position State Sync
+
+Ensure broker positions match local positions.
+
+If mismatch
+trigger resync.
+
+========================================
+ANALYTICS — BUY SIDE
+====================
+
+## [TODO] Candidate Funnel Panel
+
+Display pipeline:
+
+Universe scanned
+ADX pass
+MACD pass
+VWAP pass
+SMA pass
+Score pass
+Entries
+
+## [TODO] Indicator Kill Rate
+
+Show which filters eliminate candidates.
+
+Example
+
+ADX    58%
+MACD   31%
+VWAP    9%
+SMA     2%
+
+## [TODO] Entry Quality Metrics
+
+avg_entry_confidence
+avg_indicator_score
+avg_relative_volume
+
+========================================
+ANALYTICS — SELL SIDE
+=====================
+
+## [TODO] Fix UNKNOWN Exit Reasons
+
+Current system shows UNKNOWN exits.
+
+Add explicit reasons
+
+take_profit
+stop_loss
+trailing_stop
+timeout
+manual
+broker_sync
+
+## [TODO] Exit Performance
+
+Exit rule statistics.
+
+Example
+
+Exit Rule   Trades   Winrate   AvgGain
+TP            42       71%       2.3%
+SL            36        —       -1.4%
+Timeout       18       33%      -0.4%
+
+## [TODO] Hold Time Analysis
+
+Analyze profit vs hold duration.
+
+========================================
+REGIME ANALYTICS
+================
+
+## [TODO] Entry Performance by Regime
+
+Trades grouped by regime.
+
+TREND
+CHOP
+DEAD
+
+Metrics
+trades
+winrate
+avg_gain
+net_pnl
+
+## [TODO] Indicator Effectiveness by Regime
+
+Example
+
+ADX in TREND → strong
+ADX in CHOP → weak
+
+========================================
+DASHBOARD
+=========
+
+## [TODO] System Health Panel
+
+scan_rate
+symbols_scanned
+candidate_count
+entries_today
+exits_today
+
+## [TODO] Strategy Health Panel
+
+winrate_today
+avg_gain
+expectancy
+open_risk
+
+========================================
+TRADE REVIEW
+============
+
+## [TODO] Indicator Snapshot at Entry
+
+Display indicator values at entry.
+
+ADX
+MACD
+RSI
+VWAP
+Score
+RelVol
+
+## [TODO] Exit Context
+
+MFE
+MAE
+hold_time
+exit_reason
+
+========================================
+DATA LAYER
+==========
+
+[TODO] Analytics Tables
+
+candidate_kill_stats
+indicator_fires
+entry_rejections
+exit_reasons
+trade_metrics
+
+========================================
+OBSERVABILITY
+=============
+
+[TODO] Strategy Telemetry
+
+scan_rate
+candidate_rate
+entry_rate
+exit_rate
+fill_rate
+
+========================================
+FUTURE IDEAS
+============
+
+* Strategy parameter optimization
+* Regime-aware strategies
+* ML entry ranking
+* Portfolio heat/risk management
+* Adaptive position sizing
+* Market volatility weighting
+
+========================================
+END
+===

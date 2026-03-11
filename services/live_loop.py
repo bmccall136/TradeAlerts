@@ -8,6 +8,46 @@
 
 from __future__ import annotations
 
+
+# --- MM_KILLRATE_DIAG_V3_START ---
+
+
+# --- MM_KILLRATE_SCAN_HOOK_V1_START ---
+def mm_print_killrate_summary(universe_size):
+    try:
+        total_fail=sum(v for k,v in killrate_stats.items() if k!="passed")
+        print("\nSCAN SUMMARY")
+        print("Universe:",universe_size)
+        print("ADX failed:",killrate_stats.get("adx_fail",0))
+        print("MACD failed:",killrate_stats.get("macd_fail",0))
+        print("SMA failed:",killrate_stats.get("sma_fail",0))
+        print("VWAP failed:",killrate_stats.get("vwap_fail",0))
+        print("Score failed:",killrate_stats.get("score_fail",0))
+        print("Passed:",killrate_stats.get("passed",0))
+        print("Final candidates:",killrate_stats.get("passed",0))
+    except Exception as e:
+        print("Killrate summary error:",e)
+# --- MM_KILLRATE_SCAN_HOOK_V1_END ---
+
+killrate_stats = {
+    "adx_fail":0,
+    "macd_fail":0,
+    "sma_fail":0,
+    "vwap_fail":0,
+    "score_fail":0,
+    "passed":0
+}
+
+def mm_killrate(reason):
+    try:
+        if reason in killrate_stats:
+            killrate_stats[reason]+=1
+    except:
+        pass
+# --- MM_KILLRATE_DIAG_V3_END ---
+
+
+
 import logging
 import math
 import os
@@ -1065,6 +1105,20 @@ def run_live_loop(settings, symbols, broker_mode=None):
             }
 
 
+            # --- MM_CANDIDATE_FUNNEL_VERIFIED_V1_START ---
+            try:
+                if present.get("adx", False):
+                    mm_funnel_hit("adx_pass")
+                if present.get("macd", False):
+                    mm_funnel_hit("macd_pass")
+                if present.get("vwap", False):
+                    mm_funnel_hit("vwap_pass")
+                if present.get("sma20", False) or present.get("sma", False) or has_sma:
+                    mm_funnel_hit("sma_pass")
+            except Exception:
+                pass
+            # --- MM_CANDIDATE_FUNNEL_VERIFIED_V1_END ---
+
             # --- SCOREBOARD: ensure emitter families get counted even if not present in `triggered` tokens ---
             # Helpful + not noisy: only log when these are true.
             try:
@@ -1111,6 +1165,11 @@ def run_live_loop(settings, symbols, broker_mode=None):
             except Exception as e:
                 log.debug("[LIVE] triggers CSV log_candidate failed for %s: %s", sym, e)
 
+            try:
+                mm_funnel_hit("score_pass")
+            except Exception:
+                pass
+
             candidates.append((sym, float(price), list(triggered or [])))
 
 
@@ -1122,6 +1181,25 @@ def run_live_loop(settings, symbols, broker_mode=None):
             len(candidates),
             elapsed,
         )
+
+        try:
+            candidate_funnel["universe"] = int(scanned)
+        except Exception:
+            candidate_funnel["universe"] = 0
+
+        try:
+            log.info(
+                "[FUNNEL] universe=%s adx_pass=%s macd_pass=%s vwap_pass=%s sma_pass=%s score_pass=%s entries=%s",
+                candidate_funnel.get("universe", 0),
+                candidate_funnel.get("adx_pass", 0),
+                candidate_funnel.get("macd_pass", 0),
+                candidate_funnel.get("vwap_pass", 0),
+                candidate_funnel.get("sma_pass", 0),
+                candidate_funnel.get("score_pass", 0),
+                candidate_funnel.get("entries", 0),
+            )
+        except Exception:
+            pass
 
         if not candidates:
             log.info("[LIVE] no candidates this round")
