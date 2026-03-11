@@ -26,3 +26,6 @@ _bak_archive/
 # misc
 .DS_Store
 Thumbs.db
+
+etrade_tokens.json
+*.bak
