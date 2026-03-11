@@ -4,9 +4,10 @@ cd /d C:\TradeAlerts
 
 rem --- Mode & guardrails ---
 set BROKER_MODE=LIVE
-set GUARDRAILS_ENABLED=true
+set GUARDRAILS_ENABLED=false
+
 rem --- Safety / sizing (optional) ---
-set LIVE_SAFE_MODE=true
+set LIVE_SAFE_MODE=false
 set LIVE_MAX_QTY=1
 set LIVE_BP_BUFFER=10
 set LIVE_TPLUS_DAYS=0

@@ -9,9 +9,10 @@ Set-Location $workDir
 
 # --- Mode & guardrails ---
 $env:BROKER_MODE           = 'LIVE'
-$env:GUARDRAILS_ENABLED = 'true'
+$env:GUARDRAILS_ENABLED    = 'false'
+
 # --- Safety / sizing (optional) ---
-$env:LIVE_SAFE_MODE = 'true'
+$env:LIVE_SAFE_MODE        = 'false'
 $env:LIVE_MAX_QTY          = '1'
 $env:LIVE_BP_BUFFER        = '10'
 $env:LIVE_TPLUS_DAYS       = '0'

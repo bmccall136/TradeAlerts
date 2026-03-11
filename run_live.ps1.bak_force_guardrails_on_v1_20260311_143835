@@ -4,8 +4,8 @@ $Host.UI.RawUI.WindowTitle = 'TradeAlerts Live (PowerShell)'
 
 # --- Env you wanted ---
 $env:BROKER_MODE = 'LIVE'
-$env:GUARDRAILS_ENABLED = 'true'
-$env:LIVE_SAFE_MODE = 'true'
+$env:GUARDRAILS_ENABLED = 'false'
+$env:LIVE_SAFE_MODE = 'false'
 $env:LIVE_MAX_QTY = '1'
 $env:LIVE_IGNORE_GUARDRAILS_TODAY = '1'   # gate open
 

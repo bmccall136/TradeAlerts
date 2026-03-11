@@ -1180,6 +1180,32 @@ def run_live_loop(settings, symbols, broker_mode=None):
         open_buy_syms = _get_open_buy_symbols(et)
         now_utc = datetime.now(UTC)
 
+        # --- MM_LIVE_BUY_GUARDRAILS_V1_START ---
+        try:
+            max_positions = int(getattr(settings, "max_positions", 0) or 0)
+        except Exception:
+            max_positions = 0
+
+        try:
+            max_new_positions_per_cycle = int(getattr(settings, "max_new_positions_per_cycle", 0) or 0)
+        except Exception:
+            max_new_positions_per_cycle = 0
+
+        cycle_new_positions = 0
+        open_positions_now = sum(
+            1 for _sym, _pos in (holdingsL or {}).items()
+            if int((_pos or {}).get("qty", 0) or 0) > 0
+        )
+
+        log.info(
+            "[GUARDRAIL] buy limits: open_positions=%d max_positions=%s cycle_new_positions=%d max_new_positions_per_cycle=%s",
+            int(open_positions_now),
+            (max_positions if max_positions > 0 else "OFF"),
+            int(cycle_new_positions),
+            (max_new_positions_per_cycle if max_new_positions_per_cycle > 0 else "OFF"),
+        )
+        # --- MM_LIVE_BUY_GUARDRAILS_V1_END ---
+        
         def _affordable_qty(px: float, max_per_trade: float) -> int:
             if not isinstance(px, (int, float)) or px <= 0:
                 return 0
@@ -1224,7 +1250,24 @@ def run_live_loop(settings, symbols, broker_mode=None):
 
         purchased = False
         for sym, price, triggered in ranked:
-            # --- MM_AVOID_BUY_HOURS_ENFORCE_V2_START ---
+            # --- MM_LIVE_BUY_GUARDRAILS_V1_CHECK_START ---
+            if max_new_positions_per_cycle > 0 and cycle_new_positions >= max_new_positions_per_cycle:
+                log.warning(
+                    "[GUARDRAIL] max_new_positions_per_cycle reached (%d) -- stopping new BUYs this cycle",
+                    int(max_new_positions_per_cycle),
+                )
+                break
+
+            if max_positions > 0 and open_positions_now >= max_positions:
+                log.warning(
+                    "[GUARDRAIL] max_positions reached (%d) -- skipping BUY candidate %s",
+                    int(max_positions),
+                    sym,
+                )
+                continue
+            # --- MM_LIVE_BUY_GUARDRAILS_V1_CHECK_END ---
+
+            # --- MM_AVOID_BUY_HOURS_ENFORCE_V2_START ---            
             try:
                 blocked_hours = getattr(settings, "avoid_buy_hours", []) or []
                 if isinstance(blocked_hours, str):
@@ -1387,8 +1430,20 @@ def run_live_loop(settings, symbols, broker_mode=None):
                     pass
                 if mode == "LIVE":
                     lg.record_entry(sym, qty)
+
+                # --- MM_LIVE_BUY_GUARDRAILS_V1_COUNT_START ---
+                cycle_new_positions += 1
+                open_positions_now += 1
+                log.warning(
+                    "[GUARDRAIL] BUY consumed slot: cycle_new_positions=%d open_positions=%d",
+                    int(cycle_new_positions),
+                    int(open_positions_now),
+                )
+                # --- MM_LIVE_BUY_GUARDRAILS_V1_COUNT_END ---
+
                 purchased = True
                 break
+
             except Exception as e:
                 log.exception("[LIVE] BUY failed for %s: %s", sym, e)
 

@@ -36,8 +36,8 @@ $env:TRADEALERTS_LIVE_SETTINGS = $cfg                  # newer name (harmless if
 $env:YF_USE_CURL               = '1'
 
 # --- Explicit overrides for Monday ---
-$env:GUARDRAILS_ENABLED = 'true'
-$env:LIVE_SAFE_MODE = 'true'
+$env:GUARDRAILS_ENABLED = 'false'
+$env:LIVE_SAFE_MODE     = 'false'
 $env:GR_AUTO_SELLER     = '0'
 
 Write-Host "Launching: $py -u `"$script`""
