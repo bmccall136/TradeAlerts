@@ -166,22 +166,12 @@ def main():
 
     if adaptive_symbols:
         symbols = adaptive_symbols
-        universe_source = "dynamic_cache"
         log.info("Adaptive universe loaded: %d symbols (base=%d)", len(symbols), len(base_symbols))
     else:
         symbols = base_symbols
-        universe_source = "fallback_sp500"
         log.warning("Adaptive universe empty; falling back to base universe (%d symbols)", len(base_symbols))
 
-    # MM_UNIVERSE_LOGGING_V3
-    try:
-        sample = list(symbols[:15]) if symbols else []
-    except Exception:
-        sample = []
-    if universe_source == "dynamic_cache":
-        log.info("Universe source=%s count=%d sample=%s", universe_source, len(symbols), sample)
-    else:
-        log.warning("Universe source=%s count=%d file=%s sample=%s", universe_source, len(symbols), SYMS_PATH, sample)
+    log.info("Scanning %d symbols from %s", len(symbols), SYMS_PATH)
 
     from services.universe_builder import start_universe_builder
     start_universe_builder(base_symbols, log)

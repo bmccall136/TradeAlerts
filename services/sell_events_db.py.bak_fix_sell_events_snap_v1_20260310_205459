@@ -171,14 +171,7 @@ def log_sell_event(
                     event = "RECONCILED_REDUCED"
         except Exception:
             pass
-        # --- MM_SEPARATE_RECONCILIATION_V1_END ---
-        # MM_FIX_SELL_EVENTS_SNAP_V1
-        try:
-            snap = regime_snapshot if isinstance(regime_snapshot, dict) else _get_regime_snapshot()
-        except Exception:
-            snap = {"label": "UNKNOWN", "confidence": None, "reason": None}
-
-        reg = (snap.get("label") or "UNKNOWN")
+        # --- MM_SEPARATE_RECONCILIATION_V1_END ---        reg = (snap.get("label") or "UNKNOWN")
         conf = snap.get("confidence")
         reas = snap.get("reason")
 

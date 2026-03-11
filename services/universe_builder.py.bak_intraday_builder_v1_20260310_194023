@@ -1,5 +1,5 @@
 import threading
-from services.universe_relvol_intraday import build_relvol_universe  # MM_UNIVERSE_INTRADAY_BUILDER_V1
+from services.universe_relvol import build_relvol_universe
 from services.universe_cache import save_universe
 
 def start_universe_builder(symbols, log):

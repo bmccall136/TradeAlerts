@@ -14,7 +14,8 @@
   "atr_threshold": 0,
   "avoid_buy_hours": [
     10,
-    14
+    14,
+    15
   ],
   "bb_break_on": true,
   "bb_breakout_enabled": false,

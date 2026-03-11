@@ -23,11 +23,10 @@ def _persist_trade_best_effort(symbol: str, action: str, qty: float, price, ts_e
 
         con = sqlite3.connect(db_path)
         cur = con.cursor()
-        # MM_FIX_BROKER_PERSIST_VALUES_V1
         cur.execute("""
             INSERT INTO trades (trade_time, ts_et, ts_utc, symbol, action, qty, price)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (ts_et, ts_et, ts_utc, symbol, action, float(qty or 0), (None if price is None else float(price))))
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (ts_et, ts_utc, symbol, action, float(qty or 0), (None if price is None else float(price))))
         con.commit()
         # --- MM_EMIT_SELL_EVENT_FILLED_V1_START ---
         try:
