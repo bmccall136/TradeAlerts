@@ -90,8 +90,5 @@
   "vol_mult": 1.5,
   "vol_on": false,
   "vwap_on": true,
-  "vwap_threshold": 0,
-  "max_exits_per_cycle": 1,
-  "max_new_positions_per_cycle": 1,
-  "max_positions": 5
+  "vwap_threshold": 0
 }

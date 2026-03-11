@@ -1,86 +1,88 @@
 {
-  "ai": {
-    "enabled": false,
-    "use_entries": false,
-    "use_exits": false
-  },
-  "regime_exit_overlay": {
-    "CHOP": {
-      "stop_mult": 1.05,
-      "target_mult": 0.9,
-      "time_mult": 0.85
-    },
-    "DEAD": {
-      "stop_mult": 0.95,
-      "target_mult": 0.75,
-      "time_mult": 0.7
-    },
-    "TREND": {
-      "stop_mult": 0.9,
-      "target_mult": 1.25,
-      "time_mult": 1.2
-    },
-    "UNKNOWN": {
-      "stop_mult": 1,
-      "target_mult": 0.9,
-      "time_mult": 0.9
-    }
-  },
-  "sell_guard": {
-    "allow_intraday_stop": true,
-    "allow_intraday_stoploss": true,
-    "arm_rules": {
-      "after_minutes": 60,
-      "arm_hard_stop_pct": 1,
-      "arm_trailing_pct": 3,
-      "if_gain_gte_pct": 3,
-      "if_gain_lt_pct": 1.5
-    },
-    "avoid_daytrades": false,
-    "avoid_sell_hours": [
-      12,
-      13
-    ],
-    "base_stop_pct": 2.0,
-    "blocklist": [],
-    "enable_timeout_exits": true,
-    "enable_trailing": true,
-    "interval_sec": 15,
-    "interval_secs": 15,
-    "intraday_stop_pct": 1.6,
-    "intraday_stoploss_pct": 1.6,
-    "limit_from": "BID",
-    "limit_offset_bps": -1,
-    "max_hold_minutes": 180,
-    "max_place_attempts": 6,
-    "min_hold_days": 0,
-    "min_hold_minutes": 45,
-    "mode": "DAY",
-    "normalize_tick": true,
-    "only_allow_symbol": "",
-    "pdt_allow_stop": true,
-    "protect_min_gain_pct": 0.7,
-    "protect_trail_arm_pct": 0.9,
-    "protect_trail_pct": 0.8,
-    "sell_protect_after_mins": 10,
-    "sell_window_end_et": "15:55",
-    "sell_window_start_et": "09:40",
-    "stop_bps": 45,
-    "target_bps": 100,
-    "target_gain_pct": 1.5,
-    "throttle_ms": 300,
-    "timeout_exit_pct": 2.0,
-    "trail_arm_gain_pct": 1.1,
-    "trail_backoff_pct": 0.3,
-    "trailing_pct": 1.5,
-    "use_extended_hours": false
-  },
-  "stale_relief_exit": {
-    "enabled": false,
-    "min_hold_days": 2,
-    "regime_conf_max": 75,
-    "relief_gain_pct": 0.8,
-    "require_non_trend_regime": false,
-    "runner_max_gain_pct": 1.5
-  }
+    "ai":  {
+               "enabled":  false,
+               "use_entries":  false,
+               "use_exits":  false
+           },
+    "regime_exit_overlay":  {
+                                "CHOP":  {
+                                             "stop_mult":  1.05,
+                                             "target_mult":  0.9,
+                                             "time_mult":  0.85
+                                         },
+                                "DEAD":  {
+                                             "stop_mult":  0.95,
+                                             "target_mult":  0.75,
+                                             "time_mult":  0.7
+                                         },
+                                "TREND":  {
+                                              "stop_mult":  0.9,
+                                              "target_mult":  1.25,
+                                              "time_mult":  1.2
+                                          },
+                                "UNKNOWN":  {
+                                                "stop_mult":  1,
+                                                "target_mult":  0.9,
+                                                "time_mult":  0.9
+                                            }
+                            },
+    "sell_guard":  {
+                       "allow_intraday_stop":  true,
+                       "allow_intraday_stoploss":  true,
+                       "arm_rules":  {
+                                         "after_minutes":  60,
+                                         "arm_hard_stop_pct":  1,
+                                         "arm_trailing_pct":  3,
+                                         "if_gain_gte_pct":  3,
+                                         "if_gain_lt_pct":  1.5
+                                     },
+                       "avoid_daytrades":  false,
+                       "avoid_sell_hours":  [
+                                                12,
+                                                13
+                                            ],
+                       "base_stop_pct":  2.0,
+                       "blocklist":  [
+
+                                     ],
+                       "enable_timeout_exits":  false,
+                       "enable_trailing":  true,
+                       "interval_sec":  15,
+                       "interval_secs":  15,
+                       "intraday_stop_pct":  1.6,
+                       "intraday_stoploss_pct":  1.6,
+                       "limit_from":  "BID",
+                       "limit_offset_bps":  -1,
+                       "max_hold_minutes":  180,
+                       "max_place_attempts":  6,
+                       "min_hold_days":  0,
+                       "min_hold_minutes":  45,
+                       "mode":  "DAY",
+                       "normalize_tick":  true,
+                       "only_allow_symbol":  "",
+                       "pdt_allow_stop":  true,
+                       "protect_min_gain_pct":  0.7,
+                       "protect_trail_arm_pct":  0.9,
+                       "protect_trail_pct":  0.8,
+                       "sell_protect_after_mins":  10,
+                       "sell_window_end_et":  "15:55",
+                       "sell_window_start_et":  "09:40",
+                       "stop_bps":  45,
+                       "target_bps":  100,
+                       "target_gain_pct":  1.5,
+                       "throttle_ms":  300,
+                       "timeout_exit_pct":  -0.5,
+                       "trail_arm_gain_pct":  1.1,
+                       "trail_backoff_pct":  0.3,
+                       "trailing_pct":  1.5,
+                       "use_extended_hours":  false
+                   },
+    "stale_relief_exit":  {
+                              "enabled":  false,
+                              "min_hold_days":  2,
+                              "regime_conf_max":  75,
+                              "relief_gain_pct":  0.8,
+                              "require_non_trend_regime":  false,
+                              "runner_max_gain_pct":  1.5
+                          }
 }
