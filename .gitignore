@@ -29,3 +29,6 @@ Thumbs.db
 
 etrade_tokens.json
 *.bak
+
+etrade_tokens.json
+*.bak*
