@@ -374,14 +374,19 @@ def _fmt_opened_et(opened_utc):
             return ""
 
 
-# --- MM_REPLACE_REALIZED_SUMMARY_FROM_LIVE_DB_V2_START ---
+# --- MM_CLEAN_REPLACE_REALIZED_SUMMARY_V3_START ---
 def _realized_summary_from_live_db(db_path):
     """
-    Returns realized P&L buckets from live.db.realized_trades:
-      day / week / month / year
-    pct = pnl / summed basis * 100
+    Realized P&L buckets from live.db.realized_trades.
+    Returns:
+      {
+        "day":   {"pnl": float, "pct": float},
+        "week":  {"pnl": float, "pct": float},
+        "month": {"pnl": float, "pct": float},
+        "year":  {"pnl": float, "pct": float},
+      }
 
-    Basis preference per row:
+    Percent denominator preference per row:
       1) cost_basis
       2) total_cost
       3) proceeds - gain
@@ -407,32 +412,48 @@ def _realized_summary_from_live_db(db_path):
             if x is None:
                 return None
             try:
+                if isinstance(x, (int, float)):
+                    v = float(x)
+                    if v > 10_000_000_000:
+                        v /= 1000.0
+                    return datetime.fromtimestamp(v, tz=timezone.utc)
+
                 s = str(x).strip()
                 if not s:
                     return None
+                if s.isdigit():
+                    v = float(s)
+                    if v > 10_000_000_000:
+                        v /= 1000.0
+                    return datetime.fromtimestamp(v, tz=timezone.utc)
+
                 s = s.replace("T", " ").replace("Z", "+00:00")
-                dtv = datetime.fromisoformat(s)
-                if dtv.tzinfo is None:
-                    dtv = dtv.replace(tzinfo=timezone.utc)
-                return dtv.astimezone(timezone.utc)
+                d = datetime.fromisoformat(s)
+                if d.tzinfo is None:
+                    if ET:
+                        d = d.replace(tzinfo=ET).astimezone(timezone.utc)
+                    else:
+                        d = d.replace(tzinfo=timezone.utc)
+                else:
+                    d = d.astimezone(timezone.utc)
+                return d
             except Exception:
                 try:
                     s = str(x).strip().replace("T", " ")
-                    dtv = datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S")
-                    dtv = dtv.replace(tzinfo=timezone.utc)
-                    return dtv
+                    d = datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                    return d
                 except Exception:
                     return None
 
         def _bucket(rows, start_utc, end_utc):
             pnl = 0.0
-            basis = 0.0
+            denom = 0.0
 
             for close_date, gain, cost_basis, total_cost, proceeds in rows:
-                dtv = _parse_dt(close_date)
-                if dtv is None:
+                dtu = _parse_dt(close_date)
+                if not dtu:
                     continue
-                if dtv < start_utc or dtv > end_utc:
+                if dtu < start_utc or dtu >= end_utc:
                     continue
 
                 g  = _to_num(gain)
@@ -443,24 +464,19 @@ def _realized_summary_from_live_db(db_path):
                 pnl += g
 
                 if cb > 0:
-                    basis += cb
+                    denom += cb
                 elif tc > 0:
-                    basis += tc
+                    denom += tc
                 elif pr > 0:
-                    # if proceeds and gain are known, infer entry cost
                     inferred = abs(pr - g)
                     if inferred > 0:
-                        basis += inferred
+                        denom += inferred
 
-            pct = (pnl / basis * 100.0) if basis > 0 else 0.0
-            return {
-                "pnl": round(pnl, 2),
-                "pct": round(pct, 2),
-            }
+            pct = (pnl / denom * 100.0) if denom > 0 else 0.0
+            return {"pnl": round(pnl, 2), "pct": round(pct, 2)}
 
         con = sqlite3.connect(db_path)
         cur = con.cursor()
-
         try:
             rows = cur.execute("""
                 SELECT close_date, gain, cost_basis, total_cost, proceeds
@@ -480,12 +496,11 @@ def _realized_summary_from_live_db(db_path):
                 WHERE symbol <> 'TEST'
                 ORDER BY close_date DESC
             """).fetchall()
-
-        con.close()
+        finally:
+            con.close()
 
         now_utc = datetime.now(timezone.utc)
-
-        if ET is not None:
+        if ET:
             now_et = now_utc.astimezone(ET)
             day_start_et = now_et.replace(hour=0, minute=0, second=0, microsecond=0)
             week_start_et = day_start_et - timedelta(days=day_start_et.weekday())
@@ -508,7 +523,6 @@ def _realized_summary_from_live_db(db_path):
             "month": _bucket(rows, month_start_utc, now_utc),
             "year":  _bucket(rows, year_start_utc, now_utc),
         }
-
     except Exception:
         return {
             "day":   {"pnl": 0.0, "pct": 0.0},
@@ -516,7 +530,7 @@ def _realized_summary_from_live_db(db_path):
             "month": {"pnl": 0.0, "pct": 0.0},
             "year":  {"pnl": 0.0, "pct": 0.0},
         }
-# --- MM_REPLACE_REALIZED_SUMMARY_FROM_LIVE_DB_V2_END ---
+# --- MM_CLEAN_REPLACE_REALIZED_SUMMARY_V3_END ---
 
 def _calc_unrealized_all_time_from_holdings(holdings):
 
@@ -3608,17 +3622,44 @@ def live_data():
     except Exception:
         pass
 
-    # REALIZED_YEAR__INJECTED_IN_LIVE_DATA
-    # Ensure realized_obj includes a 'year' bucket (YTD) derived from realized_trades.close_date.
+    # --- MM_FIX_LIVE_DATA_REALIZED_OBJ_V1_START ---
+    # Final authority for returned realized buckets: replace realized_obj from live.db summary.
+    # Keep existing 'all' bucket if already present because _realized_summary_from_live_db returns day/week/month/year.
     try:
         _dbp = str(LIVE_DB) if 'LIVE_DB' in globals() else (str(DB_PATH) if 'DB_PATH' in globals() else 'live.db')
         _src = _realized_summary_from_live_db(_dbp)
-        _year = (_src or {}).get('year') if isinstance(_src, dict) else None
-        if isinstance(realized_obj, dict) and 'year' not in realized_obj:
-            realized_obj['year'] = _year if isinstance(_year, dict) else {'pnl': 0.0, 'pct': 0.0}
+        _prev_all = None
+        try:
+            if isinstance(realized_obj, dict) and isinstance(realized_obj.get('all'), dict):
+                _prev_all = realized_obj.get('all')
+        except Exception:
+            _prev_all = None
+
+        if isinstance(_src, dict):
+            realized_obj = {
+                'day': _src.get('day', {'pnl': 0.0, 'pct': 0.0}),
+                'week': _src.get('week', {'pnl': 0.0, 'pct': 0.0}),
+                'month': _src.get('month', {'pnl': 0.0, 'pct': 0.0}),
+                'year': _src.get('year', {'pnl': 0.0, 'pct': 0.0}),
+            }
+            if isinstance(_prev_all, dict):
+                realized_obj['all'] = _prev_all
+            elif isinstance(payload, dict) and isinstance((payload.get('realized') or {}).get('all'), dict):
+                realized_obj['all'] = payload.get('realized', {}).get('all')
+            else:
+                realized_obj['all'] = {'pnl': 0.0, 'pct': 0.0}
     except Exception:
-        if isinstance(realized_obj, dict) and 'year' not in realized_obj:
-            realized_obj['year'] = {'pnl': 0.0, 'pct': 0.0}
+        try:
+            if not isinstance(realized_obj, dict):
+                realized_obj = {}
+            realized_obj.setdefault('day', {'pnl': 0.0, 'pct': 0.0})
+            realized_obj.setdefault('week', {'pnl': 0.0, 'pct': 0.0})
+            realized_obj.setdefault('month', {'pnl': 0.0, 'pct': 0.0})
+            realized_obj.setdefault('year', {'pnl': 0.0, 'pct': 0.0})
+            realized_obj.setdefault('all', {'pnl': 0.0, 'pct': 0.0})
+        except Exception:
+            pass
+    # --- MM_FIX_LIVE_DATA_REALIZED_OBJ_V1_END ---
 
 
 
@@ -12115,91 +12156,6 @@ def api_analytics_recent_sells():
 # --- MM_ADD_RECENT_SELLS_API_V1_END ---
 
 
-# --- MM_WRAP_LIVE_DATA_YEAR_FIX_V2_START ---
-def _mm_install_live_data_year_fix_v2():
-    from flask import jsonify
-    try:
-        target_endpoint = None
-        for _r in app.url_map.iter_rules():
-            if str(_r.rule) == "/live/data":
-                target_endpoint = _r.endpoint
-                break
-        if not target_endpoint:
-            print("MM_WRAP_LIVE_DATA_YEAR_FIX_V2: /live/data route not found")
-            return
-
-        _orig = app.view_functions.get(target_endpoint)
-        if not _orig:
-            print("MM_WRAP_LIVE_DATA_YEAR_FIX_V2: endpoint function not found")
-            return
-
-        if getattr(_orig, "_mm_year_fix_v2_wrapped", False):
-            print("MM_WRAP_LIVE_DATA_YEAR_FIX_V2: already wrapped")
-            return
-
-        def _wrapped(*args, **kwargs):
-            rv = _orig(*args, **kwargs)
-            try:
-                payload = None
-
-                # Normalize common Flask return shapes
-                if isinstance(rv, dict):
-                    payload = rv
-                elif isinstance(rv, tuple) and len(rv) >= 1:
-                    base = rv[0]
-                    if isinstance(base, dict):
-                        payload = base
-                    elif hasattr(base, "get_json"):
-                        payload = base.get_json(silent=True)
-                elif hasattr(rv, "get_json"):
-                    payload = rv.get_json(silent=True)
-
-                if not isinstance(payload, dict):
-                    return rv
-
-                y = _mm_realized_year_summary_v2()
-
-                payload["mm_year_fix"] = "MM_WRAP_LIVE_DATA_YEAR_FIX_V2"
-                payload["realized_year"] = y.get("realized", 0.0)
-                payload["realized_year_pct"] = y.get("pct", 0.0)
-                payload["year_realized"] = y.get("realized", 0.0)
-                payload["year_realized_pct"] = y.get("pct", 0.0)
-                payload["ytd_realized"] = y.get("realized", 0.0)
-                payload["ytd_realized_pct"] = y.get("pct", 0.0)
-                payload["realized_year_source"] = y.get("source")
-                payload["realized_year_rows"] = y.get("rows", 0)
-                payload["realized_year_cost_basis"] = y.get("cost_basis", 0.0)
-
-                if isinstance(payload.get("realized"), dict):
-                    if not isinstance(payload["realized"].get("year"), dict):
-                        payload["realized"]["year"] = {}
-                    payload["realized"]["year"]["pnl"] = y.get("realized", 0.0)
-                    payload["realized"]["year"]["pct"] = y.get("pct", 0.0)
-                    payload["realized"]["year"]["source"] = y.get("source")
-                    payload["realized"]["year"]["rows"] = y.get("rows", 0)
-                    payload["realized"]["year"]["cost_basis"] = y.get("cost_basis", 0.0)
-
-                if isinstance(payload.get("metrics"), dict):
-                    payload["metrics"]["realized_year"] = y.get("realized", 0.0)
-                    payload["metrics"]["realized_year_pct"] = y.get("pct", 0.0)
-
-                return jsonify(payload)
-            except Exception as _e:
-                try:
-                    print(f"MM_WRAP_LIVE_DATA_YEAR_FIX_V2 runtime error: {_e}")
-                except:
-                    pass
-                return rv
-
-        _wrapped._mm_year_fix_v2_wrapped = True
-        _wrapped.__name__ = getattr(_orig, "__name__", "live_data_wrapped_year_fix_v2")
-        app.view_functions[target_endpoint] = _wrapped
-        print(f"MM_WRAP_LIVE_DATA_YEAR_FIX_V2 installed on endpoint={target_endpoint}")
-    except Exception as e:
-        print(f"MM_WRAP_LIVE_DATA_YEAR_FIX_V2 install failed: {e}")
-
-_mm_install_live_data_year_fix_v2()
-# --- MM_WRAP_LIVE_DATA_YEAR_FIX_V2_END ---
 
 
 if __name__ == "__main__":
@@ -12225,152 +12181,4 @@ if __name__ == "__main__":
     app.run(host=host, port=port, debug=debug, use_reloader=use_reloader)
 
 
-# --- MM_REALIZED_YEAR_HELPER_V2_START ---
-def _mm_realized_year_summary_v2():
-    import sqlite3
-    from datetime import datetime
-    try:
-        db = globals().get("LIVE_DB") or globals().get("DB_PATH") or r"C:\TradeAlerts\live.db"
-        conn = sqlite3.connect(db)
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
-
-        year = datetime.now().year
-        year_prefix = f"{year}-"
-
-        def table_exists(name):
-            try:
-                row = cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone()
-                return bool(row)
-            except:
-                return False
-
-        def cols(table):
-            try:
-                return [r[1] for r in cur.execute(f"PRAGMA table_info({table})").fetchall()]
-            except:
-                return []
-
-        def first(c, *names):
-            for n in names:
-                if n in c:
-                    return n
-            return None
-
-        def to_num(v):
-            try:
-                if v is None or v == "":
-                    return 0.0
-                return float(v)
-            except:
-                return 0.0
-
-        out = {
-            "year": year,
-            "source": None,
-            "realized": 0.0,
-            "cost_basis": 0.0,
-            "pct": 0.0,
-            "rows": 0,
-            "marker": "MM_REALIZED_YEAR_HELPER_V2"
-        }
-
-        # Preferred: realized_trades
-        if table_exists("realized_trades"):
-            c = cols("realized_trades")
-            ts_col   = first(c, "close_ts_et", "close_ts_utc", "closed_utc", "ts_et", "ts_utc")
-            pnl_col  = first(c, "gain", "pnl", "profit")
-            qty_col  = first(c, "qty", "quantity", "shares")
-            sell_col = first(c, "sell_price", "exit_price", "price", "close_price")
-            cost_col = first(c, "cost_basis", "entry_value")
-            if ts_col and pnl_col:
-                q = f"SELECT * FROM realized_trades WHERE SUBSTR(COALESCE({ts_col},''),1,5)=?"
-                rows = cur.execute(q, (year_prefix,)).fetchall()
-                realized = 0.0
-                basis = 0.0
-                n = 0
-                for r in rows:
-                    pnl = to_num(r[pnl_col])
-                    realized += pnl
-                    if cost_col and cost_col in r.keys():
-                        b = abs(to_num(r[cost_col]))
-                    else:
-                        qty = to_num(r[qty_col]) if qty_col else 0.0
-                        sell = to_num(r[sell_col]) if sell_col else 0.0
-                        proceeds = sell * qty
-                        b = abs(proceeds - pnl) if (proceeds or pnl) else 0.0
-                    if b > 0:
-                        basis += b
-                    n += 1
-                if n > 0:
-                    out["source"] = "realized_trades"
-                    out["realized"] = round(realized, 2)
-                    out["cost_basis"] = round(basis, 2)
-                    out["pct"] = round((realized / basis * 100.0), 2) if basis > 0 else 0.0
-                    out["rows"] = n
-                    conn.close()
-                    return out
-
-        # Fallback: trades SELL rows
-        if table_exists("trades"):
-            c = cols("trades")
-            ts_col    = first(c, "ts_et", "ts_utc", "time_et", "time_utc", "timestamp")
-            act_col   = first(c, "action", "side", "event")
-            pnl_col   = first(c, "pnl", "gain", "profit")
-            pct_col   = first(c, "pnl_pct", "gain_pct", "profit_pct")
-            qty_col   = first(c, "qty", "quantity", "shares")
-            price_col = first(c, "price", "fill_price", "avg_price")
-            paid_col  = first(c, "price_paid", "cost_price", "entry_price")
-            if ts_col and act_col and pnl_col:
-                q = f"""
-                    SELECT * FROM trades
-                    WHERE SUBSTR(COALESCE({ts_col},''),1,5)=?
-                      AND UPPER(COALESCE({act_col},''))='SELL'
-                """
-                rows = cur.execute(q, (year_prefix,)).fetchall()
-                realized = 0.0
-                basis = 0.0
-                n = 0
-                for r in rows:
-                    pnl = to_num(r[pnl_col])
-                    realized += pnl
-                    qty = to_num(r[qty_col]) if qty_col else 0.0
-                    paid = to_num(r[paid_col]) if paid_col else 0.0
-                    price = to_num(r[price_col]) if price_col else 0.0
-                    b = abs(paid * qty) if (paid and qty) else 0.0
-                    if b <= 0:
-                        proceeds = price * qty
-                        b = abs(proceeds - pnl) if (proceeds or pnl) else 0.0
-                    if b <= 0 and pct_col:
-                        pct = to_num(r[pct_col])
-                        if abs(pct) > 0 and abs(pnl) > 0:
-                            try:
-                                b = abs(pnl / (pct / 100.0))
-                            except:
-                                b = 0.0
-                    if b > 0:
-                        basis += b
-                    n += 1
-                out["source"] = "trades"
-                out["realized"] = round(realized, 2)
-                out["cost_basis"] = round(basis, 2)
-                out["pct"] = round((realized / basis * 100.0), 2) if basis > 0 else 0.0
-                out["rows"] = n
-                conn.close()
-                return out
-
-        conn.close()
-        return out
-    except Exception as e:
-        return {
-            "year": None,
-            "source": "error",
-            "realized": 0.0,
-            "cost_basis": 0.0,
-            "pct": 0.0,
-            "rows": 0,
-            "error": str(e),
-            "marker": "MM_REALIZED_YEAR_HELPER_V2"
-        }
-# --- MM_REALIZED_YEAR_HELPER_V2_END ---
 
